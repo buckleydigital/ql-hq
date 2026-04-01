@@ -193,13 +193,17 @@ Your goal is to keep every message sounding casual, human, and natural, never ro
 
 Confirmed Callback Rule: If the lead has already confirmed a scheduled callback, do not ask if they need anything else. Instead, send a concise acknowledgment like: "Perfect, you're all set for {day/time}. Our team will reach out to you then." Only offer extra assistance if the lead specifically asks a new question.
 
+Today is ${new Date().toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. The current time is ${new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}.
+
 IMPORTANT: After your reply, you MUST output a JSON block on a new line starting with "---JSON---" containing structured data:
 ---JSON---
-{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 or null>", "appointment_note": "<brief note or null>"}
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary of what needs quoting or null>"}
 
 The score reflects lead quality: 0-20 cold/unresponsive, 21-40 mildly interested, 41-60 engaged, 61-80 ready to act, 81-100 hot/confirmed.
-Set action to "callback" if a callback was confirmed, "onsite" if a site visit was confirmed, "quote" if you indicated a quote may be coming. Otherwise "none".
-${quoteStatus ? `\nCurrent quote status for this lead: ${quoteStatus}` : ""}`;
+Set action to "callback" if a callback was confirmed in this message, "onsite" if a site visit was confirmed, "quote" if you indicated a quote may be coming and enough detail has been gathered. Otherwise "none".
+For appointment_time: convert the agreed time to a full ISO8601 datetime (e.g. "2026-04-02T14:00:00+10:00") based on today's date. If the lead said "Tuesday at 2pm" and today is Monday, use tomorrow's date. Always include timezone offset.
+For quote_context: if action is "quote", summarise what the lead wants quoted (service type, scope, any details mentioned). This will be passed to the quoting system.
+${quoteStatus ? `\nCurrent quote status for this lead: ${quoteStatus}. Do not trigger another quote if one is already in progress.` : ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +216,7 @@ interface AIActions {
   action: "none" | "callback" | "onsite" | "quote";
   appointmentTime: string | null;
   appointmentNote: string | null;
+  quoteContext: string | null;
 }
 
 function parseAIResponse(raw: string): AIActions {
@@ -241,6 +246,7 @@ function parseAIResponse(raw: string): AIActions {
       : "none") as AIActions["action"],
     appointmentTime: (meta.appointment_time as string) || null,
     appointmentNote: (meta.appointment_note as string) || null,
+    quoteContext: (meta.quote_context as string) || null,
   };
 }
 
@@ -533,27 +539,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 14. Draft quote if conditions met
+    // 14. Trigger quote-draft edge function if conditions met
     if (
       actions.action === "quote" &&
       smsConfig.quote_drafting_enabled &&
       !latestQuote // no existing quote
     ) {
-      const quoteNumber = `Q-${Date.now().toString(36).toUpperCase()}`;
+      // Fire-and-forget call to quote-draft function
+      // It will use the conversation context to build a proper draft
+      try {
+        const quotePayload = {
+          company_id: companyId,
+          lead_id: lead.id,
+          conversation_id: conversation.id,
+          quote_context: actions.quoteContext,
+          lead_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
+          lead_phone: lead.phone,
+          service_type: lead.service_type || smsConfig.service_description || null,
+          conversation_summary: (history || [])
+            .slice(-10) // last 10 messages for context
+            .map((m) => `${m.direction === "inbound" ? "Lead" : "Us"}: ${m.body}`)
+            .join("\n"),
+        };
 
-      await db.from("quotes").insert({
-        company_id: companyId,
-        lead_id: lead.id,
-        quote_number: quoteNumber,
-        status: "draft",
-        notes: `Auto-drafted from SMS conversation. ${actions.appointmentNote || ""}`.trim(),
-        line_items: [],
-      });
+        // Async call — don't await, don't block the SMS reply
+        fetch(`${SUPABASE_URL}/functions/v1/quote-draft`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify(quotePayload),
+        }).catch((err) => console.error("quote-draft trigger failed:", err));
 
-      await logActivity(db, companyId, "quote.drafted", "lead", lead.id, {
-        quote_number: quoteNumber,
-        source: "ai_sms",
-      });
+        await logActivity(db, companyId, "quote.draft_triggered", "lead", lead.id, {
+          quote_context: actions.quoteContext,
+          source: "ai_sms",
+        });
+      } catch (err) {
+        console.error("Failed to trigger quote-draft:", err);
+      }
     }
 
     // 15. Deduct SMS credit + send reply via Twilio
