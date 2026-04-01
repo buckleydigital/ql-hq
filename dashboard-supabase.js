@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Dashboard Client
+// QuoteLeadsHQ — Dashboard Client (Fixed)
 // =============================================================================
 
 const SUPABASE_URL = "https://wjadekgptkstfdootuol.supabase.co";
@@ -55,39 +55,135 @@ let currentLeadId    = null;
 let customFields     = [];
 let allLeads         = [];
 let dragLeadId       = null;
+let authInitialized  = false;  // Prevent race conditions
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   renderIcons();
 
-  await waitFor(() => window.supabase);
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  try {
+    await waitFor(() => window.supabase, 10000);
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (err) {
+    toast("Failed to connect to authentication service. Please refresh.", true);
+    console.error("Supabase init failed:", err);
+    return;
+  }
 
   if (localStorage.getItem("theme") === "dark") {
     document.documentElement.dataset.theme = "dark";
   }
   updateThemeIcon();
 
+  // Set up auth state listener FIRST (before checking session)
   sb.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) { currentUser = session.user; showApp(); }
-    else               { currentUser = null;          showAuth(); }
+    if (authInitialized) return; // Skip if already handled
+    authInitialized = true;
+    
+    if (session?.user) { 
+      currentUser = session.user; 
+      showApp(); 
+    } else { 
+      currentUser = null; 
+      showAuth(); 
+    }
   });
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) { currentUser = session.user; showApp(); }
-  else showAuth();
+  // Then check existing session (with slight delay to let listener set up)
+  setTimeout(async () => {
+    if (authInitialized) return; // Already handled by onAuthStateChange
+    
+    try {
+      const { data: { session }, error } = await sb.auth.getSession();
+      authInitialized = true;
+      
+      if (error) {
+        console.error("Session check error:", error);
+        showAuth();
+        return;
+      }
+      
+      if (session?.user) { 
+        currentUser = session.user; 
+        showApp(); 
+      } else { 
+        showAuth(); 
+      }
+    } catch (err) {
+      console.error("Session check failed:", err);
+      authInitialized = true;
+      showAuth();
+    }
+  }, 100);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
+  const loginForm = document.getElementById("loginForm");
+  loginForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const { error } = await sb.auth.signInWithPassword({
-      email:    document.getElementById("loginEmail").value,
-      password: document.getElementById("loginPassword").value,
-    });
-    if (error) toast(error.message, true);
+    
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const emailInput = document.getElementById("loginEmail");
+    const passwordInput = document.getElementById("loginPassword");
+    
+    // Disable form during login
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.dataset.originalText = submitBtn.textContent;
+      submitBtn.textContent = "Signing in...";
+    }
+    emailInput && (emailInput.disabled = true);
+    passwordInput && (passwordInput.disabled = true);
+    
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({
+        email:    emailInput?.value || "",
+        password: passwordInput?.value || "",
+      });
+      
+      if (error) {
+        toast(error.message, true);
+        // Re-enable form on error
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";
+        }
+        emailInput && (emailInput.disabled = false);
+        passwordInput && (passwordInput.disabled = false);
+      }
+      // On success, onAuthStateChange will handle the transition
+    } catch (err) {
+      toast("Login failed. Please try again.", true);
+      console.error("Login error:", err);
+      // Re-enable form
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";
+      }
+      emailInput && (emailInput.disabled = false);
+      passwordInput && (passwordInput.disabled = false);
+    }
   });
 
-  document.getElementById("logoutButton")?.addEventListener("click", () => sb.auth.signOut());
+  document.getElementById("logoutButton")?.addEventListener("click", async () => {
+    const btn = document.getElementById("logoutButton");
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.originalText = btn.innerHTML;
+      btn.innerHTML = `<span>Logging out...</span>`;
+    }
+    
+    try {
+      await sb.auth.signOut();
+      authInitialized = false; // Reset for next login
+    } catch (err) {
+      toast("Logout failed. Please try again.", true);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.originalText || `<span class="icon" data-icon="logout"></span><span>Log Out</span>`;
+        renderIcons();
+      }
+    }
+  });
 
   // ── Navigation ────────────────────────────────────────────────────────────
   document.querySelectorAll("[data-page]").forEach((btn) =>
@@ -176,6 +272,7 @@ function closeModal(id) { document.getElementById(id)?.classList.remove("open");
 
 function toast(msg, isError = false) {
   const wrap = document.getElementById("toastWrap");
+  if (!wrap) return;
   const t = document.createElement("div");
   t.className = `toast${isError ? " err" : ""}`;
   t.textContent = msg;
@@ -196,46 +293,94 @@ function fmtDate(d) {
 }
 
 function slugify(str) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/, "");
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function showAuth() {
-  document.getElementById("authView")?.classList.remove("hidden");
-  document.getElementById("appView")?.classList.add("hidden");
+  const authView = document.getElementById("authView");
+  const appView = document.getElementById("appView");
+  
+  if (authView) authView.classList.remove("hidden");
+  if (appView) appView.classList.add("hidden");
+  
+  // Reset login form state
+  const loginForm = document.getElementById("loginForm");
+  if (loginForm) {
+    loginForm.reset();
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const emailInput = document.getElementById("loginEmail");
+    const passwordInput = document.getElementById("loginPassword");
+    
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Sign In";
+    }
+    if (emailInput) emailInput.disabled = false;
+    if (passwordInput) passwordInput.disabled = false;
+  }
 }
 
 async function showApp() {
-  document.getElementById("authView")?.classList.add("hidden");
-  document.getElementById("appView")?.classList.remove("hidden");
+  const authView = document.getElementById("authView");
+  const appView = document.getElementById("appView");
+  
+  if (authView) authView.classList.add("hidden");
+  if (appView) appView.classList.remove("hidden");
 
-  const { data: profile } = await sb
-    .from("profiles")
-    .select("company_id, full_name, phone, role, user_type")
-    .eq("id", currentUser.id)
-    .maybeSingle();
-
-  if (profile) {
-    currentCompanyId = profile.company_id;
-    document.getElementById("sidebarAccountName").textContent = profile.full_name || currentUser.email;
-    document.getElementById("sidebarAccountMeta").textContent = currentUser.email;
-    const initials = (profile.full_name || currentUser.email || "??")
-      .split(/[\s@]/).map((s) => s[0]?.toUpperCase() || "").join("").slice(0, 2);
-    document.getElementById("sidebarAvatar").textContent = initials;
+  if (!currentUser) {
+    toast("Authentication error. Please log in again.", true);
+    showAuth();
+    return;
   }
 
-  if (currentCompanyId) {
-    const { data: company } = await sb
-      .from("companies")
-      .select("name")
-      .eq("id", currentCompanyId)
+  try {
+    const { data: profile, error: profileError } = await sb
+      .from("profiles")
+      .select("company_id, full_name, phone, role, user_type")
+      .eq("id", currentUser.id)
       .maybeSingle();
-    if (company?.name) {
-      document.getElementById("brandCompanyName").textContent = company.name;
-    }
-  }
 
-  navigateTo("dashboard");
+    if (profileError) {
+      console.error("Profile fetch error:", profileError);
+    }
+
+    if (profile) {
+      currentCompanyId = profile.company_id;
+      const sidebarName = document.getElementById("sidebarAccountName");
+      const sidebarMeta = document.getElementById("sidebarAccountMeta");
+      const sidebarAvatar = document.getElementById("sidebarAvatar");
+      
+      if (sidebarName) sidebarName.textContent = profile.full_name || currentUser.email || "User";
+      if (sidebarMeta) sidebarMeta.textContent = currentUser.email || "";
+      
+      const initials = (profile.full_name || currentUser.email || "??")
+        .split(/[\s@]+/).map((s) => s[0]?.toUpperCase() || "").join("").slice(0, 2);
+      if (sidebarAvatar) sidebarAvatar.textContent = initials;
+    }
+
+    if (currentCompanyId) {
+      const { data: company, error: companyError } = await sb
+        .from("companies")
+        .select("name")
+        .eq("id", currentCompanyId)
+        .maybeSingle();
+        
+      if (companyError) {
+        console.error("Company fetch error:", companyError);
+      }
+      
+      if (company?.name) {
+        const brandName = document.getElementById("brandCompanyName");
+        if (brandName) brandName.textContent = company.name;
+      }
+    }
+
+    navigateTo("dashboard");
+  } catch (err) {
+    console.error("Error loading app:", err);
+    toast("Error loading dashboard. Please refresh.", true);
+  }
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -262,11 +407,14 @@ function navigateTo(page) {
   if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
 
   document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
-  document.getElementById(`page-${page}`)?.classList.remove("hidden");
+  const pageEl = document.getElementById(`page-${page}`);
+  if (pageEl) pageEl.classList.remove("hidden");
 
   const [title, sub] = PAGE_META[page] || [page, ""];
-  document.getElementById("pageTitle").textContent    = title;
-  document.getElementById("pageSubtitle").textContent = sub;
+  const pageTitle = document.getElementById("pageTitle");
+  const pageSubtitle = document.getElementById("pageSubtitle");
+  if (pageTitle) pageTitle.textContent = title;
+  if (pageSubtitle) pageSubtitle.textContent = sub;
 
   const loaders = {
     dashboard:          loadDashboard,
@@ -286,31 +434,46 @@ function navigateTo(page) {
 async function loadDashboard() {
   if (!currentCompanyId) return;
 
-  const [{ data: leads }, { data: cf }] = await Promise.all([
-    sb.from("leads").select("id, name, email, status, value, created_at").eq("company_id", currentCompanyId),
-    sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
-  ]);
+  try {
+    const [{ data: leads }, { data: cf }] = await Promise.all([
+      sb.from("leads").select("id, name, email, status, value, created_at").eq("company_id", currentCompanyId),
+      sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
+    ]);
 
-  const all    = leads || [];
-  const cfLen  = cf?.length || 0;
-  const open   = all.filter((l) => !["Closed Won","Closed Lost"].includes(l.status)).length;
-  const quoted = all.filter((l) => l.status === "Quoted").length;
+    const all    = leads || [];
+    const cfLen  = cf?.length || 0;
+    const open   = all.filter((l) => !["Closed Won","Closed Lost"].includes(l.status)).length;
+    const quoted = all.filter((l) => l.status === "Quoted").length;
 
-  document.getElementById("statLeadCount").textContent    = all.length;
-  document.getElementById("statOpenPipeline").textContent = open;
-  document.getElementById("statQuotes").textContent       = quoted;
-  document.getElementById("statCustomFields").textContent = cfLen;
+    const statLeadCount = document.getElementById("statLeadCount");
+    const statOpenPipeline = document.getElementById("statOpenPipeline");
+    const statQuotes = document.getElementById("statQuotes");
+    const statCustomFields = document.getElementById("statCustomFields");
+    
+    if (statLeadCount) statLeadCount.textContent = all.length;
+    if (statOpenPipeline) statOpenPipeline.textContent = open;
+    if (statQuotes) statQuotes.textContent = quoted;
+    if (statCustomFields) statCustomFields.textContent = cfLen;
 
-  const weekAgo     = new Date(Date.now() - 7 * 864e5);
-  const newThisWeek = all.filter((l) => new Date(l.created_at) > weekAgo).length;
-  document.getElementById("leadGrowthChip").textContent  = newThisWeek ? `+${newThisWeek} this week` : "No new";
-  document.getElementById("qualifyingChip").textContent  = `${all.filter((l) => l.status === "Qualifying").length} qualifying`;
-  document.getElementById("quoteChip").textContent       = `${quoted} quoted`;
-  document.getElementById("customFieldChip").textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
+    const weekAgo     = new Date(Date.now() - 7 * 864e5);
+    const newThisWeek = all.filter((l) => new Date(l.created_at) > weekAgo).length;
+    
+    const leadGrowthChip = document.getElementById("leadGrowthChip");
+    const qualifyingChip = document.getElementById("qualifyingChip");
+    const quoteChip = document.getElementById("quoteChip");
+    const customFieldChip = document.getElementById("customFieldChip");
+    
+    if (leadGrowthChip) leadGrowthChip.textContent = newThisWeek ? `+${newThisWeek} this week` : "No new";
+    if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.status === "Qualifying").length} qualifying`;
+    if (quoteChip) quoteChip.textContent = `${quoted} quoted`;
+    if (customFieldChip) customFieldChip.textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
 
-  buildLeadVolumeChart(all);
-  renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
-  renderPipelineSnapshot(all);
+    buildLeadVolumeChart(all);
+    renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
+    renderPipelineSnapshot(all);
+  } catch (err) {
+    console.error("Dashboard load error:", err);
+  }
 }
 
 function buildLeadVolumeChart(leads) {
@@ -371,13 +534,18 @@ function renderPipelineSnapshot(leads) {
 // ─── Custom Fields ────────────────────────────────────────────────────────────
 async function loadCustomFields() {
   if (!currentCompanyId) return [];
-  const { data } = await sb
-    .from("custom_fields")
-    .select("*")
-    .eq("company_id", currentCompanyId)
-    .order("created_at");
-  customFields = data || [];
-  return customFields;
+  try {
+    const { data } = await sb
+      .from("custom_fields")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at");
+    customFields = data || [];
+    return customFields;
+  } catch (err) {
+    console.error("Load custom fields error:", err);
+    return [];
+  }
 }
 
 async function renderCustomFieldInputs(values = {}) {
@@ -415,44 +583,60 @@ function renderSettingsCustomFields() {
 
 async function handleCustomFieldSave(e) {
   e.preventDefault();
-  const label = document.getElementById("customFieldLabel").value.trim();
-  const type  = document.getElementById("customFieldType").value;
+  const label = document.getElementById("customFieldLabel")?.value.trim();
+  const type  = document.getElementById("customFieldType")?.value;
   if (!label) return;
   const key = slugify(label);
-  const { error } = await sb.from("custom_fields").insert({
-    company_id: currentCompanyId, label, type, key,
-  });
-  if (error) { toast(error.message, true); return; }
-  toast("Custom field added.");
-  document.getElementById("customFieldForm").reset();
-  await loadCustomFields();
-  renderSettingsCustomFields();
-  await renderCustomFieldInputs();
-  document.getElementById("statCustomFields").textContent = customFields.length;
-  document.getElementById("customFieldChip").textContent  = `${customFields.length} field${customFields.length === 1 ? "" : "s"}`;
+  
+  try {
+    const { error } = await sb.from("custom_fields").insert({
+      company_id: currentCompanyId, label, type, key,
+    });
+    if (error) { toast(error.message, true); return; }
+    toast("Custom field added.");
+    document.getElementById("customFieldForm")?.reset();
+    await loadCustomFields();
+    renderSettingsCustomFields();
+    await renderCustomFieldInputs();
+    
+    const statCustomFields = document.getElementById("statCustomFields");
+    const customFieldChip = document.getElementById("customFieldChip");
+    if (statCustomFields) statCustomFields.textContent = customFields.length;
+    if (customFieldChip) customFieldChip.textContent = `${customFields.length} field${customFields.length === 1 ? "" : "s"}`;
+  } catch (err) {
+    toast("Failed to save custom field.", true);
+  }
 }
 
 async function deleteCustomField(id) {
   if (!confirm("Delete this custom field? Values stored in leads will be lost.")) return;
-  const { error } = await sb.from("custom_fields").delete().eq("id", id);
-  if (error) { toast(error.message, true); return; }
-  toast("Custom field deleted.");
-  await loadCustomFields();
-  renderSettingsCustomFields();
+  try {
+    const { error } = await sb.from("custom_fields").delete().eq("id", id);
+    if (error) { toast(error.message, true); return; }
+    toast("Custom field deleted.");
+    await loadCustomFields();
+    renderSettingsCustomFields();
+  } catch (err) {
+    toast("Failed to delete custom field.", true);
+  }
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
 async function loadLeads() {
   if (!currentCompanyId) return;
   await loadCustomFields();
-  const { data, error } = await sb
-    .from("leads")
-    .select("*")
-    .eq("company_id", currentCompanyId)
-    .order("created_at", { ascending: false });
-  if (error) { toast(error.message, true); return; }
-  allLeads = data || [];
-  renderLeadsTable(allLeads);
+  try {
+    const { data, error } = await sb
+      .from("leads")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false });
+    if (error) { toast(error.message, true); return; }
+    allLeads = data || [];
+    renderLeadsTable(allLeads);
+  } catch (err) {
+    toast("Failed to load leads.", true);
+  }
 }
 
 function renderLeadsTable(leads) {
@@ -490,32 +674,48 @@ function renderCustomDataSummary(data) {
 
 function resetLeadForm() {
   document.getElementById("leadForm")?.reset();
-  document.getElementById("leadId").value = "";
-  document.getElementById("leadModalTitle").textContent = "New Lead";
+  const leadId = document.getElementById("leadId");
+  const leadModalTitle = document.getElementById("leadModalTitle");
+  if (leadId) leadId.value = "";
+  if (leadModalTitle) leadModalTitle.textContent = "New Lead";
   renderCustomFieldInputs();
 }
 
 async function openEditLead(id) {
   const l = allLeads.find((x) => x.id === id);
   if (!l) return;
-  document.getElementById("leadModalTitle").textContent = "Edit Lead";
-  document.getElementById("leadId").value       = l.id;
-  document.getElementById("leadName").value     = l.name    || "";
-  document.getElementById("leadEmail").value    = l.email   || "";
-  document.getElementById("leadPhone").value    = l.phone   || "";
-  document.getElementById("leadPostcode").value = l.postcode || "";
-  document.getElementById("leadAddress").value  = l.address || "";
-  document.getElementById("leadSource").value   = l.source  || "";
-  document.getElementById("leadStatus").value   = l.status  || "New Lead";
-  document.getElementById("leadValue").value    = l.value   || "";
-  document.getElementById("leadNotes").value    = l.notes   || "";
+  
+  const leadModalTitle = document.getElementById("leadModalTitle");
+  const leadId = document.getElementById("leadId");
+  const leadName = document.getElementById("leadName");
+  const leadEmail = document.getElementById("leadEmail");
+  const leadPhone = document.getElementById("leadPhone");
+  const leadPostcode = document.getElementById("leadPostcode");
+  const leadAddress = document.getElementById("leadAddress");
+  const leadSource = document.getElementById("leadSource");
+  const leadStatus = document.getElementById("leadStatus");
+  const leadValue = document.getElementById("leadValue");
+  const leadNotes = document.getElementById("leadNotes");
+  
+  if (leadModalTitle) leadModalTitle.textContent = "Edit Lead";
+  if (leadId) leadId.value = l.id;
+  if (leadName) leadName.value = l.name || "";
+  if (leadEmail) leadEmail.value = l.email || "";
+  if (leadPhone) leadPhone.value = l.phone || "";
+  if (leadPostcode) leadPostcode.value = l.postcode || "";
+  if (leadAddress) leadAddress.value = l.address || "";
+  if (leadSource) leadSource.value = l.source || "";
+  if (leadStatus) leadStatus.value = l.status || "New Lead";
+  if (leadValue) leadValue.value = l.value || "";
+  if (leadNotes) leadNotes.value = l.notes || "";
+  
   await renderCustomFieldInputs(l.custom_data || {});
   openModal("leadModal");
 }
 
 async function handleLeadSave(e) {
   e.preventDefault();
-  const id = document.getElementById("leadId").value;
+  const id = document.getElementById("leadId")?.value;
 
   const custom_data = {};
   customFields.forEach((f) => {
@@ -525,41 +725,49 @@ async function handleLeadSave(e) {
 
   const payload = {
     company_id: currentCompanyId,
-    name:     document.getElementById("leadName").value     || null,
-    email:    document.getElementById("leadEmail").value    || null,
-    phone:    document.getElementById("leadPhone").value    || null,
-    postcode: document.getElementById("leadPostcode").value || null,
-    address:  document.getElementById("leadAddress").value  || null,
-    source:   document.getElementById("leadSource").value   || null,
-    status:   document.getElementById("leadStatus").value,
-    value:    Number(document.getElementById("leadValue").value) || null,
-    notes:    document.getElementById("leadNotes").value    || null,
+    name:     document.getElementById("leadName")?.value || null,
+    email:    document.getElementById("leadEmail")?.value || null,
+    phone:    document.getElementById("leadPhone")?.value || null,
+    postcode: document.getElementById("leadPostcode")?.value || null,
+    address:  document.getElementById("leadAddress")?.value || null,
+    source:   document.getElementById("leadSource")?.value || null,
+    status:   document.getElementById("leadStatus")?.value || "New Lead",
+    value:    Number(document.getElementById("leadValue")?.value) || null,
+    notes:    document.getElementById("leadNotes")?.value || null,
     custom_data,
   };
 
-  const { error } = id
-    ? await sb.from("leads").update(payload).eq("id", id)
-    : await sb.from("leads").insert(payload);
+  try {
+    const { error } = id
+      ? await sb.from("leads").update(payload).eq("id", id)
+      : await sb.from("leads").insert(payload);
 
-  if (error) { toast(error.message, true); return; }
-  toast(id ? "Lead updated." : "Lead created.");
-  closeModal("leadModal");
-  loadLeads();
-  loadDashboard();
+    if (error) { toast(error.message, true); return; }
+    toast(id ? "Lead updated." : "Lead created.");
+    closeModal("leadModal");
+    loadLeads();
+    loadDashboard();
+  } catch (err) {
+    toast("Failed to save lead.", true);
+  }
 }
 
 async function deleteLead(id) {
   if (!confirm("Delete this lead? This cannot be undone.")) return;
-  const { error } = await sb.from("leads").delete().eq("id", id);
-  if (error) { toast(error.message, true); return; }
-  toast("Lead deleted.");
-  loadLeads();
-  loadDashboard();
+  try {
+    const { error } = await sb.from("leads").delete().eq("id", id);
+    if (error) { toast(error.message, true); return; }
+    toast("Lead deleted.");
+    loadLeads();
+    loadDashboard();
+  } catch (err) {
+    toast("Failed to delete lead.", true);
+  }
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 function handleSearch(e) {
-  const q = e.target.value.toLowerCase().trim();
+  const q = e.target?.value?.toLowerCase()?.trim();
   if (!q) { renderLeadsTable(allLeads); return; }
   const filtered = allLeads.filter((l) =>
     [l.name, l.email, l.phone, l.postcode, l.address]
@@ -573,12 +781,16 @@ const KANBAN_STAGES = ["New Lead","Qualifying","Quote in Progress","Quoted","Clo
 
 async function loadOpportunities() {
   if (!currentCompanyId) return;
-  const { data } = await sb
-    .from("leads")
-    .select("id, name, email, phone, status, value, created_at")
-    .eq("company_id", currentCompanyId);
-  allLeads = data || [];
-  buildKanban(allLeads);
+  try {
+    const { data } = await sb
+      .from("leads")
+      .select("id, name, email, phone, status, value, created_at")
+      .eq("company_id", currentCompanyId);
+    allLeads = data || [];
+    buildKanban(allLeads);
+  } catch (err) {
+    toast("Failed to load opportunities.", true);
+  }
 }
 
 function buildKanban(leads) {
@@ -650,12 +862,17 @@ async function kanbanDrop(event, newStage) {
   if (lead) lead.status = newStage;
   buildKanban(allLeads);
 
-  const { error } = await sb.from("leads").update({ status: newStage }).eq("id", leadId);
-  if (error) {
-    toast(error.message, true);
-    loadOpportunities(); // revert on failure
-  } else {
-    toast(`Moved to "${newStage}"`);
+  try {
+    const { error } = await sb.from("leads").update({ status: newStage }).eq("id", leadId);
+    if (error) {
+      toast(error.message, true);
+      loadOpportunities(); // revert on failure
+    } else {
+      toast(`Moved to "${newStage}"`);
+    }
+  } catch (err) {
+    toast("Failed to update status.", true);
+    loadOpportunities();
   }
   dragLeadId = null;
 }
@@ -663,217 +880,290 @@ async function kanbanDrop(event, newStage) {
 // ─── Quotes ───────────────────────────────────────────────────────────────────
 async function loadQuotes() {
   if (!currentCompanyId) return;
-  const { data } = await sb
-    .from("leads")
-    .select("id, name, email, phone, value, created_at")
-    .eq("company_id", currentCompanyId)
-    .eq("status", "Quoted")
-    .order("created_at", { ascending: false });
-  const leads = data || [];
-  const el = document.getElementById("quotesPanel");
-  if (!el) return;
-  if (!leads.length) {
-    el.innerHTML = `<div class="empty"><h3>No quoted leads</h3><p>Leads with status "Quoted" will appear here.</p></div>`;
-    return;
+  try {
+    const { data } = await sb
+      .from("leads")
+      .select("id, name, email, phone, value, created_at")
+      .eq("company_id", currentCompanyId)
+      .eq("status", "Quoted")
+      .order("created_at", { ascending: false });
+    const leads = data || [];
+    const el = document.getElementById("quotesPanel");
+    if (!el) return;
+    if (!leads.length) {
+      el.innerHTML = `<div class="empty"><h3>No quoted leads</h3><p>Leads with status "Quoted" will appear here.</p></div>`;
+      return;
+    }
+    el.innerHTML = `<div class="table-lite">${leads.map((l) => `
+      <div class="row">
+        <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${l.email || l.phone || "—"}</span></div>
+        <div><span class="chip">Quoted</span></div>
+        <div><strong style="font-size:13px">${fmt(l.value)}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
+      </div>`).join("")}</div>`;
+  } catch (err) {
+    toast("Failed to load quotes.", true);
   }
-  el.innerHTML = `<div class="table-lite">${leads.map((l) => `
-    <div class="row">
-      <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${l.email || l.phone || "—"}</span></div>
-      <div><span class="chip">Quoted</span></div>
-      <div><strong style="font-size:13px">${fmt(l.value)}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
-    </div>`).join("")}</div>`;
 }
 
 // ─── Sales ────────────────────────────────────────────────────────────────────
 async function loadSales() {
   if (!currentCompanyId) return;
-  const { data } = await sb
-    .from("leads")
-    .select("id, name, status, value, created_at")
-    .eq("company_id", currentCompanyId)
-    .in("status", ["Closed Won","Closed Lost"])
-    .order("created_at", { ascending: false });
-  const leads = data || [];
-  const el = document.getElementById("salesPanel");
-  if (!el) return;
+  try {
+    const { data } = await sb
+      .from("leads")
+      .select("id, name, status, value, created_at")
+      .eq("company_id", currentCompanyId)
+      .in("status", ["Closed Won","Closed Lost"])
+      .order("created_at", { ascending: false });
+    const leads = data || [];
+    const el = document.getElementById("salesPanel");
+    if (!el) return;
 
-  const won     = leads.filter((l) => l.status === "Closed Won");
-  const lost    = leads.filter((l) => l.status === "Closed Lost");
-  const wonVal  = won.reduce((a, l) => a + (Number(l.value) || 0), 0);
-  const lostVal = lost.reduce((a, l) => a + (Number(l.value) || 0), 0);
-  const winRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
+    const won     = leads.filter((l) => l.status === "Closed Won");
+    const lost    = leads.filter((l) => l.status === "Closed Lost");
+    const wonVal  = won.reduce((a, l) => a + (Number(l.value) || 0), 0);
+    const lostVal = lost.reduce((a, l) => a + (Number(l.value) || 0), 0);
+    const winRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
 
-  el.innerHTML = `
-    <div class="mini-grid" style="margin-bottom:20px">
-      <div class="mini-card"><h3>Closed Won</h3><b>${won.length}</b><span class="muted">${fmt(wonVal)} total</span></div>
-      <div class="mini-card"><h3>Closed Lost</h3><b>${lost.length}</b><span class="muted">${fmt(lostVal)} lost</span></div>
-      <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
-    </div>
-    ${leads.length ? `<div class="table-lite">${leads.map((l) => `
-      <div class="row">
-        <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
-        <div><span class="chip">${l.status}</span></div>
-        <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
-      </div>`).join("")}</div>`
-      : `<div class="empty"><p>No closed deals yet.</p></div>`}`;
+    el.innerHTML = `
+      <div class="mini-grid" style="margin-bottom:20px">
+        <div class="mini-card"><h3>Closed Won</h3><b>${won.length}</b><span class="muted">${fmt(wonVal)} total</span></div>
+        <div class="mini-card"><h3>Closed Lost</h3><b>${lost.length}</b><span class="muted">${fmt(lostVal)} lost</span></div>
+        <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
+      </div>
+      ${leads.length ? `<div class="table-lite">${leads.map((l) => `
+        <div class="row">
+          <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
+          <div><span class="chip">${l.status}</span></div>
+          <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
+        </div>`).join("")}</div>`
+        : `<div class="empty"><p>No closed deals yet.</p></div>`}`;
+  } catch (err) {
+    toast("Failed to load sales data.", true);
+  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 async function loadSettings() {
-  if (!currentCompanyId) return;
-  const [{ data: company }, { data: profile }] = await Promise.all([
-    sb.from("companies").select("*").eq("id", currentCompanyId).maybeSingle(),
-    sb.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
-  ]);
-  if (company) {
-    document.getElementById("settingsCompanyName").value  = company.name  || "";
-    document.getElementById("settingsCompanyEmail").value = company.email || "";
-    document.getElementById("settingsCompanyPhone").value = company.phone || "";
+  if (!currentCompanyId || !currentUser) return;
+  try {
+    const [{ data: company }, { data: profile }] = await Promise.all([
+      sb.from("companies").select("*").eq("id", currentCompanyId).maybeSingle(),
+      sb.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
+    ]);
+    
+    const settingsCompanyName = document.getElementById("settingsCompanyName");
+    const settingsCompanyEmail = document.getElementById("settingsCompanyEmail");
+    const settingsCompanyPhone = document.getElementById("settingsCompanyPhone");
+    const settingsOwnerName = document.getElementById("settingsOwnerName");
+    const settingsOwnerEmail = document.getElementById("settingsOwnerEmail");
+    const settingsOwnerPhone = document.getElementById("settingsOwnerPhone");
+    
+    if (company) {
+      if (settingsCompanyName) settingsCompanyName.value = company.name || "";
+      if (settingsCompanyEmail) settingsCompanyEmail.value = company.email || "";
+      if (settingsCompanyPhone) settingsCompanyPhone.value = company.phone || "";
+    }
+    if (profile) {
+      if (settingsOwnerName) settingsOwnerName.value = profile.full_name || "";
+      if (settingsOwnerEmail) settingsOwnerEmail.value = currentUser.email || "";
+      if (settingsOwnerPhone) settingsOwnerPhone.value = profile.phone || "";
+    }
+    await loadCustomFields();
+    renderSettingsCustomFields();
+  } catch (err) {
+    toast("Failed to load settings.", true);
   }
-  if (profile) {
-    document.getElementById("settingsOwnerName").value  = profile.full_name || "";
-    document.getElementById("settingsOwnerEmail").value = currentUser.email || "";
-    document.getElementById("settingsOwnerPhone").value = profile.phone || "";
-  }
-  await loadCustomFields();
-  renderSettingsCustomFields();
 }
 
 async function handleCompanyProfileSave(e) {
   e.preventDefault();
-  const companyName = document.getElementById("settingsCompanyName").value;
-  const ownerName   = document.getElementById("settingsOwnerName").value;
-  const [{ error: ce }, { error: pe }] = await Promise.all([
-    sb.from("companies").update({
-      name:  companyName,
-      email: document.getElementById("settingsCompanyEmail").value,
-      phone: document.getElementById("settingsCompanyPhone").value,
-    }).eq("id", currentCompanyId),
-    sb.from("profiles").update({
-      full_name: ownerName,
-      phone:     document.getElementById("settingsOwnerPhone").value,
-    }).eq("id", currentUser.id),
-  ]);
-  if (ce || pe) { toast((ce || pe).message, true); return; }
-  toast("Profile saved.");
-  document.getElementById("brandCompanyName").textContent   = companyName;
-  document.getElementById("sidebarAccountName").textContent = ownerName;
+  const companyName = document.getElementById("settingsCompanyName")?.value;
+  const ownerName   = document.getElementById("settingsOwnerName")?.value;
+  
+  try {
+    const [{ error: ce }, { error: pe }] = await Promise.all([
+      sb.from("companies").update({
+        name:  companyName,
+        email: document.getElementById("settingsCompanyEmail")?.value,
+        phone: document.getElementById("settingsCompanyPhone")?.value,
+      }).eq("id", currentCompanyId),
+      sb.from("profiles").update({
+        full_name: ownerName,
+        phone:     document.getElementById("settingsOwnerPhone")?.value,
+      }).eq("id", currentUser.id),
+    ]);
+    if (ce || pe) { toast((ce || pe).message, true); return; }
+    toast("Profile saved.");
+    
+    const brandCompanyName = document.getElementById("brandCompanyName");
+    const sidebarAccountName = document.getElementById("sidebarAccountName");
+    if (brandCompanyName) brandCompanyName.textContent = companyName;
+    if (sidebarAccountName) sidebarAccountName.textContent = ownerName;
+  } catch (err) {
+    toast("Failed to save profile.", true);
+  }
 }
 
 async function handlePasswordChange(e) {
   e.preventDefault();
-  const np = document.getElementById("newPassword").value;
-  const cp = document.getElementById("confirmNewPassword").value;
+  const np = document.getElementById("newPassword")?.value;
+  const cp = document.getElementById("confirmNewPassword")?.value;
   if (np !== cp) { toast("Passwords do not match.", true); return; }
-  const { error } = await sb.auth.updateUser({ password: np });
-  if (error) { toast(error.message, true); return; }
-  toast("Password updated.");
-  document.getElementById("passwordForm").reset();
+  try {
+    const { error } = await sb.auth.updateUser({ password: np });
+    if (error) { toast(error.message, true); return; }
+    toast("Password updated.");
+    document.getElementById("passwordForm")?.reset();
+  } catch (err) {
+    toast("Failed to update password.", true);
+  }
 }
 
 // ─── AI Settings ──────────────────────────────────────────────────────────────
 async function loadAiSettings() {
   if (!currentCompanyId) return;
-  const { data } = await sb
-    .from("ai_settings")
-    .select("*")
-    .eq("company_id", currentCompanyId)
-    .maybeSingle();
-  if (data) {
-    document.getElementById("aiModel").value                  = data.model             || "";
-    document.getElementById("aiTwilioNumber").value           = data.twilio_number     || "";
-    document.getElementById("aiReplyDelay").value             = data.reply_delay_seconds ?? "";
-    document.getElementById("aiMaxWords").value               = data.max_sms_words     ?? "";
-    document.getElementById("aiEnabled").checked              = !!data.is_active;
-    document.getElementById("aiAutoReply").checked            = !!data.auto_reply;
-    document.getElementById("aiCallbackEnabled").checked      = !!data.callback_enabled;
-    document.getElementById("aiOnsiteEnabled").checked        = !!data.onsite_enabled;
-    document.getElementById("aiQuoteDraftingEnabled").checked = !!data.quote_drafting_enabled;
-    document.getElementById("aiLeadScoringEnabled").checked   = !!data.lead_scoring_enabled;
-    document.getElementById("aiSystemPrompt").value           = data.system_prompt     || "";
+  try {
+    const { data } = await sb
+      .from("ai_settings")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+      
+    if (data) {
+      const aiModel = document.getElementById("aiModel");
+      const aiTwilioNumber = document.getElementById("aiTwilioNumber");
+      const aiReplyDelay = document.getElementById("aiReplyDelay");
+      const aiMaxWords = document.getElementById("aiMaxWords");
+      const aiEnabled = document.getElementById("aiEnabled");
+      const aiAutoReply = document.getElementById("aiAutoReply");
+      const aiCallbackEnabled = document.getElementById("aiCallbackEnabled");
+      const aiOnsiteEnabled = document.getElementById("aiOnsiteEnabled");
+      const aiQuoteDraftingEnabled = document.getElementById("aiQuoteDraftingEnabled");
+      const aiLeadScoringEnabled = document.getElementById("aiLeadScoringEnabled");
+      const aiSystemPrompt = document.getElementById("aiSystemPrompt");
+      
+      if (aiModel) aiModel.value = data.model || "";
+      if (aiTwilioNumber) aiTwilioNumber.value = data.twilio_number || "";
+      if (aiReplyDelay) aiReplyDelay.value = data.reply_delay_seconds ?? "";
+      if (aiMaxWords) aiMaxWords.value = data.max_sms_words ?? "";
+      if (aiEnabled) aiEnabled.checked = !!data.is_active;
+      if (aiAutoReply) aiAutoReply.checked = !!data.auto_reply;
+      if (aiCallbackEnabled) aiCallbackEnabled.checked = !!data.callback_enabled;
+      if (aiOnsiteEnabled) aiOnsiteEnabled.checked = !!data.onsite_enabled;
+      if (aiQuoteDraftingEnabled) aiQuoteDraftingEnabled.checked = !!data.quote_drafting_enabled;
+      if (aiLeadScoringEnabled) aiLeadScoringEnabled.checked = !!data.lead_scoring_enabled;
+      if (aiSystemPrompt) aiSystemPrompt.value = data.system_prompt || "";
+    }
+    
+    const { data: nums } = await sb
+      .from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
+    const twilioCountValue = document.getElementById("twilioCountValue");
+    if (twilioCountValue) twilioCountValue.textContent = nums?.length || 0;
+    loadTwilioNumbers();
+  } catch (err) {
+    toast("Failed to load AI settings.", true);
   }
-  const { data: nums } = await sb
-    .from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
-  document.getElementById("twilioCountValue").textContent = nums?.length || 0;
-  loadTwilioNumbers();
 }
 
 async function handleAiSettingsSave(e) {
   e.preventDefault();
   const payload = {
     company_id:             currentCompanyId,
-    model:                  document.getElementById("aiModel").value,
-    twilio_number:          document.getElementById("aiTwilioNumber").value,
-    reply_delay_seconds:    Number(document.getElementById("aiReplyDelay").value) || 0,
-    max_sms_words:          Number(document.getElementById("aiMaxWords").value)   || 160,
-    is_active:              document.getElementById("aiEnabled").checked,
-    auto_reply:             document.getElementById("aiAutoReply").checked,
-    callback_enabled:       document.getElementById("aiCallbackEnabled").checked,
-    onsite_enabled:         document.getElementById("aiOnsiteEnabled").checked,
-    quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled").checked,
-    lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled").checked,
-    system_prompt:          document.getElementById("aiSystemPrompt").value,
+    model:                  document.getElementById("aiModel")?.value,
+    twilio_number:          document.getElementById("aiTwilioNumber")?.value,
+    reply_delay_seconds:    Number(document.getElementById("aiReplyDelay")?.value) || 0,
+    max_sms_words:          Number(document.getElementById("aiMaxWords")?.value) || 160,
+    is_active:              document.getElementById("aiEnabled")?.checked,
+    auto_reply:             document.getElementById("aiAutoReply")?.checked,
+    callback_enabled:       document.getElementById("aiCallbackEnabled")?.checked,
+    onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked,
+    quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked,
+    lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked,
+    system_prompt:          document.getElementById("aiSystemPrompt")?.value,
   };
-  const { error } = await sb.from("ai_settings").upsert(payload, { onConflict: "company_id" });
-  if (error) { toast(error.message, true); return; }
-  toast("AI settings saved.");
+  
+  try {
+    const { error } = await sb.from("ai_settings").upsert(payload, { onConflict: "company_id" });
+    if (error) { toast(error.message, true); return; }
+    toast("AI settings saved.");
+  } catch (err) {
+    toast("Failed to save AI settings.", true);
+  }
 }
 
 async function loadTwilioNumbers() {
-  const { data } = await sb
-    .from("twilio_numbers").select("*").eq("company_id", currentCompanyId).order("created_at");
-  const el = document.getElementById("twilioNumbersTable");
-  if (!el) return;
-  if (!data?.length) { el.innerHTML = `<div class="notice">No numbers added yet.</div>`; return; }
-  el.innerHTML = `<div class="table-lite">${data.map((n) => `
-    <div class="row">
-      <div><strong style="font-size:13px">${n.phone_number}</strong></div>
-      <div><span class="muted">${n.friendly_name || "—"}</span></div>
-      <button class="iconbtn btn-danger" onclick="deleteTwilioNumber('${n.id}')" type="button">
-        <span class="icon" data-icon="trash"></span>
-      </button>
-    </div>`).join("")}</div>`;
-  renderIcons();
+  try {
+    const { data } = await sb
+      .from("twilio_numbers").select("*").eq("company_id", currentCompanyId).order("created_at");
+    const el = document.getElementById("twilioNumbersTable");
+    if (!el) return;
+    if (!data?.length) { el.innerHTML = `<div class="notice">No numbers added yet.</div>`; return; }
+    el.innerHTML = `<div class="table-lite">${data.map((n) => `
+      <div class="row">
+        <div><strong style="font-size:13px">${n.phone_number}</strong></div>
+        <div><span class="muted">${n.friendly_name || "—"}</span></div>
+        <button class="iconbtn btn-danger" onclick="deleteTwilioNumber('${n.id}')" type="button">
+          <span class="icon" data-icon="trash"></span>
+        </button>
+      </div>`).join("")}</div>`;
+    renderIcons();
+  } catch (err) {
+    console.error("Load Twilio numbers error:", err);
+  }
 }
 
 async function handleTwilioNumberSave(e) {
   e.preventDefault();
-  const { error } = await sb.from("twilio_numbers").insert({
-    company_id:    currentCompanyId,
-    phone_number:  document.getElementById("twilioPhoneNumber").value,
-    friendly_name: document.getElementById("twilioFriendlyName").value,
-  });
-  if (error) { toast(error.message, true); return; }
-  toast("Number added.");
-  document.getElementById("twilioNumberForm").reset();
-  await loadTwilioNumbers();
-  const { data: nums } = await sb.from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
-  document.getElementById("twilioCountValue").textContent = nums?.length || 0;
+  try {
+    const { error } = await sb.from("twilio_numbers").insert({
+      company_id:    currentCompanyId,
+      phone_number:  document.getElementById("twilioPhoneNumber")?.value,
+      friendly_name: document.getElementById("twilioFriendlyName")?.value,
+    });
+    if (error) { toast(error.message, true); return; }
+    toast("Number added.");
+    document.getElementById("twilioNumberForm")?.reset();
+    await loadTwilioNumbers();
+    const { data: nums } = await sb.from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
+    const twilioCountValue = document.getElementById("twilioCountValue");
+    if (twilioCountValue) twilioCountValue.textContent = nums?.length || 0;
+  } catch (err) {
+    toast("Failed to add number.", true);
+  }
 }
 
 async function deleteTwilioNumber(id) {
   if (!confirm("Remove this number?")) return;
-  await sb.from("twilio_numbers").delete().eq("id", id);
-  loadTwilioNumbers();
+  try {
+    await sb.from("twilio_numbers").delete().eq("id", id);
+    loadTwilioNumbers();
+  } catch (err) {
+    toast("Failed to delete number.", true);
+  }
 }
 
 // ─── Team Members ─────────────────────────────────────────────────────────────
 async function loadTeamMembers() {
   if (!currentCompanyId) return;
 
-  const [{ data: profiles }, { data: invites }] = await Promise.all([
-    sb.from("profiles")
-      .select("id, full_name, email, role, is_active, created_at")
-      .eq("company_id", currentCompanyId)
-      .order("created_at"),
-    sb.from("sales_rep_invites")
-      .select("id, email, full_name, status, invited_at")
-      .eq("company_id", currentCompanyId)
-      .eq("status", "pending")
-      .order("invited_at", { ascending: false }),
-  ]);
+  try {
+    const [{ data: profiles }, { data: invites }] = await Promise.all([
+      sb.from("profiles")
+        .select("id, full_name, email, role, is_active, created_at")
+        .eq("company_id", currentCompanyId)
+        .order("created_at"),
+      sb.from("sales_rep_invites")
+        .select("id, email, full_name, status, invited_at")
+        .eq("company_id", currentCompanyId)
+        .eq("status", "pending")
+        .order("invited_at", { ascending: false }),
+    ]);
 
-  renderTeamMembersList(profiles || [], invites || []);
+    renderTeamMembersList(profiles || [], invites || []);
+  } catch (err) {
+    toast("Failed to load team members.", true);
+  }
 }
 
 function renderTeamMembersList(profiles, invites) {
@@ -910,9 +1200,9 @@ function renderTeamMembersList(profiles, invites) {
 
 async function handleTeamInvite(e) {
   e.preventDefault();
-  const email    = document.getElementById("inviteEmail").value.trim();
-  const fullName = document.getElementById("inviteFullName").value.trim();
-  const phone    = document.getElementById("invitePhone").value.trim();
+  const email    = document.getElementById("inviteEmail")?.value?.trim();
+  const fullName = document.getElementById("inviteFullName")?.value?.trim();
+  const phone    = document.getElementById("invitePhone")?.value?.trim();
   if (!email) { toast("Email is required.", true); return; }
 
   const btn = e.target.querySelector("button[type=submit]");
@@ -936,7 +1226,7 @@ async function handleTeamInvite(e) {
     if (!res.ok || json.error) throw new Error(json.error || "Invite failed.");
 
     toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
-    document.getElementById("teamInviteForm").reset();
+    document.getElementById("teamInviteForm")?.reset();
     loadTeamMembers();
   } catch (err) {
     toast(err.message, true);
@@ -947,135 +1237,151 @@ async function handleTeamInvite(e) {
 
 async function revokeInvite(inviteId) {
   if (!confirm("Revoke this invite?")) return;
-  const { error } = await sb
-    .from("sales_rep_invites")
-    .update({ status: "revoked", revoked_at: new Date().toISOString() })
-    .eq("id", inviteId);
-  if (error) { toast(error.message, true); return; }
-  toast("Invite revoked.");
-  loadTeamMembers();
+  try {
+    const { error } = await sb
+      .from("sales_rep_invites")
+      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("id", inviteId);
+    if (error) { toast(error.message, true); return; }
+    toast("Invite revoked.");
+    loadTeamMembers();
+  } catch (err) {
+    toast("Failed to revoke invite.", true);
+  }
 }
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 async function loadConversations() {
   if (!currentCompanyId) return;
-  const { data: conversations } = await sb
-    .from("conversations")
-    .select("id, lead_id, last_message, last_message_at, leads(name, phone)")
-    .eq("company_id", currentCompanyId)
-    .order("last_message_at", { ascending: false });
+  try {
+    const { data: conversations } = await sb
+      .from("conversations")
+      .select("id, lead_id, last_message, last_message_at, leads(name, phone)")
+      .eq("company_id", currentCompanyId)
+      .order("last_message_at", { ascending: false });
 
-  const list  = document.getElementById("conversationList");
-  const empty = document.getElementById("convEmptyState");
-  if (!list) return;
+    const list  = document.getElementById("conversationList");
+    const empty = document.getElementById("convEmptyState");
+    if (!list) return;
 
-  if (!conversations?.length) {
-    list.innerHTML = "";
-    empty?.classList.remove("hidden");
-    return;
+    if (!conversations?.length) {
+      list.innerHTML = "";
+      empty?.classList.remove("hidden");
+      return;
+    }
+    empty?.classList.add("hidden");
+
+    list.innerHTML = conversations.map((c) => {
+      const name = c.leads?.name || "Unknown";
+      const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
+      return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
+                   data-lead-name="${name}" data-lead-phone="${c.leads?.phone || ""}">
+        <h3>${name}<span class="conv-time">${time}</span></h3>
+        <p>${c.last_message || "No messages yet"}</p>
+      </div>`;
+    }).join("");
+
+    list.querySelectorAll(".conv-item").forEach((item) =>
+      item.addEventListener("click", () => openConversation(
+        item.dataset.convId,
+        item.dataset.leadId,
+        item.dataset.leadName,
+        item.dataset.leadPhone,
+        item
+      ))
+    );
+  } catch (err) {
+    toast("Failed to load conversations.", true);
   }
-  empty?.classList.add("hidden");
-
-  list.innerHTML = conversations.map((c) => {
-    const name = c.leads?.name || "Unknown";
-    const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
-    return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
-                 data-lead-name="${name}" data-lead-phone="${c.leads?.phone || ""}">
-      <h3>${name}<span class="conv-time">${time}</span></h3>
-      <p>${c.last_message || "No messages yet"}</p>
-    </div>`;
-  }).join("");
-
-  list.querySelectorAll(".conv-item").forEach((item) =>
-    item.addEventListener("click", () => openConversation(
-      item.dataset.convId,
-      item.dataset.leadId,
-      item.dataset.leadName,
-      item.dataset.leadPhone,
-      item
-    ))
-  );
 }
 
 // ── New Conversation ──────────────────────────────────────────────────────────
 async function openNewConvModal() {
-  const { data: leads } = await sb
-    .from("leads")
-    .select("id, name, phone, email")
-    .eq("company_id", currentCompanyId)
-    .order("created_at", { ascending: false });
+  try {
+    const { data: leads } = await sb
+      .from("leads")
+      .select("id, name, phone, email")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false });
 
-  const sel = document.getElementById("newConvLeadSelect");
-  if (sel && leads) {
-    sel.innerHTML = `<option value="">— Select a lead —</option>` +
-      leads.map((l) => {
-        const label = l.name || l.email || l.id;
-        const sub   = l.phone ? ` · ${l.phone}` : "";
-        return `<option value="${l.id}">${label}${sub}</option>`;
-      }).join("");
+    const sel = document.getElementById("newConvLeadSelect");
+    if (sel && leads) {
+      sel.innerHTML = `<option value="">— Select a lead —</option>` +
+        leads.map((l) => {
+          const label = l.name || l.email || l.id;
+          const sub   = l.phone ? ` · ${l.phone}` : "";
+          return `<option value="${l.id}">${label}${sub}</option>`;
+        }).join("");
+    }
+    openModal("newConvModal");
+  } catch (err) {
+    toast("Failed to load leads.", true);
   }
-  openModal("newConvModal");
 }
 
 async function handleNewConversation(e) {
   e.preventDefault();
-  const leadId   = document.getElementById("newConvLeadSelect").value;
-  const firstMsg = document.getElementById("newConvFirstMessage").value.trim();
+  const leadId   = document.getElementById("newConvLeadSelect")?.value;
+  const firstMsg = document.getElementById("newConvFirstMessage")?.value?.trim();
   if (!leadId) { toast("Please select a lead.", true); return; }
 
-  // Check for existing conversation
-  const { data: existing } = await sb
-    .from("conversations")
-    .select("id, leads(name, phone)")
-    .eq("company_id", currentCompanyId)
-    .eq("lead_id", leadId)
-    .maybeSingle();
+  try {
+    // Check for existing conversation
+    const { data: existing } = await sb
+      .from("conversations")
+      .select("id, leads(name, phone)")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .maybeSingle();
 
-  if (existing) {
+    if (existing) {
+      closeModal("newConvModal");
+      document.getElementById("newConvForm")?.reset();
+      await loadConversations();
+      const item = document.querySelector(`.conv-item[data-conv-id="${existing.id}"]`);
+      if (item) item.click();
+      toast("Conversation already exists — opened.");
+      return;
+    }
+
+    // Create new
+    const now = new Date().toISOString();
+    const { data: conv, error } = await sb
+      .from("conversations")
+      .insert({
+        company_id:      currentCompanyId,
+        lead_id:         leadId,
+        channel:         "sms",
+        is_open:         true,
+        last_message:    firstMsg || null,
+        last_message_at: firstMsg ? now : null,
+      })
+      .select("id, leads(name, phone)")
+      .single();
+
+    if (error) { toast(error.message, true); return; }
+
+    if (firstMsg) {
+      await sb.from("messages").insert({
+        conversation_id: conv.id,
+        body:            firstMsg,
+        direction:       "outbound",
+        agent_type:      "human",
+      });
+    }
+
+    toast("Conversation created.");
     closeModal("newConvModal");
     document.getElementById("newConvForm")?.reset();
     await loadConversations();
-    const item = document.querySelector(`.conv-item[data-conv-id="${existing.id}"]`);
-    if (item) item.click();
-    toast("Conversation already exists — opened.");
-    return;
+
+    const name  = conv.leads?.name  || "Lead";
+    const phone = conv.leads?.phone || "";
+    const item  = document.querySelector(`.conv-item[data-conv-id="${conv.id}"]`);
+    openConversation(conv.id, leadId, name, phone, item);
+  } catch (err) {
+    toast("Failed to create conversation.", true);
   }
-
-  // Create new
-  const now = new Date().toISOString();
-  const { data: conv, error } = await sb
-    .from("conversations")
-    .insert({
-      company_id:      currentCompanyId,
-      lead_id:         leadId,
-      channel:         "sms",
-      is_open:         true,
-      last_message:    firstMsg || null,
-      last_message_at: firstMsg ? now : null,
-    })
-    .select("id, leads(name, phone)")
-    .single();
-
-  if (error) { toast(error.message, true); return; }
-
-  if (firstMsg) {
-    await sb.from("messages").insert({
-      conversation_id: conv.id,
-      body:            firstMsg,
-      direction:       "outbound",
-      agent_type:      "human",
-    });
-  }
-
-  toast("Conversation created.");
-  closeModal("newConvModal");
-  document.getElementById("newConvForm")?.reset();
-  await loadConversations();
-
-  const name  = conv.leads?.name  || "Lead";
-  const phone = conv.leads?.phone || "";
-  const item  = document.querySelector(`.conv-item[data-conv-id="${conv.id}"]`);
-  openConversation(conv.id, leadId, name, phone, item);
 }
 
 async function openConversation(convId, leadId, name, phone, itemEl) {
@@ -1084,8 +1390,11 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
 
   document.getElementById("convDetailEmpty")?.classList.add("hidden");
   document.getElementById("convDetail")?.classList.remove("hidden");
-  document.getElementById("convLeadName").textContent  = name;
-  document.getElementById("convLeadPhone").textContent = phone;
+  
+  const convLeadName = document.getElementById("convLeadName");
+  const convLeadPhone = document.getElementById("convLeadPhone");
+  if (convLeadName) convLeadName.textContent = name;
+  if (convLeadPhone) convLeadPhone.textContent = phone;
 
   document.querySelectorAll(".conv-item").forEach((el) => el.classList.remove("active"));
   itemEl?.classList.add("active");
@@ -1093,69 +1402,91 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
   await loadMessages(convId);
 
   if (leadId) {
-    const { data: lead } = await sb.from("leads").select("ai_enabled").eq("id", leadId).maybeSingle();
-    const tog    = document.getElementById("convAiToggle");
-    const status = document.getElementById("convAiStatus");
-    if (tog && lead) {
-      const on = lead.ai_enabled !== false;
-      tog.checked = on;
-      if (status) { status.textContent = on ? "ON" : "OFF"; status.className = `ai-toggle-status ${on ? "on" : "off"}`; }
+    try {
+      const { data: lead } = await sb.from("leads").select("ai_enabled").eq("id", leadId).maybeSingle();
+      const tog    = document.getElementById("convAiToggle");
+      const status = document.getElementById("convAiStatus");
+      if (tog && lead) {
+        const on = lead.ai_enabled !== false;
+        tog.checked = on;
+        if (status) { 
+          status.textContent = on ? "ON" : "OFF"; 
+          status.className = `ai-toggle-status ${on ? "on" : "off"}`; 
+        }
+      }
+    } catch (err) {
+      console.error("Load lead AI settings error:", err);
     }
   }
 }
 
 async function loadMessages(convId) {
-  const { data: msgs } = await sb
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", convId)
-    .order("created_at");
-  const el = document.getElementById("convMessages");
-  if (!el) return;
-  if (!msgs?.length) {
-    el.innerHTML = `<div class="muted" style="text-align:center;padding:24px;font-size:12px">No messages yet</div>`;
-    return;
+  try {
+    const { data: msgs } = await sb
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", convId)
+      .order("created_at");
+    const el = document.getElementById("convMessages");
+    if (!el) return;
+    if (!msgs?.length) {
+      el.innerHTML = `<div class="muted" style="text-align:center;padding:24px;font-size:12px">No messages yet</div>`;
+      return;
+    }
+    el.innerHTML = msgs.map((m) => {
+      const content = m.body || m.content || "";
+      const badge   = m.agent_type || m.sender_type || "";
+      return `<div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
+        ${content}
+        <div class="msg-meta">
+          ${badge ? `<span class="msg-badge ${badge}">${badge}</span>` : ""}
+          <span>${fmtDate(m.created_at)}</span>
+        </div>
+      </div>`;
+    }).join("");
+    el.scrollTop = el.scrollHeight;
+  } catch (err) {
+    toast("Failed to load messages.", true);
   }
-  el.innerHTML = msgs.map((m) => {
-    const content = m.body || m.content || "";
-    const badge   = m.agent_type || m.sender_type || "";
-    return `<div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
-      ${content}
-      <div class="msg-meta">
-        ${badge ? `<span class="msg-badge ${badge}">${badge}</span>` : ""}
-        <span>${fmtDate(m.created_at)}</span>
-      </div>
-    </div>`;
-  }).join("");
-  el.scrollTop = el.scrollHeight;
 }
 
 async function handleSendMessage(e) {
   e.preventDefault();
   const input   = document.getElementById("convMessageInput");
-  const content = input.value.trim();
+  const content = input?.value?.trim();
   if (!content || !currentConvId) return;
 
-  const { error } = await sb.from("messages").insert({
-    conversation_id: currentConvId,
-    body:            content,
-    direction:       "outbound",
-    agent_type:      "human",
-  });
-  if (error) { toast(error.message, true); return; }
-  input.value = "";
-  await Promise.all([
-    loadMessages(currentConvId),
-    sb.from("conversations").update({
-      last_message: content, last_message_at: new Date().toISOString(),
-    }).eq("id", currentConvId),
-  ]);
+  try {
+    const { error } = await sb.from("messages").insert({
+      conversation_id: currentConvId,
+      body:            content,
+      direction:       "outbound",
+      agent_type:      "human",
+    });
+    if (error) { toast(error.message, true); return; }
+    if (input) input.value = "";
+    await Promise.all([
+      loadMessages(currentConvId),
+      sb.from("conversations").update({
+        last_message: content, last_message_at: new Date().toISOString(),
+      }).eq("id", currentConvId),
+    ]);
+  } catch (err) {
+    toast("Failed to send message.", true);
+  }
 }
 
 async function handleAiToggle() {
   if (!currentLeadId) return;
-  const on     = document.getElementById("convAiToggle").checked;
+  const on     = document.getElementById("convAiToggle")?.checked;
   const status = document.getElementById("convAiStatus");
-  if (status) { status.textContent = on ? "ON" : "OFF"; status.className = `ai-toggle-status ${on ? "on" : "off"}`; }
-  await sb.from("leads").update({ ai_enabled: on }).eq("id", currentLeadId);
+  if (status) { 
+    status.textContent = on ? "ON" : "OFF"; 
+    status.className = `ai-toggle-status ${on ? "on" : "off"}`; 
+  }
+  try {
+    await sb.from("leads").update({ ai_enabled: on }).eq("id", currentLeadId);
+  } catch (err) {
+    toast("Failed to update AI setting.", true);
+  }
 }
