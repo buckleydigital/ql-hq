@@ -34,6 +34,8 @@ const ICONS = {
   play:            `<polygon points="5 3 19 12 5 21 5 3"/>`,
   pause:           `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`,
   mic:             `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>`,
+  eye:             `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
+  "external-link": `<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>`,
 };
 
 function renderIcons() {
@@ -252,6 +254,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("voiceAgentForm")?.addEventListener("submit", handleVoiceAgentSave);
   document.getElementById("voiceProviderForm")?.addEventListener("submit", handleVoiceProviderSave);
   document.getElementById("testVoiceAgent")?.addEventListener("click", testVoiceAgent);
+
+  // ── Opportunity Modal ─────────────────────────────────────────────────────
+  document.getElementById("closeOpportunityModal")?.addEventListener("click", () => closeModal("opportunityModal"));
+  document.getElementById("oppEditLeadBtn")?.addEventListener("click", () => {
+    const leadId = document.getElementById("oppModalLeadId")?.value;
+    if (leadId) {
+      closeModal("opportunityModal");
+      openEditLead(leadId);
+    }
+  });
+  document.getElementById("oppCallLeadBtn")?.addEventListener("click", openCallLeadModal);
+
+  // Opportunity tabs
+  document.querySelectorAll(".opp-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".opp-tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".opp-tab-content").forEach((c) => c.classList.add("hidden"));
+      tab.classList.add("active");
+      const tabName = tab.dataset.tab;
+      document.getElementById(`oppTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`)?.classList.remove("hidden");
+
+      // Load tab content
+      const leadId = document.getElementById("oppModalLeadId")?.value;
+      if (leadId) {
+        if (tabName === "conversations") loadOppConversations(leadId);
+        if (tabName === "quotes") loadOppQuotes(leadId);
+        if (tabName === "appointments") loadOppAppointments(leadId);
+        if (tabName === "calls") loadOppCalls(leadId);
+      }
+    });
+  });
+
+  // ── Call Lead Modal ───────────────────────────────────────────────────────
+  document.getElementById("cancelCallLeadModal")?.addEventListener("click", () => closeModal("callLeadModal"));
+  document.getElementById("confirmCallLead")?.addEventListener("click", handleCallLead);
 
   // ── Team Members ──────────────────────────────────────────────────────────
   document.getElementById("teamInviteForm")?.addEventListener("submit", handleTeamInvite);
@@ -670,12 +707,34 @@ function renderLeadsTable(leads) {
       <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
       <td>
         <div style="display:flex;gap:6px">
-          <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button"><span class="icon" data-icon="edit"></span></button>
-          <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button"><span class="icon" data-icon="trash"></span></button>
+          <button class="iconbtn" onclick="openOpportunityModal('${l.id}')" type="button" title="View Details"><span class="icon" data-icon="eye"></span></button>
+          <button class="iconbtn" onclick="callLeadDirect('${l.id}')" type="button" title="Call with AI"><span class="icon" data-icon="phone"></span></button>
+          <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button" title="Edit"><span class="icon" data-icon="edit"></span></button>
+          <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>
         </div>
       </td>
     </tr>`).join("");
   renderIcons();
+}
+
+// Quick call function from leads table
+async function callLeadDirect(leadId) {
+  const lead = allLeads.find((l) => l.id === leadId);
+  if (!lead) {
+    toast("Lead not found.", true);
+    return;
+  }
+
+  if (!lead.phone) {
+    toast("Lead has no phone number.", true);
+    return;
+  }
+
+  document.getElementById("callLeadId").value = leadId;
+  document.getElementById("callLeadPhone").value = lead.phone;
+
+  await loadVapiAssistants();
+  openModal("callLeadModal");
 }
 
 function renderCustomDataSummary(data) {
@@ -826,15 +885,28 @@ function buildKanban(leads) {
                    draggable="true"
                    data-lead-id="${l.id}"
                    ondragstart="kanbanDragStart(event,'${l.id}')"
-                   ondragend="kanbanDragEnd(event)">
+                   ondragend="kanbanDragEnd(event)"
+                   onclick="if(!event.target.closest('.kcard-actions')) openOpportunityModal('${l.id}')"
+                   style="position:relative;cursor:pointer">
                 <h3>${l.name || "—"}</h3>
                 <p>${l.email || l.phone || "—"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
+                <div class="kcard-actions" style="position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:0;transition:opacity .15s">
+                  <button class="iconbtn" style="width:28px;height:28px;min-height:28px" onclick="event.stopPropagation();callLeadDirect('${l.id}')" type="button" title="Call with AI"><span class="icon" data-icon="phone" style="width:12px;height:12px"></span></button>
+                </div>
               </div>`).join("")
             : `<div class="kanban-drop-hint">Drop leads here</div>`}
         </div>
       </div>`;
   }).join("");
+
+  // Add hover effect for card actions
+  const style = document.createElement('style');
+  style.textContent = '.kcard:hover .kcard-actions{opacity:1!important}';
+  if (!document.getElementById('kanban-card-styles')) {
+    style.id = 'kanban-card-styles';
+    document.head.appendChild(style);
+  }
 }
 
 function kanbanDragStart(event, leadId) {
@@ -1730,4 +1802,283 @@ function fmtDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+// ─── Opportunity Detail Modal ─────────────────────────────────────────────────
+async function openOpportunityModal(leadId) {
+  if (!leadId) return;
+
+  const lead = allLeads.find((l) => l.id === leadId);
+  if (!lead) {
+    toast("Lead not found.", true);
+    return;
+  }
+
+  // Store lead ID
+  document.getElementById("oppModalLeadId").value = leadId;
+
+  // Set title
+  const oppModalTitle = document.getElementById("oppModalTitle");
+  const oppModalSubtitle = document.getElementById("oppModalSubtitle");
+  if (oppModalTitle) oppModalTitle.textContent = lead.name || "Opportunity Details";
+  if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${lead.status || "—"} · Created: ${fmtDate(lead.created_at)}`;
+
+  // Populate overview
+  document.getElementById("oppOverviewName").value = lead.name || "—";
+  document.getElementById("oppOverviewEmail").value = lead.email || "—";
+  document.getElementById("oppOverviewPhone").value = lead.phone || "—";
+  document.getElementById("oppOverviewStatus").value = lead.status || "—";
+  document.getElementById("oppOverviewSource").value = lead.source || "—";
+  document.getElementById("oppOverviewValue").value = lead.value ? fmt(lead.value) : "—";
+  document.getElementById("oppOverviewAddress").value = lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "—";
+  document.getElementById("oppOverviewNotes").value = lead.notes || "—";
+
+  // Reset tabs to overview
+  document.querySelectorAll(".opp-tab").forEach((t) => t.classList.remove("active"));
+  document.querySelector('.opp-tab[data-tab="overview"]')?.classList.add("active");
+  document.querySelectorAll(".opp-tab-content").forEach((c) => c.classList.add("hidden"));
+  document.getElementById("oppTabOverview")?.classList.remove("hidden");
+
+  // Load assistants for call dropdown
+  await loadVapiAssistants();
+
+  openModal("opportunityModal");
+}
+
+async function loadOppConversations(leadId) {
+  const el = document.getElementById("oppConversationsList");
+  if (!el) return;
+
+  try {
+    const { data: conversations } = await sb
+      .from("conversations")
+      .select("id, last_message, last_message_at, is_open, channel")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .order("last_message_at", { ascending: false });
+
+    if (!conversations?.length) {
+      el.innerHTML = `<div class="notice">No conversations found for this lead.</div>`;
+      return;
+    }
+
+    el.innerHTML = conversations.map((c) => `
+      <div class="run" style="cursor:pointer" onclick="openConversationFromOpp('${c.id}', '${leadId}')">
+        <h3>${c.channel?.toUpperCase() || "SMS"} Conversation <span class="chip">${c.is_open ? "Open" : "Closed"}</span></h3>
+        <p>${c.last_message || "No messages"}</p>
+        <p style="margin-top:4px;"><span class="muted">Last activity: ${fmtDate(c.last_message_at)}</span></p>
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load conversations.</div>`;
+  }
+}
+
+async function loadOppQuotes(leadId) {
+  const el = document.getElementById("oppQuotesList");
+  if (!el) return;
+
+  try {
+    const { data: quotes } = await sb
+      .from("quotes")
+      .select("id, quote_number, status, total, created_at, sent_at, accepted_at")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+
+    if (!quotes?.length) {
+      el.innerHTML = `<div class="notice">No quotes found for this lead.</div>`;
+      return;
+    }
+
+    el.innerHTML = quotes.map((q) => `
+      <div class="run">
+        <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${q.status || "Draft"}</span></h3>
+        <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
+        <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load quotes.</div>`;
+  }
+}
+
+async function loadOppAppointments(leadId) {
+  const el = document.getElementById("oppAppointmentsList");
+  if (!el) return;
+
+  try {
+    const { data: appointments } = await sb
+      .from("appointments")
+      .select("id, title, status, start_time, end_time, location, notes")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .order("start_time", { ascending: false });
+
+    if (!appointments?.length) {
+      el.innerHTML = `<div class="notice">No appointments found for this lead.</div>`;
+      return;
+    }
+
+    el.innerHTML = appointments.map((a) => `
+      <div class="run">
+        <h3>${a.title || "Appointment"} <span class="chip">${a.status || "Scheduled"}</span></h3>
+        <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${new Date(a.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}` : ""}</p>
+        ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
+        ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load appointments.</div>`;
+  }
+}
+
+async function loadOppCalls(leadId) {
+  const el = document.getElementById("oppCallsList");
+  if (!el) return;
+
+  try {
+    const { data: calls } = await sb
+      .from("voice_calls")
+      .select("id, vapi_call_id, direction, status, duration, transcript, summary, sentiment, cost, created_at, recording_url")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+
+    if (!calls?.length) {
+      el.innerHTML = `<div class="notice">No AI calls found for this lead. Use "Call Lead with AI" to make your first call.</div>`;
+      return;
+    }
+
+    el.innerHTML = calls.map((c) => `
+      <div class="run">
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${c.status || "Unknown"}</span>${c.sentiment ? ` <span class="chip">${c.sentiment}</span>` : ""}</h3>
+        <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
+        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${c.transcript.substring(0, 150)}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
+        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${c.summary}</p>` : ""}
+        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${c.recording_url}" target="_blank">Listen to recording</a>` : ""}</p>
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load call history.</div>`;
+  }
+}
+
+function openConversationFromOpp(convId, leadId) {
+  closeModal("opportunityModal");
+  navigateTo("conversations");
+  // Find and click the conversation item
+  setTimeout(() => {
+    const item = document.querySelector(`.conv-item[data-conv-id="${convId}"]`);
+    if (item) item.click();
+  }, 300);
+}
+
+// ─── Call Lead with AI ────────────────────────────────────────────────────────
+async function openCallLeadModal() {
+  const leadId = document.getElementById("oppModalLeadId")?.value;
+  const lead = allLeads.find((l) => l.id === leadId);
+
+  if (!lead) {
+    toast("Lead not found.", true);
+    return;
+  }
+
+  document.getElementById("callLeadId").value = leadId;
+  document.getElementById("callLeadPhone").value = lead.phone || "";
+
+  closeModal("opportunityModal");
+  openModal("callLeadModal");
+}
+
+async function loadVapiAssistants() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: "get_config" }),
+    });
+
+    const json = await res.json();
+
+    // Populate assistant dropdown if we have config
+    const select = document.getElementById("callLeadAssistant");
+    if (select && json.config?.vapi_assistant_id) {
+      select.innerHTML = `
+        <option value="">— Use default assistant —</option>
+        <option value="${json.config.vapi_assistant_id}">${json.config.name || "Custom Assistant"}</option>
+      `;
+    }
+  } catch (err) {
+    console.error("Load VAPI assistants error:", err);
+  }
+}
+
+async function handleCallLead() {
+  const leadId = document.getElementById("callLeadId")?.value;
+  const phone = document.getElementById("callLeadPhone")?.value?.trim();
+  const assistantId = document.getElementById("callLeadAssistant")?.value;
+
+  if (!phone) {
+    toast("Please enter a phone number.", true);
+    return;
+  }
+
+  const btn = document.getElementById("confirmCallLead");
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.originalText = btn.innerHTML;
+    btn.innerHTML = `<span>Calling...</span>`;
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error("Not authenticated.");
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ 
+        action: "create_call",
+        leadId: leadId,
+        phoneNumber: phone,
+        assistantId: assistantId || undefined,
+        metadata: {
+          source: "dashboard",
+          initiated_by: currentUser?.id,
+        }
+      }),
+    });
+
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error || "Failed to create call.");
+
+    toast(`Call initiated! Call ID: ${json.callId?.slice(0, 8) || "N/A"}`);
+    closeModal("callLeadModal");
+
+    // Refresh call list if we're viewing the opportunity
+    const currentLeadId = document.getElementById("oppModalLeadId")?.value;
+    if (currentLeadId === leadId) {
+      loadOppCalls(leadId);
+    }
+
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.originalText || `<span class="icon" data-icon="phone"></span> Start Call`;
+    }
+  }
 }
