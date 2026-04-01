@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
 
       // Mark as viewed (first view only)
       if (!quote.viewed_at) {
-        const viewUpdate: Record<string, unknown> = { viewed_at: new Date().toISOString() };
+        const viewUpdate: { viewed_at: string; status?: string } = { viewed_at: new Date().toISOString() };
         if (quote.status === "sent") {
           viewUpdate.status = "viewed";
         }
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const update: Record<string, unknown> = {
+      const update: { status: string; accepted_at?: string } = {
         status: action === "accept" ? "accepted" : "declined",
       };
       if (action === "accept") {

@@ -1156,6 +1156,11 @@ async function kanbanDrop(event, newStage) {
 }
 
 // ─── Quotes ───────────────────────────────────────────────────────────────────
+function buildQuoteLink(token) {
+  if (!token) return "";
+  return `${window.location.origin}/quote-public.html?token=${encodeURIComponent(token)}`;
+}
+
 async function loadQuotes() {
   if (!currentCompanyId) return;
   try {
@@ -1173,7 +1178,7 @@ async function loadQuotes() {
     }
     el.innerHTML = `<div class="table-lite">${quotes.map((q) => {
       const lead = q.leads || {};
-      const quoteLink = q.quote_token ? `${window.location.origin}/quote-public.html?token=${encodeURIComponent(q.quote_token)}` : "";
+      const quoteLink = buildQuoteLink(q.quote_token);
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
         <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
@@ -1232,6 +1237,8 @@ async function downloadQuotePDF(quoteId) {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
         s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js";
+        s.integrity = "sha384-5MXQT3yrGpx6/FO6Z5JlMsn1xsN/OggV+b88W2CfpNqmvPfmv7JW/O8x78GzptfE";
+        s.crossOrigin = "anonymous";
         s.onload = resolve;
         s.onerror = reject;
         document.head.appendChild(s);
@@ -2503,7 +2510,7 @@ async function loadOppQuotes(leadId) {
     }
 
     el.innerHTML = quotes.map((q) => {
-      const quoteLink = q.quote_token ? `${window.location.origin}/quote-public.html?token=${encodeURIComponent(q.quote_token)}` : "";
+      const quoteLink = buildQuoteLink(q.quote_token);
       return `
       <div class="run">
         <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${q.status || "Draft"}</span></h3>
