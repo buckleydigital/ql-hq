@@ -361,6 +361,33 @@
     }
     .placeholder-icon { font-size: 40px; margin-bottom: 12px; }
 
+    /* ── Kanban Board ── */
+    .kanban-col {
+      min-width: 220px; width: 220px;
+      background: var(--bg); border-radius: var(--radius);
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 8px; flex-shrink: 0;
+    }
+    .kanban-col-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 8px 8px; border-radius: 6px 6px 0 0;
+      margin-bottom: 4px;
+    }
+    .kanban-col-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .kanban-col-count {
+      font-size: 11px; font-weight: 700; background: var(--border);
+      padding: 1px 7px; border-radius: 20px; color: var(--text-muted);
+    }
+    .kanban-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; box-shadow: var(--shadow);
+      cursor: grab; transition: box-shadow .15s, transform .15s;
+    }
+    .kanban-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    .kanban-card-title { font-size: 13.5px; font-weight: 600; margin-bottom: 2px; }
+    .kanban-card-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .kanban-card-value { font-size: 13px; font-weight: 700; color: var(--accent); }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .sidebar { width: var(--sidebar-collapsed-w); }
@@ -406,6 +433,9 @@
         </div>
         <div class="sub-item" data-page="quotes">
           <span class="sub-dot"></span>Quotes
+        </div>
+        <div class="sub-item" data-page="opportunities">
+          <span class="sub-dot"></span>Opportunities
         </div>
         <div class="sub-item" data-page="appointments">
           <span class="sub-dot"></span>Appointments
@@ -720,6 +750,109 @@
         </div>
       </div>
 
+      <!-- ── OPPORTUNITIES PAGE (Kanban) ── -->
+      <div id="page-opportunities" style="display:none">
+        <div class="panel" style="overflow:visible">
+          <div class="panel-header">
+            <span class="panel-title">Pipeline Board</span>
+            <span class="panel-action">+ New Opportunity</span>
+          </div>
+          <div class="panel-body" style="padding:12px;overflow-x:auto">
+            <div style="display:flex;gap:12px;min-width:max-content">
+
+              <!-- New Lead column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #3b82f6">
+                  <span class="kanban-col-title">New Lead</span><span class="kanban-col-count">3</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Sarah Mitchell</div>
+                  <div class="kanban-card-sub">Commercial Roofing</div>
+                  <div class="kanban-card-value">$12,400</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Tom Nguyen</div>
+                  <div class="kanban-card-sub">HVAC Installation</div>
+                  <div class="kanban-card-value">$8,200</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Rachel Adams</div>
+                  <div class="kanban-card-sub">Plumbing</div>
+                  <div class="kanban-card-value">$3,100</div>
+                </div>
+              </div>
+
+              <!-- Follow Up column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #f59e0b">
+                  <span class="kanban-col-title">Follow Up</span><span class="kanban-col-count">2</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Mark Reynolds</div>
+                  <div class="kanban-card-sub">Landscaping</div>
+                  <div class="kanban-card-value">$5,700</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Lisa Park</div>
+                  <div class="kanban-card-sub">Electrical</div>
+                  <div class="kanban-card-value">$4,500</div>
+                </div>
+              </div>
+
+              <!-- Quote in Progress column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #8b5cf6">
+                  <span class="kanban-col-title">Quote in Progress</span><span class="kanban-col-count">2</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">James Carter</div>
+                  <div class="kanban-card-sub">Solar Panels</div>
+                  <div class="kanban-card-value">$28,000</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Greenfield Corp</div>
+                  <div class="kanban-card-sub">Commercial HVAC</div>
+                  <div class="kanban-card-value">$42,000</div>
+                </div>
+              </div>
+
+              <!-- Quoted column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #4797ff">
+                  <span class="kanban-col-title">Quoted</span><span class="kanban-col-count">1</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">David Kim</div>
+                  <div class="kanban-card-sub">Window Replacement</div>
+                  <div class="kanban-card-value">$15,800</div>
+                </div>
+              </div>
+
+              <!-- Closed Won column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #22c55e">
+                  <span class="kanban-col-title">Closed Won</span><span class="kanban-col-count">1</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Jessica Liu</div>
+                  <div class="kanban-card-sub">Solar Panels</div>
+                  <div class="kanban-card-value">$31,000</div>
+                </div>
+              </div>
+
+              <!-- Closed Lost column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #ef4444">
+                  <span class="kanban-col-title">Closed Lost</span><span class="kanban-col-count">0</span>
+                </div>
+                <div style="text-align:center;padding:24px 8px;color:var(--text-muted);font-size:13px">No lost deals</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── APPOINTMENTS PAGE ── -->
       <div id="page-appointments" style="display:none">
         <div class="panel">
@@ -812,6 +945,7 @@
   const pageTitles = {
     dashboard:        'Dashboard',
     leads:            'CRM — Leads',
+    opportunities:    'CRM — Opportunities',
     quotes:           'CRM — Quotes',
     appointments:     'CRM — Appointments',
     sales:            'CRM — Sales',
