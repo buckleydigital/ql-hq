@@ -57,7 +57,8 @@ const ENV_FALLBACKS: Record<string, string> = {
 async function resolveKey(
   db: SupabaseClient,
   companyId: string,
-  provider: string
+  provider: string,
+  userType: string
 ): Promise<string> {
   const { data, error } = await db.rpc("resolve_api_key", {
     p_company_id: companyId,
@@ -65,11 +66,14 @@ async function resolveKey(
   });
   if (!error && data) return data as string;
 
-  // Fall back to Supabase Edge Function secrets
-  const envName = ENV_FALLBACKS[provider];
-  if (envName) {
-    const envVal = Deno.env.get(envName);
-    if (envVal) return envVal;
+  // Only internal (agency) accounts fall back to platform env secrets.
+  // External accounts must supply their own keys.
+  if (userType !== "external") {
+    const envName = ENV_FALLBACKS[provider];
+    if (envName) {
+      const envVal = Deno.env.get(envName);
+      if (envVal) return envVal;
+    }
   }
 
   throw new Error(`Key resolution failed for ${provider}: ${error?.message ?? "not found"}`);
@@ -334,9 +338,18 @@ Deno.serve(async (req) => {
 
     const companyId: string = smsConfig.company_id;
 
+    // Determine account type so env-secret fallbacks are only used for internal
+    const { data: companyProfile } = await db
+      .from("profiles")
+      .select("user_type")
+      .eq("company_id", companyId)
+      .limit(1)
+      .single();
+    const userType: string = companyProfile?.user_type ?? "external";
+
     // 2b. Validate Twilio signature (reject spoofed requests)
     try {
-      const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth");
+      const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth", userType);
       const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation);
       if (!isValid) {
         console.warn("Invalid Twilio signature — rejecting request");
@@ -523,9 +536,9 @@ Deno.serve(async (req) => {
     let twilioSid: string;
     let twilioAuth: string;
     try {
-      openaiKey = await resolveKey(db, companyId, "openai");
-      twilioSid = await resolveKey(db, companyId, "twilio");
-      twilioAuth = await resolveKey(db, companyId, "twilio_auth");
+      openaiKey = await resolveKey(db, companyId, "openai", userType);
+      twilioSid = await resolveKey(db, companyId, "twilio", userType);
+      twilioAuth = await resolveKey(db, companyId, "twilio_auth", userType);
     } catch (keyErr) {
       console.error("API key resolution failed:", keyErr);
       await logActivity(db, companyId, "sms.key_error", "company", companyId, {

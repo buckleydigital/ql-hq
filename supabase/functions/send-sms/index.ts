@@ -46,12 +46,13 @@ Deno.serve(async (req) => {
     // Get user's company
     const { data: profile } = await userClient
       .from("profiles")
-      .select("company_id")
+      .select("company_id, user_type")
       .eq("id", user.id)
       .single();
 
     if (!profile) return json({ error: "No profile found" }, 403);
     const companyId = profile.company_id;
+    const userType: string = profile.user_type ?? "external";
 
     // Parse request
     const { conversation_id, lead_id, body } = await req.json();
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
       return json({ error: "No Twilio number configured" }, 400);
     }
 
-    // Resolve Twilio keys (try DB first, fall back to edge-function secrets)
+    // Resolve Twilio keys (try DB first, fall back to edge-function secrets for internal only)
     let twilioSid: string, twilioAuth: string;
     try {
       const { data: sid, error: e1 } = await db.rpc("resolve_api_key", {
@@ -112,7 +113,10 @@ Deno.serve(async (req) => {
       twilioSid = sid;
       twilioAuth = auth;
     } catch (err) {
-      // Fall back to Supabase Edge Function secrets
+      // Only internal (agency) accounts fall back to platform env secrets
+      if (userType === "external") {
+        return json({ error: "No Twilio API keys configured. Please add your keys in Settings." }, 400);
+      }
       console.warn("Twilio key resolution from DB failed, trying env secrets:", (err as Error).message);
       const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
       const envAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
