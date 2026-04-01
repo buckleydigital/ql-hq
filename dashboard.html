@@ -334,6 +334,7 @@ textarea{min-height:100px;resize:vertical}
         <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
+        <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
       </div>
     </div>
@@ -452,6 +453,135 @@ textarea{min-height:100px;resize:vertical}
           <div class="split-panels">
             <section class="panel"><div class="panel-h"><div><h2>Twilio Number Ownership</h2><p>Receiving numbers are matched to companies before the workflow loads leads and history.</p></div></div><div class="panel-b"><form id="twilioNumberForm" class="stack"><div class="form2"><div class="field"><label for="twilioPhoneNumber">Phone Number</label><input id="twilioPhoneNumber" name="phoneNumber" type="text" placeholder="+61400000000"></div><div class="field"><label for="twilioFriendlyName">Friendly Name</label><input id="twilioFriendlyName" name="friendlyName" type="text" placeholder="Main SMS Line"></div></div><div class="actions"><button class="btn" type="submit">Add Number</button></div></form><div id="twilioNumbersTable" class="table-lite" style="margin-top:14px"></div></div></section>
             <section class="panel"><div class="panel-h"><div><h2>Workflow Visibility</h2><p>Recent automation runs help verify routing, scoring, callback decisions, and quote drafting.</p></div></div><div class="panel-b"><div id="workflowRunSummary" class="run-list"></div></div></section>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Voice AI -->
+      <div id="page-voice-ai" class="page hidden">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>Voice AI Configuration</h2>
+                <p>Configure your VAPI voice agent for inbound and outbound calls.</p>
+              </div>
+              <div class="actions">
+                <button id="testVoiceAgent" class="btn" type="button"><span class="icon" data-icon="play"></span> Test Agent</button>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div class="mini-grid" style="margin-bottom:20px">
+                <article class="mini-card">
+                  <h3>Agent Status</h3>
+                  <b id="voiceAgentStatus">Inactive</b>
+                  <span id="voiceAgentStatusHelp" class="muted">Voice agent is not configured</span>
+                </article>
+                <article class="mini-card">
+                  <h3>Key Source</h3>
+                  <b id="voiceKeySource">—</b>
+                  <span id="voiceKeySourceHelp" class="muted">External users must provide their own VAPI key</span>
+                </article>
+                <article class="mini-card">
+                  <h3>Total Calls</h3>
+                  <b id="voiceCallCount">0</b>
+                  <span class="muted">Calls processed through voice agent</span>
+                </article>
+              </div>
+              <form id="voiceAgentForm" class="stack">
+                <div class="form2">
+                  <div class="field">
+                    <label for="vapiAssistantId">VAPI Assistant ID</label>
+                    <input id="vapiAssistantId" name="vapiAssistantId" type="text" placeholder="Enter your VAPI assistant ID">
+                    <span class="field-hint">Required for external users. Leave blank to use agency default.</span>
+                  </div>
+                  <div class="field">
+                    <label for="voiceAgentName">Agent Name</label>
+                    <input id="voiceAgentName" name="name" type="text" placeholder="e.g., Sales Assistant">
+                  </div>
+                  <div class="field">
+                    <label for="voiceModel">Model</label>
+                    <select id="voiceModel" name="model">
+                      <option value="gpt-4o">GPT-4o</option>
+                      <option value="gpt-4">GPT-4</option>
+                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="voiceId">Voice ID</label>
+                    <input id="voiceId" name="voiceId" type="text" placeholder="e.g., jennifer">
+                  </div>
+                  <div class="field">
+                    <label for="maxDuration">Max Duration (seconds)</label>
+                    <input id="maxDuration" name="maxDuration" type="number" min="60" max="1800" value="300">
+                  </div>
+                  <div class="field">
+                    <label for="transferPhone">Transfer Phone Number</label>
+                    <input id="transferPhone" name="transferPhone" type="tel" placeholder="+61 400 000 000">
+                    <span class="field-hint">Number to transfer calls to when requested</span>
+                  </div>
+                </div>
+                <div class="full">
+                  <label for="voiceSystemPrompt">System Prompt</label>
+                  <textarea id="voiceSystemPrompt" name="systemPrompt" rows="6" placeholder="Enter the system prompt for your voice agent..."></textarea>
+                </div>
+                <div class="full">
+                  <label for="voiceGreeting">Greeting Message</label>
+                  <input id="voiceGreeting" name="greeting" type="text" placeholder="Hello! How can I help you today?">
+                </div>
+                <div class="field">
+                  <label class="check-row">
+                    <input id="voiceAgentActive" name="isActive" type="checkbox">
+                    <span>Voice Agent Active</span>
+                  </label>
+                </div>
+                <div class="actions">
+                  <button class="btn2" type="submit">Save Voice Configuration</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <div class="split-panels">
+            <section class="panel">
+              <div class="panel-h">
+                <div>
+                  <h2>Recent Calls</h2>
+                  <p>Latest voice interactions with leads.</p>
+                </div>
+              </div>
+              <div class="panel-b">
+                <div id="voiceCallsList" class="run-list">
+                  <div class="notice">No calls yet. Configure your voice agent to start receiving calls.</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-h">
+                <div>
+                  <h2>Provider Settings</h2>
+                  <p>Configure your VAPI provider credentials.</p>
+                </div>
+              </div>
+              <div class="panel-b">
+                <div id="voiceProviderInfo" class="notice">
+                  <p><strong>Internal Users:</strong> Your voice agent uses the agency's VAPI key automatically.</p>
+                  <p style="margin-top:10px"><strong>External Users:</strong> You must provide your own VAPI Assistant ID above.</p>
+                </div>
+                <form id="voiceProviderForm" class="stack" style="margin-top:16px">
+                  <div class="field">
+                    <label for="externalVapiKey">Your VAPI API Key <span style="color:var(--muted);font-weight:400;text-transform:none">(external users only)</span></label>
+                    <input id="externalVapiKey" name="externalVapiKey" type="password" placeholder="sk-...">
+                    <span class="field-hint">Only required if you're an external user bringing your own provider.</span>
+                  </div>
+                  <div class="actions">
+                    <button class="btn" type="submit">Save Provider Key</button>
+                  </div>
+                </form>
+              </div>
+            </section>
           </div>
         </div>
       </div>
