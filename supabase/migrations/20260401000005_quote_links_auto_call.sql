@@ -14,9 +14,9 @@
 alter table public.quotes
   add column if not exists quote_token text unique;
 
--- Backfill existing quotes with a token
+-- Backfill existing quotes with a URL-safe token
 update public.quotes
-  set quote_token = encode(gen_random_bytes(24), 'base64')
+  set quote_token = replace(replace(encode(gen_random_bytes(24), 'base64'), '/', '_'), '+', '-')
   where quote_token is null;
 
 -- Auto-generate token on insert

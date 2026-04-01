@@ -65,9 +65,13 @@ Deno.serve(async (req) => {
 
       // Mark as viewed (first view only)
       if (!quote.viewed_at) {
+        const viewUpdate: Record<string, unknown> = { viewed_at: new Date().toISOString() };
+        if (quote.status === "sent") {
+          viewUpdate.status = "viewed";
+        }
         await db
           .from("quotes")
-          .update({ viewed_at: new Date().toISOString(), status: quote.status === "sent" ? "viewed" : quote.status })
+          .update(viewUpdate)
           .eq("id", quote.id);
 
         // Log activity
