@@ -839,6 +839,37 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               </div>
             </section>
           </div>
+
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>Voice AI Logs</h2>
+                <p>Full call history with transcripts and recordings.</p>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div id="voiceLogsFilter" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+                <select id="voiceLogsStatus" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:13px">
+                  <option value="">All Statuses</option>
+                  <option value="completed">Completed</option>
+                  <option value="missed">Missed</option>
+                  <option value="failed">Failed</option>
+                  <option value="voicemail">Voicemail</option>
+                  <option value="in_progress">In Progress</option>
+                </select>
+                <select id="voiceLogsDirection" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:13px">
+                  <option value="">All Directions</option>
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+                <button id="voiceLogsRefresh" class="btn" type="button" style="margin-left:auto"><span class="icon" data-icon="refresh"></span> Refresh</button>
+              </div>
+              <div id="voiceLogsTable" style="overflow-x:auto">
+                <div class="notice">Loading call logs…</div>
+              </div>
+              <div id="voiceLogsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -1109,6 +1140,23 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </form>
     </div>
     <div class="mf"><div></div><div class="actions"><button id="cancelSaleModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="saleForm">Save Sale</button></div></div>
+  </div>
+</div>
+
+<!-- ── Call Detail Modal ───────────────────────────────────────────────────── -->
+<div id="callDetailModal" class="modal">
+  <div class="modal-card" style="width:min(780px,95%)">
+    <div class="mh">
+      <h2 id="callDetailTitle">Call Details</h2>
+      <p id="callDetailSubtitle">View transcript and listen to recording.</p>
+    </div>
+    <div class="mb" id="callDetailBody" style="padding:20px">
+      <div class="notice">Loading…</div>
+    </div>
+    <div class="mf">
+      <div></div>
+      <div class="actions"><button id="closeCallDetailModal" class="btn" type="button">Close</button></div>
+    </div>
   </div>
 </div>
 
