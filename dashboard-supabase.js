@@ -2006,12 +2006,25 @@ async function handleNewConversation(e) {
     if (error) { toast(error.message, true); return; }
 
     if (firstMsg) {
-      await sb.from("messages").insert({
-        conversation_id: conv.id,
-        body:            firstMsg,
-        direction:       "outbound",
-        agent_type:      "human",
-      });
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+          method: "POST",
+          headers: {
+            "Content-Type":  "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            conversation_id: conv.id,
+            body:            firstMsg,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) {
+          toast(json.error || "Conversation created but SMS failed to send.", true);
+        }
+      }
     }
 
     toast("Conversation created.");
@@ -2107,20 +2120,31 @@ async function handleSendMessage(e) {
   if (!content || !currentConvId) return;
 
   try {
-    const { error } = await sb.from("messages").insert({
-      conversation_id: currentConvId,
-      body:            content,
-      direction:       "outbound",
-      agent_type:      "human",
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { toast("Not authenticated.", true); return; }
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        conversation_id: currentConvId,
+        body:            content,
+      }),
     });
-    if (error) { toast(error.message, true); return; }
+
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      toast(json.error || "Failed to send SMS.", true);
+      return;
+    }
+
     if (input) input.value = "";
-    await Promise.all([
-      loadMessages(currentConvId),
-      sb.from("conversations").update({
-        last_message: content, last_message_at: new Date().toISOString(),
-      }).eq("id", currentConvId),
-    ]);
+    await loadMessages(currentConvId);
+    toast("SMS sent.");
   } catch (err) {
     toast("Failed to send message.", true);
   }
