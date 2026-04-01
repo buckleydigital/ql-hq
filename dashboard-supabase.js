@@ -544,15 +544,16 @@ async function loadDashboard() {
   if (!currentCompanyId) return;
 
   try {
-    const [{ data: leads }, { data: cf }] = await Promise.all([
+    const [{ data: leads }, { data: cf }, { count: quoteCount }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, created_at").eq("company_id", currentCompanyId),
       sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
+      sb.from("quotes").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId),
     ]);
 
     const all    = leads || [];
     const cfLen  = cf?.length || 0;
     const open   = all.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
-    const quoted = all.filter((l) => l.pipeline_stage === "quoted").length;
+    const totalQuotes = quoteCount || 0;
 
     const statLeadCount = document.getElementById("statLeadCount");
     const statOpenPipeline = document.getElementById("statOpenPipeline");
@@ -561,7 +562,7 @@ async function loadDashboard() {
     
     if (statLeadCount) statLeadCount.textContent = all.length;
     if (statOpenPipeline) statOpenPipeline.textContent = open;
-    if (statQuotes) statQuotes.textContent = quoted;
+    if (statQuotes) statQuotes.textContent = totalQuotes;
     if (statCustomFields) statCustomFields.textContent = cfLen;
 
     const weekAgo     = new Date(Date.now() - 7 * 864e5);
@@ -574,7 +575,7 @@ async function loadDashboard() {
     
     if (leadGrowthChip) leadGrowthChip.textContent = newThisWeek ? `+${newThisWeek} this week` : "No new";
     if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`;
-    if (quoteChip) quoteChip.textContent = `${quoted} quoted`;
+    if (quoteChip) quoteChip.textContent = `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`;
     if (customFieldChip) customFieldChip.textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
 
     buildLeadVolumeChart(all);
@@ -1155,30 +1156,189 @@ async function kanbanDrop(event, newStage) {
 }
 
 // ─── Quotes ───────────────────────────────────────────────────────────────────
+function buildQuoteLink(token) {
+  if (!token) return "";
+  return `${window.location.origin}/quote-public.html?token=${encodeURIComponent(token)}`;
+}
+
 async function loadQuotes() {
   if (!currentCompanyId) return;
   try {
     const { data } = await sb
-      .from("leads")
-      .select("id, name, email, phone, value, created_at")
+      .from("quotes")
+      .select("id, quote_number, status, total, notes, created_at, sent_at, viewed_at, accepted_at, quote_token, lead_id, leads(name, email, phone)")
       .eq("company_id", currentCompanyId)
-      .eq("pipeline_stage", "quoted")
       .order("created_at", { ascending: false });
-    const leads = data || [];
+    const quotes = data || [];
     const el = document.getElementById("quotesPanel");
     if (!el) return;
-    if (!leads.length) {
-      el.innerHTML = `<div class="empty"><h3>No quoted leads</h3><p>Leads with status "Quoted" will appear here.</p></div>`;
+    if (!quotes.length) {
+      el.innerHTML = `<div class="empty"><h3>No quotes yet</h3><p>Create a quote from the button above or via AI SMS workflow.</p></div>`;
       return;
     }
-    el.innerHTML = `<div class="table-lite">${leads.map((l) => `
-      <div class="row">
-        <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${l.email || l.phone || "—"}</span></div>
-        <div><span class="chip">Quoted</span></div>
-        <div><strong style="font-size:13px">${fmt(l.value)}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
-      </div>`).join("")}</div>`;
+    el.innerHTML = `<div class="table-lite">${quotes.map((q) => {
+      const lead = q.leads || {};
+      const quoteLink = buildQuoteLink(q.quote_token);
+      return `
+      <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
+        <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
+        <div><span class="chip">${q.status || "draft"}</span></div>
+        <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')" title="Download PDF"><span class="icon" data-icon="file"></span> PDF</button>
+          ${quoteLink ? `<button class="btn" style="padding:4px 10px;font-size:11px" onclick="copyQuoteLink('${quoteLink}')" title="Copy shareable link"><span class="icon" data-icon="external-link"></span> Link</button>` : ""}
+        </div>
+      </div>`;
+    }).join("")}</div>`;
+    renderIcons();
   } catch (err) {
     toast("Failed to load quotes.", true);
+  }
+}
+
+// ─── Copy Quote Link ──────────────────────────────────────────────────────────
+function copyQuoteLink(link) {
+  navigator.clipboard.writeText(link).then(() => {
+    toast("Quote link copied to clipboard!");
+  }).catch(() => {
+    // Fallback for older browsers
+    const ta = document.createElement("textarea");
+    ta.value = link;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    toast("Quote link copied to clipboard!");
+  });
+}
+
+// ─── Download Quote PDF ───────────────────────────────────────────────────────
+async function downloadQuotePDF(quoteId) {
+  if (!currentCompanyId) return;
+  try {
+    const { data: q } = await sb
+      .from("quotes")
+      .select("id, quote_number, status, subtotal, tax, total, valid_until, notes, line_items, created_at, sent_at, lead_id, leads(name, email, phone, address)")
+      .eq("id", quoteId)
+      .single();
+    if (!q) { toast("Quote not found.", true); return; }
+
+    const { data: company } = await sb
+      .from("companies")
+      .select("name, email, phone")
+      .eq("id", currentCompanyId)
+      .single();
+
+    const lead = q.leads || {};
+    const co = company || {};
+
+    // Load jsPDF from CDN if not already loaded
+    if (typeof window.jspdf === "undefined") {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js";
+        s.integrity = "sha384-5MXQT3yrGpx6/FO6Z5JlMsn1xsN/OggV+b88W2CfpNqmvPfmv7JW/O8x78GzptfE";
+        s.crossOrigin = "anonymous";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const pw = doc.internal.pageSize.getWidth();
+    let y = 20;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setFont(undefined, "bold");
+    doc.text(co.name || "QuoteLeadsHQ", 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+    if (co.email) { doc.text(co.email + (co.phone ? "  ·  " + co.phone : ""), 14, y); y += 6; }
+
+    // Quote title
+    y += 6;
+    doc.setFontSize(16);
+    doc.setFont(undefined, "bold");
+    doc.text("Quote #" + (q.quote_number || q.id.slice(0,8)), 14, y);
+    y += 8;
+
+    // Status + date
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+    doc.text("Status: " + (q.status || "Draft").toUpperCase(), 14, y);
+    doc.text("Date: " + (q.created_at ? new Date(q.created_at).toLocaleDateString("en-AU") : "—"), pw - 14, y, { align: "right" });
+    y += 6;
+    if (q.valid_until) {
+      doc.text("Valid Until: " + new Date(q.valid_until).toLocaleDateString("en-AU"), 14, y);
+      y += 6;
+    }
+
+    // Prepared for
+    y += 4;
+    doc.setFont(undefined, "bold");
+    doc.text("Prepared For:", 14, y);
+    y += 5;
+    doc.setFont(undefined, "normal");
+    doc.text(lead.name || "—", 14, y); y += 5;
+    if (lead.email) { doc.text(lead.email, 14, y); y += 5; }
+    if (lead.phone) { doc.text(lead.phone, 14, y); y += 5; }
+    if (lead.address) { doc.text(lead.address, 14, y); y += 5; }
+
+    // Line items
+    const items = q.line_items || [];
+    if (items.length) {
+      y += 8;
+      doc.setFont(undefined, "bold");
+      doc.text("Line Items", 14, y); y += 6;
+      doc.setFont(undefined, "normal");
+      doc.setDrawColor(200);
+      doc.line(14, y, pw - 14, y); y += 4;
+      items.forEach((li) => {
+        const desc = li.description || li.name || "Item";
+        const qty = li.quantity ? " × " + li.quantity : "";
+        const price = "$" + Number(li.total || li.price || 0).toFixed(2);
+        doc.text(desc + qty, 14, y);
+        doc.text(price, pw - 14, y, { align: "right" });
+        y += 6;
+      });
+      doc.line(14, y, pw - 14, y); y += 4;
+    }
+
+    // Totals
+    y += 4;
+    if (q.subtotal) {
+      doc.text("Subtotal:", pw - 60, y);
+      doc.text("$" + Number(q.subtotal).toFixed(2), pw - 14, y, { align: "right" }); y += 6;
+    }
+    if (q.tax) {
+      doc.text("Tax:", pw - 60, y);
+      doc.text("$" + Number(q.tax).toFixed(2), pw - 14, y, { align: "right" }); y += 6;
+    }
+    doc.setFont(undefined, "bold");
+    doc.setFontSize(14);
+    doc.text("Total:", pw - 60, y);
+    doc.text("$" + Number(q.total || 0).toFixed(2), pw - 14, y, { align: "right" });
+    y += 10;
+
+    // Notes
+    if (q.notes) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, "bold");
+      doc.text("Notes:", 14, y); y += 5;
+      doc.setFont(undefined, "normal");
+      const lines = doc.splitTextToSize(q.notes, pw - 28);
+      doc.text(lines, 14, y);
+    }
+
+    doc.save("Quote-" + (q.quote_number || q.id.slice(0,8)) + ".pdf");
+    toast("PDF downloaded.");
+  } catch (err) {
+    console.error("PDF generation error:", err);
+    toast("Failed to generate PDF.", true);
   }
 }
 
@@ -1397,6 +1557,7 @@ async function loadAiSettings() {
       setCheckboxValue("aiOnsiteEnabled", data.onsite_enabled);
       setCheckboxValue("aiQuoteDraftingEnabled", data.quote_drafting_enabled);
       setCheckboxValue("aiLeadScoringEnabled", data.lead_scoring_enabled);
+      setCheckboxValue("aiAutoCallInbound", data.auto_call_inbound);
       
       // Call-back settings
       setInputValue("aiAgentName", data.agent_name);
@@ -1488,6 +1649,7 @@ async function handleAiSettingsSave(e) {
     onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked ?? false,
     quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
     lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked ?? true,
+    auto_call_inbound:     document.getElementById("aiAutoCallInbound")?.checked ?? false,
     
     // Call-back settings
     agent_name:             document.getElementById("aiAgentName")?.value || "Sales Team",
@@ -2005,7 +2167,41 @@ async function loadVoiceAi() {
     if (voiceKeySourceHelp) {
       voiceKeySourceHelp.textContent = isInternal 
         ? "Using agency VAPI key for voice calls." 
-        : "You must provide your own VAPI Assistant ID.";
+        : "You must provide your own VAPI API key and Assistant ID.";
+    }
+
+    // Lock config fields for internal users (only prompt + greeting editable)
+    const lockedFields = ["vapiAssistantId", "voiceAgentName", "voiceModel", "voiceId", "maxDuration", "transferPhone", "voiceAgentActive"];
+    lockedFields.forEach((fid) => {
+      const el = document.getElementById(fid);
+      if (!el) return;
+      if (isInternal) {
+        el.disabled = true;
+        el.style.opacity = "0.6";
+        el.style.cursor = "not-allowed";
+      } else {
+        el.disabled = false;
+        el.style.opacity = "1";
+        el.style.cursor = "";
+      }
+    });
+
+    // Update field hints for internal users
+    const assistantHint = document.getElementById("vapiAssistantIdHint");
+    if (assistantHint) {
+      assistantHint.textContent = isInternal
+        ? "Managed by your agency. Contact them to change."
+        : "Required — enter your VAPI Assistant ID.";
+    }
+
+    // Show/hide provider key form based on user type
+    const providerForm = document.getElementById("voiceProviderForm");
+    const providerInfo = document.getElementById("voiceProviderInfo");
+    if (providerForm) providerForm.style.display = isInternal ? "none" : "";
+    if (providerInfo) {
+      providerInfo.innerHTML = isInternal
+        ? `<p><strong>Agency-Managed:</strong> Your voice agent is pre-configured by your agency. Only the system prompt and greeting are editable.</p>`
+        : `<p><strong>External Users:</strong> You must provide your own VAPI API key and Assistant ID to use voice AI.</p>`;
     }
 
     // Populate form if config exists
@@ -2064,18 +2260,38 @@ async function handleVoiceAgentSave(e) {
   e.preventDefault();
 
   try {
-    const payload = {
-      company_id:       currentCompanyId,
-      vapi_assistant_id: document.getElementById("vapiAssistantId")?.value || null,
-      name:             document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
-      model:            document.getElementById("voiceModel")?.value || "gpt-4o",
-      voice_id:         document.getElementById("voiceId")?.value || null,
-      max_duration:     Number(document.getElementById("maxDuration")?.value) || 300,
-      transfer_phone:   document.getElementById("transferPhone")?.value || null,
-      system_prompt:    document.getElementById("voiceSystemPrompt")?.value || null,
-      greeting:         document.getElementById("voiceGreeting")?.value || null,
-      is_active:        document.getElementById("voiceAgentActive")?.checked || false,
-    };
+    // Check user type to restrict what internal users can save
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("user_type")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+
+    const isInternal = profile?.user_type === "internal";
+
+    let payload;
+    if (isInternal) {
+      // Internal users can only update system prompt and greeting
+      payload = {
+        company_id:    currentCompanyId,
+        system_prompt: document.getElementById("voiceSystemPrompt")?.value || null,
+        greeting:      document.getElementById("voiceGreeting")?.value || null,
+      };
+    } else {
+      // External users can configure everything
+      payload = {
+        company_id:       currentCompanyId,
+        vapi_assistant_id: document.getElementById("vapiAssistantId")?.value || null,
+        name:             document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
+        model:            document.getElementById("voiceModel")?.value || "gpt-4o",
+        voice_id:         document.getElementById("voiceId")?.value || null,
+        max_duration:     Number(document.getElementById("maxDuration")?.value) || 300,
+        transfer_phone:   document.getElementById("transferPhone")?.value || null,
+        system_prompt:    document.getElementById("voiceSystemPrompt")?.value || null,
+        greeting:         document.getElementById("voiceGreeting")?.value || null,
+        is_active:        document.getElementById("voiceAgentActive")?.checked || false,
+      };
+    }
 
     const { error } = await sb
       .from("voice_agent_config")
@@ -2085,14 +2301,16 @@ async function handleVoiceAgentSave(e) {
 
     toast("Voice agent configuration saved.");
 
-    // Update status display
-    const voiceAgentStatus = document.getElementById("voiceAgentStatus");
-    const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
-    if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
-    if (voiceAgentStatusHelp) {
-      voiceAgentStatusHelp.textContent = payload.is_active 
-        ? "Voice agent is ready to receive calls." 
-        : "Voice agent is not configured";
+    // Update status display (only relevant for external users who can toggle active)
+    if (!isInternal) {
+      const voiceAgentStatus = document.getElementById("voiceAgentStatus");
+      const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
+      if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
+      if (voiceAgentStatusHelp) {
+        voiceAgentStatusHelp.textContent = payload.is_active 
+          ? "Voice agent is ready to receive calls." 
+          : "Voice agent is not configured";
+      }
     }
 
   } catch (err) {
@@ -2281,7 +2499,7 @@ async function loadOppQuotes(leadId) {
   try {
     const { data: quotes } = await sb
       .from("quotes")
-      .select("id, quote_number, status, total, created_at, sent_at, accepted_at")
+      .select("id, quote_number, status, total, created_at, sent_at, accepted_at, quote_token")
       .eq("company_id", currentCompanyId)
       .eq("lead_id", leadId)
       .order("created_at", { ascending: false });
@@ -2291,13 +2509,19 @@ async function loadOppQuotes(leadId) {
       return;
     }
 
-    el.innerHTML = quotes.map((q) => `
+    el.innerHTML = quotes.map((q) => {
+      const quoteLink = buildQuoteLink(q.quote_token);
+      return `
       <div class="run">
         <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${q.status || "Draft"}</span></h3>
         <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
         <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
-      </div>
-    `).join("");
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')">PDF</button>
+          ${quoteLink ? `<button class="btn" style="padding:4px 10px;font-size:11px" onclick="copyQuoteLink('${quoteLink}')">Copy Link</button>` : ""}
+        </div>
+      </div>`;
+    }).join("");
   } catch (err) {
     el.innerHTML = `<div class="notice">Failed to load quotes.</div>`;
   }
