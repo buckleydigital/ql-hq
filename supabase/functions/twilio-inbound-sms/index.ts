@@ -153,7 +153,8 @@ function buildSystemPrompt(
   const callbackEnabled = config.callback_enabled as boolean;
   const onsiteEnabled = config.onsite_enabled as boolean;
   const quoteDrafting = config.quote_drafting_enabled as boolean;
-  const callbackDays = (config.callback_days as string[]) || ["tue", "wed", "fri", "sat"];
+  const rawDays = config.callback_days;
+  const callbackDays: string[] = Array.isArray(rawDays) ? rawDays : ["tue", "wed", "fri", "sat"];
   const callbackStart = (config.callback_hours_start as string) || "09:00";
   const callbackEnd = (config.callback_hours_end as string) || "17:00";
 
@@ -716,7 +717,8 @@ async function logActivity(
 
 // Calculate next available callback slot based on config
 function getNextAvailableSlot(config: Record<string, unknown>): Date {
-  const days = (config.callback_days as string[]) || ["tue", "wed", "fri", "sat"];
+  const rawDays = config.callback_days;
+  const days: string[] = Array.isArray(rawDays) ? rawDays : ["tue", "wed", "fri", "sat"];
   const startStr = (config.callback_hours_start as string) || "09:00";
   const endStr = (config.callback_hours_end as string) || "17:00";
 

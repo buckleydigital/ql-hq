@@ -47,7 +47,7 @@ alter table public.sms_agent_config
   add column if not exists callback_enabled       boolean default false,
   add column if not exists callback_hours_start   time default '09:00',
   add column if not exists callback_hours_end     time default '17:00',
-  add column if not exists callback_days          text[] default '{tue,wed,fri,sat}',
+  add column if not exists callback_days          jsonb default '["tue","wed","fri","sat"]',
   add column if not exists onsite_enabled         boolean default false,
   add column if not exists quote_drafting_enabled  boolean default false,
   add column if not exists company_name           text,
@@ -103,3 +103,87 @@ begin
   return found;
 end;
 $$;
+
+-- ─── Auto-Provision SMS on New Company ──────────────────────────────────────
+-- When a new company is created, automatically give them:
+--   1. An sms_credits row (starts at 0 — topped up via billing)
+--   2. A default sms_agent_config row (inactive until Twilio number is set)
+-- For agency (internal) clients, also auto-map agency vault keys.
+
+create or replace function public.provision_sms_for_company()
+returns trigger
+language plpgsql
+security definer
+set search_path = 'public'
+as $$
+begin
+  -- 1. Create SMS credit row
+  insert into public.sms_credits (company_id, balance)
+  values (new.id, 0)
+  on conflict (company_id) do nothing;
+
+  -- 2. Create default SMS agent config (inactive until twilio_number is set)
+  insert into public.sms_agent_config (company_id, name, auto_reply, is_active)
+  values (new.id, 'Default SMS Agent', true, false)
+  on conflict do nothing;
+
+  return new;
+end;
+$$;
+
+create trigger auto_provision_sms
+  after insert on public.companies
+  for each row
+  execute function public.provision_sms_for_company();
+
+-- ─── Auto-Map Agency Keys for Internal Users ────────────────────────────────
+-- When a profile is created with user_type='internal', auto-map the agency
+-- vault keys so the edge function can resolve them without manual setup.
+
+create or replace function public.provision_agency_keys()
+returns trigger
+language plpgsql
+security definer
+set search_path = 'public'
+as $$
+declare
+  v_twilio_sid_id uuid;
+  v_twilio_auth_id uuid;
+  v_openai_id uuid;
+begin
+  if new.user_type != 'internal' then
+    return new;
+  end if;
+
+  -- Look up agency vault secret IDs by name
+  select id into v_twilio_sid_id from vault.secrets where name = 'agency_twilio_sid' limit 1;
+  select id into v_twilio_auth_id from vault.secrets where name = 'agency_twilio_auth' limit 1;
+  select id into v_openai_id from vault.secrets where name = 'agency_openai_key' limit 1;
+
+  -- Map each key (skip if vault secret doesn't exist)
+  if v_twilio_sid_id is not null then
+    insert into public.agency_key_mappings (company_id, provider, vault_secret_id, label)
+    values (new.company_id, 'twilio', v_twilio_sid_id, 'Agency Twilio SID')
+    on conflict (company_id, provider, label) do nothing;
+  end if;
+
+  if v_twilio_auth_id is not null then
+    insert into public.agency_key_mappings (company_id, provider, vault_secret_id, label)
+    values (new.company_id, 'twilio_auth', v_twilio_auth_id, 'Agency Twilio Auth')
+    on conflict (company_id, provider, label) do nothing;
+  end if;
+
+  if v_openai_id is not null then
+    insert into public.agency_key_mappings (company_id, provider, vault_secret_id, label)
+    values (new.company_id, 'openai', v_openai_id, 'Agency OpenAI Key')
+    on conflict (company_id, provider, label) do nothing;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger auto_provision_agency_keys
+  after insert on public.profiles
+  for each row
+  execute function public.provision_agency_keys();
