@@ -10,9 +10,9 @@
     :root {
       --sidebar-w: 240px;
       --sidebar-collapsed-w: 64px;
-      --accent: #4f46e5;
-      --accent-light: #eef2ff;
-      --accent-hover: #4338ca;
+      --accent: #4797ff;
+      --accent-light: #e8f1ff;
+      --accent-hover: #3580e6;
       --bg: #f8fafc;
       --surface: #ffffff;
       --border: #e2e8f0;
@@ -21,7 +21,7 @@
       --text-sidebar: #cbd5e1;
       --sidebar-bg: #1e293b;
       --sidebar-hover: #334155;
-      --sidebar-active: #4f46e5;
+      --sidebar-active: #4797ff;
       --danger: #ef4444;
       --success: #22c55e;
       --warning: #f59e0b;
@@ -30,6 +30,30 @@
       --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
       --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
     }
+
+    /* Dark mode */
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
+      --shadow-md: 0 4px 6px rgba(0,0,0,.3), 0 2px 4px rgba(0,0,0,.2);
+    }
+    [data-theme="dark"] .search-box input { color: var(--text); }
+    [data-theme="dark"] .kpi-icon.purple { background: #3b2f7a; }
+    [data-theme="dark"] .kpi-icon.blue   { background: #1e3a5f; }
+    [data-theme="dark"] .kpi-icon.green  { background: #14532d; }
+    [data-theme="dark"] .kpi-icon.amber  { background: #713f12; }
+    [data-theme="dark"] .kpi-icon.red    { background: #7f1d1d; }
+    [data-theme="dark"] .kpi-icon.cyan   { background: #164e63; }
+    [data-theme="dark"] .pill-new      { background: #1e3a5f; color: #93c5fd; }
+    [data-theme="dark"] .pill-quoted   { background: #713f12; color: #fcd34d; }
+    [data-theme="dark"] .pill-won      { background: #14532d; color: #86efac; }
+    [data-theme="dark"] .pill-lost     { background: #7f1d1d; color: #fca5a5; }
+    [data-theme="dark"] .pill-followup { background: #3b2f7a; color: #c4b5fd; }
+    [data-theme="dark"] .pill-scheduled { background: #164e63; color: #67e8f9; }
 
     html, body { height: 100%; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
 
@@ -67,7 +91,7 @@
       font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -1px;
     }
     .logo-text { font-size: 15px; font-weight: 700; color: #fff; }
-    .logo-text span { color: #818cf8; }
+    .logo-text span { color: #6db3ff; }
 
     .toggle-btn {
       position: absolute; top: 20px; right: -12px;
@@ -137,7 +161,7 @@
       white-space: nowrap;
     }
     .sub-item:hover { background: var(--sidebar-hover); color: #fff; }
-    .sub-item.active { color: #a5b4fc; }
+    .sub-item.active { color: #6db3ff; }
 
     .sub-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
@@ -162,7 +186,7 @@
     .user-card:hover { background: var(--sidebar-hover); }
     .avatar {
       width: 32px; height: 32px; border-radius: 50%;
-      background: linear-gradient(135deg, #818cf8, #4f46e5);
+      background: linear-gradient(135deg, #6db3ff, #4797ff);
       display: flex; align-items: center; justify-content: center;
       font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
     }
@@ -238,6 +262,7 @@
     .kpi-icon.green  { background: #dcfce7; }
     .kpi-icon.amber  { background: #fef3c7; }
     .kpi-icon.red    { background: #fee2e2; }
+    .kpi-icon.cyan   { background: #cffafe; }
     .kpi-change { font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
     .kpi-change.up   { background: #dcfce7; color: #16a34a; }
     .kpi-change.down { background: #fee2e2; color: #dc2626; }
@@ -327,7 +352,7 @@
     .progress-name { font-size: 13px; font-weight: 500; }
     .progress-val  { font-size: 13px; font-weight: 700; color: var(--accent); }
     .progress-bar  { height: 6px; background: var(--border); border-radius: 4px; overflow: hidden; }
-    .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), #818cf8); }
+    .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), #6db3ff); }
 
     /* ── Placeholder panels ── */
     .placeholder-msg {
@@ -335,6 +360,33 @@
       color: var(--text-muted); font-size: 14px;
     }
     .placeholder-icon { font-size: 40px; margin-bottom: 12px; }
+
+    /* ── Kanban Board ── */
+    .kanban-col {
+      min-width: 220px; width: 220px;
+      background: var(--bg); border-radius: var(--radius);
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 8px; flex-shrink: 0;
+    }
+    .kanban-col-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 8px 8px; border-radius: 6px 6px 0 0;
+      margin-bottom: 4px;
+    }
+    .kanban-col-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .kanban-col-count {
+      font-size: 11px; font-weight: 700; background: var(--border);
+      padding: 1px 7px; border-radius: 20px; color: var(--text-muted);
+    }
+    .kanban-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; box-shadow: var(--shadow);
+      cursor: grab; transition: box-shadow .15s, transform .15s;
+    }
+    .kanban-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    .kanban-card-title { font-size: 13.5px; font-weight: 600; margin-bottom: 2px; }
+    .kanban-card-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .kanban-card-value { font-size: 13px; font-weight: 700; color: var(--accent); }
 
     /* ── Responsive ── */
     @media (max-width: 640px) {
@@ -381,6 +433,12 @@
         </div>
         <div class="sub-item" data-page="quotes">
           <span class="sub-dot"></span>Quotes
+        </div>
+        <div class="sub-item" data-page="opportunities">
+          <span class="sub-dot"></span>Opportunities
+        </div>
+        <div class="sub-item" data-page="appointments">
+          <span class="sub-dot"></span>Appointments
         </div>
         <div class="sub-item" data-page="sales">
           <span class="sub-dot"></span>Sales
@@ -436,6 +494,9 @@
         <input type="text" placeholder="Search leads, quotes, contacts…" />
       </div>
       <div class="topbar-actions">
+        <button class="icon-btn" id="themeToggle" title="Toggle dark/light mode">
+          &#9790;
+        </button>
         <button class="icon-btn" title="Notifications">
           &#128276;
           <span class="notif-dot"></span>
@@ -482,6 +543,14 @@
             </div>
             <div class="kpi-value">41%</div>
             <div class="kpi-label">Close Rate</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon cyan">&#128197;</div>
+              <span class="kpi-change up">+12%</span>
+            </div>
+            <div class="kpi-value">38</div>
+            <div class="kpi-label">Appointments</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-top">
@@ -604,7 +673,7 @@
             </div>
             <div class="panel-body">
               <div class="activity-item">
-                <div class="activity-dot" style="background:#4f46e5"></div>
+                <div class="activity-dot" style="background:#4797ff"></div>
                 <div class="activity-text"><strong>Alice</strong> sent a quote to <strong>Sarah Mitchell</strong> for $12,400</div>
                 <div class="activity-time">2h ago</div>
               </div>
@@ -676,6 +745,125 @@
             <div class="placeholder-msg">
               <div class="placeholder-icon">&#128176;</div>
               <div>Sales pipeline coming soon.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── OPPORTUNITIES PAGE (Kanban) ── -->
+      <div id="page-opportunities" style="display:none">
+        <div class="panel" style="overflow:visible">
+          <div class="panel-header">
+            <span class="panel-title">Pipeline Board</span>
+            <span class="panel-action">+ New Opportunity</span>
+          </div>
+          <div class="panel-body" style="padding:12px;overflow-x:auto">
+            <div style="display:flex;gap:12px;min-width:max-content">
+
+              <!-- New Lead column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #3b82f6">
+                  <span class="kanban-col-title">New Lead</span><span class="kanban-col-count">3</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Sarah Mitchell</div>
+                  <div class="kanban-card-sub">Commercial Roofing</div>
+                  <div class="kanban-card-value">$12,400</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Tom Nguyen</div>
+                  <div class="kanban-card-sub">HVAC Installation</div>
+                  <div class="kanban-card-value">$8,200</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Rachel Adams</div>
+                  <div class="kanban-card-sub">Plumbing</div>
+                  <div class="kanban-card-value">$3,100</div>
+                </div>
+              </div>
+
+              <!-- Follow Up column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #f59e0b">
+                  <span class="kanban-col-title">Follow Up</span><span class="kanban-col-count">2</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Mark Reynolds</div>
+                  <div class="kanban-card-sub">Landscaping</div>
+                  <div class="kanban-card-value">$5,700</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Lisa Park</div>
+                  <div class="kanban-card-sub">Electrical</div>
+                  <div class="kanban-card-value">$4,500</div>
+                </div>
+              </div>
+
+              <!-- Quote in Progress column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #8b5cf6">
+                  <span class="kanban-col-title">Quote in Progress</span><span class="kanban-col-count">2</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">James Carter</div>
+                  <div class="kanban-card-sub">Solar Panels</div>
+                  <div class="kanban-card-value">$28,000</div>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Greenfield Corp</div>
+                  <div class="kanban-card-sub">Commercial HVAC</div>
+                  <div class="kanban-card-value">$42,000</div>
+                </div>
+              </div>
+
+              <!-- Quoted column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #4797ff">
+                  <span class="kanban-col-title">Quoted</span><span class="kanban-col-count">1</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">David Kim</div>
+                  <div class="kanban-card-sub">Window Replacement</div>
+                  <div class="kanban-card-value">$15,800</div>
+                </div>
+              </div>
+
+              <!-- Closed Won column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #22c55e">
+                  <span class="kanban-col-title">Closed Won</span><span class="kanban-col-count">1</span>
+                </div>
+                <div class="kanban-card">
+                  <div class="kanban-card-title">Jessica Liu</div>
+                  <div class="kanban-card-sub">Solar Panels</div>
+                  <div class="kanban-card-value">$31,000</div>
+                </div>
+              </div>
+
+              <!-- Closed Lost column -->
+              <div class="kanban-col">
+                <div class="kanban-col-header" style="border-top:3px solid #ef4444">
+                  <span class="kanban-col-title">Closed Lost</span><span class="kanban-col-count">0</span>
+                </div>
+                <div style="text-align:center;padding:24px 8px;color:var(--text-muted);font-size:13px">No lost deals</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── APPOINTMENTS PAGE ── -->
+      <div id="page-appointments" style="display:none">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Appointments</span>
+            <span class="panel-action">+ New Appointment</span>
+          </div>
+          <div class="panel-body">
+            <div class="placeholder-msg">
+              <div class="placeholder-icon">&#128197;</div>
+              <div>Appointments calendar coming soon.</div>
             </div>
           </div>
         </div>
@@ -757,13 +945,28 @@
   const pageTitles = {
     dashboard:        'Dashboard',
     leads:            'CRM — Leads',
+    opportunities:    'CRM — Opportunities',
     quotes:           'CRM — Quotes',
+    appointments:     'CRM — Appointments',
     sales:            'CRM — Sales',
     conversations:    'Conversations',
     'ai-settings':    'AI Settings',
     'sales-reps':     'Sales Reps',
     'general-settings': 'General Settings',
   };
+
+  /* Theme toggle (light / dark) */
+  const themeToggle = document.getElementById('themeToggle');
+  const savedTheme = localStorage.getItem('qlhq-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  themeToggle.innerHTML = savedTheme === 'dark' ? '&#9728;' : '&#9790;';
+  themeToggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('qlhq-theme', next);
+    themeToggle.innerHTML = next === 'dark' ? '&#9728;' : '&#9790;';
+  });
 
   /* Toggle sidebar collapse */
   toggleBtn.addEventListener('click', () => {
