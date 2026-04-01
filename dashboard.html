@@ -34,7 +34,7 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .app.collapsed .brand{justify-content:center}
 .app.collapsed .top-side{justify-content:center}
 
-.iconbtn,.btn,.btn2,.btn-danger{min-height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:13px}
+.iconbtn,.btn,.btn2,.btn-danger{min-height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px}
 .iconbtn{width:40px;padding:0}
 .btn2{background:var(--text);color:var(--bg);border-color:var(--text)}
 [data-theme=dark] .btn2{background:#f5f5f5;color:#050505;border-color:#f5f5f5}
@@ -70,6 +70,7 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 /* ── Content ─────────────────────────────────────── */
 .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .content{padding:24px;display:flex;flex-direction:column;gap:24px}
+.page{display:flex;flex-direction:column;gap:24px}
 .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
 .gridset{display:grid;grid-template-columns:1.1fr .9fr;gap:20px}
@@ -366,6 +367,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
+        <button id="themeToggle" class="nav-item" type="button"><span class="icon" id="themeToggleIcon" data-icon="moon"></span><span class="nav-text">Toggle Theme</span></button>
       </div>
     </div>
 
@@ -383,9 +385,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <button id="mobileMenuToggle" class="iconbtn" type="button" aria-label="Open menu"><span class="icon" data-icon="menu"></span></button>
       <div class="search"><span class="icon" data-icon="search"></span><input id="globalSearchInput" type="search" placeholder="Search leads, email, phone, postcode"></div>
       <div class="actions">
-        <button id="themeToggle" class="iconbtn" type="button"></button>
-        <button id="openLeadModalTop" class="btn" type="button"><span class="icon" data-icon="plus"></span><span>New Lead</span></button>
-        <button id="logoutButton" class="btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button>
       </div>
     </header>
 
@@ -393,6 +392,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Dashboard -->
       <div id="page-dashboard" class="page">
+        <div class="actions"><button id="openLeadModalDashboard" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Lead</span></button></div>
         <div class="grid4">
           <article class="card"><div class="stat-top"><span class="muted">Total Leads</span><span class="icon" data-icon="users"></span></div><div class="stat-val" id="statLeadCount">0</div><div style="margin-top:8px"><span id="leadGrowthChip" class="chip">—</span></div></article>
           <article class="card"><div class="stat-top"><span class="muted">Open Pipeline</span><span class="icon" data-icon="kanban"></span></div><div class="stat-val" id="statOpenPipeline">0</div><div style="margin-top:8px"><span id="qualifyingChip" class="chip">—</span></div></article>
@@ -427,17 +427,17 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Quotes -->
       <div id="page-quotes" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>Quoted opportunities are generated from live lead status.</p></div></div><div class="panel-b" id="quotesPanel"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>Quoted opportunities are generated from live lead status.</p></div><div class="actions"><button id="openQuoteModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Quote</span></button></div></div><div class="panel-b" id="quotesPanel"></div></section>
       </div>
 
       <!-- Appointments -->
       <div id="page-appointments" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>Scheduled callbacks, on-site visits, and other bookings.</p></div></div><div id="appointmentsPanel" class="panel-b"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>Scheduled callbacks, on-site visits, and other bookings.</p></div><div class="actions"><button id="openAppointmentModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Appointment</span></button></div></div><div id="appointmentsPanel" class="panel-b"></div></section>
       </div>
 
       <!-- Sales -->
       <div id="page-sales" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div></div><div id="salesPanel" class="panel-b"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div><div class="actions"><button id="openSaleModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Sale</span></button></div></div><div id="salesPanel" class="panel-b"></div></section>
       </div>
 
       <!-- Conversations -->
@@ -870,6 +870,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <section class="panel"><div class="panel-h"><div><h2>Custom Lead Fields</h2><p>Adding a field updates the Supabase schema used by lead records.</p></div></div><div class="panel-b"><div id="settingsCustomFields"></div><div class="actions" style="margin-top:14px"><button id="openCustomFieldModalSettings" class="btn" type="button">Create Custom Field</button></div></div></section>
           </div>
         </div>
+        <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>
       </div>
 
     </section>
@@ -1045,6 +1046,65 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button id="confirmCallLead" class="btn2" type="button"><span class="icon" data-icon="phone"></span> Start Call</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Quote Modal ──────────────────────────────────────────────────────────── -->
+<div id="quoteModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh"><h2>New Quote</h2><p>Create a manual quote linked to an existing lead.</p></div>
+    <div class="mb">
+      <form id="quoteForm" class="stack">
+        <div class="form2">
+          <div class="field"><label for="quoteLeadSelect">Lead</label><select id="quoteLeadSelect" required><option value="">— Select a lead —</option></select></div>
+          <div class="field"><label for="quoteNumber">Quote Number</label><input id="quoteNumber" type="text" placeholder="e.g., Q-001"></div>
+          <div class="field"><label for="quoteTotal">Total ($)</label><input id="quoteTotal" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="field"><label for="quoteStatus">Status</label><select id="quoteStatus"><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option></select></div>
+          <div class="full"><label for="quoteNotes">Notes</label><textarea id="quoteNotes" rows="3" placeholder="Quote details or description…"></textarea></div>
+        </div>
+      </form>
+    </div>
+    <div class="mf"><div></div><div class="actions"><button id="cancelQuoteModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="quoteForm">Save Quote</button></div></div>
+  </div>
+</div>
+
+<!-- ── Appointment Modal ───────────────────────────────────────────────────── -->
+<div id="appointmentModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh"><h2>New Appointment</h2><p>Schedule a callback, on-site visit, or other booking.</p></div>
+    <div class="mb">
+      <form id="appointmentForm" class="stack">
+        <div class="form2">
+          <div class="field"><label for="apptLeadSelect">Lead</label><select id="apptLeadSelect" required><option value="">— Select a lead —</option></select></div>
+          <div class="field"><label for="apptTitle">Title</label><input id="apptTitle" type="text" placeholder="e.g., On-site visit" required></div>
+          <div class="field"><label for="apptType">Type</label><select id="apptType"><option value="callback">Callback</option><option value="onsite">On-site Visit</option><option value="virtual">Virtual Meeting</option><option value="other">Other</option></select></div>
+          <div class="field"><label for="apptStatus">Status</label><select id="apptStatus"><option value="scheduled">Scheduled</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div>
+          <div class="field"><label for="apptStart">Start Time</label><input id="apptStart" type="datetime-local" required></div>
+          <div class="field"><label for="apptEnd">End Time</label><input id="apptEnd" type="datetime-local"></div>
+          <div class="full"><label for="apptLocation">Location</label><input id="apptLocation" type="text" placeholder="Address or meeting link"></div>
+          <div class="full"><label for="apptNotes">Notes</label><textarea id="apptNotes" rows="3" placeholder="Additional details…"></textarea></div>
+        </div>
+      </form>
+    </div>
+    <div class="mf"><div></div><div class="actions"><button id="cancelAppointmentModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="appointmentForm">Save Appointment</button></div></div>
+  </div>
+</div>
+
+<!-- ── Sale Modal ──────────────────────────────────────────────────────────── -->
+<div id="saleModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh"><h2>Record Sale</h2><p>Manually record a closed deal linked to a lead.</p></div>
+    <div class="mb">
+      <form id="saleForm" class="stack">
+        <div class="form2">
+          <div class="field"><label for="saleLeadSelect">Lead</label><select id="saleLeadSelect" required><option value="">— Select a lead —</option></select></div>
+          <div class="field"><label for="saleOutcome">Outcome</label><select id="saleOutcome" required><option value="closed_won">Closed Won</option><option value="closed_lost">Closed Lost</option></select></div>
+          <div class="field"><label for="saleValue">Value ($)</label><input id="saleValue" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="full"><label for="saleNotes">Notes</label><textarea id="saleNotes" rows="3" placeholder="Sale details…"></textarea></div>
+        </div>
+      </form>
+    </div>
+    <div class="mf"><div></div><div class="actions"><button id="cancelSaleModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="saleForm">Save Sale</button></div></div>
   </div>
 </div>
 

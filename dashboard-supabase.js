@@ -61,7 +61,12 @@ function updateThemeIcon() {
   const btn = document.getElementById("themeToggle");
   if (!btn) return;
   const dark = document.documentElement.dataset.theme === "dark";
-  btn.innerHTML = `<span class="icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${dark ? ICONS.sun : ICONS.moon}</svg></span>`;
+  const iconEl = document.getElementById("themeToggleIcon");
+  if (iconEl) {
+    iconEl.dataset.icon = dark ? "sun" : "moon";
+    const p = ICONS[dark ? "sun" : "moon"];
+    if (p) iconEl.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${p}</svg>`;
+  }
 }
 
 // ─── Pipeline stage labels ────────────────────────────────────────────────────
@@ -243,7 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── Lead Modal ────────────────────────────────────────────────────────────
   const doOpenLeadModal = () => { resetLeadForm(); openModal("leadModal"); };
-  ["openLeadModalTop","openLeadModal","openLeadModalEmpty","openLeadModalPipeline"].forEach((id) =>
+  ["openLeadModalDashboard","openLeadModal","openLeadModalEmpty","openLeadModalPipeline"].forEach((id) =>
     document.getElementById(id)?.addEventListener("click", doOpenLeadModal)
   );
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
@@ -324,6 +329,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── Search ────────────────────────────────────────────────────────────────
   document.getElementById("globalSearchInput")?.addEventListener("input", handleSearch);
+
+  // ── Quote Modal ──────────────────────────────────────────────────────────
+  document.getElementById("openQuoteModal")?.addEventListener("click", openQuoteModalHandler);
+  document.getElementById("cancelQuoteModal")?.addEventListener("click", () => closeModal("quoteModal"));
+  document.getElementById("quoteForm")?.addEventListener("submit", handleQuoteSave);
+
+  // ── Appointment Modal ────────────────────────────────────────────────────
+  document.getElementById("openAppointmentModal")?.addEventListener("click", openAppointmentModalHandler);
+  document.getElementById("cancelAppointmentModal")?.addEventListener("click", () => closeModal("appointmentModal"));
+  document.getElementById("appointmentForm")?.addEventListener("submit", handleAppointmentSave);
+
+  // ── Sale Modal ───────────────────────────────────────────────────────────
+  document.getElementById("openSaleModal")?.addEventListener("click", openSaleModalHandler);
+  document.getElementById("cancelSaleModal")?.addEventListener("click", () => closeModal("saleModal"));
+  document.getElementById("saleForm")?.addEventListener("submit", handleSaleSave);
+
+  // ── Phone number auto-format (Twilio E.164) ──────────────────────────────
+  document.getElementById("leadPhone")?.addEventListener("blur", function () {
+    this.value = formatPhoneE164(this.value);
+  });
 });
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
@@ -833,7 +858,7 @@ async function handleLeadSave(e) {
     company_id: currentCompanyId,
     name:           document.getElementById("leadName")?.value || null,
     email:          document.getElementById("leadEmail")?.value || null,
-    phone:          document.getElementById("leadPhone")?.value || null,
+    phone:          formatPhoneE164(document.getElementById("leadPhone")?.value) || null,
     postcode:       document.getElementById("leadPostcode")?.value || null,
     address:        document.getElementById("leadAddress")?.value || null,
     source:         document.getElementById("leadSource")?.value || null,
@@ -880,6 +905,139 @@ function handleSearch(e) {
       .some((v) => v?.toLowerCase().includes(q))
   );
   renderLeadsTable(filtered);
+}
+
+// ─── Phone Number Auto-Format (E.164 / Twilio) ───────────────────────────────
+function formatPhoneE164(raw) {
+  if (!raw) return raw;
+  let phone = raw.replace(/[\s\-().]/g, "");
+  if (phone.startsWith("+")) return phone;
+  if (phone.startsWith("0")) {
+    phone = "+61" + phone.slice(1);
+  } else if (/^\d{9}$/.test(phone)) {
+    phone = "+61" + phone;
+  }
+  return phone;
+}
+
+// ─── Populate Lead Selector ──────────────────────────────────────────────────
+async function populateLeadSelector(selectId) {
+  try {
+    const { data: leads } = await sb
+      .from("leads")
+      .select("id, name, phone, email")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false });
+    const sel = document.getElementById(selectId);
+    if (sel && leads) {
+      sel.innerHTML = `<option value="">— Select a lead —</option>` +
+        leads.map((l) => {
+          const label = l.name || l.email || l.id;
+          const sub = l.phone ? ` · ${l.phone}` : "";
+          return `<option value="${l.id}">${label}${sub}</option>`;
+        }).join("");
+    }
+  } catch (err) {
+    toast("Failed to load leads.", true);
+  }
+}
+
+// ─── Quote Modal Handlers ────────────────────────────────────────────────────
+async function openQuoteModalHandler() {
+  await populateLeadSelector("quoteLeadSelect");
+  document.getElementById("quoteForm")?.reset();
+  openModal("quoteModal");
+}
+
+async function handleQuoteSave(e) {
+  e.preventDefault();
+  const leadId = document.getElementById("quoteLeadSelect")?.value;
+  if (!leadId) { toast("Please select a lead.", true); return; }
+
+  const payload = {
+    company_id:   currentCompanyId,
+    lead_id:      leadId,
+    quote_number: document.getElementById("quoteNumber")?.value || null,
+    total:        Number(document.getElementById("quoteTotal")?.value) || null,
+    status:       document.getElementById("quoteStatus")?.value || "draft",
+    notes:        document.getElementById("quoteNotes")?.value || null,
+  };
+
+  try {
+    const { error } = await sb.from("quotes").insert(payload);
+    if (error) { toast(error.message, true); return; }
+    toast("Quote created.");
+    closeModal("quoteModal");
+    loadQuotes();
+  } catch (err) {
+    toast("Failed to create quote.", true);
+  }
+}
+
+// ─── Appointment Modal Handlers ──────────────────────────────────────────────
+async function openAppointmentModalHandler() {
+  await populateLeadSelector("apptLeadSelect");
+  document.getElementById("appointmentForm")?.reset();
+  openModal("appointmentModal");
+}
+
+async function handleAppointmentSave(e) {
+  e.preventDefault();
+  const leadId = document.getElementById("apptLeadSelect")?.value;
+  if (!leadId) { toast("Please select a lead.", true); return; }
+
+  const payload = {
+    company_id:       currentCompanyId,
+    lead_id:          leadId,
+    title:            document.getElementById("apptTitle")?.value || "Appointment",
+    appointment_type: document.getElementById("apptType")?.value || "callback",
+    status:           document.getElementById("apptStatus")?.value || "scheduled",
+    start_time:       document.getElementById("apptStart")?.value || null,
+    end_time:         document.getElementById("apptEnd")?.value || null,
+    location:         document.getElementById("apptLocation")?.value || null,
+    notes:            document.getElementById("apptNotes")?.value || null,
+  };
+
+  try {
+    const { error } = await sb.from("appointments").insert(payload);
+    if (error) { toast(error.message, true); return; }
+    toast("Appointment created.");
+    closeModal("appointmentModal");
+    loadAppointments();
+  } catch (err) {
+    toast("Failed to create appointment.", true);
+  }
+}
+
+// ─── Sale Modal Handlers ─────────────────────────────────────────────────────
+async function openSaleModalHandler() {
+  await populateLeadSelector("saleLeadSelect");
+  document.getElementById("saleForm")?.reset();
+  openModal("saleModal");
+}
+
+async function handleSaleSave(e) {
+  e.preventDefault();
+  const leadId = document.getElementById("saleLeadSelect")?.value;
+  if (!leadId) { toast("Please select a lead.", true); return; }
+
+  const outcome = document.getElementById("saleOutcome")?.value || "closed_won";
+  const value = Number(document.getElementById("saleValue")?.value) || null;
+  const notes = document.getElementById("saleNotes")?.value || null;
+
+  try {
+    const updatePayload = { pipeline_stage: outcome };
+    if (value !== null) updatePayload.value = value;
+    if (notes) updatePayload.notes = notes;
+
+    const { error } = await sb.from("leads").update(updatePayload).eq("id", leadId);
+    if (error) { toast(error.message, true); return; }
+    toast("Sale recorded.");
+    closeModal("saleModal");
+    loadSales();
+  } catch (err) {
+    toast("Failed to record sale.", true);
+  }
 }
 
 // ─── Opportunities / Kanban ───────────────────────────────────────────────────
