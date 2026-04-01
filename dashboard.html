@@ -27,6 +27,7 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .brand-copy span{font-size:11px;color:var(--muted)}
 
 .app.collapsed .brand-copy,.app.collapsed .nav-text,.app.collapsed .nav-sec,.app.collapsed .chev,.app.collapsed .count,.app.collapsed .account-copy{display:none}
+.app.collapsed .brand-media{display:none}
 .app.collapsed .nav-item,.app.collapsed .sub-item{justify-content:center;padding:0;width:44px;margin:0 auto}
 .app.collapsed .account{justify-content:center;padding:0;width:44px;margin:0 auto}
 .app.collapsed .sidebar{padding:16px 8px}
@@ -338,7 +339,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="brand-media"><img class="brand-logo" src="https://raw.githubusercontent.com/buckleydigital/ql-hq/main/product-logo.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
         <div class="brand-copy"><b>QuoteLeadsHQ</b><span id="brandCompanyName">Workspace</span></div>
       </div>
-      <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
+      <div style="display:flex;gap:4px">
+        <button id="themeToggle" class="iconbtn" type="button" aria-label="Toggle light and dark mode"><span class="icon" id="themeToggleIcon" data-icon="moon"></span></button>
+        <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
+      </div>
     </div>
 
     <div class="nav">
@@ -367,7 +371,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
-        <button id="themeToggle" class="nav-item" type="button" aria-label="Toggle light and dark mode"><span class="icon" id="themeToggleIcon" data-icon="moon"></span><span class="nav-text">Toggle Theme</span></button>
       </div>
     </div>
 
