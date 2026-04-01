@@ -1,445 +1,999 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>QuoteLeadsHQ Dashboard</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--sidebar-w:260px;--accent:#1f6fff;--bg:#f3f5f9;--surface:#fff;--surface-2:#f7f9fc;--border:#d8e0ec;--text:#121826;--muted:#667284;--side:#f8fafc;--side-hover:#eef3fb;--side-active:#121826;--side-active-text:#fff;--radius:18px;--shadow:0 12px 30px rgba(17,24,39,.08)}
-[data-theme=dark]{--bg:#050505;--surface:#101010;--surface-2:#161616;--border:#252525;--text:#f5f5f5;--muted:#9a9a9a;--side:#000;--side-hover:#131313;--side-active:#f5f5f5;--side-active-text:#050505;--shadow:0 16px 38px rgba(0,0,0,.45)}
-body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:radial-gradient(circle at top,rgba(31,111,255,.08),transparent 24%),var(--bg);color:var(--text)}button,input,select,textarea{font:inherit;color:inherit}button{background:none;border:none;cursor:pointer}.hidden{display:none!important}
+// =============================================================================
+// QuoteLeadsHQ — Dashboard Client
+// =============================================================================
 
-/* ── Layout ─────────────────────────────────────── */
-.app{min-height:100vh;display:grid;grid-template-columns:var(--sidebar-w) 1fr}
-.app.collapsed{grid-template-columns:68px 1fr}
+const SUPABASE_URL = "https://wjadekgptkstfdootuol.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYWRla2dwdGtzdGZkb290dW9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTc3NzQsImV4cCI6MjA5MDU3Mzc3NH0.g45wqe_F9KHh3TVzkq8LimxxT4UiuTZpJZcWkzzD7IM";
 
-/* ── Sidebar ─────────────────────────────────────── */
-.sidebar{background:linear-gradient(180deg,var(--surface),var(--side));border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:16px;transition:width .2s ease}
+// ─── SVG Icon Map (Feather/Lucide stroke icons, viewBox 0 0 24 24) ───────────
+const ICONS = {
+  dashboard:       `<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>`,
+  briefcase:       `<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>`,
+  kanban:          `<rect x="2" y="3" width="5" height="18" rx="1"/><rect x="9" y="3" width="5" height="12" rx="1"/><rect x="16" y="3" width="5" height="8" rx="1"/>`,
+  users:           `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+  file:            `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+  calendar:        `<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>`,
+  chart:           `<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>`,
+  message:         `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,
+  settings:        `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`,
+  spark:           `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
+  team:            `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+  plus:            `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`,
+  search:          `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
+  "panel-left":    `<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>`,
+  "chevron-right": `<polyline points="9 18 15 12 9 6"/>`,
+  login:           `<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>`,
+  logout:          `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
+  menu:            `<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>`,
+  sun:             `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`,
+  moon:            `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`,
+  trash:           `<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>`,
+  edit:            `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`,
+};
 
-/* Brand */
-.brand{display:flex;align-items:center;gap:10px;min-width:0}
-.brand-media{width:38px;height:38px;display:grid;place-items:center;flex-shrink:0}
-.brand-logo{width:38px;height:38px;object-fit:contain;display:block}
-.mark{width:38px;height:38px;border-radius:12px;background:var(--side-active);color:var(--side-active-text);display:none;place-items:center;font-weight:600;font-size:12px;flex-shrink:0}
-.brand-copy{min-width:0}
-.brand-copy b{display:block;font-size:13px;font-weight:600}
-.brand-copy span{font-size:11px;color:var(--muted)}
-
-/* Collapsed sidebar: hide text-only elements */
-.app.collapsed .brand-copy,
-.app.collapsed .nav-text,
-.app.collapsed .nav-sec,
-.app.collapsed .chev,
-.app.collapsed .count,
-.app.collapsed .account-copy{display:none}
-
-/* Collapsed: center icons in nav items */
-.app.collapsed .nav-item,
-.app.collapsed .sub-item{justify-content:center;padding:0;width:44px;margin:0 auto}
-.app.collapsed .account{justify-content:center;padding:0;width:44px;margin:0 auto}
-.app.collapsed .sidebar{padding:16px 8px}
-.app.collapsed .sub{display:none!important}
-.app.collapsed .brand{justify-content:center}
-.app.collapsed .top-side{justify-content:center}
-
-/* Buttons */
-.iconbtn,.btn,.btn2,.btn-danger{min-height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:13px}
-.iconbtn{width:40px;padding:0}
-.btn2{background:var(--text);color:var(--bg);border-color:var(--text)}
-[data-theme=dark] .btn2{background:#f5f5f5;color:#050505;border-color:#f5f5f5}
-.btn-danger{color:#c53535;border-color:rgba(197,53,53,.28)}
-
-/* Nav sections */
-.top-side{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.nav-sec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 10px}
-.nav,.sub{display:flex;flex-direction:column;gap:3px}
-.nav-item,.sub-item,.account{min-height:42px;padding:0 10px;border-radius:12px;display:flex;align-items:center;gap:10px;color:var(--text);border:1px solid transparent;text-align:left;transition:background .15s}
-.nav-item:hover,.sub-item:hover,.account:hover{background:var(--side-hover)}
-.nav-item.active,.sub-item.active{background:var(--side-active);color:var(--side-active-text)}
-.nav-text{flex:1;font-size:13px;font-weight:500}
-.count{min-width:22px;height:22px;border-radius:999px;background:var(--surface-2);display:grid;place-items:center;font-size:11px;font-weight:700}
-.sub{margin-left:12px;padding-left:12px;border-left:1px solid var(--border);max-height:500px;overflow:hidden}
-.sub.closed{max-height:0}
-
-/* Account footer */
-.foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--border)}
-.account{width:100%;background:var(--surface)}
-.avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--side-active);color:var(--side-active-text);font-size:11px;font-weight:700;flex-shrink:0}
-.account-copy b{display:block;font-size:13px}
-.account-copy span{font-size:11px;color:var(--muted)}
-
-/* ── Main ─────────────────────────────────────── */
-.main{display:flex;flex-direction:column;min-width:0}
-.top{min-height:72px;padding:14px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;position:sticky;top:0;background:rgba(255,255,255,.82);backdrop-filter:blur(14px);z-index:3}
-[data-theme=dark] .top{background:rgba(5,5,5,.88)}
-.heading{flex:1;min-width:0}
-.heading h1{font-size:18px;line-height:1.1;font-weight:500}
-.heading p{font-size:12px;color:var(--muted);margin-top:4px}
-.search{width:min(300px,32vw);display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow)}
-.search input{width:100%;border:none;background:transparent;outline:none;font-size:13px}
-
-/* ── Content ─────────────────────────────────────── */
-.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.content{padding:20px;display:flex;flex-direction:column;gap:16px}
-.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
-.grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
-.gridset{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
-.card,.panel,.auth-card,.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
-.card{padding:16px}
-.stat-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
-.stat-val{font-size:26px;font-weight:500}
-.muted{color:var(--muted);font-size:12px}
-.chip,.pill{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--border);background:var(--surface-2);display:inline-flex;align-items:center;gap:6px}
-
-/* Panels */
-.panel-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
-.panel-h h2{font-size:14px;font-weight:500}
-.panel-h p{font-size:12px;color:var(--muted);margin-top:3px}
-.panel-b{padding:18px}
-.empty{min-height:180px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;border:1px dashed var(--border);border-radius:14px;background:linear-gradient(180deg,transparent,var(--surface-2));padding:20px;color:var(--muted)}
-
-/* Charts / Lists */
-.bars{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;min-height:170px}
-.bar-col{display:flex;flex-direction:column;align-items:center;gap:8px}
-.bar{width:100%;max-width:44px;min-height:10px;border-radius:999px 999px 8px 8px;background:linear-gradient(180deg,var(--text),rgba(31,111,255,.65))}
-[data-theme=dark] .bar{background:linear-gradient(180deg,#f5f5f5,#3c3c3c)}
-.list{display:flex;flex-direction:column;gap:10px}
-.item{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);align-items:center}
-.item h3{font-size:13px;font-weight:500}
-.item p,.cell{font-size:12px;color:var(--muted);margin-top:3px}
-
-/* Table */
-.table-wrap{overflow:auto}
-table{width:100%;border-collapse:collapse;min-width:920px}
-th,td{padding:12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;font-size:12px}
-th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500}
-td strong{display:block;font-size:13px;margin-bottom:3px;font-weight:500}
-
-/* Kanban */
-.kanban{display:grid;grid-template-columns:repeat(6,minmax(220px,1fr));gap:12px;overflow:auto}
-.col{background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:340px}
-.colhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.colhead b{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase}
-.cards{display:flex;flex-direction:column;gap:8px;min-height:230px}
-.kcard{padding:12px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);cursor:grab}
-.kcard h3{font-size:13px;font-weight:500;margin-bottom:4px}
-.kcard p{font-size:12px;color:var(--muted);margin-bottom:8px}
-.money{font-size:13px;font-weight:500}
-
-/* Forms */
-.form2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.field,.full{display:flex;flex-direction:column;gap:6px}
-.full{grid-column:1/-1}
-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
-input,select,textarea{width:100%;min-height:42px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);padding:10px 12px;outline:none;font-size:13px}
-textarea{min-height:100px;resize:vertical}
-.tags{display:flex;flex-wrap:wrap;gap:6px}
-.tag{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border);font-size:11px;font-weight:700}
-.stack{display:flex;flex-direction:column;gap:14px}
-.notice{padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font-size:12px;color:var(--muted);line-height:1.6}
-
-/* Modals */
-.modal{position:fixed;inset:0;background:rgba(5,5,5,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:10}
-.modal.open{display:flex}
-.modal-card{width:min(940px,100%);max-height:calc(100vh - 40px);overflow:auto}
-.modal-card.small{width:min(600px,100%)}
-.mh,.ah{padding:20px 22px 0}
-.mh h2,.ah h1{font-size:18px;font-weight:500}
-.mh p,.ah p{margin-top:6px;color:var(--muted);font-size:13px;line-height:1.6}
-.mb,.ab{padding:20px 22px}
-.mf{padding:0 22px 20px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.helper{font-size:12px;color:var(--muted);line-height:1.5}
-.customs{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.custom-row{display:grid;grid-template-columns:1fr 160px auto;gap:10px;align-items:end}
-.mini-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.split-panels{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
-.mini-card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
-.mini-card h3{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-weight:500}
-.mini-card b{font-size:16px;display:block;font-weight:500}
-.table-lite{display:flex;flex-direction:column;gap:10px}
-.table-lite .row{display:grid;grid-template-columns:1.3fr 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
-.table-lite .row.two{grid-template-columns:1.2fr 1fr}
-.thread-list,.run-list{display:flex;flex-direction:column;gap:10px}
-.thread,.run{padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
-.thread h3,.run h3{font-size:13px;font-weight:500;margin-bottom:4px}
-.thread p,.run p{font-size:12px;color:var(--muted);line-height:1.5}
-.meta-line{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.check-row{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font-weight:400;text-transform:none;letter-spacing:0}
-.check-row input{width:auto;min-height:auto;padding:0}
-.form-note{font-size:12px;color:var(--muted);line-height:1.5}
-
-/* Auth */
-.auth{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top left,rgba(31,111,255,.14),transparent 24%),radial-gradient(circle at bottom right,rgba(17,24,39,.16),transparent 28%),var(--bg)}
-.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
-.auth-side{padding:30px;background:linear-gradient(180deg,var(--text),#283245);color:#f8fbff;display:flex;flex-direction:column;justify-content:space-between;gap:20px}
-[data-theme=dark] .auth-side{background:linear-gradient(180deg,#0d0d0d,#1a1a1a)}
-.auth-side p,.auth-side li{color:rgba(248,251,255,.76);font-size:13px}
-.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:10px}
-.auth-main{padding:30px}
-.switch{display:flex;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:5px;margin-bottom:16px}
-.switch button{flex:1;min-height:36px;border-radius:10px;font-weight:700;font-size:13px;color:var(--muted)}
-.switch button.active{background:var(--surface);color:var(--text)}
-.auth-form{display:flex;flex-direction:column;gap:14px}
-
-/* Toasts */
-.toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
-.toast{min-width:260px;max-width:340px;padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px}
-.err{border-color:rgba(197,53,53,.3)}
-
-/* Icons */
-.icon{width:16px;height:16px;display:inline-block;flex-shrink:0}
-.icon svg{width:100%;height:100%;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-
-/* Conversations */
-.conv-layout{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:580px}
-.conv-sidebar{border-radius:var(--radius) 0 0 var(--radius);border-right:1px solid var(--border)}
-.conv-main{border-radius:0 var(--radius) var(--radius) 0;display:flex;flex-direction:column}
-.conv-list{display:flex;flex-direction:column}
-.conv-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;flex-direction:column;gap:3px}
-.conv-item:hover{background:var(--side-hover)}
-.conv-item.active{background:var(--side-active);color:var(--side-active-text)}
-.conv-item.active .muted{color:rgba(255,255,255,.6)}
-.conv-item h3{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
-.conv-item p{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.conv-item .conv-time{font-size:11px;color:var(--muted);margin-left:auto;flex-shrink:0}
-.conv-header{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.conv-lead-info h2{font-size:14px;font-weight:500}
-.conv-lead-actions{display:flex;align-items:center;gap:10px}
-.ai-toggle{display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);font-size:11px;font-weight:700;user-select:none}
-.ai-toggle input{width:auto;min-height:auto;padding:0;accent-color:var(--accent)}
-.ai-toggle-status{font-weight:700}
-.ai-toggle-status.on{color:#16a34a}
-.ai-toggle-status.off{color:#dc2626}
-.conv-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 300px);min-height:280px}
-.msg{max-width:74%;padding:8px 12px;border-radius:14px;font-size:12px;line-height:1.5;position:relative}
-.msg.inbound{align-self:flex-start;background:var(--surface-2);border:1px solid var(--border);border-bottom-left-radius:3px}
-.msg.outbound{align-self:flex-end;background:var(--text);color:var(--bg);border-bottom-right-radius:3px}
-[data-theme=dark] .msg.outbound{background:#f5f5f5;color:#050505}
-.msg-meta{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:10px;opacity:.7}
-.msg-badge{padding:2px 5px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase}
-.msg-badge.ai{background:rgba(139,92,246,.15);color:#8b5cf6}
-.msg-badge.human{background:rgba(16,163,74,.15);color:#16a34a}
-[data-theme=dark] .msg.outbound .msg-badge.ai{background:rgba(139,92,246,.25);color:#a78bfa}
-[data-theme=dark] .msg.outbound .msg-badge.human{background:rgba(16,163,74,.25);color:#22c55e}
-.conv-compose{padding:14px 18px;border-top:1px solid var(--border)}
-.conv-input-row{display:flex;gap:8px}
-.conv-input-row input{flex:1}
-.conv-compose-meta{margin-top:5px;font-size:11px}
-
-/* Mobile overlay (hidden on desktop) */
-.mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15}
-#mobileMenuToggle{display:none}
-
-/* ── Responsive ─────────────────────────────────────── */
-@media(max-width:1180px){
-  .grid4,.grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:1fr}
-  .search{width:100%;max-width:none;order:3}
-  .top{flex-wrap:wrap;height:auto}
+// Inject SVGs into every [data-icon] element currently in the DOM
+function renderIcons() {
+  document.querySelectorAll("[data-icon]").forEach((el) => {
+    const p = ICONS[el.dataset.icon];
+    if (p) el.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${p}</svg>`;
+  });
 }
 
-@media(max-width:860px){
-  /* Force single-column layout — sidebar removed from grid flow */
-  .app,.app.collapsed{grid-template-columns:1fr!important}
+function updateThemeIcon() {
+  const btn = document.getElementById("themeToggle");
+  if (!btn) return;
+  const dark = document.documentElement.dataset.theme === "dark";
+  btn.innerHTML = `<span class="icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${dark ? ICONS.sun : ICONS.moon}</svg></span>`;
+}
 
-  /* Sidebar becomes a fixed overlay */
-  .sidebar{
-    position:fixed!important;
-    top:0;left:0;bottom:0;
-    width:min(272px,85vw)!important;
-    z-index:16;
-    overflow-y:auto;
-    transform:translateX(-105%);
-    transition:transform .25s ease;
-    border-right:1px solid var(--border)!important;
-    border-bottom:none!important;
+// ─── State ───────────────────────────────────────────────────────────────────
+let sb;
+let currentUser        = null;
+let currentCompanyId   = null;
+let currentConvId      = null;
+let currentLeadId      = null;
+let customFields       = [];
+let allLeads           = [];
+
+// ─── Bootstrap ──────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  renderIcons();
+
+  await waitFor(() => window.supabase);
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Apply saved theme
+  if (localStorage.getItem("theme") === "dark") {
+    document.documentElement.dataset.theme = "dark";
   }
-  .app.mobile-open .sidebar{transform:translateX(0)}
-  .app.mobile-open .mobile-overlay{display:block}
+  updateThemeIcon();
 
-  /* Show mobile hamburger, hide desktop collapse toggle */
-  #mobileMenuToggle{display:inline-flex!important}
-  #sidebarToggle{display:none!important}
-
-  /* Restore normal item padding inside mobile overlay sidebar */
-  .app.collapsed .nav-item,
-  .app.collapsed .sub-item,
-  .app.collapsed .account{justify-content:flex-start;padding:0 10px;width:auto;margin:0}
-  .app.collapsed .brand{justify-content:flex-start}
-  .app.collapsed .top-side{justify-content:space-between}
-  .app.collapsed .sub{display:flex!important}
-
-  /* Content padding */
-  .content,.top,.auth-main,.auth-side,.mb,.mh,.mf{padding-left:16px;padding-right:16px}
-  .top{position:static}
-  .heading{width:100%}
-  .actions{width:100%}
-  .actions .btn,.actions .btn2,.actions .iconbtn{flex:1}
-  .form2,.custom-row,.grid4,.mini-grid,.split-panels{grid-template-columns:1fr}
-  .item,.table-lite .row{grid-template-columns:1fr}
-  .kanban{grid-template-columns:1fr}
-  .table-wrap{overflow:visible}
-  table,thead,tbody,tr,th,td{display:block;min-width:0}
-  thead{display:none}
-  tbody{display:flex;flex-direction:column;gap:12px}
-  tr{border:1px solid var(--border);border-radius:14px;background:var(--surface-2);padding:12px}
-  td{padding:0 0 10px;border-bottom:none}
-  td:last-child{padding-bottom:0}
-  .auth{padding:10px}
-  .auth-card{border-radius:18px}
-  .search{width:100%}
-}
-</style>
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js"></script>
-</head>
-<body>
-<div id="authView" class="auth">
-  <div class="auth-card">
-    <section class="auth-side">
-      <div>
-        <div class="brand"><div class="brand-media"><img class="brand-logo" src="https://raw.githubusercontent.com/buckleydigital/ql-hq/main/product-logo.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div><div class="brand-copy"><b>QuoteLeadsHQ</b><span>Secure CRM workspace</span></div></div>
-        <div class="ah" style="padding:36px 0 0"><h1>Protected access for your team and lead data</h1><p>This workspace is only available to users with an account. Log in to manage company details, pipeline stages, and lead capture.</p></div>
-      </div>
-      <ul><li>Account-based access gate with session persistence.</li><li>Lead records stored in Supabase with editable custom fields.</li><li>Company profile and password management inside settings.</li></ul>
-    </section>
-    <section class="auth-main">
-      <div id="loginPane"><div class="ah"><h1>Welcome back</h1><p>Use your account email and password to access the dashboard.</p></div><div class="ab"><form id="loginForm" class="auth-form"><div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required></div><div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required></div><button class="btn2" type="submit"><span class="icon" data-icon="login"></span><span>Log In</span></button></form></div></div>
-    </section>
-  </div>
-</div>
-
-<div id="appView" class="app hidden">
-  <!-- Mobile overlay backdrop -->
-  <div id="mobileOverlay" class="mobile-overlay"></div>
-
-  <aside class="sidebar">
-    <div class="top-side">
-      <div class="brand">
-        <div class="brand-media"><img class="brand-logo" src="https://raw.githubusercontent.com/buckleydigital/ql-hq/main/product-logo.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
-        <div class="brand-copy"><b>QuoteLeadsHQ</b><span id="brandCompanyName">Workspace</span></div>
-      </div>
-      <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
-    </div>
-
-    <div class="nav">
-      <button class="nav-item" data-page="dashboard" type="button"><span class="icon" data-icon="dashboard"></span><span class="nav-text">Dashboard</span></button>
-    </div>
-
-    <div>
-      <div class="nav-sec">CRM</div>
-      <div class="nav">
-        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">CRM</span><span id="crmCount" class="count">0</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub" id="crmSubmenu">
-          <button class="sub-item" data-page="opportunities" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Opportunities</span></button>
-          <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
-          <button class="sub-item" data-page="quotes" type="button"><span class="icon" data-icon="file"></span><span class="nav-text">Quotes</span></button>
-          <button class="sub-item" data-page="appointments" type="button"><span class="icon" data-icon="calendar"></span><span class="nav-text">Appointments</span></button>
-          <button class="sub-item" data-page="sales" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Sales</span></button>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <div class="nav-sec">Workspace</div>
-      <div class="nav">
-        <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
-        <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
-        <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
-        <button class="nav-item" data-page="sales-reps" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Sales Reps</span></button>
-      </div>
-    </div>
-
-    <div class="foot">
-      <button id="sidebarAccountButton" class="account" type="button">
-        <div id="sidebarAvatar" class="avatar">AA</div>
-        <div class="account-copy"><b id="sidebarAccountName">Account Owner</b><span id="sidebarAccountMeta">company@example.com</span></div>
-      </button>
-    </div>
-  </aside>
-
-  <main class="main">
-    <header class="top">
-      <div class="heading"><h1 id="pageTitle">Dashboard</h1><p id="pageSubtitle">A live view of your lead and pipeline workspace.</p></div>
-      <!-- Mobile hamburger — visible only on small screens -->
-      <button id="mobileMenuToggle" class="iconbtn" type="button" aria-label="Open menu"><span class="icon" data-icon="menu"></span></button>
-      <div class="search"><span class="icon" data-icon="search"></span><input id="globalSearchInput" type="search" placeholder="Search leads, email, phone, postcode"></div>
-      <div class="actions">
-        <button id="themeToggle" class="iconbtn" type="button"></button>
-        <button id="openLeadModalTop" class="btn" type="button"><span class="icon" data-icon="plus"></span><span>New Lead</span></button>
-        <button id="logoutButton" class="btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button>
-      </div>
-    </header>
-
-    <section class="content">
-      <div id="page-dashboard" class="page">
-        <div class="grid4">
-          <article class="card"><div class="stat-top"><span class="icon" data-icon="users"></span><span id="leadGrowthChip" class="chip">No change</span></div><div id="statLeadCount" class="stat-val">0</div><div class="muted">Total leads in the database</div></article>
-          <article class="card"><div class="stat-top"><span class="icon" data-icon="kanban"></span><span id="qualifyingChip" class="chip">0 qualifying</span></div><div id="statOpenPipeline" class="stat-val">0</div><div class="muted">Open opportunities</div></article>
-          <article class="card"><div class="stat-top"><span class="icon" data-icon="file"></span><span id="quoteChip" class="chip">0 quoted</span></div><div id="statQuotes" class="stat-val">0</div><div class="muted">Quoted opportunities</div></article>
-          <article class="card"><div class="stat-top"><span class="icon" data-icon="settings"></span><span id="customFieldChip" class="chip">0 fields</span></div><div id="statCustomFields" class="stat-val">0</div><div class="muted">Custom lead fields configured</div></article>
-        </div>
-        <div class="grid2">
-          <section class="panel"><div class="panel-h"><div><h2>Lead Volume</h2><p>Last seven days based on created lead records.</p></div></div><div class="panel-b"><div id="leadVolumeChart" class="bars"></div></div></section>
-          <section class="panel"><div class="panel-h"><div><h2>Database Health</h2><p>Empty-state ready with no seeded placeholder content.</p></div></div><div class="panel-b"><div class="notice">Leads, opportunities, and custom fields now start empty. Once you add records, every dashboard metric and pipeline column updates from the same Supabase workspace.</div></div></section>
-        </div>
-        <div class="grid2">
-          <section class="panel"><div class="panel-h"><div><h2>Recent Leads</h2><p>Newest saved lead records appear here.</p></div><button class="btn" data-page-link="leads" type="button">View all</button></div><div class="panel-b"><div id="recentLeadsPanel"></div></div></section>
-          <section class="panel"><div class="panel-h"><div><h2>Pipeline Snapshot</h2><p>Opportunity stages update from live lead status.</p></div></div><div class="panel-b"><div id="pipelineSnapshotPanel" class="list"></div></div></section>
-        </div>
-      </div>
-
-      <div id="page-leads" class="page hidden"><section class="panel"><div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button><button id="openLeadModal" class="btn2" type="button">New Lead</button></div></div><div class="panel-b"><div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div><div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Add your first lead to start filling the CRM with real records instead of placeholder data.</p><button id="openLeadModalEmpty" class="btn2" type="button">Add First Lead</button></div></div></section></div>
-
-      <div id="page-opportunities" class="page hidden"><section class="panel"><div class="panel-h"><div><h2>Pipeline Board</h2><p>Qualifying has been added directly after New Lead.</p></div><button id="openLeadModalPipeline" class="btn2" type="button">New Opportunity</button></div><div class="panel-b"><div id="kanbanBoard" class="kanban"></div></div></section></div>
-
-      <div id="page-quotes" class="page hidden"><section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>Quoted opportunities are generated from live lead status.</p></div></div><div class="panel-b" id="quotesPanel"></div></section></div>
-
-      <div id="page-appointments" class="page hidden"><section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>This section is ready for your next scheduling workflow.</p></div></div><div class="panel-b"><div class="empty"><span class="icon" data-icon="calendar"></span><h3>No appointments configured</h3><p>Appointment management is available for future integration without any placeholder records.</p></div></div></section></div>
-
-      <div id="page-sales" class="page hidden"><section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div></div><div id="salesPanel" class="panel-b"></div></section></div>
-
-      <div id="page-conversations" class="page hidden"><div class="conv-layout"><aside class="conv-sidebar panel"><div class="panel-h"><div><h2>Conversations</h2><p>SMS threads</p></div></div><div class="panel-b" style="padding:0"><div id="conversationList" class="conv-list"></div><div id="convEmptyState" class="empty" style="margin:14px"><span class="icon" data-icon="message"></span><h3>No conversations</h3><p>Inbound SMS threads will appear here.</p></div></div></aside><section class="conv-main panel"><div id="convDetailEmpty" class="empty" style="min-height:460px"><span class="icon" data-icon="message"></span><h3>Select a conversation</h3><p>Pick a thread from the left to view messages.</p></div><div id="convDetail" class="hidden"><div class="conv-header"><div class="conv-lead-info"><h2 id="convLeadName">Lead Name</h2><span id="convLeadPhone" class="muted"></span></div><div class="conv-lead-actions"><label class="ai-toggle" title="Toggle AI for this lead"><input id="convAiToggle" type="checkbox" checked><span class="ai-toggle-label">AI</span><span id="convAiStatus" class="ai-toggle-status on">ON</span></label><span id="convLeadScore" class="chip">Score: --</span></div></div><div id="convMessages" class="conv-messages"></div><div class="conv-compose"><form id="convSendForm"><div class="conv-input-row"><input id="convMessageInput" type="text" placeholder="Type a message..." autocomplete="off"><button class="btn2" type="submit">Send</button></div><div class="conv-compose-meta"><span class="muted">Sent as company, not AI</span></div></form></div></div></section></div></div>
-
-      <div id="page-ai-settings" class="page hidden"><div class="stack"><section class="panel"><div class="panel-h"><div><h2>AI Settings</h2><p>Manage prompt, Twilio number ownership, and SMS workflow switches.</p></div></div><div class="panel-b"><div class="mini-grid"><article class="mini-card"><h3>Account Type</h3><b id="accountTypeValue">External</b><span id="accountTypeHelp" class="muted">External workspaces supply their own provider keys.</span></article><article class="mini-card"><h3>Key Source</h3><b id="keySourceValue">Customer Keys</b><span id="keySourceHelp" class="muted">Inbound workflow resolves keys from your company settings.</span></article><article class="mini-card"><h3>Twilio Numbers</h3><b id="twilioCountValue">0</b><span id="twilioCountHelp" class="muted">Assign receiving numbers to this company before enabling live SMS automation.</span></article></div></div></section><section class="panel"><div class="panel-h"><div><h2>SMS Agent</h2><p>These fields drive the inbound SMS workflow contract.</p></div></div><div class="panel-b"><form id="aiSettingsForm" class="stack"><div class="form2"><div class="field"><label for="aiModel">Model</label><input id="aiModel" name="model" type="text"></div><div class="field"><label for="aiTwilioNumber">Primary Twilio Number</label><input id="aiTwilioNumber" name="twilioNumber" type="text"></div><div class="field"><label for="aiReplyDelay">Reply Delay Seconds</label><input id="aiReplyDelay" name="replyDelay" type="number" min="0"></div><div class="field"><label for="aiMaxWords">Max SMS Words</label><input id="aiMaxWords" name="maxSmsWords" type="number" min="1"></div><div class="field"><label class="check-row"><input id="aiEnabled" name="isActive" type="checkbox"><span>AI Enabled</span></label></div><div class="field"><label class="check-row"><input id="aiAutoReply" name="autoReply" type="checkbox"><span>Auto Reply</span></label></div><div class="field"><label class="check-row"><input id="aiCallbackEnabled" name="callbackEnabled" type="checkbox"><span>Call-back Enabled</span></label></div><div class="field"><label class="check-row"><input id="aiOnsiteEnabled" name="onsiteEnabled" type="checkbox"><span>On-site Enabled</span></label></div><div class="field"><label class="check-row"><input id="aiQuoteDraftingEnabled" name="quoteDraftingEnabled" type="checkbox"><span>Quote Drafting Enabled</span></label></div><div class="field"><label class="check-row"><input id="aiLeadScoringEnabled" name="leadScoringEnabled" type="checkbox"><span>Lead Scoring Enabled</span></label></div></div><div class="full"><label for="aiSystemPrompt">SMS Prompt</label><textarea id="aiSystemPrompt" name="systemPrompt"></textarea><div class="form-note">External users can fully edit this prompt. Internal workspaces can still view the active workflow behavior here.</div></div><div class="actions"><button class="btn2" type="submit">Save AI Settings</button></div></form></div></section><div class="split-panels"><section class="panel"><div class="panel-h"><div><h2>Twilio Number Ownership</h2><p>Receiving numbers are matched to companies before the workflow loads leads and history.</p></div></div><div class="panel-b"><form id="twilioNumberForm" class="stack"><div class="form2"><div class="field"><label for="twilioPhoneNumber">Phone Number</label><input id="twilioPhoneNumber" name="phoneNumber" type="text" placeholder="+61400000000"></div><div class="field"><label for="twilioFriendlyName">Friendly Name</label><input id="twilioFriendlyName" name="friendlyName" type="text" placeholder="Main SMS Line"></div></div><div class="actions"><button class="btn" type="submit">Add Number</button></div></form><div id="twilioNumbersTable" class="table-lite" style="margin-top:14px"></div></div></section><section class="panel"><div class="panel-h"><div><h2>Workflow Visibility</h2><p>Recent automation runs help verify routing, scoring, callback decisions, and quote drafting.</p></div></div><div class="panel-b"><div id="workflowRunSummary" class="run-list"></div></div></section></div></div></div>
-
-      <div id="page-sales-reps" class="page hidden"><div class="split-panels"><section class="panel"><div class="panel-h"><div><h2>Sales Reps</h2><p>Add active reps from existing company members and control their lead visibility.</p></div></div><div class="panel-b"><form id="salesRepForm" class="stack"><div class="form2"><div class="field"><label for="salesRepUser">Company Member</label><select id="salesRepUser" name="userId"></select></div><div class="field"><label for="salesRepName">Rep Name</label><input id="salesRepName" name="name" type="text" placeholder="Sales rep name"></div><div class="field"><label for="salesRepEmail">Rep Email</label><input id="salesRepEmail" name="email" type="email" placeholder="name@company.com"></div><div class="field"><label for="salesRepPhone">Rep Phone</label><input id="salesRepPhone" name="phone" type="tel" placeholder="+61400000000"></div></div><div class="actions"><button class="btn2" type="submit">Add Sales Rep</button></div></form></div></section><section class="panel"><div class="panel-h"><div><h2>Active Reps</h2><p>Only real sales reps in Supabase appear here.</p></div></div><div class="panel-b"><div id="salesRepsList" class="table-lite"></div></div></section></div></div>
-
-      <div id="page-general-settings" class="page hidden"><div class="gridset"><section class="panel"><div class="panel-h"><div><h2>Company and Account</h2><p>Edit company name, email, phone, and the signed-in user profile.</p></div></div><div class="panel-b"><form id="companyProfileForm" class="stack"><div class="form2"><div class="field"><label for="settingsCompanyName">Company Name</label><input id="settingsCompanyName" name="companyName" type="text" required></div><div class="field"><label for="settingsCompanyEmail">Company Email</label><input id="settingsCompanyEmail" name="companyEmail" type="email" required></div><div class="field"><label for="settingsCompanyPhone">Company Phone</label><input id="settingsCompanyPhone" name="companyPhone" type="tel" required></div><div class="field"><label for="settingsOwnerName">Your Name</label><input id="settingsOwnerName" name="ownerName" type="text" required></div><div class="field"><label for="settingsOwnerEmail">Your Email</label><input id="settingsOwnerEmail" name="ownerEmail" type="email" required></div><div class="field"><label for="settingsOwnerPhone">Your Phone</label><input id="settingsOwnerPhone" name="ownerPhone" type="tel" required></div></div><div class="actions"><button class="btn2" type="submit">Save Profile</button></div></form></div></section><div class="stack"><section class="panel"><div class="panel-h"><div><h2>Password</h2><p>Update the password protecting this account.</p></div></div><div class="panel-b"><form id="passwordForm" class="stack"><div class="field"><label for="currentPassword">Current Password</label><input id="currentPassword" name="currentPassword" type="password" required></div><div class="field"><label for="newPassword">New Password</label><input id="newPassword" name="newPassword" type="password" minlength="8" required></div><div class="field"><label for="confirmNewPassword">Confirm New Password</label><input id="confirmNewPassword" name="confirmNewPassword" type="password" minlength="8" required></div><div class="actions"><button class="btn2" type="submit">Change Password</button></div></form></div></section><section class="panel"><div class="panel-h"><div><h2>Custom Lead Fields</h2><p>Adding a field updates the Supabase schema used by lead records.</p></div></div><div class="panel-b"><div id="settingsCustomFields"></div><div class="actions" style="margin-top:14px"><button id="openCustomFieldModalSettings" class="btn" type="button">Create Custom Field</button></div></div></section></div></div></div>
-    </section>
-  </main>
-</div>
-
-<div id="leadModal" class="modal"><div class="modal-card"><div class="mh"><h2 id="leadModalTitle">New Lead</h2><p>Every lead stores the core contact fields plus any custom database-backed fields you create.</p></div><div class="mb"><form id="leadForm"><input id="leadId" name="id" type="hidden"><div class="form2"><div class="field"><label for="leadName">Name</label><input id="leadName" name="name" type="text" required></div><div class="field"><label for="leadEmail">Email</label><input id="leadEmail" name="email" type="email"></div><div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" type="tel"></div><div class="field"><label for="leadPostcode">Postcode</label><input id="leadPostcode" name="postcode" type="text"></div><div class="full"><label for="leadAddress">Address</label><input id="leadAddress" name="address" type="text"></div><div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option>Website</option><option>Phone Call</option><option>Referral</option><option>Google Ads</option><option>Facebook Ads</option><option>Manual Entry</option></select></div><div class="field"><label for="leadStatus">Opportunity Status</label><select id="leadStatus" name="status"><option>New Lead</option><option>Qualifying</option><option>Quote in Progress</option><option>Quoted</option><option>Closed Won</option><option>Closed Lost</option></select></div><div class="field"><label for="leadValue">Estimated Value</label><input id="leadValue" name="value" type="number" min="0" step="0.01"></div><div class="full"><label for="leadNotes">Notes</label><textarea id="leadNotes" name="notes"></textarea></div></div><div id="customFieldInputs" class="customs"></div></form></div><div class="mf"><div class="helper">Custom fields saved here are attached directly to each lead record.</div><div class="actions"><button id="cancelLeadModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="leadForm">Save Lead</button></div></div></div></div>
-
-<div id="customFieldModal" class="modal"><div class="modal-card small"><div class="mh"><h2>Create Custom Field</h2><p>Fields created here are stored in the database configuration and automatically appear on the lead form.</p></div><div class="mb"><form id="customFieldForm"><div class="custom-row"><div class="field"><label for="customFieldLabel">Field Label</label><input id="customFieldLabel" name="label" type="text" required></div><div class="field"><label for="customFieldType">Field Type</label><select id="customFieldType" name="type"><option value="text">Text</option><option value="textarea">Long Text</option><option value="number">Number</option><option value="date">Date</option></select></div><button class="btn2" type="submit">Add Field</button></div><div class="helper" style="margin-top:8px">Field names are normalized internally so new leads can store values reliably.</div></form></div><div class="mf"><div class="helper">Removing a field also clears stored values for that field from existing leads.</div><div class="actions"><button id="closeCustomFieldModal" class="btn" type="button">Close</button></div></div></div></div>
-
-<div id="toastWrap" class="toast-wrap"></div>
-
-<script>
-// Mobile sidebar toggle — runs immediately, does not conflict with dashboard-supabase.js
-(function () {
-  var app = document.getElementById('appView');
-
-  function openMobile() { app.classList.add('mobile-open'); }
-  function closeMobile() { app.classList.remove('mobile-open'); }
-
-  // Mobile hamburger button
-  document.getElementById('mobileMenuToggle').addEventListener('click', function () {
-    app.classList.toggle('mobile-open');
+  // Auth state
+  sb.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) { currentUser = session.user; showApp(); }
+    else               { currentUser = null;          showAuth(); }
   });
 
-  // Tap overlay to close
-  document.getElementById('mobileOverlay').addEventListener('click', closeMobile);
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) { currentUser = session.user; showApp(); }
+  else showAuth();
 
-  // Close mobile menu when any nav destination is tapped
-  document.querySelectorAll('[data-page], [data-page-link]').forEach(function (el) {
-    el.addEventListener('click', function () {
-      if (window.innerWidth <= 860) closeMobile();
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const { error } = await sb.auth.signInWithPassword({
+      email:    document.getElementById("loginEmail").value,
+      password: document.getElementById("loginPassword").value,
     });
+    if (error) toast(error.message, true);
   });
-})();
-</script>
-</body>
-</html>
+
+  document.getElementById("logoutButton")?.addEventListener("click", () => sb.auth.signOut());
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  document.querySelectorAll("[data-page]").forEach((btn) =>
+    btn.addEventListener("click", () => navigateTo(btn.dataset.page))
+  );
+  document.querySelectorAll("[data-page-link]").forEach((btn) =>
+    btn.addEventListener("click", () => navigateTo(btn.dataset.pageLink))
+  );
+
+  // ── Sidebar ──────────────────────────────────────────────────────────────
+  document.getElementById("sidebarToggle")?.addEventListener("click", () => {
+    document.getElementById("appView")?.classList.toggle("collapsed");
+  });
+
+  document.getElementById("crmToggle")?.addEventListener("click", () => {
+    document.getElementById("crmSubmenu")?.classList.toggle("closed");
+  });
+
+  // ── Theme ────────────────────────────────────────────────────────────────
+  document.getElementById("themeToggle")?.addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme === "dark";
+    document.documentElement.dataset.theme = dark ? "" : "dark";
+    localStorage.setItem("theme", dark ? "light" : "dark");
+    updateThemeIcon();
+  });
+
+  // ── Lead Modal ───────────────────────────────────────────────────────────
+  const doOpenLeadModal = () => { resetLeadForm(); openModal("leadModal"); };
+  ["openLeadModalTop","openLeadModal","openLeadModalEmpty","openLeadModalPipeline"].forEach((id) =>
+    document.getElementById(id)?.addEventListener("click", doOpenLeadModal)
+  );
+  document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
+  document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
+
+  // ── Custom Field Modal ───────────────────────────────────────────────────
+  const doOpenCFModal = () => openModal("customFieldModal");
+  ["openCustomFieldModalFromLeads","openCustomFieldModalSettings"].forEach((id) =>
+    document.getElementById(id)?.addEventListener("click", doOpenCFModal)
+  );
+  document.getElementById("closeCustomFieldModal")?.addEventListener("click", () => closeModal("customFieldModal"));
+  document.getElementById("customFieldForm")?.addEventListener("submit", handleCustomFieldSave);
+
+  // Close any modal by clicking its backdrop
+  document.querySelectorAll(".modal").forEach((m) =>
+    m.addEventListener("click", (e) => { if (e.target === m) m.classList.remove("open"); })
+  );
+
+  // ── Settings Forms ───────────────────────────────────────────────────────
+  document.getElementById("companyProfileForm")?.addEventListener("submit", handleCompanyProfileSave);
+  document.getElementById("passwordForm")?.addEventListener("submit", handlePasswordChange);
+
+  // ── AI Settings ──────────────────────────────────────────────────────────
+  document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
+  document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
+
+  // ── Sales Reps ───────────────────────────────────────────────────────────
+  document.getElementById("salesRepForm")?.addEventListener("submit", handleSalesRepSave);
+
+  // ── Conversations ────────────────────────────────────────────────────────
+  document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
+  document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
+
+  // ── Search ───────────────────────────────────────────────────────────────
+  document.getElementById("globalSearchInput")?.addEventListener("input", handleSearch);
+});
+
+// ─── Utility ─────────────────────────────────────────────────────────────────
+function waitFor(fn, timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    if (fn()) return resolve();
+    const start = Date.now();
+    const iv = setInterval(() => {
+      if (fn()) { clearInterval(iv); resolve(); }
+      if (Date.now() - start > timeout) { clearInterval(iv); reject(new Error("Timeout")); }
+    }, 50);
+  });
+}
+
+function openModal(id)  { document.getElementById(id)?.classList.add("open"); }
+function closeModal(id) { document.getElementById(id)?.classList.remove("open"); }
+
+function toast(msg, isError = false) {
+  const wrap = document.getElementById("toastWrap");
+  const t = document.createElement("div");
+  t.className = `toast${isError ? " err" : ""}`;
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function fmt(val) {
+  if (!val && val !== 0) return "—";
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency", currency: "AUD", maximumFractionDigits: 0,
+  }).format(val);
+}
+
+function fmtDate(d) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/, "");
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+function showAuth() {
+  document.getElementById("authView")?.classList.remove("hidden");
+  document.getElementById("appView")?.classList.add("hidden");
+}
+
+async function showApp() {
+  document.getElementById("authView")?.classList.add("hidden");
+  document.getElementById("appView")?.classList.remove("hidden");
+
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("company_id, full_name, phone, role, user_type")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+
+  if (profile) {
+    currentCompanyId = profile.company_id;
+    document.getElementById("sidebarAccountName").textContent = profile.full_name || currentUser.email;
+    document.getElementById("sidebarAccountMeta").textContent = currentUser.email;
+    const initials = (profile.full_name || currentUser.email || "??")
+      .split(/[\s@]/).map((s) => s[0]?.toUpperCase() || "").join("").slice(0, 2);
+    document.getElementById("sidebarAvatar").textContent = initials;
+  }
+
+  if (currentCompanyId) {
+    const { data: company } = await sb
+      .from("companies")
+      .select("name")
+      .eq("id", currentCompanyId)
+      .maybeSingle();
+    if (company?.name) {
+      document.getElementById("brandCompanyName").textContent = company.name;
+    }
+  }
+
+  navigateTo("dashboard");
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+const CRM_PAGES = ["opportunities","leads","quotes","appointments","sales"];
+
+const PAGE_META = {
+  dashboard:          ["Dashboard",          "A live view of your lead and pipeline workspace."],
+  leads:              ["Leads",              "Manage and capture your lead records."],
+  opportunities:      ["Opportunities",      "Track deals through your pipeline stages."],
+  quotes:             ["Quotes",             "Leads that have been quoted."],
+  appointments:       ["Appointments",       "Scheduled appointments and bookings."],
+  sales:              ["Sales",              "Closed won and lost performance summary."],
+  conversations:      ["Conversations",      "SMS threads with leads."],
+  "general-settings": ["Account & Company",  "Manage your company and personal profile."],
+  "ai-settings":      ["AI Settings",        "Configure your SMS agent and Twilio numbers."],
+  "sales-reps":       ["Sales Reps",         "Manage active sales representatives."],
+};
+
+function navigateTo(page) {
+  // Set active states on nav buttons
+  document.querySelectorAll("[data-page]").forEach((btn) =>
+    btn.classList.toggle("active", btn.dataset.page === page)
+  );
+  // Highlight CRM parent when a sub-page is active
+  const crmToggle = document.getElementById("crmToggle");
+  if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
+
+  // Show the right page panel
+  document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
+  document.getElementById(`page-${page}`)?.classList.remove("hidden");
+
+  // Update header
+  const [title, sub] = PAGE_META[page] || [page, ""];
+  document.getElementById("pageTitle").textContent  = title;
+  document.getElementById("pageSubtitle").textContent = sub;
+
+  // Load data for the page
+  const loaders = {
+    dashboard:          loadDashboard,
+    leads:              loadLeads,
+    opportunities:      loadOpportunities,
+    quotes:             loadQuotes,
+    sales:              loadSales,
+    conversations:      loadConversations,
+    "general-settings": loadSettings,
+    "ai-settings":      loadAiSettings,
+    "sales-reps":       loadSalesReps,
+  };
+  loaders[page]?.();
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  if (!currentCompanyId) return;
+
+  const [{ data: leads }, { data: cf }] = await Promise.all([
+    sb.from("leads").select("id, name, email, status, value, created_at").eq("company_id", currentCompanyId),
+    sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
+  ]);
+
+  const all    = leads || [];
+  const cfLen  = cf?.length || 0;
+  const open   = all.filter((l) => !["Closed Won","Closed Lost"].includes(l.status)).length;
+  const quoted = all.filter((l) => l.status === "Quoted").length;
+
+  // Stat cards
+  document.getElementById("statLeadCount").textContent    = all.length;
+  document.getElementById("statOpenPipeline").textContent = open;
+  document.getElementById("statQuotes").textContent       = quoted;
+  document.getElementById("statCustomFields").textContent = cfLen;
+
+  const weekAgo = new Date(Date.now() - 7 * 864e5);
+  const newThisWeek = all.filter((l) => new Date(l.created_at) > weekAgo).length;
+  document.getElementById("leadGrowthChip").textContent   = newThisWeek ? `+${newThisWeek} this week` : "No new";
+  document.getElementById("qualifyingChip").textContent   = `${all.filter((l)=>l.status==="Qualifying").length} qualifying`;
+  document.getElementById("quoteChip").textContent        = `${quoted} quoted`;
+  document.getElementById("customFieldChip").textContent  = `${cfLen} field${cfLen===1?"":"s"}`;
+
+  buildLeadVolumeChart(all);
+  renderRecentLeads(all.slice().sort((a,b) => new Date(b.created_at)-new Date(a.created_at)).slice(0,5));
+  renderPipelineSnapshot(all);
+}
+
+function buildLeadVolumeChart(leads) {
+  const chart = document.getElementById("leadVolumeChart");
+  if (!chart) return;
+  const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d;
+  });
+  const counts = days.map((d) => {
+    const ds = d.toISOString().slice(0, 10);
+    return leads.filter((l) => l.created_at?.slice(0, 10) === ds).length;
+  });
+  const max = Math.max(...counts, 1);
+  chart.innerHTML = days.map((d, i) => `
+    <div class="bar-col">
+      <div class="bar" style="height:${Math.max((counts[i]/max)*160, 10)}px" title="${counts[i]} leads"></div>
+      <span style="font-size:10px;color:var(--muted)">${DAY_LABELS[d.getDay()]}</span>
+    </div>`).join("");
+}
+
+function renderRecentLeads(leads) {
+  const el = document.getElementById("recentLeadsPanel");
+  if (!el) return;
+  if (!leads.length) {
+    el.innerHTML = `<div class="empty"><h3>No leads yet</h3><p>Add your first lead to see it here.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="list">${leads.map((l) => `
+    <div class="item" style="grid-template-columns:1.6fr 1fr 1fr">
+      <div><h3>${l.name||"—"}</h3><p>${l.email||"—"}</p></div>
+      <div><span class="chip">${l.status||"—"}</span></div>
+      <div><p style="font-size:11px;color:var(--muted)">${fmtDate(l.created_at)}</p></div>
+    </div>`).join("")}</div>`;
+}
+
+function renderPipelineSnapshot(leads) {
+  const el = document.getElementById("pipelineSnapshotPanel");
+  if (!el) return;
+  const STAGES = ["New Lead","Qualifying","Quote in Progress","Quoted","Closed Won","Closed Lost"];
+  if (!leads.length) {
+    el.innerHTML = `<div class="empty"><p>No pipeline data yet.</p></div>`;
+    return;
+  }
+  el.innerHTML = STAGES.map((s) => {
+    const items = leads.filter((l) => l.status === s);
+    const val   = items.reduce((a, l) => a + (Number(l.value)||0), 0);
+    return `<div class="item" style="grid-template-columns:1.4fr 80px 110px">
+      <div><h3>${s}</h3></div>
+      <div><p>${items.length} lead${items.length===1?"":"s"}</p></div>
+      <div><p>${val ? fmt(val) : "—"}</p></div>
+    </div>`;
+  }).join("");
+}
+
+// ─── Custom Fields ────────────────────────────────────────────────────────────
+async function loadCustomFields() {
+  if (!currentCompanyId) return [];
+  const { data } = await sb
+    .from("custom_fields")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at");
+  customFields = data || [];
+  return customFields;
+}
+
+async function renderCustomFieldInputs(values = {}) {
+  await loadCustomFields();
+  const el = document.getElementById("customFieldInputs");
+  if (!el) return;
+  el.innerHTML = customFields.map((f) => `
+    <div class="custom-row" style="grid-template-columns:1fr 1fr">
+      <div class="field">
+        <label>${f.label}</label>
+        ${f.type === "textarea"
+          ? `<textarea name="cf_${f.key}">${values[f.key] || ""}</textarea>`
+          : `<input type="${f.type||"text"}" name="cf_${f.key}" value="${values[f.key] || ""}">`}
+      </div>
+    </div>`).join("");
+}
+
+function renderSettingsCustomFields() {
+  const el = document.getElementById("settingsCustomFields");
+  if (!el) return;
+  if (!customFields.length) {
+    el.innerHTML = `<div class="notice">No custom fields yet. Create one below.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-lite">${customFields.map((f) => `
+    <div class="row">
+      <div><strong style="font-size:13px">${f.label}</strong><span class="muted" style="margin-left:6px">${f.type}</span></div>
+      <div><code style="font-size:11px;color:var(--muted)">${f.key}</code></div>
+      <button class="iconbtn btn-danger" onclick="deleteCustomField('${f.id}')" type="button">
+        <span class="icon" data-icon="trash"></span>
+      </button>
+    </div>`).join("")}</div>`;
+  renderIcons();
+}
+
+async function handleCustomFieldSave(e) {
+  e.preventDefault();
+  const label = document.getElementById("customFieldLabel").value.trim();
+  const type  = document.getElementById("customFieldType").value;
+  if (!label) return;
+  const key = slugify(label);
+
+  const { error } = await sb.from("custom_fields").insert({
+    company_id: currentCompanyId, label, type, key,
+  });
+  if (error) { toast(error.message, true); return; }
+  toast("Custom field added.");
+  document.getElementById("customFieldForm").reset();
+  await loadCustomFields();
+  renderSettingsCustomFields();
+  await renderCustomFieldInputs();
+  document.getElementById("statCustomFields").textContent = customFields.length;
+  document.getElementById("customFieldChip").textContent  = `${customFields.length} field${customFields.length===1?"":"s"}`;
+}
+
+async function deleteCustomField(id) {
+  if (!confirm("Delete this custom field? Values stored in leads will be lost.")) return;
+  const { error } = await sb.from("custom_fields").delete().eq("id", id);
+  if (error) { toast(error.message, true); return; }
+  toast("Custom field deleted.");
+  await loadCustomFields();
+  renderSettingsCustomFields();
+}
+
+// ─── Leads ────────────────────────────────────────────────────────────────────
+async function loadLeads() {
+  if (!currentCompanyId) return;
+  await loadCustomFields();
+  const { data, error } = await sb
+    .from("leads")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at", { ascending: false });
+  if (error) { toast(error.message, true); return; }
+  allLeads = data || [];
+  renderLeadsTable(allLeads);
+}
+
+function renderLeadsTable(leads) {
+  const tbody = document.getElementById("leadsTableBody");
+  const empty  = document.getElementById("leadsEmptyState");
+  if (!tbody) return;
+  if (!leads.length) {
+    tbody.innerHTML = "";
+    empty?.classList.remove("hidden");
+    return;
+  }
+  empty?.classList.add("hidden");
+  tbody.innerHTML = leads.map((l) => `
+    <tr>
+      <td><strong>${l.name||"—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
+      <td><strong>${l.email||"—"}</strong>${l.phone?`<span class="muted">${l.phone}</span>`:""}</td>
+      <td><strong>${l.address||"—"}</strong>${l.postcode?`<span class="muted">${l.postcode}</span>`:""}</td>
+      <td>${l.source?`<span class="chip">${l.source}</span>`:"—"}</td>
+      <td><span class="chip">${l.status||"—"}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button"><span class="icon" data-icon="edit"></span></button>
+          <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button"><span class="icon" data-icon="trash"></span></button>
+        </div>
+      </td>
+    </tr>`).join("");
+  renderIcons();
+}
+
+function renderCustomDataSummary(data) {
+  if (!data || !Object.keys(data).length) return "—";
+  return Object.entries(data).slice(0, 2).map(([k, v]) => `<div>${k}: ${v||"—"}</div>`).join("");
+}
+
+function resetLeadForm() {
+  document.getElementById("leadForm")?.reset();
+  document.getElementById("leadId").value = "";
+  document.getElementById("leadModalTitle").textContent = "New Lead";
+  renderCustomFieldInputs();
+}
+
+async function openEditLead(id) {
+  const l = allLeads.find((x) => x.id === id);
+  if (!l) return;
+  document.getElementById("leadModalTitle").textContent = "Edit Lead";
+  document.getElementById("leadId").value        = l.id;
+  document.getElementById("leadName").value       = l.name    || "";
+  document.getElementById("leadEmail").value      = l.email   || "";
+  document.getElementById("leadPhone").value      = l.phone   || "";
+  document.getElementById("leadPostcode").value   = l.postcode|| "";
+  document.getElementById("leadAddress").value    = l.address || "";
+  document.getElementById("leadSource").value     = l.source  || "";
+  document.getElementById("leadStatus").value     = l.status  || "New Lead";
+  document.getElementById("leadValue").value      = l.value   || "";
+  document.getElementById("leadNotes").value      = l.notes   || "";
+  await renderCustomFieldInputs(l.custom_data || {});
+  openModal("leadModal");
+}
+
+async function handleLeadSave(e) {
+  e.preventDefault();
+  const id = document.getElementById("leadId").value;
+
+  // Collect custom field values
+  const custom_data = {};
+  customFields.forEach((f) => {
+    const el = document.querySelector(`[name="cf_${f.key}"]`);
+    if (el) custom_data[f.key] = el.value;
+  });
+
+  const payload = {
+    company_id: currentCompanyId,
+    name:     document.getElementById("leadName").value       || null,
+    email:    document.getElementById("leadEmail").value      || null,
+    phone:    document.getElementById("leadPhone").value      || null,
+    postcode: document.getElementById("leadPostcode").value   || null,
+    address:  document.getElementById("leadAddress").value    || null,
+    source:   document.getElementById("leadSource").value     || null,
+    status:   document.getElementById("leadStatus").value,
+    value:    Number(document.getElementById("leadValue").value) || null,
+    notes:    document.getElementById("leadNotes").value      || null,
+    custom_data,
+  };
+
+  const { error } = id
+    ? await sb.from("leads").update(payload).eq("id", id)
+    : await sb.from("leads").insert(payload);
+
+  if (error) { toast(error.message, true); return; }
+  toast(id ? "Lead updated." : "Lead created.");
+  closeModal("leadModal");
+  loadLeads();
+  loadDashboard();
+}
+
+async function deleteLead(id) {
+  if (!confirm("Delete this lead? This cannot be undone.")) return;
+  const { error } = await sb.from("leads").delete().eq("id", id);
+  if (error) { toast(error.message, true); return; }
+  toast("Lead deleted.");
+  loadLeads();
+  loadDashboard();
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+function handleSearch(e) {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) { renderLeadsTable(allLeads); return; }
+  const filtered = allLeads.filter((l) =>
+    [l.name, l.email, l.phone, l.postcode, l.address]
+      .some((v) => v?.toLowerCase().includes(q))
+  );
+  renderLeadsTable(filtered);
+}
+
+// ─── Opportunities / Kanban ───────────────────────────────────────────────────
+const KANBAN_STAGES = ["New Lead","Qualifying","Quote in Progress","Quoted","Closed Won","Closed Lost"];
+
+async function loadOpportunities() {
+  if (!currentCompanyId) return;
+  const { data } = await sb
+    .from("leads")
+    .select("id, name, email, phone, status, value, created_at")
+    .eq("company_id", currentCompanyId);
+  allLeads = data || [];
+  buildKanban(allLeads);
+}
+
+function buildKanban(leads) {
+  const board = document.getElementById("kanbanBoard");
+  if (!board) return;
+  board.innerHTML = KANBAN_STAGES.map((stage) => {
+    const cards = leads.filter((l) => l.status === stage);
+    return `<div class="col">
+      <div class="colhead">
+        <b>${stage}</b><span class="chip">${cards.length}</span>
+      </div>
+      <div class="cards">
+        ${cards.length
+          ? cards.map((l) => `<div class="kcard">
+              <h3>${l.name||"—"}</h3>
+              <p>${l.email||l.phone||"—"}</p>
+              <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
+            </div>`).join("")
+          : `<div class="empty" style="min-height:80px"><p>No leads here</p></div>`}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ─── Quotes ───────────────────────────────────────────────────────────────────
+async function loadQuotes() {
+  if (!currentCompanyId) return;
+  const { data } = await sb
+    .from("leads")
+    .select("id, name, email, phone, value, created_at")
+    .eq("company_id", currentCompanyId)
+    .eq("status", "Quoted")
+    .order("created_at", { ascending: false });
+  const leads = data || [];
+  const el = document.getElementById("quotesPanel");
+  if (!el) return;
+  if (!leads.length) {
+    el.innerHTML = `<div class="empty"><h3>No quoted leads</h3><p>Leads with status "Quoted" will appear here.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-lite">${leads.map((l) => `
+    <div class="row">
+      <div><strong style="font-size:13px">${l.name||"—"}</strong><span class="muted">${l.email||l.phone||"—"}</span></div>
+      <div><span class="chip">Quoted</span></div>
+      <div><strong style="font-size:13px">${fmt(l.value)}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
+    </div>`).join("")}</div>`;
+}
+
+// ─── Sales ────────────────────────────────────────────────────────────────────
+async function loadSales() {
+  if (!currentCompanyId) return;
+  const { data } = await sb
+    .from("leads")
+    .select("id, name, status, value, created_at")
+    .eq("company_id", currentCompanyId)
+    .in("status", ["Closed Won","Closed Lost"])
+    .order("created_at", { ascending: false });
+  const leads = data || [];
+  const el = document.getElementById("salesPanel");
+  if (!el) return;
+
+  const won     = leads.filter((l) => l.status === "Closed Won");
+  const lost    = leads.filter((l) => l.status === "Closed Lost");
+  const wonVal  = won.reduce((a, l) => a + (Number(l.value)||0), 0);
+  const lostVal = lost.reduce((a, l) => a + (Number(l.value)||0), 0);
+  const winRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
+
+  el.innerHTML = `
+    <div class="mini-grid" style="margin-bottom:20px">
+      <div class="mini-card"><h3>Closed Won</h3><b>${won.length}</b><span class="muted">${fmt(wonVal)} total</span></div>
+      <div class="mini-card"><h3>Closed Lost</h3><b>${lost.length}</b><span class="muted">${fmt(lostVal)} lost</span></div>
+      <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
+    </div>
+    ${leads.length ? `<div class="table-lite">${leads.map((l) => `
+      <div class="row">
+        <div><strong style="font-size:13px">${l.name||"—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
+        <div><span class="chip">${l.status}</span></div>
+        <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
+      </div>`).join("")}</div>`
+      : `<div class="empty"><p>No closed deals yet.</p></div>`}`;
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  if (!currentCompanyId) return;
+
+  const [{ data: company }, { data: profile }] = await Promise.all([
+    sb.from("companies").select("*").eq("id", currentCompanyId).maybeSingle(),
+    sb.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
+  ]);
+
+  if (company) {
+    document.getElementById("settingsCompanyName").value  = company.name  || "";
+    document.getElementById("settingsCompanyEmail").value = company.email || "";
+    document.getElementById("settingsCompanyPhone").value = company.phone || "";
+  }
+  if (profile) {
+    document.getElementById("settingsOwnerName").value  = profile.full_name || "";
+    document.getElementById("settingsOwnerEmail").value = currentUser.email || "";
+    document.getElementById("settingsOwnerPhone").value = profile.phone || "";
+  }
+  await loadCustomFields();
+  renderSettingsCustomFields();
+}
+
+async function handleCompanyProfileSave(e) {
+  e.preventDefault();
+  const companyName = document.getElementById("settingsCompanyName").value;
+  const ownerName   = document.getElementById("settingsOwnerName").value;
+
+  const [{ error: ce }, { error: pe }] = await Promise.all([
+    sb.from("companies").update({
+      name:  companyName,
+      email: document.getElementById("settingsCompanyEmail").value,
+      phone: document.getElementById("settingsCompanyPhone").value,
+    }).eq("id", currentCompanyId),
+    sb.from("profiles").update({
+      full_name: ownerName,
+      phone:     document.getElementById("settingsOwnerPhone").value,
+    }).eq("id", currentUser.id),
+  ]);
+
+  if (ce || pe) { toast((ce || pe).message, true); return; }
+  toast("Profile saved.");
+  document.getElementById("brandCompanyName").textContent  = companyName;
+  document.getElementById("sidebarAccountName").textContent = ownerName;
+}
+
+async function handlePasswordChange(e) {
+  e.preventDefault();
+  const np = document.getElementById("newPassword").value;
+  const cp = document.getElementById("confirmNewPassword").value;
+  if (np !== cp) { toast("Passwords do not match.", true); return; }
+  const { error } = await sb.auth.updateUser({ password: np });
+  if (error) { toast(error.message, true); return; }
+  toast("Password updated.");
+  document.getElementById("passwordForm").reset();
+}
+
+// ─── AI Settings ──────────────────────────────────────────────────────────────
+async function loadAiSettings() {
+  if (!currentCompanyId) return;
+  const { data } = await sb
+    .from("ai_settings")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .maybeSingle();
+
+  if (data) {
+    document.getElementById("aiModel").value               = data.model             || "";
+    document.getElementById("aiTwilioNumber").value        = data.twilio_number     || "";
+    document.getElementById("aiReplyDelay").value          = data.reply_delay_seconds ?? "";
+    document.getElementById("aiMaxWords").value            = data.max_sms_words     ?? "";
+    document.getElementById("aiEnabled").checked           = !!data.is_active;
+    document.getElementById("aiAutoReply").checked         = !!data.auto_reply;
+    document.getElementById("aiCallbackEnabled").checked   = !!data.callback_enabled;
+    document.getElementById("aiOnsiteEnabled").checked     = !!data.onsite_enabled;
+    document.getElementById("aiQuoteDraftingEnabled").checked = !!data.quote_drafting_enabled;
+    document.getElementById("aiLeadScoringEnabled").checked   = !!data.lead_scoring_enabled;
+    document.getElementById("aiSystemPrompt").value        = data.system_prompt     || "";
+  }
+
+  const { data: nums } = await sb
+    .from("twilio_numbers")
+    .select("id")
+    .eq("company_id", currentCompanyId);
+  document.getElementById("twilioCountValue").textContent = nums?.length || 0;
+  loadTwilioNumbers();
+}
+
+async function handleAiSettingsSave(e) {
+  e.preventDefault();
+  const payload = {
+    company_id:              currentCompanyId,
+    model:                   document.getElementById("aiModel").value,
+    twilio_number:           document.getElementById("aiTwilioNumber").value,
+    reply_delay_seconds:     Number(document.getElementById("aiReplyDelay").value)  || 0,
+    max_sms_words:           Number(document.getElementById("aiMaxWords").value)    || 160,
+    is_active:               document.getElementById("aiEnabled").checked,
+    auto_reply:              document.getElementById("aiAutoReply").checked,
+    callback_enabled:        document.getElementById("aiCallbackEnabled").checked,
+    onsite_enabled:          document.getElementById("aiOnsiteEnabled").checked,
+    quote_drafting_enabled:  document.getElementById("aiQuoteDraftingEnabled").checked,
+    lead_scoring_enabled:    document.getElementById("aiLeadScoringEnabled").checked,
+    system_prompt:           document.getElementById("aiSystemPrompt").value,
+  };
+  const { error } = await sb.from("ai_settings").upsert(payload, { onConflict: "company_id" });
+  if (error) { toast(error.message, true); return; }
+  toast("AI settings saved.");
+}
+
+async function loadTwilioNumbers() {
+  const { data } = await sb
+    .from("twilio_numbers")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at");
+  const el = document.getElementById("twilioNumbersTable");
+  if (!el) return;
+  if (!data?.length) {
+    el.innerHTML = `<div class="notice">No numbers added yet.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-lite">${data.map((n) => `
+    <div class="row">
+      <div><strong style="font-size:13px">${n.phone_number}</strong></div>
+      <div><span class="muted">${n.friendly_name||"—"}</span></div>
+      <button class="iconbtn btn-danger" onclick="deleteTwilioNumber('${n.id}')" type="button">
+        <span class="icon" data-icon="trash"></span>
+      </button>
+    </div>`).join("")}</div>`;
+  renderIcons();
+}
+
+async function handleTwilioNumberSave(e) {
+  e.preventDefault();
+  const { error } = await sb.from("twilio_numbers").insert({
+    company_id:    currentCompanyId,
+    phone_number:  document.getElementById("twilioPhoneNumber").value,
+    friendly_name: document.getElementById("twilioFriendlyName").value,
+  });
+  if (error) { toast(error.message, true); return; }
+  toast("Number added.");
+  document.getElementById("twilioNumberForm").reset();
+  await loadTwilioNumbers();
+  const { data: nums } = await sb.from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
+  document.getElementById("twilioCountValue").textContent = nums?.length || 0;
+}
+
+async function deleteTwilioNumber(id) {
+  if (!confirm("Remove this number?")) return;
+  await sb.from("twilio_numbers").delete().eq("id", id);
+  loadTwilioNumbers();
+}
+
+// ─── Sales Reps ───────────────────────────────────────────────────────────────
+async function loadSalesReps() {
+  if (!currentCompanyId) return;
+
+  // Populate the member dropdown
+  const { data: profiles } = await sb
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("company_id", currentCompanyId);
+  const sel = document.getElementById("salesRepUser");
+  if (sel && profiles) {
+    sel.innerHTML = `<option value="">Select member</option>` +
+      profiles.map((p) => `<option value="${p.id}">${p.full_name||p.email}</option>`).join("");
+  }
+
+  // List existing reps
+  const { data: reps } = await sb
+    .from("sales_reps")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at");
+  const el = document.getElementById("salesRepsList");
+  if (!el) return;
+  if (!reps?.length) {
+    el.innerHTML = `<div class="notice">No sales reps added yet.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-lite">${reps.map((r) => `
+    <div class="row">
+      <div><strong style="font-size:13px">${r.name||"—"}</strong><span class="muted">${r.email||"—"}</span></div>
+      <div><span class="muted">${r.phone||"—"}</span></div>
+      <button class="iconbtn btn-danger" onclick="deleteSalesRep('${r.id}')" type="button">
+        <span class="icon" data-icon="trash"></span>
+      </button>
+    </div>`).join("")}</div>`;
+  renderIcons();
+}
+
+async function handleSalesRepSave(e) {
+  e.preventDefault();
+  const { error } = await sb.from("sales_reps").insert({
+    company_id: currentCompanyId,
+    user_id:    document.getElementById("salesRepUser").value || null,
+    name:       document.getElementById("salesRepName").value,
+    email:      document.getElementById("salesRepEmail").value,
+    phone:      document.getElementById("salesRepPhone").value,
+  });
+  if (error) { toast(error.message, true); return; }
+  toast("Sales rep added.");
+  document.getElementById("salesRepForm").reset();
+  loadSalesReps();
+}
+
+async function deleteSalesRep(id) {
+  if (!confirm("Remove this sales rep?")) return;
+  await sb.from("sales_reps").delete().eq("id", id);
+  loadSalesReps();
+}
+
+// ─── Conversations ────────────────────────────────────────────────────────────
+async function loadConversations() {
+  const { data: conversations } = await sb
+    .from("conversations")
+    .select("id, lead_id, last_message, last_message_at, leads(name, phone)")
+    .order("last_message_at", { ascending: false });
+
+  const list  = document.getElementById("conversationList");
+  const empty = document.getElementById("convEmptyState");
+  if (!list) return;
+
+  if (!conversations?.length) {
+    list.innerHTML = "";
+    empty?.classList.remove("hidden");
+    return;
+  }
+  empty?.classList.add("hidden");
+
+  list.innerHTML = conversations.map((c) => {
+    const name = c.leads?.name || "Unknown";
+    const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
+    return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
+                 data-lead-name="${name}" data-lead-phone="${c.leads?.phone||""}">
+      <h3>${name}<span class="conv-time">${time}</span></h3>
+      <p>${c.last_message||"No messages yet"}</p>
+    </div>`;
+  }).join("");
+
+  // Wire clicks after render
+  list.querySelectorAll(".conv-item").forEach((item) =>
+    item.addEventListener("click", () => openConversation(
+      item.dataset.convId,
+      item.dataset.leadId,
+      item.dataset.leadName,
+      item.dataset.leadPhone,
+      item
+    ))
+  );
+}
+
+async function openConversation(convId, leadId, name, phone, itemEl) {
+  currentConvId  = convId;
+  currentLeadId  = leadId;
+
+  document.getElementById("convDetailEmpty")?.classList.add("hidden");
+  document.getElementById("convDetail")?.classList.remove("hidden");
+  document.getElementById("convLeadName").textContent  = name;
+  document.getElementById("convLeadPhone").textContent = phone;
+
+  document.querySelectorAll(".conv-item").forEach((el) => el.classList.remove("active"));
+  itemEl?.classList.add("active");
+
+  await loadMessages(convId);
+
+  // Sync AI toggle state from lead record
+  if (leadId) {
+    const { data: lead } = await sb.from("leads").select("ai_enabled").eq("id", leadId).maybeSingle();
+    const tog = document.getElementById("convAiToggle");
+    const status = document.getElementById("convAiStatus");
+    if (tog && lead) {
+      const on = lead.ai_enabled !== false; // default true if null
+      tog.checked = on;
+      if (status) { status.textContent = on ? "ON" : "OFF"; status.className = `ai-toggle-status ${on?"on":"off"}`; }
+    }
+  }
+}
+
+async function loadMessages(convId) {
+  const { data: msgs } = await sb
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", convId)
+    .order("created_at");
+  const el = document.getElementById("convMessages");
+  if (!el) return;
+  if (!msgs?.length) {
+    el.innerHTML = `<div class="muted" style="text-align:center;padding:24px;font-size:12px">No messages yet</div>`;
+    return;
+  }
+  el.innerHTML = msgs.map((m) => `
+    <div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
+      ${m.content}
+      <div class="msg-meta">
+        ${m.sender_type ? `<span class="msg-badge ${m.sender_type}">${m.sender_type}</span>` : ""}
+        <span>${fmtDate(m.created_at)}</span>
+      </div>
+    </div>`).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+async function handleSendMessage(e) {
+  e.preventDefault();
+  const input   = document.getElementById("convMessageInput");
+  const content = input.value.trim();
+  if (!content || !currentConvId) return;
+
+  const { error } = await sb.from("messages").insert({
+    conversation_id: currentConvId,
+    content,
+    direction:   "outbound",
+    sender_type: "human",
+  });
+  if (error) { toast(error.message, true); return; }
+  input.value = "";
+  await Promise.all([
+    loadMessages(currentConvId),
+    sb.from("conversations").update({
+      last_message: content, last_message_at: new Date().toISOString(),
+    }).eq("id", currentConvId),
+  ]);
+}
+
+async function handleAiToggle() {
+  if (!currentLeadId) return;
+  const on = document.getElementById("convAiToggle").checked;
+  const status = document.getElementById("convAiStatus");
+  if (status) { status.textContent = on ? "ON" : "OFF"; status.className = `ai-toggle-status ${on?"on":"off"}`; }
+  await sb.from("leads").update({ ai_enabled: on }).eq("id", currentLeadId);
+}
