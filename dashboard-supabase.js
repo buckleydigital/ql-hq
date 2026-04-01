@@ -87,6 +87,29 @@ const STAGE_FROM_LABEL = Object.fromEntries(
 function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
 function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
+// ─── Auth helper ──────────────────────────────────────────────────────────────
+// getSession() returns the cached session and may contain an expired JWT.
+// This helper checks expiry and refreshes the token when needed so that
+// edge-function fetch() calls never send a stale token.
+async function getAccessToken() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) return null;
+
+  try {
+    const parts = session.access_token.split(".");
+    if (parts.length !== 3) throw new Error("malformed");
+    const payload = JSON.parse(atob(parts[1]));
+    const nowSec  = Math.floor(Date.now() / 1000);
+    // If the token expires within the next 30 seconds, force a refresh
+    if (payload.exp && payload.exp - nowSec <= 30) {
+      const { data: { session: refreshed } } = await sb.auth.refreshSession();
+      return refreshed?.access_token || null;
+    }
+  } catch (e) { console.warn("JWT decode check failed, using token as-is:", e); }
+
+  return session.access_token;
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let sb;
 let currentUser      = null;
@@ -1857,8 +1880,7 @@ async function handleTeamInvite(e) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated.");
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-rep`, {
@@ -2011,8 +2033,7 @@ async function handleNewConversation(e) {
     if (error) { toast(error.message, true); return; }
 
     if (firstMsg) {
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token;
+      const token = await getAccessToken();
       if (token) {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
           method: "POST",
@@ -2126,8 +2147,7 @@ async function handleSendMessage(e) {
   if (!content || !currentConvId) return;
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) { toast("Not authenticated.", true); return; }
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
@@ -2368,8 +2388,7 @@ async function handleVoiceProviderSave(e) {
   }
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated.");
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
@@ -2398,8 +2417,7 @@ async function handleVoiceProviderSave(e) {
 
 async function testVoiceAgent() {
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated.");
 
     toast("Testing voice agent connection...");
@@ -2843,8 +2861,7 @@ async function openCallLeadModal() {
 
 async function loadVapiAssistants() {
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) return;
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
@@ -2890,8 +2907,7 @@ async function handleCallLead() {
   }
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
+    const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated.");
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
