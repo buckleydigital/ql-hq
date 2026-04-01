@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
 
       // Refund the deducted credit since the send failed
       await db.rpc("refund_sms_credit", { p_company_id: companyId }).catch(
-        (e: unknown) => console.warn("Credit refund RPC unavailable:", (e as Error).message)
+        (e: unknown) => console.warn("Failed to refund SMS credit:", (e as Error).message)
       );
 
       // Parse Twilio error for actionable details
