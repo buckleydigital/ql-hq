@@ -46,8 +46,13 @@ function normalisePhone(phone: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Key resolution: agency (internal) vs external
+// Key resolution: agency (internal) vs external, with env-secret fallback
 // ---------------------------------------------------------------------------
+const ENV_FALLBACKS: Record<string, string> = {
+  twilio: "TWILIO_ACCOUNT_SID",
+  twilio_auth: "TWILIO_AUTH_TOKEN",
+};
+
 async function resolveKey(
   db: SupabaseClient,
   companyId: string,
@@ -57,8 +62,16 @@ async function resolveKey(
     p_company_id: companyId,
     p_provider: provider,
   });
-  if (error) throw new Error(`Key resolution failed for ${provider}: ${error.message}`);
-  return data as string;
+  if (!error && data) return data as string;
+
+  // Fall back to Supabase Edge Function secrets for Twilio keys
+  const envName = ENV_FALLBACKS[provider];
+  if (envName) {
+    const envVal = Deno.env.get(envName);
+    if (envVal) return envVal;
+  }
+
+  throw new Error(`Key resolution failed for ${provider}: ${error?.message ?? "not found"}`);
 }
 
 // ---------------------------------------------------------------------------

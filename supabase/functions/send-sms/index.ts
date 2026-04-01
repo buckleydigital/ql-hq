@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
       return json({ error: "No Twilio number configured" }, 400);
     }
 
-    // Resolve Twilio keys
+    // Resolve Twilio keys (try DB first, fall back to edge-function secrets)
     let twilioSid: string, twilioAuth: string;
     try {
       const { data: sid, error: e1 } = await db.rpc("resolve_api_key", {
@@ -112,7 +112,15 @@ Deno.serve(async (req) => {
       twilioSid = sid;
       twilioAuth = auth;
     } catch (err) {
-      return json({ error: "Failed to resolve Twilio API keys" }, 500);
+      // Fall back to Supabase Edge Function secrets
+      console.warn("Twilio key resolution from DB failed, trying env secrets:", (err as Error).message);
+      const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+      const envAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+      if (!envSid || !envAuth) {
+        return json({ error: "Failed to resolve Twilio API keys" }, 500);
+      }
+      twilioSid = envSid;
+      twilioAuth = envAuth;
     }
 
     // Check SMS credits
