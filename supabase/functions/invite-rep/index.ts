@@ -192,8 +192,7 @@ Deno.serve(async (req) => {
       email,
       full_name: name,
       phone: phone || null,
-      status: "accepted",
-      accepted_at: new Date().toISOString(),
+      status: "pending",
     });
 
     return new Response(

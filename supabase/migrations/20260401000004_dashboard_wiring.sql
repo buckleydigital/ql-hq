@@ -1,5 +1,5 @@
 -- =============================================================================
--- QuoteLeadsHQ — Migration 005: Dashboard Wiring
+-- QuoteLeadsHQ — Migration 004: Dashboard Wiring
 -- =============================================================================
 -- Adds missing tables and columns that the dashboard frontend expects:
 --   1. custom_fields — dynamic lead form fields per company
