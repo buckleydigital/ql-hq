@@ -262,6 +262,13 @@ textarea{min-height:100px;resize:vertical}
   .auth-card{border-radius:18px}
   .search{width:100%}
 }
+
+/* Opportunity Modal Tabs */
+.opp-tab{padding:10px 16px;border-radius:10px 10px 0 0;border:none;background:transparent;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.opp-tab.active{color:var(--text);border-bottom-color:var(--text);font-weight:500}
+.opp-tab:hover{color:var(--text)}
+.opp-tab-content{display:block}
+.opp-tab-content.hidden{display:none}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="./dashboard-supabase.js"></script>
@@ -685,6 +692,114 @@ textarea{min-height:100px;resize:vertical}
       </form>
     </div>
     <div class="mf"><div></div><div class="actions"><button id="cancelNewConvModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="newConvForm">Start Conversation</button></div></div>
+  </div>
+</div>
+
+
+<!-- ── Opportunity Detail Modal ─────────────────────────────────────────────── -->
+<div id="opportunityModal" class="modal">
+  <div class="modal-card" style="width:min(1100px,95%);max-height:90vh;">
+    <div class="mh">
+      <h2 id="oppModalTitle">Opportunity Details</h2>
+      <p id="oppModalSubtitle">View all information, conversations, quotes, and call history.</p>
+    </div>
+    <div class="mb">
+      <input id="oppModalLeadId" type="hidden">
+      <div class="opp-tabs" style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+        <button class="opp-tab active" data-tab="overview" type="button">Overview</button>
+        <button class="opp-tab" data-tab="conversations" type="button">Conversations</button>
+        <button class="opp-tab" data-tab="quotes" type="button">Quotes</button>
+        <button class="opp-tab" data-tab="appointments" type="button">Appointments</button>
+        <button class="opp-tab" data-tab="calls" type="button">AI Calls</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div id="oppTabOverview" class="opp-tab-content">
+        <div class="form2">
+          <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text" readonly></div>
+          <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text" readonly></div>
+          <div class="field"><label>Phone</label><input id="oppOverviewPhone" type="text" readonly></div>
+          <div class="field"><label>Status</label><input id="oppOverviewStatus" type="text" readonly></div>
+          <div class="field"><label>Source</label><input id="oppOverviewSource" type="text" readonly></div>
+          <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text" readonly></div>
+          <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text" readonly></div>
+          <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3" readonly></textarea></div>
+        </div>
+        <div class="actions" style="margin-top:16px">
+          <button id="oppCallLeadBtn" class="btn2" type="button"><span class="icon" data-icon="phone"></span> Call Lead with AI</button>
+          <button id="oppEditLeadBtn" class="btn" type="button"><span class="icon" data-icon="edit"></span> Edit Lead</button>
+        </div>
+      </div>
+
+      <!-- Conversations Tab -->
+      <div id="oppTabConversations" class="opp-tab-content hidden">
+        <div id="oppConversationsList" class="run-list">
+          <div class="notice">Loading conversations...</div>
+        </div>
+      </div>
+
+      <!-- Quotes Tab -->
+      <div id="oppTabQuotes" class="opp-tab-content hidden">
+        <div id="oppQuotesList" class="run-list">
+          <div class="notice">Loading quotes...</div>
+        </div>
+      </div>
+
+      <!-- Appointments Tab -->
+      <div id="oppTabAppointments" class="opp-tab-content hidden">
+        <div id="oppAppointmentsList" class="run-list">
+          <div class="notice">Loading appointments...</div>
+        </div>
+      </div>
+
+      <!-- AI Calls Tab -->
+      <div id="oppTabCalls" class="opp-tab-content hidden">
+        <div id="oppCallsList" class="run-list">
+          <div class="notice">Loading call history...</div>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <div class="helper">Click any tab to view related records for this lead.</div>
+      <div class="actions">
+        <button id="closeOpportunityModal" class="btn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Call Lead with AI Modal ──────────────────────────────────────────────── -->
+<div id="callLeadModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh">
+      <h2>Call Lead with AI</h2>
+      <p>Initiate an AI-powered voice call to this lead using VAPI.</p>
+    </div>
+    <div class="mb">
+      <input id="callLeadId" type="hidden">
+      <div class="form2">
+        <div class="field">
+          <label for="callLeadPhone">Phone Number</label>
+          <input id="callLeadPhone" type="tel" placeholder="+61 400 000 000">
+        </div>
+        <div class="field">
+          <label for="callLeadAssistant">VAPI Assistant <span style="color:var(--muted)">(optional)</span></label>
+          <select id="callLeadAssistant">
+            <option value="">— Use default assistant —</option>
+          </select>
+        </div>
+      </div>
+      <div class="notice" style="margin-top:14px">
+        <strong>Note:</strong> This will initiate an outbound call using your configured VAPI voice agent. 
+        The call will be logged automatically.
+      </div>
+    </div>
+    <div class="mf">
+      <div class="actions">
+        <button id="cancelCallLeadModal" class="btn" type="button">Cancel</button>
+        <button id="confirmCallLead" class="btn2" type="button"><span class="icon" data-icon="phone"></span> Start Call</button>
+      </div>
+    </div>
   </div>
 </div>
 
