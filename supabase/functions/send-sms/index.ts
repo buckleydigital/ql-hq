@@ -149,9 +149,26 @@ Deno.serve(async (req) => {
     });
 
     if (!twilioRes.ok) {
-      const err = await twilioRes.text();
-      console.error("Twilio error:", err);
-      return json({ error: "Failed to send SMS" }, 500);
+      const errBody = await twilioRes.text();
+      console.error("Twilio error:", errBody);
+
+      // Refund the deducted credit since the send failed
+      await db.rpc("refund_sms_credit", { p_company_id: companyId }).catch(
+        (e: unknown) => console.warn("Credit refund RPC unavailable:", (e as Error).message)
+      );
+
+      // Parse Twilio error for actionable details
+      let detail = "Failed to send SMS.";
+      try {
+        const twilioErr = JSON.parse(errBody);
+        if (twilioErr.message) {
+          detail = `Twilio error ${twilioErr.code || twilioRes.status}: ${twilioErr.message}`;
+        }
+      } catch {
+        // Twilio returned non-JSON; include HTTP status
+        detail = `Failed to send SMS (Twilio responded with status ${twilioRes.status}).`;
+      }
+      return json({ error: detail }, 500);
     }
 
     // Get or create conversation
@@ -203,7 +220,7 @@ Deno.serve(async (req) => {
       .select()
       .single();
 
-    if (msgErr) return json({ error: "Message stored failed" }, 500);
+    if (msgErr) return json({ error: "Failed to store message" }, 500);
 
     // Update conversation last message
     await db
