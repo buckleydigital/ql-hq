@@ -1,5 +1,12 @@
 // =============================================================================
-// QuoteLeadsHQ — Dashboard Client (Fixed)
+// QuoteLeadsHQ — Dashboard Client (UPDATED WITH AI SETTINGS FIXES)
+// =============================================================================
+// This file contains fixes for:
+// 1. AI Settings form with all required fields
+// 2. User type checking for prompt editing (internal vs external)
+// 3. Quote follow-up automation settings
+// 4. On-site appointment settings
+// 5. Call-back settings
 // =============================================================================
 
 const SUPABASE_URL = "https://wjadekgptkstfdootuol.supabase.co";
@@ -36,6 +43,11 @@ const ICONS = {
   mic:             `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>`,
   eye:             `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
   "external-link": `<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>`,
+  clock:           `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
+  map:             `<polygon points="1 6 1 22 8 18 16 22 21 18 21 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>`,
+  "map-pin":       `<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>`,
+  gift:            `<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>`,
+  "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
 };
 
 function renderIcons() {
@@ -61,7 +73,8 @@ let currentLeadId    = null;
 let customFields     = [];
 let allLeads         = [];
 let dragLeadId       = null;
-let authInitialized  = false;  // Prevent race conditions
+let authInitialized  = false;
+let currentUserType  = null;  // 'internal' or 'external' — NEW
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -83,7 +96,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Set up auth state listener FIRST (before checking session)
   sb.auth.onAuthStateChange((_event, session) => {
-    if (authInitialized) return; // Skip if already handled
+    if (authInitialized) return;
     authInitialized = true;
     
     if (session?.user) { 
@@ -95,9 +108,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Then check existing session (with slight delay to let listener set up)
+  // Then check existing session
   setTimeout(async () => {
-    if (authInitialized) return; // Already handled by onAuthStateChange
+    if (authInitialized) return;
     
     try {
       const { data: { session }, error } = await sb.auth.getSession();
@@ -131,7 +144,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const emailInput = document.getElementById("loginEmail");
     const passwordInput = document.getElementById("loginPassword");
     
-    // Disable form during login
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.dataset.originalText = submitBtn.textContent;
@@ -148,7 +160,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       if (error) {
         toast(error.message, true);
-        // Re-enable form on error
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";
@@ -156,11 +167,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         emailInput && (emailInput.disabled = false);
         passwordInput && (passwordInput.disabled = false);
       }
-      // On success, onAuthStateChange will handle the transition
     } catch (err) {
       toast("Login failed. Please try again.", true);
-      console.error("Login error:", err);
-      // Re-enable form
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";
@@ -180,7 +188,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     try {
       await sb.auth.signOut();
-      authInitialized = false; // Reset for next login
+      authInitialized = false;
     } catch (err) {
       toast("Logout failed. Please try again.", true);
       if (btn) {
@@ -338,6 +346,11 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function fmtTime(d) {
+  if (!d) return "—";
+  return new Date(d).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
@@ -389,6 +402,11 @@ async function showApp() {
 
     if (profileError) {
       console.error("Profile fetch error:", profileError);
+    }
+
+    // Store user type for prompt editing permissions
+    if (profile?.user_type) {
+      currentUserType = profile.user_type;
     }
 
     if (profile) {
@@ -949,7 +967,7 @@ async function kanbanDrop(event, newStage) {
     const { error } = await sb.from("leads").update({ status: newStage }).eq("id", leadId);
     if (error) {
       toast(error.message, true);
-      loadOpportunities(); // revert on failure
+      loadOpportunities();
     } else {
       toast(`Moved to "${newStage}"`);
     }
@@ -1103,85 +1121,216 @@ async function handlePasswordChange(e) {
   }
 }
 
-// ─── AI Settings ──────────────────────────────────────────────────────────────
+// =============================================================================
+// AI SETTINGS — UPDATED WITH ALL REQUIRED FIELDS
+// =============================================================================
+
 async function loadAiSettings() {
   if (!currentCompanyId) return;
+  
   try {
+    // Load AI settings
     const { data } = await sb
       .from("ai_settings")
       .select("*")
       .eq("company_id", currentCompanyId)
       .maybeSingle();
-      
-    if (data) {
-      const aiModel = document.getElementById("aiModel");
-      const aiTwilioNumber = document.getElementById("aiTwilioNumber");
-      const aiReplyDelay = document.getElementById("aiReplyDelay");
-      const aiMaxWords = document.getElementById("aiMaxWords");
-      const aiEnabled = document.getElementById("aiEnabled");
-      const aiAutoReply = document.getElementById("aiAutoReply");
-      const aiCallbackEnabled = document.getElementById("aiCallbackEnabled");
-      const aiOnsiteEnabled = document.getElementById("aiOnsiteEnabled");
-      const aiQuoteDraftingEnabled = document.getElementById("aiQuoteDraftingEnabled");
-      const aiLeadScoringEnabled = document.getElementById("aiLeadScoringEnabled");
-      const aiSystemPrompt = document.getElementById("aiSystemPrompt");
-      
-      if (aiModel) aiModel.value = data.model || "";
-      if (aiTwilioNumber) aiTwilioNumber.value = data.twilio_number || "";
-      if (aiReplyDelay) aiReplyDelay.value = data.reply_delay_seconds ?? "";
-      if (aiMaxWords) aiMaxWords.value = data.max_sms_words ?? "";
-      if (aiEnabled) aiEnabled.checked = !!data.is_active;
-      if (aiAutoReply) aiAutoReply.checked = !!data.auto_reply;
-      if (aiCallbackEnabled) aiCallbackEnabled.checked = !!data.callback_enabled;
-      if (aiOnsiteEnabled) aiOnsiteEnabled.checked = !!data.onsite_enabled;
-      if (aiQuoteDraftingEnabled) aiQuoteDraftingEnabled.checked = !!data.quote_drafting_enabled;
-      if (aiLeadScoringEnabled) aiLeadScoringEnabled.checked = !!data.lead_scoring_enabled;
-      if (aiSystemPrompt) aiSystemPrompt.value = data.system_prompt || "";
+    
+    // Get user profile to check if they can edit prompts
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("user_type")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+    
+    const isInternal = profile?.user_type === "internal";
+    currentUserType = profile?.user_type || "external";
+    
+    // Update account type display
+    const accountTypeValue = document.getElementById("accountTypeValue");
+    const accountTypeHelp = document.getElementById("accountTypeHelp");
+    if (accountTypeValue) accountTypeValue.textContent = isInternal ? "Internal (Agency)" : "External";
+    if (accountTypeHelp) {
+      accountTypeHelp.textContent = isInternal 
+        ? "Agency clients cannot edit AI prompts. Using agency defaults." 
+        : "External workspaces can fully customize AI prompts.";
     }
     
+    // Update key source display
+    const keySourceValue = document.getElementById("keySourceValue");
+    const keySourceHelp = document.getElementById("keySourceHelp");
+    if (keySourceValue) keySourceValue.textContent = isInternal ? "Agency Keys" : "Customer Keys";
+    if (keySourceHelp) {
+      keySourceHelp.textContent = isInternal 
+        ? "Using agency-managed API keys." 
+        : "Using your own API keys from settings.";
+    }
+    
+    // Populate form fields
+    if (data) {
+      // General settings
+      setInputValue("aiModel", data.model);
+      setInputValue("aiTwilioNumber", data.twilio_number);
+      setInputValue("aiReplyDelay", data.reply_delay_seconds ?? "");
+      setInputValue("aiMaxWords", data.max_sms_words ?? "");
+      
+      // Toggle switches
+      setCheckboxValue("aiEnabled", data.is_active);
+      setCheckboxValue("aiAutoReply", data.auto_reply);
+      setCheckboxValue("aiNurtureEnabled", data.ai_nurture_enabled);
+      setCheckboxValue("aiCallbackEnabled", data.callback_enabled);
+      setCheckboxValue("aiOnsiteEnabled", data.onsite_enabled);
+      setCheckboxValue("aiQuoteDraftingEnabled", data.quote_drafting_enabled);
+      setCheckboxValue("aiLeadScoringEnabled", data.lead_scoring_enabled);
+      
+      // Call-back settings
+      setInputValue("aiAgentName", data.agent_name);
+      setInputValue("aiCallbackStartTime", data.callback_hours_start);
+      setInputValue("aiCallbackEndTime", data.callback_hours_end);
+      setInputValue("aiSpecialOffers", data.special_offers);
+      setInputValue("aiWelcomeMessage", data.welcome_message);
+      
+      // On-site settings
+      setInputValue("aiServiceLocations", Array.isArray(data.service_locations) ? data.service_locations.join("\n") : "");
+      setInputValue("aiMaxTravelDistance", data.max_travel_distance);
+      setInputValue("aiMaxTravelUnit", data.max_travel_distance_unit);
+      setInputValue("aiPreparationRequired", data.preparation_required);
+      
+      // Quote follow-up automation
+      setCheckboxValue("aiAutomateQuoteFollowup", data.automate_quote_followup);
+      setInputValue("aiFollowupMessage", data.followup_message);
+      setInputValue("aiDaysUntilFollowup", data.days_until_followup);
+      
+      // System prompt (only editable for external users)
+      const systemPromptEl = document.getElementById("aiSystemPrompt");
+      if (systemPromptEl) {
+        systemPromptEl.value = data.system_prompt || "";
+        systemPromptEl.readOnly = isInternal;
+        systemPromptEl.style.opacity = isInternal ? "0.6" : "1";
+      }
+      
+      // Update prompt help text
+      const promptHelp = document.getElementById("aiPromptHelp");
+      if (promptHelp) {
+        promptHelp.textContent = isInternal 
+          ? "Internal users cannot edit the AI prompt. Contact your agency to make changes." 
+          : "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
+      }
+    }
+    
+    // Load Twilio numbers count
     const { data: nums } = await sb
-      .from("twilio_numbers").select("id").eq("company_id", currentCompanyId);
+      .from("twilio_numbers")
+      .select("id")
+      .eq("company_id", currentCompanyId);
+    
     const twilioCountValue = document.getElementById("twilioCountValue");
     if (twilioCountValue) twilioCountValue.textContent = nums?.length || 0;
+    
     loadTwilioNumbers();
+    loadWorkflowRuns();
+    
   } catch (err) {
+    console.error("Load AI settings error:", err);
     toast("Failed to load AI settings.", true);
   }
 }
 
+// Helper functions for form population
+function setInputValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value ?? "";
+}
+
+function setCheckboxValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.checked = !!value;
+}
+
 async function handleAiSettingsSave(e) {
   e.preventDefault();
+  
+  // Get user type to check if they can edit prompts
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("user_type")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+  
+  const isInternal = profile?.user_type === "internal";
+  
+  // Build payload
   const payload = {
     company_id:             currentCompanyId,
-    model:                  document.getElementById("aiModel")?.value,
-    twilio_number:          document.getElementById("aiTwilioNumber")?.value,
+    model:                  document.getElementById("aiModel")?.value || "gpt-4o",
+    twilio_number:          document.getElementById("aiTwilioNumber")?.value || null,
     reply_delay_seconds:    Number(document.getElementById("aiReplyDelay")?.value) || 0,
     max_sms_words:          Number(document.getElementById("aiMaxWords")?.value) || 160,
-    is_active:              document.getElementById("aiEnabled")?.checked,
-    auto_reply:             document.getElementById("aiAutoReply")?.checked,
-    callback_enabled:       document.getElementById("aiCallbackEnabled")?.checked,
-    onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked,
-    quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked,
-    lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked,
-    system_prompt:          document.getElementById("aiSystemPrompt")?.value,
+    is_active:              document.getElementById("aiEnabled")?.checked ?? true,
+    auto_reply:             document.getElementById("aiAutoReply")?.checked ?? true,
+    ai_nurture_enabled:     document.getElementById("aiNurtureEnabled")?.checked ?? true,
+    callback_enabled:       document.getElementById("aiCallbackEnabled")?.checked ?? false,
+    onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked ?? false,
+    quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
+    lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked ?? true,
+    
+    // Call-back settings
+    agent_name:             document.getElementById("aiAgentName")?.value || "Sales Team",
+    callback_hours_start:   document.getElementById("aiCallbackStartTime")?.value || "09:00",
+    callback_hours_end:     document.getElementById("aiCallbackEndTime")?.value || "17:00",
+    special_offers:         document.getElementById("aiSpecialOffers")?.value || null,
+    welcome_message:        document.getElementById("aiWelcomeMessage")?.value || "Hi {{first_name}}, thanks for reaching out!",
+    
+    // On-site settings
+    service_locations:      document.getElementById("aiServiceLocations")?.value?.split("\n").filter(Boolean) || [],
+    max_travel_distance:    Number(document.getElementById("aiMaxTravelDistance")?.value) || 50,
+    max_travel_distance_unit: document.getElementById("aiMaxTravelUnit")?.value || "km",
+    preparation_required:   document.getElementById("aiPreparationRequired")?.value || null,
+    
+    // Quote follow-up automation
+    automate_quote_followup: document.getElementById("aiAutomateQuoteFollowup")?.checked ?? false,
+    followup_message:       document.getElementById("aiFollowupMessage")?.value || "Hi {{first_name}}, just following up on your quote!",
+    days_until_followup:    Number(document.getElementById("aiDaysUntilFollowup")?.value) || 3,
   };
   
+  // Only include system_prompt for external users
+  if (!isInternal) {
+    payload.system_prompt = document.getElementById("aiSystemPrompt")?.value || null;
+  }
+  
   try {
-    const { error } = await sb.from("ai_settings").upsert(payload, { onConflict: "company_id" });
-    if (error) { toast(error.message, true); return; }
-    toast("AI settings saved.");
+    const { error } = await sb
+      .from("ai_settings")
+      .upsert(payload, { onConflict: "company_id" });
+    
+    if (error) { 
+      toast(error.message, true); 
+      return; 
+    }
+    
+    toast("AI settings saved successfully.");
   } catch (err) {
     toast("Failed to save AI settings.", true);
+    console.error("Save AI settings error:", err);
   }
 }
 
 async function loadTwilioNumbers() {
   try {
     const { data } = await sb
-      .from("twilio_numbers").select("*").eq("company_id", currentCompanyId).order("created_at");
+      .from("twilio_numbers")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at");
+    
     const el = document.getElementById("twilioNumbersTable");
     if (!el) return;
-    if (!data?.length) { el.innerHTML = `<div class="notice">No numbers added yet.</div>`; return; }
+    
+    if (!data?.length) { 
+      el.innerHTML = `<div class="notice">No numbers added yet.</div>`; 
+      return; 
+    }
+    
     el.innerHTML = `<div class="table-lite">${data.map((n) => `
       <div class="row">
         <div><strong style="font-size:13px">${n.phone_number}</strong></div>
@@ -1223,6 +1372,36 @@ async function deleteTwilioNumber(id) {
     loadTwilioNumbers();
   } catch (err) {
     toast("Failed to delete number.", true);
+  }
+}
+
+async function loadWorkflowRuns() {
+  try {
+    const { data: runs } = await sb
+      .from("ai_workflow_runs")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    
+    const el = document.getElementById("workflowRunSummary");
+    if (!el) return;
+    
+    if (!runs?.length) {
+      el.innerHTML = `<div class="notice">No workflow runs yet. Inbound SMS will trigger AI workflows.</div>`;
+      return;
+    }
+    
+    el.innerHTML = runs.map((run) => `
+      <div class="run">
+        <h3>${run.workflow_type} <span class="chip">${run.status}</span></h3>
+        <p>Model: ${run.model || "—"} · Key Source: ${run.key_source || "—"}</p>
+        <p style="margin-top:4px;"><span class="muted">${fmtDate(run.created_at)}</span></p>
+        ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${run.error_text}</p>` : ''}
+      </div>
+    `).join("");
+  } catch (err) {
+    console.error("Load workflow runs error:", err);
   }
 }
 
@@ -1486,9 +1665,11 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
 
   if (leadId) {
     try {
-      const { data: lead } = await sb.from("leads").select("ai_enabled").eq("id", leadId).maybeSingle();
+      const { data: lead } = await sb.from("leads").select("ai_enabled, ai_score").eq("id", leadId).maybeSingle();
       const tog    = document.getElementById("convAiToggle");
       const status = document.getElementById("convAiStatus");
+      const scoreEl = document.getElementById("convLeadScore");
+      
       if (tog && lead) {
         const on = lead.ai_enabled !== false;
         tog.checked = on;
@@ -1496,6 +1677,10 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
           status.textContent = on ? "ON" : "OFF"; 
           status.className = `ai-toggle-status ${on ? "on" : "off"}`; 
         }
+      }
+      
+      if (scoreEl && lead?.ai_score) {
+        scoreEl.textContent = `Score: ${lead.ai_score}`;
       }
     } catch (err) {
       console.error("Load lead AI settings error:", err);
@@ -1643,7 +1828,7 @@ async function loadVoiceAi() {
     }
 
     // Load call count
-    const { data: calls, count } = await sb
+    const { count } = await sb
       .from("voice_calls")
       .select("*", { count: "exact" })
       .eq("company_id", currentCompanyId);
@@ -1910,7 +2095,7 @@ async function loadOppAppointments(leadId) {
   try {
     const { data: appointments } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type")
       .eq("company_id", currentCompanyId)
       .eq("lead_id", leadId)
       .order("start_time", { ascending: false });
@@ -1922,8 +2107,8 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${a.title || "Appointment"} <span class="chip">${a.status || "Scheduled"}</span></h3>
-        <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${new Date(a.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}` : ""}</p>
+        <h3>${a.title || "Appointment"} <span class="chip">${a.status || "Scheduled"}</span>${a.appointment_type ? ` <span class="chip">${a.appointment_type}</span>` : ''}</h3>
+        <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
         ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
         ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}
       </div>
