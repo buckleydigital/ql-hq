@@ -48,6 +48,7 @@ const ICONS = {
   "map-pin":       `<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>`,
   gift:            `<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>`,
   "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
+  refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
 };
 
 function renderIcons() {
@@ -284,6 +285,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("voiceAgentForm")?.addEventListener("submit", handleVoiceAgentSave);
   document.getElementById("voiceProviderForm")?.addEventListener("submit", handleVoiceProviderSave);
   document.getElementById("testVoiceAgent")?.addEventListener("click", testVoiceAgent);
+  document.getElementById("closeCallDetailModal")?.addEventListener("click", () => closeModal("callDetailModal"));
+  document.getElementById("voiceLogsRefresh")?.addEventListener("click", () => { voiceLogsPage = 0; loadVoiceLogs(); });
+  document.getElementById("voiceLogsStatus")?.addEventListener("change", () => { voiceLogsPage = 0; loadVoiceLogs(); });
+  document.getElementById("voiceLogsDirection")?.addEventListener("change", () => { voiceLogsPage = 0; loadVoiceLogs(); });
 
   // ── Opportunity Modal ─────────────────────────────────────────────────────
   document.getElementById("closeOpportunityModal")?.addEventListener("click", () => closeModal("opportunityModal"));
@@ -1236,8 +1241,8 @@ async function downloadQuotePDF(quoteId) {
     if (typeof window.jspdf === "undefined") {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js";
-        s.integrity = "sha384-5MXQT3yrGpx6/FO6Z5JlMsn1xsN/OggV+b88W2CfpNqmvPfmv7JW/O8x78GzptfE";
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        s.integrity = "sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk";
         s.crossOrigin = "anonymous";
         s.onload = resolve;
         s.onerror = reject;
@@ -2250,6 +2255,10 @@ async function loadVoiceAi() {
     // Load recent calls
     await loadVoiceCalls();
 
+    // Load full voice logs
+    voiceLogsPage = 0;
+    await loadVoiceLogs();
+
   } catch (err) {
     console.error("Load voice AI error:", err);
     toast("Failed to load voice AI settings.", true);
@@ -2420,6 +2429,190 @@ function fmtDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+// ─── Voice AI Logs ────────────────────────────────────────────────────────────
+let voiceLogsPage = 0;
+const VOICE_LOGS_PER_PAGE = 20;
+
+async function loadVoiceLogs() {
+  if (!currentCompanyId) return;
+
+  const statusFilter = document.getElementById("voiceLogsStatus")?.value || "";
+  const dirFilter    = document.getElementById("voiceLogsDirection")?.value || "";
+  const tableEl      = document.getElementById("voiceLogsTable");
+  const pagEl        = document.getElementById("voiceLogsPagination");
+  if (!tableEl) return;
+
+  try {
+    let query = sb
+      .from("voice_calls")
+      .select("*, leads(name, phone)", { count: "exact" })
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .range(voiceLogsPage * VOICE_LOGS_PER_PAGE, (voiceLogsPage + 1) * VOICE_LOGS_PER_PAGE - 1);
+
+    if (statusFilter) query = query.eq("status", statusFilter);
+    if (dirFilter) query = query.eq("direction", dirFilter);
+
+    const { data: calls, count, error } = await query;
+
+    if (error) throw error;
+
+    if (!calls?.length) {
+      tableEl.innerHTML = `<div class="notice">No call logs found.</div>`;
+      if (pagEl) pagEl.innerHTML = "";
+      return;
+    }
+
+    const statusColor = (s) => {
+      const map = { completed: "#22c55e", missed: "#ef4444", failed: "#ef4444", voicemail: "#f59e0b", in_progress: "#3b82f6", ringing: "#8b5cf6" };
+      return map[s] || "var(--muted)";
+    };
+
+    tableEl.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);text-align:left">
+            <th style="padding:8px 10px">Lead</th>
+            <th style="padding:8px 10px">Direction</th>
+            <th style="padding:8px 10px">Status</th>
+            <th style="padding:8px 10px">Duration</th>
+            <th style="padding:8px 10px">Date</th>
+            <th style="padding:8px 10px">Transcript</th>
+            <th style="padding:8px 10px">Recording</th>
+            <th style="padding:8px 10px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${calls.map((c) => `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" data-call-id="${esc(c.id)}">
+              <td style="padding:8px 10px;font-weight:500">${esc(c.leads?.name || "Unknown")}</td>
+              <td style="padding:8px 10px"><span class="chip">${c.direction || "—"}</span></td>
+              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${c.status || "—"}</span></td>
+              <td style="padding:8px 10px">${fmtDuration(c.duration)}</td>
+              <td style="padding:8px 10px">${fmtDate(c.created_at)}</td>
+              <td style="padding:8px 10px">${c.transcript ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
+              <td style="padding:8px 10px">${c.recording_url ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
+              <td style="padding:8px 10px"><button class="btn" type="button" style="font-size:12px;padding:4px 10px">View</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    // Attach click handlers via event delegation
+    tableEl.querySelectorAll("tr[data-call-id]").forEach((row) => {
+      row.addEventListener("click", () => openCallDetail(row.dataset.callId));
+    });
+
+    // Pagination
+    if (pagEl) {
+      const totalPages = Math.ceil((count || 0) / VOICE_LOGS_PER_PAGE);
+      if (totalPages <= 1) {
+        pagEl.innerHTML = "";
+      } else {
+        pagEl.innerHTML = `
+          <button class="btn" id="voiceLogsPrev" ${voiceLogsPage === 0 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">← Prev</button>
+          <span style="font-size:13px;color:var(--muted);padding:4px 8px">Page ${voiceLogsPage + 1} of ${totalPages}</span>
+          <button class="btn" id="voiceLogsNext" ${voiceLogsPage >= totalPages - 1 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">Next →</button>
+        `;
+        document.getElementById("voiceLogsPrev")?.addEventListener("click", () => { voiceLogsPage--; loadVoiceLogs(); });
+        document.getElementById("voiceLogsNext")?.addEventListener("click", () => { voiceLogsPage++; loadVoiceLogs(); });
+      }
+    }
+  } catch (err) {
+    console.error("Load voice logs error:", err);
+    tableEl.innerHTML = `<div class="notice">Failed to load call logs.</div>`;
+  }
+}
+
+async function openCallDetail(callId) {
+  const body = document.getElementById("callDetailBody");
+  if (!body) return;
+  body.innerHTML = `<div class="notice">Loading…</div>`;
+  openModal("callDetailModal");
+
+  try {
+    const { data: call, error } = await sb
+      .from("voice_calls")
+      .select("*, leads(name, phone, email)")
+      .eq("id", callId)
+      .single();
+
+    if (error || !call) {
+      body.innerHTML = `<div class="notice">Call not found.</div>`;
+      return;
+    }
+
+    const title = document.getElementById("callDetailTitle");
+    if (title) title.textContent = `Call with ${call.leads?.name || "Unknown"}`;
+
+    const subtitle = document.getElementById("callDetailSubtitle");
+    if (subtitle) subtitle.textContent = `${(call.direction || "").charAt(0).toUpperCase() + (call.direction || "").slice(1)} call · ${fmtDate(call.created_at)}`;
+
+    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
+    html += `<div><strong>Lead:</strong> ${esc(call.leads?.name || "Unknown")}</div>`;
+    html += `<div><strong>Phone:</strong> ${esc(call.leads?.phone || call.from_number || "—")}</div>`;
+    html += `<div><strong>Direction:</strong> <span class="chip">${call.direction || "—"}</span></div>`;
+    html += `<div><strong>Status:</strong> ${call.status || "—"}</div>`;
+    html += `<div><strong>Duration:</strong> ${fmtDuration(call.duration)}</div>`;
+    html += `<div><strong>Sentiment:</strong> ${call.sentiment || "—"}</div>`;
+    if (call.outcome) html += `<div><strong>Outcome:</strong> ${esc(call.outcome)}</div>`;
+    if (call.cost) html += `<div><strong>Cost:</strong> $${Number(call.cost).toFixed(4)}</div>`;
+    html += `</div>`;
+
+    // Recording player
+    if (call.recording_url) {
+      html += `
+        <div style="margin-bottom:20px">
+          <h3 style="margin-bottom:8px;font-size:14px">Recording</h3>
+          <audio controls preload="metadata" style="width:100%;border-radius:var(--radius)">
+            <source src="${esc(call.recording_url)}" type="audio/mpeg">
+            <source src="${esc(call.recording_url)}" type="audio/wav">
+            Your browser does not support audio playback.
+          </audio>
+        </div>
+      `;
+    }
+
+    // Summary
+    if (call.summary) {
+      html += `
+        <div style="margin-bottom:20px">
+          <h3 style="margin-bottom:8px;font-size:14px">AI Summary</h3>
+          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;line-height:1.6">${esc(call.summary)}</div>
+        </div>
+      `;
+    }
+
+    // Transcript
+    if (call.transcript) {
+      html += `
+        <div>
+          <h3 style="margin-bottom:8px;font-size:14px">Transcript</h3>
+          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);max-height:400px;overflow-y:auto;font-size:13px;line-height:1.8;white-space:pre-wrap">${esc(call.transcript)}</div>
+        </div>
+      `;
+    }
+
+    if (!call.recording_url && !call.transcript && !call.summary) {
+      html += `<div class="notice" style="margin-top:10px">No transcript or recording available for this call.</div>`;
+    }
+
+    body.innerHTML = html;
+
+  } catch (err) {
+    console.error("Open call detail error:", err);
+    body.innerHTML = `<div class="notice">Failed to load call details.</div>`;
+  }
+}
+
+function esc(str) {
+  if (!str) return "";
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 // ─── Opportunity Detail Modal ─────────────────────────────────────────────────

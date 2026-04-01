@@ -27,6 +27,7 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .brand-copy span{font-size:11px;color:var(--muted)}
 
 .app.collapsed .brand-copy,.app.collapsed .nav-text,.app.collapsed .nav-sec,.app.collapsed .chev,.app.collapsed .count,.app.collapsed .account-copy{display:none}
+.app.collapsed .brand-media{display:none}
 .app.collapsed .nav-item,.app.collapsed .sub-item{justify-content:center;padding:0;width:44px;margin:0 auto}
 .app.collapsed .account{justify-content:center;padding:0;width:44px;margin:0 auto}
 .app.collapsed .sidebar{padding:16px 8px}
@@ -338,7 +339,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="brand-media"><img class="brand-logo" src="https://raw.githubusercontent.com/buckleydigital/ql-hq/main/product-logo.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
         <div class="brand-copy"><b>QuoteLeadsHQ</b><span id="brandCompanyName">Workspace</span></div>
       </div>
-      <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
+      <div style="display:flex;gap:4px">
+        <button id="themeToggle" class="iconbtn" type="button" aria-label="Toggle light and dark mode"><span class="icon" id="themeToggleIcon" data-icon="moon"></span></button>
+        <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
+      </div>
     </div>
 
     <div class="nav">
@@ -367,7 +371,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
-        <button id="themeToggle" class="nav-item" type="button" aria-label="Toggle light and dark mode"><span class="icon" id="themeToggleIcon" data-icon="moon"></span><span class="nav-text">Toggle Theme</span></button>
       </div>
     </div>
 
@@ -839,6 +842,37 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               </div>
             </section>
           </div>
+
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>Voice AI Logs</h2>
+                <p>Full call history with transcripts and recordings.</p>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div id="voiceLogsFilter" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+                <select id="voiceLogsStatus" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:13px">
+                  <option value="">All Statuses</option>
+                  <option value="completed">Completed</option>
+                  <option value="missed">Missed</option>
+                  <option value="failed">Failed</option>
+                  <option value="voicemail">Voicemail</option>
+                  <option value="in_progress">In Progress</option>
+                </select>
+                <select id="voiceLogsDirection" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:13px">
+                  <option value="">All Directions</option>
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+                <button id="voiceLogsRefresh" class="btn" type="button" style="margin-left:auto"><span class="icon" data-icon="refresh"></span> Refresh</button>
+              </div>
+              <div id="voiceLogsTable" style="overflow-x:auto">
+                <div class="notice">Loading call logs…</div>
+              </div>
+              <div id="voiceLogsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -1109,6 +1143,23 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </form>
     </div>
     <div class="mf"><div></div><div class="actions"><button id="cancelSaleModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="saleForm">Save Sale</button></div></div>
+  </div>
+</div>
+
+<!-- ── Call Detail Modal ───────────────────────────────────────────────────── -->
+<div id="callDetailModal" class="modal">
+  <div class="modal-card" style="width:min(780px,95%)">
+    <div class="mh">
+      <h2 id="callDetailTitle">Call Details</h2>
+      <p id="callDetailSubtitle">View transcript and listen to recording.</p>
+    </div>
+    <div class="mb" id="callDetailBody" style="padding:20px">
+      <div class="notice">Loading…</div>
+    </div>
+    <div class="mf">
+      <div></div>
+      <div class="actions"><button id="closeCallDetailModal" class="btn" type="button">Close</button></div>
+    </div>
   </div>
 </div>
 
