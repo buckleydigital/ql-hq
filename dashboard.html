@@ -33,7 +33,8 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .app.collapsed .sidebar{padding:16px 8px}
 .app.collapsed .sub{display:none!important}
 .app.collapsed .brand{justify-content:center}
-.app.collapsed .top-side{justify-content:center}
+.app.collapsed .top-side{justify-content:center;flex-direction:column;align-items:center}
+.app.collapsed .top-side-actions{flex-direction:column}
 
 .iconbtn,.btn,.btn2,.btn-danger{min-height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px}
 .iconbtn{width:40px;padding:0}
@@ -42,6 +43,7 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .btn-danger{color:#c53535;border-color:rgba(197,53,53,.28)}
 
 .top-side{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.top-side-actions{display:flex;gap:4px}
 .nav-sec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 10px}
 .nav,.sub{display:flex;flex-direction:column;gap:3px}
 .nav-item,.sub-item,.account{min-height:42px;padding:0 10px;border-radius:12px;display:flex;align-items:center;gap:10px;color:var(--text);border:1px solid transparent;text-align:left;transition:background .15s}
@@ -55,8 +57,10 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--border)}
 .account{width:100%;background:var(--surface)}
 .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--side-active);color:var(--side-active-text);font-size:11px;font-weight:700;flex-shrink:0}
-.account-copy b{display:block;font-size:13px}
-.account-copy span{font-size:11px;color:var(--muted)}
+.account-copy{min-width:0;overflow:hidden}
+.account-copy b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account-copy span{font-size:11px;color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account-company{font-size:11px;font-weight:600;color:var(--text)!important}
 
 /* ── Main ─────────────────────────────────────── */
 .main{display:flex;flex-direction:column;min-width:0}
@@ -339,7 +343,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="brand-media"><img class="brand-logo" src="https://raw.githubusercontent.com/buckleydigital/ql-hq/main/product-logo.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
         <div class="brand-copy"><b>QuoteLeadsHQ</b><span id="brandCompanyName">Workspace</span></div>
       </div>
-      <div style="display:flex;gap:4px">
+      <div class="top-side-actions">
         <button id="themeToggle" class="iconbtn" type="button" aria-label="Toggle light and dark mode"><span class="icon" id="themeToggleIcon" data-icon="moon"></span></button>
         <button id="sidebarToggle" class="iconbtn" type="button"><span class="icon" data-icon="panel-left"></span></button>
       </div>
@@ -377,7 +381,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div class="foot">
       <button id="sidebarAccountButton" class="account" type="button">
         <div id="sidebarAvatar" class="avatar">AA</div>
-        <div class="account-copy"><b id="sidebarAccountName">Account Owner</b><span id="sidebarAccountMeta">company@example.com</span></div>
+        <div class="account-copy"><b id="sidebarAccountName">Account Owner</b><span id="sidebarCompanyName" class="account-company"></span><span id="sidebarAccountMeta">company@example.com</span></div>
       </button>
     </div>
   </aside>

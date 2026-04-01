@@ -484,6 +484,8 @@ async function showApp() {
       if (company?.name) {
         const brandName = document.getElementById("brandCompanyName");
         if (brandName) brandName.textContent = company.name;
+        const sidebarCompany = document.getElementById("sidebarCompanyName");
+        if (sidebarCompany) sidebarCompany.textContent = company.name;
       }
     }
 
@@ -1163,7 +1165,9 @@ async function kanbanDrop(event, newStage) {
 // ─── Quotes ───────────────────────────────────────────────────────────────────
 function buildQuoteLink(token) {
   if (!token) return "";
-  return `${window.location.origin}/quote-public.html?token=${encodeURIComponent(token)}`;
+  const url = new URL("quote-public.html", window.location.href);
+  url.searchParams.set("token", token);
+  return url.href;
 }
 
 async function loadQuotes() {
