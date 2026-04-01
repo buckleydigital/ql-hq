@@ -64,6 +64,23 @@ function updateThemeIcon() {
   btn.innerHTML = `<span class="icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${dark ? ICONS.sun : ICONS.moon}</svg></span>`;
 }
 
+// ─── Pipeline stage labels ────────────────────────────────────────────────────
+const STAGE_LABELS = {
+  new_lead:          "New Lead",
+  follow_up:         "Qualifying",
+  quote_in_progress: "Quote in Progress",
+  quoted:            "Quoted",
+  closed_won:        "Closed Won",
+  closed_lost:       "Closed Lost",
+};
+
+const STAGE_FROM_LABEL = Object.fromEntries(
+  Object.entries(STAGE_LABELS).map(([k, v]) => [v, k])
+);
+
+function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
+function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let sb;
 let currentUser      = null;
@@ -486,6 +503,7 @@ function navigateTo(page) {
     leads:              loadLeads,
     opportunities:      loadOpportunities,
     quotes:             loadQuotes,
+    appointments:       loadAppointments,
     sales:              loadSales,
     conversations:      loadConversations,
     "general-settings": loadSettings,
@@ -502,14 +520,14 @@ async function loadDashboard() {
 
   try {
     const [{ data: leads }, { data: cf }] = await Promise.all([
-      sb.from("leads").select("id, name, email, status, value, created_at").eq("company_id", currentCompanyId),
+      sb.from("leads").select("id, name, email, pipeline_stage, value, created_at").eq("company_id", currentCompanyId),
       sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
     ]);
 
     const all    = leads || [];
     const cfLen  = cf?.length || 0;
-    const open   = all.filter((l) => !["Closed Won","Closed Lost"].includes(l.status)).length;
-    const quoted = all.filter((l) => l.status === "Quoted").length;
+    const open   = all.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
+    const quoted = all.filter((l) => l.pipeline_stage === "quoted").length;
 
     const statLeadCount = document.getElementById("statLeadCount");
     const statOpenPipeline = document.getElementById("statOpenPipeline");
@@ -530,7 +548,7 @@ async function loadDashboard() {
     const customFieldChip = document.getElementById("customFieldChip");
     
     if (leadGrowthChip) leadGrowthChip.textContent = newThisWeek ? `+${newThisWeek} this week` : "No new";
-    if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.status === "Qualifying").length} qualifying`;
+    if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`;
     if (quoteChip) quoteChip.textContent = `${quoted} quoted`;
     if (customFieldChip) customFieldChip.textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
 
@@ -573,7 +591,7 @@ function renderRecentLeads(leads) {
   el.innerHTML = `<div class="list">${leads.map((l) => `
     <div class="item" style="grid-template-columns:1.6fr 1fr 1fr">
       <div><h3>${l.name || "—"}</h3><p>${l.email || "—"}</p></div>
-      <div><span class="chip">${l.status || "—"}</span></div>
+      <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
       <div><p style="font-size:11px;color:var(--muted)">${fmtDate(l.created_at)}</p></div>
     </div>`).join("")}</div>`;
 }
@@ -581,16 +599,16 @@ function renderRecentLeads(leads) {
 function renderPipelineSnapshot(leads) {
   const el = document.getElementById("pipelineSnapshotPanel");
   if (!el) return;
-  const STAGES = ["New Lead","Qualifying","Quote in Progress","Quoted","Closed Won","Closed Lost"];
+  const STAGES = ["new_lead","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
   if (!leads.length) {
     el.innerHTML = `<div class="empty"><p>No pipeline data yet.</p></div>`;
     return;
   }
   el.innerHTML = STAGES.map((s) => {
-    const items = leads.filter((l) => l.status === s);
+    const items = leads.filter((l) => l.pipeline_stage === s);
     const val   = items.reduce((a, l) => a + (Number(l.value) || 0), 0);
     return `<div class="item" style="grid-template-columns:1.4fr 80px 110px">
-      <div><h3>${s}</h3></div>
+      <div><h3>${stageLabel(s)}</h3></div>
       <div><p>${items.length} lead${items.length === 1 ? "" : "s"}</p></div>
       <div><p>${val ? fmt(val) : "—"}</p></div>
     </div>`;
@@ -721,7 +739,7 @@ function renderLeadsTable(leads) {
       <td><strong>${l.email || "—"}</strong>${l.phone ? `<span class="muted">${l.phone}</span>` : ""}</td>
       <td><strong>${l.address || "—"}</strong>${l.postcode ? `<span class="muted">${l.postcode}</span>` : ""}</td>
       <td>${l.source ? `<span class="chip">${l.source}</span>` : "—"}</td>
-      <td><span class="chip">${l.status || "—"}</span></td>
+      <td><span class="chip">${stageLabel(l.pipeline_stage)}</span></td>
       <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
       <td>
         <div style="display:flex;gap:6px">
@@ -793,7 +811,7 @@ async function openEditLead(id) {
   if (leadPostcode) leadPostcode.value = l.postcode || "";
   if (leadAddress) leadAddress.value = l.address || "";
   if (leadSource) leadSource.value = l.source || "";
-  if (leadStatus) leadStatus.value = l.status || "New Lead";
+  if (leadStatus) leadStatus.value = stageLabel(l.pipeline_stage) || "New Lead";
   if (leadValue) leadValue.value = l.value || "";
   if (leadNotes) leadNotes.value = l.notes || "";
   
@@ -813,15 +831,15 @@ async function handleLeadSave(e) {
 
   const payload = {
     company_id: currentCompanyId,
-    name:     document.getElementById("leadName")?.value || null,
-    email:    document.getElementById("leadEmail")?.value || null,
-    phone:    document.getElementById("leadPhone")?.value || null,
-    postcode: document.getElementById("leadPostcode")?.value || null,
-    address:  document.getElementById("leadAddress")?.value || null,
-    source:   document.getElementById("leadSource")?.value || null,
-    status:   document.getElementById("leadStatus")?.value || "New Lead",
-    value:    Number(document.getElementById("leadValue")?.value) || null,
-    notes:    document.getElementById("leadNotes")?.value || null,
+    name:           document.getElementById("leadName")?.value || null,
+    email:          document.getElementById("leadEmail")?.value || null,
+    phone:          document.getElementById("leadPhone")?.value || null,
+    postcode:       document.getElementById("leadPostcode")?.value || null,
+    address:        document.getElementById("leadAddress")?.value || null,
+    source:         document.getElementById("leadSource")?.value || null,
+    pipeline_stage: stageKey(document.getElementById("leadStatus")?.value || "New Lead"),
+    value:          Number(document.getElementById("leadValue")?.value) || null,
+    notes:          document.getElementById("leadNotes")?.value || null,
     custom_data,
   };
 
@@ -865,14 +883,14 @@ function handleSearch(e) {
 }
 
 // ─── Opportunities / Kanban ───────────────────────────────────────────────────
-const KANBAN_STAGES = ["New Lead","Qualifying","Quote in Progress","Quoted","Closed Won","Closed Lost"];
+const KANBAN_STAGES = ["new_lead","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
 
 async function loadOpportunities() {
   if (!currentCompanyId) return;
   try {
     const { data } = await sb
       .from("leads")
-      .select("id, name, email, phone, status, value, created_at")
+      .select("id, name, email, phone, pipeline_stage, value, created_at")
       .eq("company_id", currentCompanyId);
     allLeads = data || [];
     buildKanban(allLeads);
@@ -886,7 +904,7 @@ function buildKanban(leads) {
   if (!board) return;
 
   board.innerHTML = KANBAN_STAGES.map((stage) => {
-    const cards = leads.filter((l) => l.status === stage);
+    const cards = leads.filter((l) => l.pipeline_stage === stage);
     return `
       <div class="col"
            data-stage="${stage}"
@@ -894,7 +912,7 @@ function buildKanban(leads) {
            ondrop="kanbanDrop(event,'${stage}')"
            ondragleave="kanbanDragLeave(event)">
         <div class="colhead">
-          <b>${stage}</b><span class="chip">${cards.length}</span>
+          <b>${stageLabel(stage)}</b><span class="chip">${cards.length}</span>
         </div>
         <div class="cards">
           ${cards.length
@@ -960,16 +978,16 @@ async function kanbanDrop(event, newStage) {
 
   // Optimistic update
   const lead = allLeads.find((l) => l.id === leadId);
-  if (lead) lead.status = newStage;
+  if (lead) lead.pipeline_stage = newStage;
   buildKanban(allLeads);
 
   try {
-    const { error } = await sb.from("leads").update({ status: newStage }).eq("id", leadId);
+    const { error } = await sb.from("leads").update({ pipeline_stage: newStage }).eq("id", leadId);
     if (error) {
       toast(error.message, true);
       loadOpportunities();
     } else {
-      toast(`Moved to "${newStage}"`);
+      toast(`Moved to "${stageLabel(newStage)}"`);
     }
   } catch (err) {
     toast("Failed to update status.", true);
@@ -986,7 +1004,7 @@ async function loadQuotes() {
       .from("leads")
       .select("id, name, email, phone, value, created_at")
       .eq("company_id", currentCompanyId)
-      .eq("status", "Quoted")
+      .eq("pipeline_stage", "quoted")
       .order("created_at", { ascending: false });
     const leads = data || [];
     const el = document.getElementById("quotesPanel");
@@ -1012,16 +1030,16 @@ async function loadSales() {
   try {
     const { data } = await sb
       .from("leads")
-      .select("id, name, status, value, created_at")
+      .select("id, name, pipeline_stage, value, created_at")
       .eq("company_id", currentCompanyId)
-      .in("status", ["Closed Won","Closed Lost"])
+      .in("pipeline_stage", ["closed_won","closed_lost"])
       .order("created_at", { ascending: false });
     const leads = data || [];
     const el = document.getElementById("salesPanel");
     if (!el) return;
 
-    const won     = leads.filter((l) => l.status === "Closed Won");
-    const lost    = leads.filter((l) => l.status === "Closed Lost");
+    const won     = leads.filter((l) => l.pipeline_stage === "closed_won");
+    const lost    = leads.filter((l) => l.pipeline_stage === "closed_lost");
     const wonVal  = won.reduce((a, l) => a + (Number(l.value) || 0), 0);
     const lostVal = lost.reduce((a, l) => a + (Number(l.value) || 0), 0);
     const winRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
@@ -1035,12 +1053,51 @@ async function loadSales() {
       ${leads.length ? `<div class="table-lite">${leads.map((l) => `
         <div class="row">
           <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
-          <div><span class="chip">${l.status}</span></div>
+          <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
           <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
         </div>`).join("")}</div>`
         : `<div class="empty"><p>No closed deals yet.</p></div>`}`;
   } catch (err) {
     toast("Failed to load sales data.", true);
+  }
+}
+
+// ─── Appointments ─────────────────────────────────────────────────────────────
+async function loadAppointments() {
+  if (!currentCompanyId) return;
+  try {
+    const { data } = await sb
+      .from("appointments")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, lead_id, leads(name, phone)")
+      .eq("company_id", currentCompanyId)
+      .order("start_time", { ascending: false });
+    const appointments = data || [];
+    const el = document.getElementById("appointmentsPanel");
+    if (!el) return;
+
+    if (!appointments.length) {
+      el.innerHTML = `<div class="empty"><h3>No appointments yet</h3><p>Appointments booked via AI or manually will appear here.</p></div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="table-lite">${appointments.map((a) => `
+      <div class="row">
+        <div>
+          <strong style="font-size:13px">${a.title || "Appointment"}</strong>
+          <span class="muted">${a.leads?.name || "Unknown lead"}</span>
+        </div>
+        <div>
+          <span class="chip">${a.status || "scheduled"}</span>
+          ${a.appointment_type ? `<span class="chip">${a.appointment_type}</span>` : ""}
+        </div>
+        <div>
+          <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
+          <span class="muted">${fmtTime(a.start_time)}${a.end_time ? ` – ${fmtTime(a.end_time)}` : ""}</span>
+        </div>
+        <div><span class="muted">${a.location || "—"}</span></div>
+      </div>`).join("")}</div>`;
+  } catch (err) {
+    toast("Failed to load appointments.", true);
   }
 }
 
@@ -1131,7 +1188,7 @@ async function loadAiSettings() {
   try {
     // Load AI settings
     const { data } = await sb
-      .from("ai_settings")
+      .from("sms_agent_config")
       .select("*")
       .eq("company_id", currentCompanyId)
       .maybeSingle();
@@ -1300,7 +1357,7 @@ async function handleAiSettingsSave(e) {
   
   try {
     const { error } = await sb
-      .from("ai_settings")
+      .from("sms_agent_config")
       .upsert(payload, { onConflict: "company_id" });
     
     if (error) { 
@@ -1412,7 +1469,7 @@ async function loadTeamMembers() {
   try {
     const [{ data: profiles }, { data: invites }] = await Promise.all([
       sb.from("profiles")
-        .select("id, full_name, email, role, is_active, created_at")
+        .select("id, full_name, phone, role, is_active, created_at")
         .eq("company_id", currentCompanyId)
         .order("created_at"),
       sb.from("sales_rep_invites")
@@ -1434,7 +1491,7 @@ function renderTeamMembersList(profiles, invites) {
 
   const memberRows = profiles.map((p) => `
     <div class="team-row">
-      <div><strong style="font-size:13px">${p.full_name || "—"}</strong><span class="muted">${p.email || "—"}</span></div>
+      <div><strong style="font-size:13px">${p.full_name || "—"}</strong><span class="muted">${p.phone || "—"}</span></div>
       <div><span class="chip">${p.role || "member"}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div></div>
@@ -1475,13 +1532,13 @@ async function handleTeamInvite(e) {
     const token = session?.access_token;
     if (!token) throw new Error("Not authenticated.");
 
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-sales-rep`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-rep`, {
       method: "POST",
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${token}`,
       },
-      body: JSON.stringify({ email, fullName, phone }),
+      body: JSON.stringify({ email, name: fullName, phone }),
     });
 
     const json = await res.json();
@@ -2006,13 +2063,13 @@ async function openOpportunityModal(leadId) {
   const oppModalTitle = document.getElementById("oppModalTitle");
   const oppModalSubtitle = document.getElementById("oppModalSubtitle");
   if (oppModalTitle) oppModalTitle.textContent = lead.name || "Opportunity Details";
-  if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${lead.status || "—"} · Created: ${fmtDate(lead.created_at)}`;
+  if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${stageLabel(lead.pipeline_stage)} · Created: ${fmtDate(lead.created_at)}`;
 
   // Populate overview
   document.getElementById("oppOverviewName").value = lead.name || "—";
   document.getElementById("oppOverviewEmail").value = lead.email || "—";
   document.getElementById("oppOverviewPhone").value = lead.phone || "—";
-  document.getElementById("oppOverviewStatus").value = lead.status || "—";
+  document.getElementById("oppOverviewStatus").value = stageLabel(lead.pipeline_stage) || "—";
   document.getElementById("oppOverviewSource").value = lead.source || "—";
   document.getElementById("oppOverviewValue").value = lead.value ? fmt(lead.value) : "—";
   document.getElementById("oppOverviewAddress").value = lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "—";

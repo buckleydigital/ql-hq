@@ -186,6 +186,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Track invite in sales_rep_invites table for dashboard visibility
+    await adminClient.from("sales_rep_invites").insert({
+      company_id: profile.company_id,
+      email,
+      full_name: name,
+      phone: phone || null,
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+    });
+
     return new Response(
       JSON.stringify({
         message: `Invite sent to ${email}`,
