@@ -344,7 +344,7 @@ Deno.serve(async (req) => {
       .select("user_type")
       .eq("company_id", companyId)
       .limit(1)
-      .single();
+      .maybeSingle();
     const userType: string = companyProfile?.user_type ?? "external";
 
     // 2b. Validate Twilio signature (reject spoofed requests)

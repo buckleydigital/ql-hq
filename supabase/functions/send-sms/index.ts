@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
     } catch (err) {
       // Only internal (agency) accounts fall back to platform env secrets
       if (userType === "external") {
-        return json({ error: "No Twilio API keys configured. Please add your keys in Settings." }, 400);
+        return json({ error: "No Twilio API keys configured. Please add your Twilio keys in Settings → Provider Keys." }, 400);
       }
       console.warn("Twilio key resolution from DB failed, trying env secrets:", (err as Error).message);
       const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
