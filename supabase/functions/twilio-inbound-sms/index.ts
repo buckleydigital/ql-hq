@@ -51,6 +51,7 @@ function normalisePhone(phone: string): string {
 const ENV_FALLBACKS: Record<string, string> = {
   twilio: "TWILIO_ACCOUNT_SID",
   twilio_auth: "TWILIO_AUTH_TOKEN",
+  openai: "OPEN_AI_API_KEY",
 };
 
 async function resolveKey(
@@ -64,7 +65,7 @@ async function resolveKey(
   });
   if (!error && data) return data as string;
 
-  // Fall back to Supabase Edge Function secrets for Twilio keys
+  // Fall back to Supabase Edge Function secrets
   const envName = ENV_FALLBACKS[provider];
   if (envName) {
     const envVal = Deno.env.get(envName);
