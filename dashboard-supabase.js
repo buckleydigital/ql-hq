@@ -1866,6 +1866,7 @@ async function handleTeamInvite(e) {
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ email, name: fullName, phone }),
     });
@@ -2018,6 +2019,7 @@ async function handleNewConversation(e) {
           headers: {
             "Content-Type":  "application/json",
             "Authorization": `Bearer ${token}`,
+            "apikey":        SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             conversation_id: conv.id,
@@ -2026,7 +2028,7 @@ async function handleNewConversation(e) {
         });
         const json = await res.json();
         if (!res.ok || json.error) {
-          toast(json.error || "Conversation created but SMS failed to send.", true);
+          toast(json.error || json.message || json.msg || "Conversation created but SMS failed to send.", true);
         }
       }
     }
@@ -2133,6 +2135,7 @@ async function handleSendMessage(e) {
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
         conversation_id: currentConvId,
@@ -2142,7 +2145,7 @@ async function handleSendMessage(e) {
 
     const json = await res.json();
     if (!res.ok || json.error) {
-      toast(json.error || "Failed to send SMS.", true);
+      toast(json.error || json.message || json.msg || "Failed to send SMS.", true);
       return;
     }
 
@@ -2374,6 +2377,7 @@ async function handleVoiceProviderSave(e) {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ 
         action: "save_key",
@@ -2405,6 +2409,7 @@ async function testVoiceAgent() {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ action: "test" }),
     });
@@ -2847,6 +2852,7 @@ async function loadVapiAssistants() {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ action: "get_config" }),
     });
@@ -2893,6 +2899,7 @@ async function handleCallLead() {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
+        "apikey":        SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ 
         action: "create_call",
