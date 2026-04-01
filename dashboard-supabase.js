@@ -1242,6 +1242,7 @@ async function downloadQuotePDF(quoteId) {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
         s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        s.integrity = "sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk";
         s.crossOrigin = "anonymous";
         s.onload = resolve;
         s.onerror = reject;
@@ -2485,7 +2486,7 @@ async function loadVoiceLogs() {
         </thead>
         <tbody>
           ${calls.map((c) => `
-            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="openCallDetail('${c.id}')">
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" data-call-id="${esc(c.id)}">
               <td style="padding:8px 10px;font-weight:500">${esc(c.leads?.name || "Unknown")}</td>
               <td style="padding:8px 10px"><span class="chip">${c.direction || "—"}</span></td>
               <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${c.status || "—"}</span></td>
@@ -2493,12 +2494,17 @@ async function loadVoiceLogs() {
               <td style="padding:8px 10px">${fmtDate(c.created_at)}</td>
               <td style="padding:8px 10px">${c.transcript ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
               <td style="padding:8px 10px">${c.recording_url ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
-              <td style="padding:8px 10px"><button class="btn" type="button" style="font-size:12px;padding:4px 10px" onclick="event.stopPropagation();openCallDetail('${c.id}')">View</button></td>
+              <td style="padding:8px 10px"><button class="btn" type="button" style="font-size:12px;padding:4px 10px">View</button></td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     `;
+
+    // Attach click handlers via event delegation
+    tableEl.querySelectorAll("tr[data-call-id]").forEach((row) => {
+      row.addEventListener("click", () => openCallDetail(row.dataset.callId));
+    });
 
     // Pagination
     if (pagEl) {
@@ -2507,10 +2513,12 @@ async function loadVoiceLogs() {
         pagEl.innerHTML = "";
       } else {
         pagEl.innerHTML = `
-          <button class="btn" ${voiceLogsPage === 0 ? "disabled" : ""} onclick="voiceLogsPage--;loadVoiceLogs()" style="font-size:12px;padding:4px 12px">← Prev</button>
+          <button class="btn" id="voiceLogsPrev" ${voiceLogsPage === 0 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">← Prev</button>
           <span style="font-size:13px;color:var(--muted);padding:4px 8px">Page ${voiceLogsPage + 1} of ${totalPages}</span>
-          <button class="btn" ${voiceLogsPage >= totalPages - 1 ? "disabled" : ""} onclick="voiceLogsPage++;loadVoiceLogs()" style="font-size:12px;padding:4px 12px">Next →</button>
+          <button class="btn" id="voiceLogsNext" ${voiceLogsPage >= totalPages - 1 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">Next →</button>
         `;
+        document.getElementById("voiceLogsPrev")?.addEventListener("click", () => { voiceLogsPage--; loadVoiceLogs(); });
+        document.getElementById("voiceLogsNext")?.addEventListener("click", () => { voiceLogsPage++; loadVoiceLogs(); });
       }
     }
   } catch (err) {
