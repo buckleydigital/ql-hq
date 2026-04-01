@@ -30,6 +30,10 @@ const ICONS = {
   trash:           `<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>`,
   edit:            `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`,
   mail:            `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>`,
+  phone:           `<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>`,
+  play:            `<polygon points="5 3 19 12 5 21 5 3"/>`,
+  pause:           `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`,
+  mic:             `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>`,
 };
 
 function renderIcons() {
@@ -244,6 +248,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
 
+  // ── Voice AI ──────────────────────────────────────────────────────────────
+  document.getElementById("voiceAgentForm")?.addEventListener("submit", handleVoiceAgentSave);
+  document.getElementById("voiceProviderForm")?.addEventListener("submit", handleVoiceProviderSave);
+  document.getElementById("testVoiceAgent")?.addEventListener("click", testVoiceAgent);
+
   // ── Team Members ──────────────────────────────────────────────────────────
   document.getElementById("teamInviteForm")?.addEventListener("submit", handleTeamInvite);
 
@@ -396,6 +405,7 @@ const PAGE_META = {
   conversations:      ["Conversations",     "SMS threads with leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
+  "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
 };
 
@@ -425,6 +435,7 @@ function navigateTo(page) {
     conversations:      loadConversations,
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
+    "voice-ai":         loadVoiceAi,
     "team-members":     loadTeamMembers,
   };
   loaders[page]?.();
@@ -1489,4 +1500,234 @@ async function handleAiToggle() {
   } catch (err) {
     toast("Failed to update AI setting.", true);
   }
+}
+
+// ─── Voice AI ─────────────────────────────────────────────────────────────────
+async function loadVoiceAi() {
+  if (!currentCompanyId) return;
+
+  try {
+    // Load voice agent config
+    const { data: config } = await sb
+      .from("voice_agent_config")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+
+    // Load profile to check user type
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("user_type")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+
+    const isInternal = profile?.user_type === "internal";
+
+    // Update UI based on user type
+    const voiceKeySource = document.getElementById("voiceKeySource");
+    const voiceKeySourceHelp = document.getElementById("voiceKeySourceHelp");
+
+    if (voiceKeySource) {
+      voiceKeySource.textContent = isInternal ? "Agency Key" : "Customer Key";
+    }
+    if (voiceKeySourceHelp) {
+      voiceKeySourceHelp.textContent = isInternal 
+        ? "Using agency VAPI key for voice calls." 
+        : "You must provide your own VAPI Assistant ID.";
+    }
+
+    // Populate form if config exists
+    if (config) {
+      const vapiAssistantId = document.getElementById("vapiAssistantId");
+      const voiceAgentName = document.getElementById("voiceAgentName");
+      const voiceModel = document.getElementById("voiceModel");
+      const voiceId = document.getElementById("voiceId");
+      const maxDuration = document.getElementById("maxDuration");
+      const transferPhone = document.getElementById("transferPhone");
+      const voiceSystemPrompt = document.getElementById("voiceSystemPrompt");
+      const voiceGreeting = document.getElementById("voiceGreeting");
+      const voiceAgentActive = document.getElementById("voiceAgentActive");
+      const voiceAgentStatus = document.getElementById("voiceAgentStatus");
+      const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
+
+      if (vapiAssistantId) vapiAssistantId.value = config.vapi_assistant_id || "";
+      if (voiceAgentName) voiceAgentName.value = config.name || "";
+      if (voiceModel) voiceModel.value = config.model || "gpt-4o";
+      if (voiceId) voiceId.value = config.voice_id || "";
+      if (maxDuration) maxDuration.value = config.max_duration || 300;
+      if (transferPhone) transferPhone.value = config.transfer_phone || "";
+      if (voiceSystemPrompt) voiceSystemPrompt.value = config.system_prompt || "";
+      if (voiceGreeting) voiceGreeting.value = config.greeting || "";
+      if (voiceAgentActive) voiceAgentActive.checked = config.is_active || false;
+
+      if (voiceAgentStatus) {
+        voiceAgentStatus.textContent = config.is_active ? "Active" : "Inactive";
+      }
+      if (voiceAgentStatusHelp) {
+        voiceAgentStatusHelp.textContent = config.is_active 
+          ? "Voice agent is ready to receive calls." 
+          : "Voice agent is not configured";
+      }
+    }
+
+    // Load call count
+    const { data: calls, count } = await sb
+      .from("voice_calls")
+      .select("*", { count: "exact" })
+      .eq("company_id", currentCompanyId);
+
+    const voiceCallCount = document.getElementById("voiceCallCount");
+    if (voiceCallCount) voiceCallCount.textContent = count || 0;
+
+    // Load recent calls
+    await loadVoiceCalls();
+
+  } catch (err) {
+    console.error("Load voice AI error:", err);
+    toast("Failed to load voice AI settings.", true);
+  }
+}
+
+async function handleVoiceAgentSave(e) {
+  e.preventDefault();
+
+  try {
+    const payload = {
+      company_id:       currentCompanyId,
+      vapi_assistant_id: document.getElementById("vapiAssistantId")?.value || null,
+      name:             document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
+      model:            document.getElementById("voiceModel")?.value || "gpt-4o",
+      voice_id:         document.getElementById("voiceId")?.value || null,
+      max_duration:     Number(document.getElementById("maxDuration")?.value) || 300,
+      transfer_phone:   document.getElementById("transferPhone")?.value || null,
+      system_prompt:    document.getElementById("voiceSystemPrompt")?.value || null,
+      greeting:         document.getElementById("voiceGreeting")?.value || null,
+      is_active:        document.getElementById("voiceAgentActive")?.checked || false,
+    };
+
+    const { error } = await sb
+      .from("voice_agent_config")
+      .upsert(payload, { onConflict: "company_id" });
+
+    if (error) { toast(error.message, true); return; }
+
+    toast("Voice agent configuration saved.");
+
+    // Update status display
+    const voiceAgentStatus = document.getElementById("voiceAgentStatus");
+    const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
+    if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
+    if (voiceAgentStatusHelp) {
+      voiceAgentStatusHelp.textContent = payload.is_active 
+        ? "Voice agent is ready to receive calls." 
+        : "Voice agent is not configured";
+    }
+
+  } catch (err) {
+    toast("Failed to save voice agent configuration.", true);
+  }
+}
+
+async function handleVoiceProviderSave(e) {
+  e.preventDefault();
+
+  const externalKey = document.getElementById("externalVapiKey")?.value?.trim();
+  if (!externalKey) {
+    toast("Please enter your VAPI API key.", true);
+    return;
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error("Not authenticated.");
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ 
+        action: "save_key",
+        vapiKey: externalKey 
+      }),
+    });
+
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error || "Failed to save provider key.");
+
+    toast("Provider key saved securely.");
+    document.getElementById("voiceProviderForm")?.reset();
+
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function testVoiceAgent() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error("Not authenticated.");
+
+    toast("Testing voice agent connection...");
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: "test" }),
+    });
+
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error || "Test failed.");
+
+    toast("Voice agent test successful!");
+
+  } catch (err) {
+    toast(`Test failed: ${err.message}`, true);
+  }
+}
+
+async function loadVoiceCalls() {
+  if (!currentCompanyId) return;
+
+  try {
+    const { data: calls } = await sb
+      .from("voice_calls")
+      .select("*, leads(name, phone)")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const el = document.getElementById("voiceCallsList");
+    if (!el) return;
+
+    if (!calls?.length) {
+      el.innerHTML = `<div class="notice">No calls yet. Configure your voice agent to start receiving calls.</div>`;
+      return;
+    }
+
+    el.innerHTML = calls.map((call) => `
+      <div class="run">
+        <h3>${call.leads?.name || "Unknown"} <span class="chip">${call.status}</span></h3>
+        <p>${call.leads?.phone || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
+        ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${call.transcript.substring(0, 100)}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
+        ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${call.summary}</p>` : ''}
+      </div>
+    `).join("");
+
+  } catch (err) {
+    console.error("Load voice calls error:", err);
+  }
+}
+
+function fmtDuration(seconds) {
+  if (!seconds) return "0s";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
