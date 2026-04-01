@@ -250,6 +250,37 @@ function parseAIResponse(raw: string): AIActions {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Twilio signature validation
+// ---------------------------------------------------------------------------
+async function validateTwilioSignature(
+  req: Request,
+  rawBody: string,
+  authToken: string
+): Promise<boolean> {
+  const signature = req.headers.get("X-Twilio-Signature");
+  if (!signature) return false;
+
+  // Twilio signs: URL + sorted params
+  const url = req.url;
+  const params = parseTwilioBody(rawBody);
+  const sortedKeys = Object.keys(params).sort();
+  const dataToSign = url + sortedKeys.map((k) => k + params[k]).join("");
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(dataToSign));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
+
+  return expected === signature;
+}
+
 // =============================================================================
 // Main handler
 // =============================================================================
@@ -288,6 +319,20 @@ Deno.serve(async (req) => {
     }
 
     const companyId: string = smsConfig.company_id;
+
+    // 2b. Validate Twilio signature (reject spoofed requests)
+    try {
+      const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth");
+      const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation);
+      if (!isValid) {
+        console.warn("Invalid Twilio signature — rejecting request");
+        return new Response("Forbidden", { status: 403 });
+      }
+    } catch (err) {
+      // If key resolution fails, skip validation rather than blocking all SMS
+      // (keys might not be set up yet during testing)
+      console.warn("Twilio signature validation skipped — key resolution failed:", (err as Error).message);
+    }
 
     // 3. Check SMS credits
     const { data: credits } = await db
