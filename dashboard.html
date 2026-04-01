@@ -396,7 +396,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="grid4">
           <article class="card"><div class="stat-top"><span class="muted">Total Leads</span><span class="icon" data-icon="users"></span></div><div class="stat-val" id="statLeadCount">0</div><div style="margin-top:8px"><span id="leadGrowthChip" class="chip">—</span></div></article>
           <article class="card"><div class="stat-top"><span class="muted">Open Pipeline</span><span class="icon" data-icon="kanban"></span></div><div class="stat-val" id="statOpenPipeline">0</div><div style="margin-top:8px"><span id="qualifyingChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Quotes Sent</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statQuotes">0</div><div style="margin-top:8px"><span id="quoteChip" class="chip">—</span></div></article>
+          <article class="card"><div class="stat-top"><span class="muted">Quotes</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statQuotes">0</div><div style="margin-top:8px"><span id="quoteChip" class="chip">—</span></div></article>
           <article class="card"><div class="stat-top"><span class="muted">Custom Fields</span><span class="icon" data-icon="settings"></span></div><div class="stat-val" id="statCustomFields">0</div><div style="margin-top:8px"><span id="customFieldChip" class="chip">—</span></div></article>
         </div>
         <div class="grid2">
@@ -427,7 +427,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Quotes -->
       <div id="page-quotes" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>Quoted opportunities are generated from live lead status.</p></div><div class="actions"><button id="openQuoteModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Quote</span></button></div></div><div class="panel-b" id="quotesPanel"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>All quotes created for your leads. Download PDFs or share links for one-click accept/decline.</p></div><div class="actions"><button id="openQuoteModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Quote</span></button></div></div><div class="panel-b" id="quotesPanel"></div></section>
       </div>
 
       <!-- Appointments -->
@@ -570,6 +570,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <label class="toggle-item">
                       <input id="aiLeadScoringEnabled" type="checkbox" checked>
                       <span class="toggle-label">Lead Scoring</span>
+                    </label>
+                    <label class="toggle-item">
+                      <input id="aiAutoCallInbound" type="checkbox">
+                      <span class="toggle-label">Auto-Call Inbound Leads</span>
                     </label>
                   </div>
                 </div>
