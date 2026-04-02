@@ -166,9 +166,12 @@ Deno.serve(async (req) => {
       newUserId = newUser.user.id;
     } else if (
       createError &&
-      (createError.message || "").toLowerCase().includes("already")
+      /already|exists|duplicate|unique/i.test(createError.message || "")
     ) {
-      // User already exists — look them up
+      // User already exists — look them up.
+      // NOTE: Supabase auth admin API does not support filtering listUsers by
+      // email, so we must list and search.  This is only reached when creation
+      // fails (existing user), not the common case.
       const { data: allList } = await adminClient.auth.admin.listUsers();
       const found = allList?.users?.find(
         (u: { email?: string }) => u.email === email

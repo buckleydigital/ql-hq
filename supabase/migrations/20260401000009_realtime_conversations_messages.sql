@@ -9,9 +9,23 @@
 -- company_id matching to work on every event type.
 -- =============================================================================
 
--- Add tables to the Realtime publication
-alter publication supabase_realtime add table public.conversations;
-alter publication supabase_realtime add table public.messages;
+-- Add tables to the Realtime publication (idempotent — skip if already added)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'conversations'
+  ) then
+    alter publication supabase_realtime add table public.conversations;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end $$;
 
 -- Full replica identity so payload.new and payload.old always carry all columns
 alter table public.conversations replica identity full;
