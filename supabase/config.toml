@@ -24,3 +24,29 @@ additional_redirect_urls = ["https://localhost:3000"]
 [auth.email]
 enable_signup = true
 enable_confirmations = true
+
+# ── Edge Functions ──────────────────────────────────────────────────
+# Disable gateway-level JWT verification for user-facing functions.
+# Each function still authenticates via supabaseClient.auth.getUser()
+# internally; this removes the redundant Kong check that produces
+# "Invalid JWT" errors when client tokens are mid-refresh.
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.invite-rep]
+verify_jwt = false
+
+[functions.voice-ai-provider]
+verify_jwt = false
+
+# Webhook / public functions — use alternative auth (Twilio signatures,
+# opaque quote tokens, or internal-only invocation) instead of JWT.
+[functions.quote-public]
+verify_jwt = false
+
+[functions.twilio-inbound-sms]
+verify_jwt = false
+
+[functions.quote-draft]
+verify_jwt = false
