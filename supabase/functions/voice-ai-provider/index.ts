@@ -45,6 +45,14 @@ async function getCallerUser(
     b64 += "=".repeat((4 - (b64.length % 4)) % 4);
     const payload = JSON.parse(atob(b64));
     if (!payload.sub) return null;
+    // Reject tokens expired by more than 5 minutes to limit attack window
+    if (payload.exp) {
+      const now = Math.floor(Date.now() / 1000);
+      if (now - payload.exp > 300) {
+        console.warn("JWT expired beyond 5-min grace period, rejecting");
+        return null;
+      }
+    }
     console.warn("JWT verify failed — falling back to admin.getUserById for:", payload.sub);
     const { data, error } = await adminClient.auth.admin.getUserById(payload.sub);
     if (error) {
