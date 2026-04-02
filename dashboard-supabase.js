@@ -49,6 +49,7 @@ const ICONS = {
   gift:            `<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>`,
   "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
   refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
+  bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
 };
 
 function renderIcons() {
@@ -426,6 +427,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
   document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
 
+  // ── Notifications ───────────────────────────────────────────────────────
+  document.getElementById("markAllReadBtn")?.addEventListener("click", markAllNotificationsRead);
+
   // ── Search ────────────────────────────────────────────────────────────────
   document.getElementById("globalSearchInput")?.addEventListener("input", handleSearch);
 
@@ -592,6 +596,9 @@ async function showApp() {
     // Set up realtime subscriptions for live message updates
     setupRealtimeSubscription();
 
+    // Load notification badge count
+    loadNotificationBadge();
+
     navigateTo("dashboard");
   } catch (err) {
     console.error("Error loading app:", err);
@@ -609,6 +616,7 @@ const PAGE_META = {
   quotes:             ["Quotes",            "Leads that have been quoted."],
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
+  notifications:      ["Notifications",    "AI activity and goal completions."],
   conversations:      ["Conversations",     "SMS threads with leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
@@ -641,6 +649,7 @@ function navigateTo(page) {
     appointments:       loadAppointments,
     sales:              loadSales,
     conversations:      loadConversations,
+    notifications:      loadNotifications,
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
     "voice-ai":         loadVoiceAi,
@@ -1625,7 +1634,7 @@ async function loadAppointments() {
   try {
     const { data } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes, appointment_type, lead_id, leads(name, phone)")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by, lead_id, leads(name, phone)")
       .eq("company_id", currentCompanyId)
       .order("start_time", { ascending: false });
     const appointments = data || [];
@@ -1646,6 +1655,7 @@ async function loadAppointments() {
         <div>
           <span class="chip">${cap(a.status || "scheduled")}</span>
           ${a.appointment_type ? `<span class="chip">${cap(a.appointment_type)}</span>` : ""}
+          ${a.booked_by === "ai" ? `<span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ""}
         </div>
         <div>
           <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
@@ -2156,6 +2166,98 @@ async function revokeInvite(inviteId) {
   }
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+async function loadNotifications() {
+  if (!currentCompanyId) return;
+  try {
+    const { data: notifications } = await sb
+      .from("notifications")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    const el = document.getElementById("notificationsPanel");
+    if (!el) return;
+
+    // Update unread badge count
+    const unread = (notifications || []).filter((n) => !n.is_read).length;
+    const badge = document.getElementById("notifBadge");
+    if (badge) {
+      badge.textContent = unread;
+      badge.style.display = unread > 0 ? "inline-flex" : "none";
+    }
+
+    if (!notifications?.length) {
+      el.innerHTML = `<div class="empty"><h3>No notifications yet</h3><p>When AI books appointments, triggers quotes, or completes goals, notifications will appear here.</p></div>`;
+      return;
+    }
+
+    const typeIcons = {
+      callback_booked: "📞",
+      onsite_booked: "📍",
+      quote_drafted: "📄",
+      sale_completed: "💰",
+    };
+
+    el.innerHTML = `<div class="table-lite">${notifications.map((n) => `
+      <div class="row${n.is_read ? "" : " unread"}" style="cursor:pointer;${n.is_read ? "" : "border-left:3px solid #8b5cf6;"}" onclick="markNotificationRead('${n.id}')">
+        <div>
+          <strong style="font-size:13px">${typeIcons[n.type] || "🔔"} ${esc(n.title)}</strong>
+          <span class="muted">${esc(n.message || "")}</span>
+        </div>
+        <div>
+          <span class="chip">${cap(n.type?.replace(/_/g, " ") || "notification")}</span>
+        </div>
+        <div>
+          <span class="muted">${fmtDate(n.created_at)}</span>
+        </div>
+      </div>`).join("")}</div>`;
+  } catch (err) {
+    console.error("Load notifications error:", err);
+    const el = document.getElementById("notificationsPanel");
+    if (el) el.innerHTML = `<div class="notice">Failed to load notifications.</div>`;
+  }
+}
+
+async function markNotificationRead(notifId) {
+  try {
+    await sb.from("notifications").update({ is_read: true }).eq("id", notifId);
+    loadNotifications();
+  } catch (err) {
+    console.error("Mark notification read error:", err);
+  }
+}
+
+async function markAllNotificationsRead() {
+  if (!currentCompanyId) return;
+  try {
+    await sb.from("notifications").update({ is_read: true }).eq("company_id", currentCompanyId).eq("is_read", false);
+    toast("All notifications marked as read.");
+    loadNotifications();
+  } catch (err) {
+    toast("Failed to mark notifications as read.", true);
+  }
+}
+
+async function loadNotificationBadge() {
+  if (!currentCompanyId) return;
+  try {
+    const { count } = await sb
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", currentCompanyId)
+      .eq("is_read", false);
+    const badge = document.getElementById("notifBadge");
+    if (badge) {
+      badge.textContent = count || 0;
+      badge.style.display = (count && count > 0) ? "inline-flex" : "none";
+    }
+  } catch (err) {
+    console.error("Load notification badge error:", err);
+  }
+}
+
 // ─── Conversations ────────────────────────────────────────────────────────────
 async function loadConversations() {
   if (!currentCompanyId) return;
@@ -2352,11 +2454,16 @@ async function loadMessages(convId) {
     }
     el.innerHTML = msgs.map((m) => {
       const content = m.body || m.content || "";
-      const badge   = m.agent_type || m.sender_type || "";
+      // Determine badge: for outbound messages, show 'AI' or 'Human'
+      let badge = "";
+      if (m.direction === "outbound") {
+        badge = m.is_ai_generated || m.agent_type === "ai" || m.agent_type === "sms" ? "ai" : "human";
+      }
+      const badgeLabel = badge === "ai" ? "AI" : badge === "human" ? "Human" : "";
       return `<div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
         ${content}
         <div class="msg-meta">
-          ${badge ? `<span class="msg-badge ${badge}">${cap(badge)}</span>` : ""}
+          ${badgeLabel ? `<span class="msg-badge ${badge}">${badgeLabel}</span>` : ""}
           <span>${fmtDate(m.created_at)}</span>
         </div>
       </div>`;
@@ -2406,6 +2513,15 @@ function setupRealtimeSubscription() {
         if (msg.conversation_id === currentConvId) {
           loadMessages(currentConvId);
         }
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "notifications" },
+      (payload) => {
+        const notif = payload.new;
+        if (notif?.company_id !== currentCompanyId) return;
+        loadNotificationBadge();
       }
     )
     .subscribe();
@@ -3003,7 +3119,7 @@ async function loadOppAppointments(leadId) {
   try {
     const { data: appointments } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes, appointment_type")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by")
       .eq("company_id", currentCompanyId)
       .eq("lead_id", leadId)
       .order("start_time", { ascending: false });
@@ -3015,7 +3131,7 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${a.title || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(a.appointment_type)}</span>` : ''}</h3>
+        <h3>${a.title || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(a.appointment_type)}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
         <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
         ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
         ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}

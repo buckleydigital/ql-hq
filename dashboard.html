@@ -378,6 +378,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div>
       <div class="nav-sec">Workspace</div>
       <div class="nav">
+        <button class="nav-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
         <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
@@ -467,6 +468,17 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Sales -->
       <div id="page-sales" class="page hidden">
         <section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div><div class="actions"><button id="openSaleModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Sale</span></button></div></div><div id="salesPanel" class="panel-b"></div></section>
+      </div>
+
+      <!-- Notifications -->
+      <div id="page-notifications" class="page hidden">
+        <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button id="markAllReadBtn" class="btn" type="button">Mark All as Read</button>
+        </div>
+        <section class="panel" style="margin-top:16px">
+          <div class="panel-h"><div><h2>AI Notifications</h2><p>Events where AI has achieved goals — appointments booked, quotes initiated, and more.</p></div></div>
+          <div class="panel-b" id="notificationsPanel"><div class="notice">Loading…</div></div>
+        </section>
       </div>
 
       <!-- Conversations -->
