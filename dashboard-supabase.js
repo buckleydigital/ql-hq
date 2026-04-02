@@ -473,6 +473,11 @@ function toast(msg, isError = false) {
   setTimeout(() => t.remove(), 4000);
 }
 
+function cap(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function fmt(val) {
   if (!val && val !== 0) return "—";
   return new Intl.NumberFormat("en-AU", {
@@ -1286,7 +1291,7 @@ async function loadQuotes() {
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
         <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
-        <div><span class="chip">${q.status || "draft"}</span></div>
+        <div><span class="chip">${cap(q.status || "draft")}</span></div>
         <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')" title="Download PDF"><span class="icon" data-icon="file"></span> PDF</button>
@@ -1357,7 +1362,7 @@ async function downloadQuotePDF(quoteId) {
     // Header
     doc.setFontSize(22);
     doc.setFont(undefined, "bold");
-    doc.text(co.name || "QuoteLeadsHQ", 14, y);
+    doc.text(co.name || "Company", 14, y);
     y += 8;
     doc.setFontSize(10);
     doc.setFont(undefined, "normal");
@@ -1509,8 +1514,8 @@ async function loadAppointments() {
           <span class="muted">${a.leads?.name || "Unknown lead"}</span>
         </div>
         <div>
-          <span class="chip">${a.status || "scheduled"}</span>
-          ${a.appointment_type ? `<span class="chip">${a.appointment_type}</span>` : ""}
+          <span class="chip">${cap(a.status || "scheduled")}</span>
+          ${a.appointment_type ? `<span class="chip">${cap(a.appointment_type)}</span>` : ""}
         </div>
         <div>
           <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
@@ -1631,7 +1636,7 @@ async function loadAiSettings() {
     if (accountTypeValue) accountTypeValue.textContent = isInternal ? "Internal (Agency)" : "External";
     if (accountTypeHelp) {
       accountTypeHelp.textContent = isInternal 
-        ? "Agency clients cannot edit AI prompts. Using agency defaults." 
+        ? "Using agency defaults." 
         : "External workspaces can fully customize AI prompts.";
     }
     
@@ -1692,9 +1697,7 @@ async function loadAiSettings() {
       // Update prompt help text
       const promptHelp = document.getElementById("aiPromptHelp");
       if (promptHelp) {
-        promptHelp.textContent = isInternal 
-          ? "Internal users cannot edit the AI prompt. Contact your agency to make changes." 
-          : "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
+        promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
       }
     }
     
@@ -1875,7 +1878,7 @@ async function loadWorkflowRuns() {
     
     el.innerHTML = runs.map((run) => `
       <div class="run">
-        <h3>${run.workflow_type} <span class="chip">${run.status}</span></h3>
+        <h3>${run.workflow_type} <span class="chip">${cap(run.status)}</span></h3>
         <p>Model: ${run.model || "—"} · Key Source: ${run.key_source || "—"}</p>
         <p style="margin-top:4px;"><span class="muted">${fmtDate(run.created_at)}</span></p>
         ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${run.error_text}</p>` : ''}
@@ -2511,7 +2514,7 @@ async function loadVoiceCalls() {
 
     el.innerHTML = calls.map((call) => `
       <div class="run">
-        <h3>${call.leads?.name || "Unknown"} <span class="chip">${call.status}</span></h3>
+        <h3>${call.leads?.name || "Unknown"} <span class="chip">${cap(call.status)}</span></h3>
         <p>${call.leads?.phone || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
         ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${call.transcript.substring(0, 100)}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
         ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${call.summary}</p>` : ''}
@@ -2587,8 +2590,8 @@ async function loadVoiceLogs() {
           ${calls.map((c) => `
             <tr style="border-bottom:1px solid var(--border);cursor:pointer" data-call-id="${esc(c.id)}">
               <td style="padding:8px 10px;font-weight:500">${esc(c.leads?.name || "Unknown")}</td>
-              <td style="padding:8px 10px"><span class="chip">${c.direction || "—"}</span></td>
-              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${c.status || "—"}</span></td>
+              <td style="padding:8px 10px"><span class="chip">${cap(c.direction || "—")}</span></td>
+              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${cap(c.status || "—")}</span></td>
               <td style="padding:8px 10px">${fmtDuration(c.duration)}</td>
               <td style="padding:8px 10px">${fmtDate(c.created_at)}</td>
               <td style="padding:8px 10px">${c.transcript ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
@@ -2653,8 +2656,8 @@ async function openCallDetail(callId) {
     let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
     html += `<div><strong>Lead:</strong> ${esc(call.leads?.name || "Unknown")}</div>`;
     html += `<div><strong>Phone:</strong> ${esc(call.leads?.phone || call.from_number || "—")}</div>`;
-    html += `<div><strong>Direction:</strong> <span class="chip">${call.direction || "—"}</span></div>`;
-    html += `<div><strong>Status:</strong> ${call.status || "—"}</div>`;
+    html += `<div><strong>Direction:</strong> <span class="chip">${cap(call.direction || "—")}</span></div>`;
+    html += `<div><strong>Status:</strong> ${cap(call.status || "—")}</div>`;
     html += `<div><strong>Duration:</strong> ${fmtDuration(call.duration)}</div>`;
     html += `<div><strong>Sentiment:</strong> ${call.sentiment || "—"}</div>`;
     if (call.outcome) html += `<div><strong>Outcome:</strong> ${esc(call.outcome)}</div>`;
@@ -2805,7 +2808,7 @@ async function loadOppQuotes(leadId) {
       const quoteLink = buildQuoteLink(q.quote_token);
       return `
       <div class="run">
-        <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${q.status || "Draft"}</span></h3>
+        <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${cap(q.status || "draft")}</span></h3>
         <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
         <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
@@ -2838,7 +2841,7 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${a.title || "Appointment"} <span class="chip">${a.status || "Scheduled"}</span>${a.appointment_type ? ` <span class="chip">${a.appointment_type}</span>` : ''}</h3>
+        <h3>${a.title || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(a.appointment_type)}</span>` : ''}</h3>
         <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
         ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
         ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}
@@ -2868,7 +2871,7 @@ async function loadOppCalls(leadId) {
 
     el.innerHTML = calls.map((c) => `
       <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${c.status || "Unknown"}</span>${c.sentiment ? ` <span class="chip">${c.sentiment}</span>` : ""}</h3>
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${cap(c.sentiment)}</span>` : ""}</h3>
         <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
         ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${c.transcript.substring(0, 150)}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
         ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${c.summary}</p>` : ""}
