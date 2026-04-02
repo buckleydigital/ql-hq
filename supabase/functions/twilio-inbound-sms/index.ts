@@ -599,7 +599,7 @@ Deno.serve(async (req) => {
       const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min slot
 
       const appointmentType = actions.action === "callback" ? "callback" : "onsite";
-      const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.name || "Lead";
+      const leadName = getLeadDisplayName(lead);
       const title =
         actions.action === "callback"
           ? `Callback: ${leadName}`
@@ -675,7 +675,7 @@ Deno.serve(async (req) => {
           lead_id: lead.id,
           conversation_id: conversation.id,
           quote_context: actions.quoteContext,
-          lead_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
+          lead_name: getLeadDisplayName(lead),
           lead_phone: lead.phone,
           service_type: lead.service_type || smsConfig.service_description || null,
           conversation_summary: (history || [])
@@ -700,7 +700,7 @@ Deno.serve(async (req) => {
         });
 
         // Create notification for AI-triggered quote
-        const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.name || "Lead";
+        const leadName = getLeadDisplayName(lead);
         await db.from("notifications").insert({
           company_id: companyId,
           lead_id: lead.id,
@@ -863,6 +863,11 @@ async function storeInboundOnly(
       .eq("id", conversationId);
     if (updErr) console.error("storeInboundOnly: conversation update failed:", updErr);
   }
+}
+
+// Get display name from a lead record
+function getLeadDisplayName(lead: Record<string, unknown>): string {
+  return `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || (lead.name as string) || "Lead";
 }
 
 // Log to activity_log

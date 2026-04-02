@@ -2455,6 +2455,7 @@ async function loadMessages(convId) {
     el.innerHTML = msgs.map((m) => {
       const content = m.body || m.content || "";
       // Determine badge: for outbound messages, show 'AI' or 'Human'
+      // agent_type "sms" is a legacy value from before migration to "ai"
       let badge = "";
       if (m.direction === "outbound") {
         badge = m.is_ai_generated || m.agent_type === "ai" || m.agent_type === "sms" ? "ai" : "human";
