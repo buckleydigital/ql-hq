@@ -13,11 +13,7 @@
 //   conversation_summary    — last 10 messages formatted as text
 // }
 //
-// This function can be expanded to:
-//   - Use OpenAI to extract line items from conversation
-//   - Look up pricing tables
-//   - Generate PDF
-//   - Notify the team
+// Uses the company's quote_pricing_config to generate line items via OpenAI.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -79,16 +75,96 @@ Deno.serve(async (req) => {
       .filter(Boolean)
       .join("\n");
 
-    // ─── TODO: Expand this section ────────────────────────────────────
-    // You can add OpenAI call here to:
-    //   1. Parse conversation_summary into structured line items
-    //   2. Look up pricing from a pricing table
-    //   3. Calculate subtotal/tax/total
-    //   4. Generate a more detailed quote
-    //
-    // For now, create a draft with the context attached so the team
-    // can review and fill in pricing manually.
-    // ──────────────────────────────────────────────────────────────────
+    // ─── Load pricing config and generate line items via AI ────────────────
+    let lineItems: Array<Record<string, unknown>> = [];
+    let subtotal = 0;
+    let tax = 0;
+    let total = 0;
+    let taxRate = 0;
+
+    // Load company's pricing config from sms_agent_config
+    const { data: smsConfig } = await db
+      .from("sms_agent_config")
+      .select("quote_pricing_config")
+      .eq("company_id", company_id)
+      .limit(1)
+      .single();
+
+    const pricingConfig = smsConfig?.quote_pricing_config || {};
+    const pricingItems = Array.isArray(pricingConfig.items) ? pricingConfig.items : [];
+    taxRate = typeof pricingConfig.tax_rate === "number" ? pricingConfig.tax_rate : 0;
+
+    if (pricingItems.length > 0 && (quote_context || conversation_summary)) {
+      // Use OpenAI to interpret conversation context and generate line items
+      // based on the company's pricing configuration
+      const openAiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openAiKey) {
+        try {
+          const pricingDescription = pricingItems
+            .map((p: Record<string, unknown>) => `- ${p.description}: ${p.type} @ $${p.rate} ${p.unit || ""}`)
+            .join("\n");
+
+          const aiPrompt = `You are a quoting assistant. Based on the conversation context and available pricing items, generate appropriate quote line items as JSON.
+
+Available pricing items:
+${pricingDescription}
+${pricingConfig.formula ? `\nPricing formula/notes: ${pricingConfig.formula}` : ""}
+
+Conversation context: ${quote_context || "No specific context"}
+Conversation summary:
+${conversation_summary || "No conversation history"}
+
+Service type: ${service_type || "General"}
+
+Generate a JSON array of line items. Each item should have:
+- "description": string (clear description of the work/material)
+- "quantity": number (estimated quantity based on conversation details, use 1 if unknown)
+- "unit_price": number (from the pricing items above)
+- "subtotal": number (quantity × unit_price)
+
+Only include items that are relevant to what the lead is asking about. If the conversation mentions specific measurements (m², hours, kW, etc.), use those to calculate quantities. If no specific quantities are mentioned, use reasonable estimates and note them.
+
+Return ONLY a valid JSON array, no other text.`;
+
+          const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${openAiKey}`,
+            },
+            body: JSON.stringify({
+              model: "gpt-4o",
+              messages: [{ role: "user", content: aiPrompt }],
+              temperature: 0.3,
+              max_tokens: 1000,
+            }),
+          });
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const content = aiData.choices?.[0]?.message?.content?.trim() || "";
+            // Extract JSON from response (handle markdown code blocks)
+            const jsonMatch = content.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (Array.isArray(parsed)) {
+                lineItems = parsed.map((item: Record<string, unknown>) => ({
+                  description: String(item.description || ""),
+                  quantity: Number(item.quantity) || 1,
+                  unit_price: Number(item.unit_price) || 0,
+                  subtotal: Number(item.subtotal) || (Number(item.quantity || 1) * Number(item.unit_price || 0)),
+                }));
+                subtotal = lineItems.reduce((sum, li) => sum + (Number(li.subtotal) || 0), 0);
+                tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+                total = Math.round((subtotal + tax) * 100) / 100;
+              }
+            }
+          }
+        } catch (aiErr) {
+          console.error("AI line item generation failed, creating draft without items:", aiErr);
+        }
+      }
+    }
 
     const { data: quote, error } = await db
       .from("quotes")
@@ -98,12 +174,18 @@ Deno.serve(async (req) => {
         quote_number: quoteNumber,
         status: "draft",
         notes,
-        line_items: [],
+        line_items: lineItems,
+        subtotal,
+        tax,
+        total,
         metadata: {
           source: "ai_sms",
           conversation_id,
           quote_context,
           conversation_summary: conversation_summary?.slice(0, 2000), // cap length
+          pricing_config_used: pricingItems.length > 0,
+          tax_rate: taxRate,
+          currency: pricingConfig.currency || "AUD",
         },
       })
       .select()
@@ -128,10 +210,29 @@ Deno.serve(async (req) => {
         lead_id,
         quote_context,
         source: "ai_sms",
+        line_items_count: lineItems.length,
+        total,
       },
     });
 
-    console.log(`Quote ${quoteNumber} drafted for lead ${lead_id}`);
+    console.log(`Quote ${quoteNumber} drafted for lead ${lead_id} (${lineItems.length} line items, total: ${total})`);
+
+    // Create notification with quote_id so dashboard can show "Approve & Send"
+    await db.from("notifications").insert({
+      company_id,
+      lead_id,
+      type: "quote_drafted",
+      title: `AI drafted a quote for ${lead_name || "a lead"}`,
+      message: quote_context || "Quote drafted from SMS conversation — review and approve to send.",
+      metadata: {
+        quote_id: quote.id,
+        quote_number: quoteNumber,
+        quote_context,
+        total,
+        line_items_count: lineItems.length,
+        source: "ai_sms",
+      },
+    }).catch((notifErr: unknown) => console.error("Failed to create notification:", notifErr));
 
     return new Response(JSON.stringify({ success: true, quote }), {
       status: 200,
