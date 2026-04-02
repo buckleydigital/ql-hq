@@ -105,7 +105,8 @@ async function getAccessToken(forceRefresh = false) {
     const parts = session.access_token.split(".");
     if (parts.length !== 3) throw new Error("malformed");
     // JWT uses base64url encoding; convert to standard base64 for atob()
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    b64 += "=".repeat((4 - (b64.length % 4)) % 4);
     const payload = JSON.parse(atob(b64));
     const nowSec  = Math.floor(Date.now() / 1000);
     // If the token expires within the next 60 seconds, force a refresh
@@ -127,11 +128,9 @@ async function getAccessToken(forceRefresh = false) {
 // Centralises token refresh, header injection, and response parsing so every
 // call-site gets robust error handling with useful messages.
 // Automatically retries once with a fresh token on 401 (Invalid JWT).
-async function edgeFn(fnName, body) {
-  let token = await getAccessToken();
-  if (!token) throw new Error("Not authenticated — please log in again.");
 
-  let res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+function edgeFetch(fnName, body, token) {
+  return fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
@@ -140,6 +139,13 @@ async function edgeFn(fnName, body) {
     },
     body: JSON.stringify(body),
   });
+}
+
+async function edgeFn(fnName, body) {
+  let token = await getAccessToken();
+  if (!token) throw new Error("Not authenticated — please log in again.");
+
+  let res = await edgeFetch(fnName, body, token);
 
   // On 401, force-refresh the token and retry once before giving up
   if (res.status === 401) {
@@ -147,15 +153,7 @@ async function edgeFn(fnName, body) {
     token = await getAccessToken(true);
     if (!token) throw new Error("Not authenticated — please log in again.");
 
-    res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(body),
-    });
+    res = await edgeFetch(fnName, body, token);
   }
 
   // Read as text first so we can always inspect the raw body
