@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
         body: body.trim(),
         channel: "sms",
         is_ai_generated: false,
-        agent_type: null,
+        agent_type: "human",
         metadata: { sent_by: user.id, manual: true },
       })
       .select()

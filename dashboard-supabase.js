@@ -49,6 +49,7 @@ const ICONS = {
   gift:            `<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>`,
   "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
   refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
+  bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
 };
 
 function renderIcons() {
@@ -368,6 +369,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Settings ──────────────────────────────────────────────────────────────
   document.getElementById("companyProfileForm")?.addEventListener("submit", handleCompanyProfileSave);
   document.getElementById("passwordForm")?.addEventListener("submit", handlePasswordChange);
+  document.getElementById("settingsCompanyLogo")?.addEventListener("change", handleLogoFileChange);
+  document.getElementById("removeLogoBtn")?.addEventListener("click", handleRemoveLogo);
 
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
@@ -424,6 +427,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
   document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
 
+  // ── Notifications ───────────────────────────────────────────────────────
+  document.getElementById("markAllReadBtn")?.addEventListener("click", markAllNotificationsRead);
+
   // ── Search ────────────────────────────────────────────────────────────────
   document.getElementById("globalSearchInput")?.addEventListener("input", handleSearch);
 
@@ -436,6 +442,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("openAppointmentModal")?.addEventListener("click", openAppointmentModalHandler);
   document.getElementById("cancelAppointmentModal")?.addEventListener("click", () => closeModal("appointmentModal"));
   document.getElementById("appointmentForm")?.addEventListener("submit", handleAppointmentSave);
+  document.getElementById("deleteAppointmentBtn")?.addEventListener("click", deleteAppointment);
 
   // ── Sale Modal ───────────────────────────────────────────────────────────
   document.getElementById("openSaleModal")?.addEventListener("click", openSaleModalHandler);
@@ -471,6 +478,11 @@ function toast(msg, isError = false) {
   t.textContent = msg;
   wrap.appendChild(t);
   setTimeout(() => t.remove(), 4000);
+}
+
+function cap(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function fmt(val) {
@@ -584,6 +596,9 @@ async function showApp() {
     // Set up realtime subscriptions for live message updates
     setupRealtimeSubscription();
 
+    // Load notification badge count
+    loadNotificationBadge();
+
     navigateTo("dashboard");
   } catch (err) {
     console.error("Error loading app:", err);
@@ -601,6 +616,7 @@ const PAGE_META = {
   quotes:             ["Quotes",            "Leads that have been quoted."],
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
+  notifications:      ["Notifications",    "AI activity and goal completions."],
   conversations:      ["Conversations",     "SMS threads with leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
@@ -633,6 +649,7 @@ function navigateTo(page) {
     appointments:       loadAppointments,
     sales:              loadSales,
     conversations:      loadConversations,
+    notifications:      loadNotifications,
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
     "voice-ai":         loadVoiceAi,
@@ -642,43 +659,103 @@ function navigateTo(page) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+let dashRange = "today";
+
+function getDashRangeStart() {
+  const now = new Date();
+  switch (dashRange) {
+    case "today":
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    case "month":
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    case "ytd":
+      return new Date(now.getFullYear(), 0, 1);
+    case "trailing12":
+      return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    default:
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+}
+
 async function loadDashboard() {
   if (!currentCompanyId) return;
 
+  // Attach range toggle listeners once
+  const toggle = document.getElementById("dashRangeToggle");
+  if (toggle && !toggle.dataset.bound) {
+    toggle.dataset.bound = "1";
+    toggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".range-btn");
+      if (!btn) return;
+      dashRange = btn.dataset.range;
+      toggle.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadDashboard();
+    });
+  }
+
+  const rangeStart = getDashRangeStart();
+
   try {
-    const [{ data: leads }, { data: cf }, { count: quoteCount }] = await Promise.all([
-      sb.from("leads").select("id, name, email, pipeline_stage, value, created_at").eq("company_id", currentCompanyId),
-      sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
-      sb.from("quotes").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId),
+    const [{ data: leads }, { data: quotes }, { data: appointments }] = await Promise.all([
+      sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
+      sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
+      sb.from("appointments").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
     ]);
 
-    const all    = leads || [];
-    const cfLen  = cf?.length || 0;
-    const open   = all.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
-    const totalQuotes = quoteCount || 0;
+    const all          = leads || [];
+    const allQuotes    = quotes || [];
+    const allAppts     = appointments || [];
+    const rangeLeads   = all.filter((l) => new Date(l.created_at) >= rangeStart);
+    const rangeQuotes  = allQuotes.filter((q) => new Date(q.created_at) >= rangeStart);
+    const rangeAppts   = allAppts.filter((a) => new Date(a.created_at) >= rangeStart);
 
-    const statLeadCount = document.getElementById("statLeadCount");
-    const statOpenPipeline = document.getElementById("statOpenPipeline");
-    const statQuotes = document.getElementById("statQuotes");
-    const statCustomFields = document.getElementById("statCustomFields");
-    
-    if (statLeadCount) statLeadCount.textContent = all.length;
-    if (statOpenPipeline) statOpenPipeline.textContent = open;
-    if (statQuotes) statQuotes.textContent = totalQuotes;
-    if (statCustomFields) statCustomFields.textContent = cfLen;
+    const open         = rangeLeads.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
+    const totalQuotes  = rangeQuotes.length;
 
+    // AI conversion: % of AI-enabled leads that got appointments
+    const aiLeads      = rangeLeads.filter((l) => l.ai_enabled !== false);
+    const aiLeadIds    = new Set(aiLeads.map((l) => l.id));
+    const aiAppts      = rangeAppts.filter((a) => aiLeadIds.has(a.lead_id));
+    const aiLeadsWithAppts = new Set(aiAppts.map((a) => a.lead_id)).size;
+    const aiConvRate   = aiLeads.length ? Math.round((aiLeadsWithAppts / aiLeads.length) * 100) : 0;
+
+    // % of leads quoted
+    const quotedLeadIds = new Set(rangeQuotes.map((q) => q.lead_id));
+    const leadsQuotedPct = rangeLeads.length ? Math.round((quotedLeadIds.size / rangeLeads.length) * 100) : 0;
+
+    // Sales conversion rate
+    const closedWon    = rangeLeads.filter((l) => l.pipeline_stage === "closed_won");
+    const closedLost   = rangeLeads.filter((l) => l.pipeline_stage === "closed_lost");
+    const totalClosed  = closedWon.length + closedLost.length;
+    const salesConv    = totalClosed ? Math.round((closedWon.length / totalClosed) * 100) : 0;
+
+    // Revenue & Avg deal
+    const revenue      = closedWon.reduce((a, l) => a + (Number(l.value) || 0), 0);
+    const avgDeal      = closedWon.length ? Math.round(revenue / closedWon.length) : 0;
+
+    // Update stat cards
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText("statLeadCount", rangeLeads.length);
+    setText("statOpenPipeline", open);
+    setText("statQuotes", totalQuotes);
+    setText("statSalesConversion", salesConv + "%");
+    setText("statAiConversion", aiConvRate + "%");
+    setText("statLeadsQuoted", leadsQuotedPct + "%");
+    setText("statRevenue", fmt(revenue));
+    setText("statAvgDeal", fmt(avgDeal));
+
+    // Chips
     const weekAgo     = new Date(Date.now() - 7 * 864e5);
     const newThisWeek = all.filter((l) => new Date(l.created_at) > weekAgo).length;
-    
-    const leadGrowthChip = document.getElementById("leadGrowthChip");
-    const qualifyingChip = document.getElementById("qualifyingChip");
-    const quoteChip = document.getElementById("quoteChip");
-    const customFieldChip = document.getElementById("customFieldChip");
-    
-    if (leadGrowthChip) leadGrowthChip.textContent = newThisWeek ? `+${newThisWeek} this week` : "No new";
-    if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`;
-    if (quoteChip) quoteChip.textContent = `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`;
-    if (customFieldChip) customFieldChip.textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
+    setText("leadGrowthChip", newThisWeek ? `+${newThisWeek} this week` : "No new");
+    setText("qualifyingChip", `${rangeLeads.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`);
+    setText("quoteChip", `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`);
+    setText("salesConversionChip", `${closedWon.length} won / ${totalClosed} closed`);
+    setText("aiConversionChip", `${aiLeadsWithAppts} of ${aiLeads.length} AI leads`);
+    setText("leadsQuotedChip", `${quotedLeadIds.size} of ${rangeLeads.length} leads`);
+    setText("revenueChip", `${closedWon.length} deal${closedWon.length === 1 ? "" : "s"}`);
+    setText("avgDealChip", closedWon.length ? `from ${closedWon.length} deal${closedWon.length === 1 ? "" : "s"}` : "No deals");
 
     buildLeadVolumeChart(all);
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
@@ -810,11 +887,6 @@ async function handleCustomFieldSave(e) {
     await loadCustomFields();
     renderSettingsCustomFields();
     await renderCustomFieldInputs();
-    
-    const statCustomFields = document.getElementById("statCustomFields");
-    const customFieldChip = document.getElementById("customFieldChip");
-    if (statCustomFields) statCustomFields.textContent = customFields.length;
-    if (customFieldChip) customFieldChip.textContent = `${customFields.length} field${customFields.length === 1 ? "" : "s"}`;
   } catch (err) {
     toast("Failed to save custom field.", true);
   }
@@ -1081,7 +1153,32 @@ async function handleQuoteSave(e) {
 async function openAppointmentModalHandler() {
   await populateLeadSelector("apptLeadSelect");
   document.getElementById("appointmentForm")?.reset();
+  document.getElementById("apptEditId").value = "";
+  document.getElementById("apptModalTitle").textContent = "New Appointment";
+  document.getElementById("deleteAppointmentBtn").style.display = "none";
   openModal("appointmentModal");
+}
+
+async function openEditAppointment(apptId) {
+  try {
+    const { data: a } = await sb.from("appointments").select("*").eq("id", apptId).single();
+    if (!a) { toast("Appointment not found.", true); return; }
+    await populateLeadSelector("apptLeadSelect");
+    document.getElementById("apptEditId").value = a.id;
+    document.getElementById("apptModalTitle").textContent = "Edit Appointment";
+    document.getElementById("apptLeadSelect").value = a.lead_id || "";
+    document.getElementById("apptTitle").value = a.title || "";
+    document.getElementById("apptType").value = a.appointment_type || "callback";
+    document.getElementById("apptStatus").value = a.status || "scheduled";
+    document.getElementById("apptStart").value = a.start_time ? a.start_time.slice(0, 16) : "";
+    document.getElementById("apptEnd").value = a.end_time ? a.end_time.slice(0, 16) : "";
+    document.getElementById("apptLocation").value = a.location || "";
+    document.getElementById("apptNotes").value = a.notes || "";
+    document.getElementById("deleteAppointmentBtn").style.display = "inline-flex";
+    openModal("appointmentModal");
+  } catch (err) {
+    toast("Failed to load appointment.", true);
+  }
 }
 
 async function handleAppointmentSave(e) {
@@ -1089,6 +1186,7 @@ async function handleAppointmentSave(e) {
   const leadId = document.getElementById("apptLeadSelect")?.value;
   if (!leadId) { toast("Please select a lead.", true); return; }
 
+  const editId = document.getElementById("apptEditId")?.value;
   const payload = {
     company_id:       currentCompanyId,
     lead_id:          leadId,
@@ -1102,13 +1200,32 @@ async function handleAppointmentSave(e) {
   };
 
   try {
-    const { error } = await sb.from("appointments").insert(payload);
+    let error;
+    if (editId) {
+      ({ error } = await sb.from("appointments").update(payload).eq("id", editId));
+    } else {
+      ({ error } = await sb.from("appointments").insert(payload));
+    }
     if (error) { toast(error.message, true); return; }
-    toast("Appointment created.");
+    toast(editId ? "Appointment updated." : "Appointment created.");
     closeModal("appointmentModal");
     loadAppointments();
   } catch (err) {
-    toast("Failed to create appointment.", true);
+    toast("Failed to save appointment.", true);
+  }
+}
+
+async function deleteAppointment() {
+  const editId = document.getElementById("apptEditId")?.value;
+  if (!editId) return;
+  if (!confirm("Delete this appointment?")) return;
+  try {
+    await sb.from("appointments").delete().eq("id", editId);
+    toast("Appointment deleted.");
+    closeModal("appointmentModal");
+    loadAppointments();
+  } catch (err) {
+    toast("Failed to delete appointment.", true);
   }
 }
 
@@ -1116,12 +1233,32 @@ async function handleAppointmentSave(e) {
 async function openSaleModalHandler() {
   await populateLeadSelector("saleLeadSelect");
   document.getElementById("saleForm")?.reset();
+  document.getElementById("saleEditId").value = "";
+  document.getElementById("saleModalTitle").textContent = "Record Sale";
   openModal("saleModal");
+}
+
+async function openEditSale(leadId) {
+  try {
+    const { data: lead } = await sb.from("leads").select("id, name, pipeline_stage, value, notes").eq("id", leadId).single();
+    if (!lead) { toast("Lead not found.", true); return; }
+    await populateLeadSelector("saleLeadSelect");
+    document.getElementById("saleEditId").value = lead.id;
+    document.getElementById("saleModalTitle").textContent = "Edit Sale";
+    document.getElementById("saleLeadSelect").value = lead.id;
+    document.getElementById("saleOutcome").value = lead.pipeline_stage || "closed_won";
+    document.getElementById("saleValue").value = lead.value || "";
+    document.getElementById("saleNotes").value = lead.notes || "";
+    openModal("saleModal");
+  } catch (err) {
+    toast("Failed to load sale.", true);
+  }
 }
 
 async function handleSaleSave(e) {
   e.preventDefault();
-  const leadId = document.getElementById("saleLeadSelect")?.value;
+  const editId = document.getElementById("saleEditId")?.value;
+  const leadId = editId || document.getElementById("saleLeadSelect")?.value;
   if (!leadId) { toast("Please select a lead.", true); return; }
 
   const outcome = document.getElementById("saleOutcome")?.value || "closed_won";
@@ -1135,11 +1272,11 @@ async function handleSaleSave(e) {
 
     const { error } = await sb.from("leads").update(updatePayload).eq("id", leadId);
     if (error) { toast(error.message, true); return; }
-    toast("Sale recorded.");
+    toast(editId ? "Sale updated." : "Sale recorded.");
     closeModal("saleModal");
     loadSales();
   } catch (err) {
-    toast("Failed to record sale.", true);
+    toast("Failed to save sale.", true);
   }
 }
 
@@ -1286,7 +1423,7 @@ async function loadQuotes() {
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
         <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
-        <div><span class="chip">${q.status || "draft"}</span></div>
+        <div><span class="chip">${cap(q.status || "draft")}</span></div>
         <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')" title="Download PDF"><span class="icon" data-icon="file"></span> PDF</button>
@@ -1329,7 +1466,7 @@ async function downloadQuotePDF(quoteId) {
 
     const { data: company } = await sb
       .from("companies")
-      .select("name, email, phone")
+      .select("name, email, phone, logo_url")
       .eq("id", currentCompanyId)
       .single();
 
@@ -1354,10 +1491,17 @@ async function downloadQuotePDF(quoteId) {
     const pw = doc.internal.pageSize.getWidth();
     let y = 20;
 
+    // Company logo
+    if (co.logo_url) {
+      try {
+        doc.addImage(co.logo_url, "PNG", pw - 54, 10, 40, 40);
+      } catch (e) { /* skip logo if format unsupported */ }
+    }
+
     // Header
     doc.setFontSize(22);
     doc.setFont(undefined, "bold");
-    doc.text(co.name || "QuoteLeadsHQ", 14, y);
+    doc.text(co.name || "Company", 14, y);
     y += 8;
     doc.setFontSize(10);
     doc.setFont(undefined, "normal");
@@ -1473,7 +1617,7 @@ async function loadSales() {
         <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
       </div>
       ${leads.length ? `<div class="table-lite">${leads.map((l) => `
-        <div class="row">
+        <div class="row" style="cursor:pointer" onclick="openEditSale('${l.id}')">
           <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
           <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
           <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
@@ -1490,7 +1634,7 @@ async function loadAppointments() {
   try {
     const { data } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes, appointment_type, lead_id, leads(name, phone)")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by, lead_id, leads(name, phone)")
       .eq("company_id", currentCompanyId)
       .order("start_time", { ascending: false });
     const appointments = data || [];
@@ -1503,14 +1647,15 @@ async function loadAppointments() {
     }
 
     el.innerHTML = `<div class="table-lite">${appointments.map((a) => `
-      <div class="row">
+      <div class="row" style="cursor:pointer" onclick="openEditAppointment('${a.id}')">
         <div>
           <strong style="font-size:13px">${a.title || "Appointment"}</strong>
           <span class="muted">${a.leads?.name || "Unknown lead"}</span>
         </div>
         <div>
-          <span class="chip">${a.status || "scheduled"}</span>
-          ${a.appointment_type ? `<span class="chip">${a.appointment_type}</span>` : ""}
+          <span class="chip">${cap(a.status || "scheduled")}</span>
+          ${a.appointment_type ? `<span class="chip">${cap(a.appointment_type)}</span>` : ""}
+          ${a.booked_by === "ai" ? `<span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ""}
         </div>
         <div>
           <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
@@ -1543,6 +1688,7 @@ async function loadSettings() {
       if (settingsCompanyName) settingsCompanyName.value = company.name || "";
       if (settingsCompanyEmail) settingsCompanyEmail.value = company.email || "";
       if (settingsCompanyPhone) settingsCompanyPhone.value = company.phone || "";
+      updateLogoPreview(company.logo_url);
     }
     if (profile) {
       if (settingsOwnerName) settingsOwnerName.value = profile.full_name || "";
@@ -1556,24 +1702,67 @@ async function loadSettings() {
   }
 }
 
+let pendingLogoDataUrl = null;
+let removeLogo = false;
+
+function updateLogoPreview(url) {
+  const preview = document.getElementById("settingsLogoPreview");
+  const removeBtn = document.getElementById("removeLogoBtn");
+  if (!preview) return;
+  if (url) {
+    preview.innerHTML = `<img src="${url}" style="width:48px;height:48px;object-fit:contain" alt="Logo">`;
+    if (removeBtn) removeBtn.style.display = "inline-flex";
+  } else {
+    preview.innerHTML = `<span class="muted" style="font-size:10px">No logo</span>`;
+    if (removeBtn) removeBtn.style.display = "none";
+  }
+}
+
+function handleLogoFileChange(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 500 * 1024) { toast("Logo must be under 500KB.", true); e.target.value = ""; return; }
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    pendingLogoDataUrl = ev.target.result;
+    removeLogo = false;
+    updateLogoPreview(pendingLogoDataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleRemoveLogo() {
+  pendingLogoDataUrl = null;
+  removeLogo = true;
+  updateLogoPreview(null);
+  const logoInput = document.getElementById("settingsCompanyLogo");
+  if (logoInput) logoInput.value = "";
+}
+
 async function handleCompanyProfileSave(e) {
   e.preventDefault();
   const companyName = document.getElementById("settingsCompanyName")?.value;
   const ownerName   = document.getElementById("settingsOwnerName")?.value;
   
   try {
+    const companyUpdate = {
+      name:  companyName,
+      email: document.getElementById("settingsCompanyEmail")?.value,
+      phone: document.getElementById("settingsCompanyPhone")?.value,
+    };
+    if (pendingLogoDataUrl) companyUpdate.logo_url = pendingLogoDataUrl;
+    if (removeLogo) companyUpdate.logo_url = null;
+
     const [{ error: ce }, { error: pe }] = await Promise.all([
-      sb.from("companies").update({
-        name:  companyName,
-        email: document.getElementById("settingsCompanyEmail")?.value,
-        phone: document.getElementById("settingsCompanyPhone")?.value,
-      }).eq("id", currentCompanyId),
+      sb.from("companies").update(companyUpdate).eq("id", currentCompanyId),
       sb.from("profiles").update({
         full_name: ownerName,
         phone:     document.getElementById("settingsOwnerPhone")?.value,
       }).eq("id", currentUser.id),
     ]);
     if (ce || pe) { toast((ce || pe).message, true); return; }
+    pendingLogoDataUrl = null;
+    removeLogo = false;
     toast("Profile saved.");
     
     const brandCompanyName = document.getElementById("brandCompanyName");
@@ -1631,7 +1820,7 @@ async function loadAiSettings() {
     if (accountTypeValue) accountTypeValue.textContent = isInternal ? "Internal (Agency)" : "External";
     if (accountTypeHelp) {
       accountTypeHelp.textContent = isInternal 
-        ? "Agency clients cannot edit AI prompts. Using agency defaults." 
+        ? "Using agency defaults." 
         : "External workspaces can fully customize AI prompts.";
     }
     
@@ -1692,9 +1881,7 @@ async function loadAiSettings() {
       // Update prompt help text
       const promptHelp = document.getElementById("aiPromptHelp");
       if (promptHelp) {
-        promptHelp.textContent = isInternal 
-          ? "Internal users cannot edit the AI prompt. Contact your agency to make changes." 
-          : "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
+        promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
       }
     }
     
@@ -1875,7 +2062,7 @@ async function loadWorkflowRuns() {
     
     el.innerHTML = runs.map((run) => `
       <div class="run">
-        <h3>${run.workflow_type} <span class="chip">${run.status}</span></h3>
+        <h3>${run.workflow_type} <span class="chip">${cap(run.status)}</span></h3>
         <p>Model: ${run.model || "—"} · Key Source: ${run.key_source || "—"}</p>
         <p style="margin-top:4px;"><span class="muted">${fmtDate(run.created_at)}</span></p>
         ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${run.error_text}</p>` : ''}
@@ -1976,6 +2163,98 @@ async function revokeInvite(inviteId) {
     loadTeamMembers();
   } catch (err) {
     toast("Failed to revoke invite.", true);
+  }
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+async function loadNotifications() {
+  if (!currentCompanyId) return;
+  try {
+    const { data: notifications } = await sb
+      .from("notifications")
+      .select("*")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    const el = document.getElementById("notificationsPanel");
+    if (!el) return;
+
+    // Update unread badge count
+    const unread = (notifications || []).filter((n) => !n.is_read).length;
+    const badge = document.getElementById("notifBadge");
+    if (badge) {
+      badge.textContent = unread;
+      badge.style.display = unread > 0 ? "inline-flex" : "none";
+    }
+
+    if (!notifications?.length) {
+      el.innerHTML = `<div class="empty"><h3>No notifications yet</h3><p>When AI books appointments, triggers quotes, or completes goals, notifications will appear here.</p></div>`;
+      return;
+    }
+
+    const typeIcons = {
+      callback_booked: "📞",
+      onsite_booked: "📍",
+      quote_drafted: "📄",
+      sale_completed: "💰",
+    };
+
+    el.innerHTML = `<div class="table-lite">${notifications.map((n) => `
+      <div class="row${n.is_read ? "" : " unread"}" style="cursor:pointer;${n.is_read ? "" : "border-left:3px solid #8b5cf6;"}" onclick="markNotificationRead('${n.id}')">
+        <div>
+          <strong style="font-size:13px">${typeIcons[n.type] || "🔔"} ${esc(n.title)}</strong>
+          <span class="muted">${esc(n.message || "")}</span>
+        </div>
+        <div>
+          <span class="chip">${cap(n.type?.replace(/_/g, " ") || "notification")}</span>
+        </div>
+        <div>
+          <span class="muted">${fmtDate(n.created_at)}</span>
+        </div>
+      </div>`).join("")}</div>`;
+  } catch (err) {
+    console.error("Load notifications error:", err);
+    const el = document.getElementById("notificationsPanel");
+    if (el) el.innerHTML = `<div class="notice">Failed to load notifications.</div>`;
+  }
+}
+
+async function markNotificationRead(notifId) {
+  try {
+    await sb.from("notifications").update({ is_read: true }).eq("id", notifId);
+    loadNotifications();
+  } catch (err) {
+    console.error("Mark notification read error:", err);
+  }
+}
+
+async function markAllNotificationsRead() {
+  if (!currentCompanyId) return;
+  try {
+    await sb.from("notifications").update({ is_read: true }).eq("company_id", currentCompanyId).eq("is_read", false);
+    toast("All notifications marked as read.");
+    loadNotifications();
+  } catch (err) {
+    toast("Failed to mark notifications as read.", true);
+  }
+}
+
+async function loadNotificationBadge() {
+  if (!currentCompanyId) return;
+  try {
+    const { count } = await sb
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", currentCompanyId)
+      .eq("is_read", false);
+    const badge = document.getElementById("notifBadge");
+    if (badge) {
+      badge.textContent = count || 0;
+      badge.style.display = (count && count > 0) ? "inline-flex" : "none";
+    }
+  } catch (err) {
+    console.error("Load notification badge error:", err);
   }
 }
 
@@ -2175,11 +2454,17 @@ async function loadMessages(convId) {
     }
     el.innerHTML = msgs.map((m) => {
       const content = m.body || m.content || "";
-      const badge   = m.agent_type || m.sender_type || "";
+      // Determine badge: for outbound messages, show 'AI' or 'Human'
+      // agent_type "sms" is a legacy value from before migration to "ai"
+      let badge = "";
+      if (m.direction === "outbound") {
+        badge = m.is_ai_generated || m.agent_type === "ai" || m.agent_type === "sms" ? "ai" : "human";
+      }
+      const badgeLabel = badge === "ai" ? "AI" : badge === "human" ? "Human" : "";
       return `<div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
         ${content}
         <div class="msg-meta">
-          ${badge ? `<span class="msg-badge ${badge}">${badge}</span>` : ""}
+          ${badgeLabel ? `<span class="msg-badge ${badge}">${badgeLabel}</span>` : ""}
           <span>${fmtDate(m.created_at)}</span>
         </div>
       </div>`;
@@ -2229,6 +2514,15 @@ function setupRealtimeSubscription() {
         if (msg.conversation_id === currentConvId) {
           loadMessages(currentConvId);
         }
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "notifications" },
+      (payload) => {
+        const notif = payload.new;
+        if (notif?.company_id !== currentCompanyId) return;
+        loadNotificationBadge();
       }
     )
     .subscribe();
@@ -2511,7 +2805,7 @@ async function loadVoiceCalls() {
 
     el.innerHTML = calls.map((call) => `
       <div class="run">
-        <h3>${call.leads?.name || "Unknown"} <span class="chip">${call.status}</span></h3>
+        <h3>${call.leads?.name || "Unknown"} <span class="chip">${cap(call.status)}</span></h3>
         <p>${call.leads?.phone || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
         ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${call.transcript.substring(0, 100)}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
         ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${call.summary}</p>` : ''}
@@ -2587,8 +2881,8 @@ async function loadVoiceLogs() {
           ${calls.map((c) => `
             <tr style="border-bottom:1px solid var(--border);cursor:pointer" data-call-id="${esc(c.id)}">
               <td style="padding:8px 10px;font-weight:500">${esc(c.leads?.name || "Unknown")}</td>
-              <td style="padding:8px 10px"><span class="chip">${c.direction || "—"}</span></td>
-              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${c.status || "—"}</span></td>
+              <td style="padding:8px 10px"><span class="chip">${cap(c.direction || "—")}</span></td>
+              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${cap(c.status || "—")}</span></td>
               <td style="padding:8px 10px">${fmtDuration(c.duration)}</td>
               <td style="padding:8px 10px">${fmtDate(c.created_at)}</td>
               <td style="padding:8px 10px">${c.transcript ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
@@ -2653,8 +2947,8 @@ async function openCallDetail(callId) {
     let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
     html += `<div><strong>Lead:</strong> ${esc(call.leads?.name || "Unknown")}</div>`;
     html += `<div><strong>Phone:</strong> ${esc(call.leads?.phone || call.from_number || "—")}</div>`;
-    html += `<div><strong>Direction:</strong> <span class="chip">${call.direction || "—"}</span></div>`;
-    html += `<div><strong>Status:</strong> ${call.status || "—"}</div>`;
+    html += `<div><strong>Direction:</strong> <span class="chip">${cap(call.direction || "—")}</span></div>`;
+    html += `<div><strong>Status:</strong> ${cap(call.status || "—")}</div>`;
     html += `<div><strong>Duration:</strong> ${fmtDuration(call.duration)}</div>`;
     html += `<div><strong>Sentiment:</strong> ${call.sentiment || "—"}</div>`;
     if (call.outcome) html += `<div><strong>Outcome:</strong> ${esc(call.outcome)}</div>`;
@@ -2805,7 +3099,7 @@ async function loadOppQuotes(leadId) {
       const quoteLink = buildQuoteLink(q.quote_token);
       return `
       <div class="run">
-        <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${q.status || "Draft"}</span></h3>
+        <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${cap(q.status || "draft")}</span></h3>
         <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
         <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
@@ -2826,7 +3120,7 @@ async function loadOppAppointments(leadId) {
   try {
     const { data: appointments } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes, appointment_type")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by")
       .eq("company_id", currentCompanyId)
       .eq("lead_id", leadId)
       .order("start_time", { ascending: false });
@@ -2838,7 +3132,7 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${a.title || "Appointment"} <span class="chip">${a.status || "Scheduled"}</span>${a.appointment_type ? ` <span class="chip">${a.appointment_type}</span>` : ''}</h3>
+        <h3>${a.title || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(a.appointment_type)}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
         <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
         ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
         ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}
@@ -2868,7 +3162,7 @@ async function loadOppCalls(leadId) {
 
     el.innerHTML = calls.map((c) => `
       <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${c.status || "Unknown"}</span>${c.sentiment ? ` <span class="chip">${c.sentiment}</span>` : ""}</h3>
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${cap(c.sentiment)}</span>` : ""}</h3>
         <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
         ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${c.transcript.substring(0, 150)}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
         ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${c.summary}</p>` : ""}

@@ -566,16 +566,23 @@ Deno.serve(async (req) => {
       return twimlResponse("");
     }
 
-    // 12. Update lead score
+    // 12. Update lead score + advance pipeline appropriately
+    // Pipeline progression: new_lead → follow_up → quote_in_progress → quoted → closed_won/lost
+    // AI should move leads forward through stages, never skip to closed_won.
     if (actions.score > 0) {
+      let newStage: string | undefined = undefined;
+
+      // Only advance forward, never backwards
+      if (lead.pipeline_stage === "new_lead" && actions.score >= 61) {
+        newStage = "follow_up";
+      }
+
       await db
         .from("leads")
         .update({
           ai_score: actions.score,
           ai_score_reason: actions.scoreReason,
-          pipeline_stage: actions.score >= 61 && lead.pipeline_stage === "new_lead"
-            ? "follow_up"
-            : undefined,
+          pipeline_stage: newStage ?? undefined,
         })
         .eq("id", lead.id);
     }
@@ -592,10 +599,11 @@ Deno.serve(async (req) => {
       const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min slot
 
       const appointmentType = actions.action === "callback" ? "callback" : "onsite";
+      const leadName = getLeadDisplayName(lead);
       const title =
         actions.action === "callback"
-          ? `Callback: ${lead.first_name} ${lead.last_name || ""}`.trim()
-          : `Site Visit: ${lead.first_name} ${lead.last_name || ""}`.trim();
+          ? `Callback: ${leadName}`
+          : `Site Visit: ${leadName}`;
 
       await db.from("appointments").insert({
         company_id: companyId,
@@ -607,13 +615,42 @@ Deno.serve(async (req) => {
         appointment_type: appointmentType,
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
+        booked_by: "ai",
       });
+
+      // Advance pipeline to follow_up if still at new_lead
+      if (lead.pipeline_stage === "new_lead") {
+        await db
+          .from("leads")
+          .update({ pipeline_stage: "follow_up" })
+          .eq("id", lead.id);
+      }
 
       await logActivity(db, companyId, "appointment.created", "lead", lead.id, {
         type: appointmentType,
         start_time: startTime.toISOString(),
         source: "ai_sms",
+        booked_by: "ai",
       });
+
+      // Create notification for AI-booked appointment
+      const notifTitle = appointmentType === "callback"
+        ? `AI booked a callback with ${leadName}`
+        : `AI booked an on-site visit with ${leadName}`;
+      const notifMessage = `Scheduled for ${startTime.toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}`;
+
+      await db.from("notifications").insert({
+        company_id: companyId,
+        lead_id: lead.id,
+        type: appointmentType === "callback" ? "callback_booked" : "onsite_booked",
+        title: notifTitle,
+        message: notifMessage,
+        metadata: {
+          appointment_type: appointmentType,
+          start_time: startTime.toISOString(),
+          source: "ai_sms",
+        },
+      }).catch((err: unknown) => console.error("Failed to create notification:", err));
     }
 
     // 14. Trigger quote-draft edge function if conditions met
@@ -622,6 +659,14 @@ Deno.serve(async (req) => {
       smsConfig.quote_drafting_enabled &&
       !latestQuote // no existing quote
     ) {
+      // Advance pipeline to quote_in_progress (not closed_won)
+      if (["new_lead", "follow_up"].includes(lead.pipeline_stage)) {
+        await db
+          .from("leads")
+          .update({ pipeline_stage: "quote_in_progress" })
+          .eq("id", lead.id);
+      }
+
       // Fire-and-forget call to quote-draft function
       // It will use the conversation context to build a proper draft
       try {
@@ -630,7 +675,7 @@ Deno.serve(async (req) => {
           lead_id: lead.id,
           conversation_id: conversation.id,
           quote_context: actions.quoteContext,
-          lead_name: `${lead.first_name || ""} ${lead.last_name || ""}`.trim(),
+          lead_name: getLeadDisplayName(lead),
           lead_phone: lead.phone,
           service_type: lead.service_type || smsConfig.service_description || null,
           conversation_summary: (history || [])
@@ -653,6 +698,20 @@ Deno.serve(async (req) => {
           quote_context: actions.quoteContext,
           source: "ai_sms",
         });
+
+        // Create notification for AI-triggered quote
+        const leadName = getLeadDisplayName(lead);
+        await db.from("notifications").insert({
+          company_id: companyId,
+          lead_id: lead.id,
+          type: "quote_drafted",
+          title: `AI initiated a quote for ${leadName}`,
+          message: actions.quoteContext || "Quote drafting triggered from SMS conversation",
+          metadata: {
+            quote_context: actions.quoteContext,
+            source: "ai_sms",
+          },
+        }).catch((err: unknown) => console.error("Failed to create notification:", err));
       } catch (err) {
         console.error("Failed to trigger quote-draft:", err);
       }
@@ -686,7 +745,7 @@ Deno.serve(async (req) => {
       body: actions.reply,
       channel: "sms",
       is_ai_generated: true,
-      agent_type: "sms",
+      agent_type: "ai",
       metadata: {
         model,
         score: actions.score,
@@ -804,6 +863,11 @@ async function storeInboundOnly(
       .eq("id", conversationId);
     if (updErr) console.error("storeInboundOnly: conversation update failed:", updErr);
   }
+}
+
+// Get display name from a lead record
+function getLeadDisplayName(lead: Record<string, unknown>): string {
+  return `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || (lead.name as string) || "Lead";
 }
 
 // Log to activity_log
