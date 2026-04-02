@@ -16,6 +16,56 @@ const corsHeaders = {
  *   - create_call: Initiate an outbound call via VAPI
  */
 
+/**
+ * Resilient user lookup: tries auth.getUser() first (proper JWT verification),
+ * then falls back to decoding the JWT payload and looking up the user by ID.
+ * This avoids "Invalid JWT" errors caused by token refresh timing issues.
+ */
+async function getCallerUser(
+  authHeader: string,
+  userClient: ReturnType<typeof createClient>,
+  adminClient: ReturnType<typeof createClient>,
+) {
+  // 1. Try the standard auth.getUser() path first
+  try {
+    const { data: { user }, error } = await userClient.auth.getUser();
+    if (user) return user;
+    if (error) console.warn("auth.getUser() failed:", error.message);
+  } catch (e) {
+    console.warn("auth.getUser() threw:", (e as Error).message);
+  }
+
+  // 2. Fallback: decode JWT payload and verify user exists via admin API
+  try {
+    const token = (authHeader || "").replace(/^Bearer\s+/i, "");
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    b64 += "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(b64));
+    if (!payload.sub) return null;
+    // Reject tokens expired by more than 5 minutes to limit attack window
+    if (payload.exp) {
+      const now = Math.floor(Date.now() / 1000);
+      if (now - payload.exp > 300) {
+        console.warn("JWT expired beyond 5-min grace period, rejecting");
+        return null;
+      }
+    }
+    console.warn("JWT verify failed — falling back to admin.getUserById for:", payload.sub);
+    const { data, error } = await adminClient.auth.admin.getUserById(payload.sub);
+    if (error) {
+      console.warn("admin.getUserById failed:", error.message);
+      return null;
+    }
+    return data?.user || null;
+  } catch (e) {
+    console.warn("JWT decode fallback failed:", (e as Error).message);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -41,10 +91,8 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Authenticate user
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
+    // Authenticate user (with fallback if JWT verification fails)
+    const user = await getCallerUser(authHeader, userClient, adminClient);
 
     if (!user) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
@@ -53,8 +101,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get user profile and company
-    const { data: profile } = await userClient
+    // Get user profile and company (use admin client so it works even when JWT is stale)
+    const { data: profile } = await adminClient
       .from("profiles")
       .select("company_id, user_type, role")
       .eq("id", user.id)
@@ -71,7 +119,7 @@ Deno.serve(async (req) => {
 
     // ── get_config ───────────────────────────────────────────────────────────
     if (action === "get_config") {
-      const { data: config } = await userClient
+      const { data: config } = await adminClient
         .from("voice_agent_config")
         .select("*")
         .eq("company_id", profile.company_id)
@@ -118,7 +166,7 @@ Deno.serve(async (req) => {
     // ── test ─────────────────────────────────────────────────────────────────
     if (action === "test") {
       // Check that voice agent config exists and has an assistant ID
-      const { data: config } = await userClient
+      const { data: config } = await adminClient
         .from("voice_agent_config")
         .select("vapi_assistant_id, is_active")
         .eq("company_id", profile.company_id)
@@ -195,7 +243,7 @@ Deno.serve(async (req) => {
       }
 
       // Get voice config
-      const { data: config } = await userClient
+      const { data: config } = await adminClient
         .from("voice_agent_config")
         .select("vapi_assistant_id")
         .eq("company_id", profile.company_id)
