@@ -2066,7 +2066,7 @@ async function handleNewConversation(e) {
         });
       } catch (smsErr) {
         smsFailed = true;
-        toast(smsErr.message || "Conversation created but SMS failed to send.", true);
+        toast("Conversation created but SMS failed: " + (smsErr.message || "Unknown error"), true);
       }
     }
 
