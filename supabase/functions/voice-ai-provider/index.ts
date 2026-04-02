@@ -26,9 +26,13 @@ async function getCallerUser(
   userClient: ReturnType<typeof createClient>,
   adminClient: ReturnType<typeof createClient>,
 ) {
-  // 1. Try the standard auth.getUser() path first
+  const token = (authHeader || "").replace(/^Bearer\s+/i, "");
+
+  // 1. Try the standard auth.getUser() path first.
+  //    Pass the token explicitly — Deno edge functions have no persistent
+  //    session storage, so the zero-arg overload can't resolve the JWT.
   try {
-    const { data: { user }, error } = await userClient.auth.getUser();
+    const { data: { user }, error } = await userClient.auth.getUser(token);
     if (user) return user;
     if (error) console.warn("auth.getUser() failed:", error.message);
   } catch (e) {
@@ -37,7 +41,6 @@ async function getCallerUser(
 
   // 2. Fallback: decode JWT payload and verify user exists via admin API
   try {
-    const token = (authHeader || "").replace(/^Bearer\s+/i, "");
     if (!token) return null;
     const parts = token.split(".");
     if (parts.length !== 3) return null;

@@ -26,10 +26,11 @@ enable_signup = true
 enable_confirmations = true
 
 # ── Edge Functions ──────────────────────────────────────────────────
-# Disable gateway-level JWT verification for user-facing functions.
-# Each function still authenticates via supabaseClient.auth.getUser()
-# internally; this removes the redundant Kong check that produces
-# "Invalid JWT" errors when client tokens are mid-refresh.
+# Gateway-level JWT verification is OFF for all functions (local dev).
+# IMPORTANT: Also turn OFF "Verify JWT" in the Supabase Dashboard UI
+# for each function — config.toml only applies locally.
+# Each function authenticates via auth.getUser(token) + admin fallback
+# internally, which is the Supabase-recommended approach.
 
 [functions.send-sms]
 verify_jwt = false
