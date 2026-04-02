@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
       const { data: config } = await adminClient
         .from("voice_agent_config")
         .select(
-          "vapi_assistant_id, voice_id, system_prompt, greeting, model, name"
+          "vapi_phone_number_id, vapi_assistant_id, voice_id, system_prompt, greeting, model, name"
         )
         .eq("company_id", profile.company_id)
         .maybeSingle();
@@ -292,7 +292,25 @@ Deno.serve(async (req) => {
       //   2. Transient assistant — builds an inline assistant definition from
       //      the stored config (system_prompt, greeting, voice_id, model).
       //      No pre-created VAPI assistant is required.
+
+      // VAPI requires phoneNumberId to identify the registered outbound caller
+      // number in the VAPI account.
+      const vapiPhoneNumberId = config?.vapi_phone_number_id;
+      if (!vapiPhoneNumberId) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "No VAPI Phone Number ID configured. Please add your VAPI Phone Number ID in Voice AI settings.",
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       const callPayload: Record<string, unknown> = {
+        phoneNumberId: vapiPhoneNumberId,
         customer: { number: phoneNumber },
         metadata: metadata || {},
       };
