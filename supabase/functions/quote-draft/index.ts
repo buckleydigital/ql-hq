@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("quote-draft error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
