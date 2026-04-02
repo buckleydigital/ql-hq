@@ -2213,7 +2213,7 @@ function setupRealtimeSubscription() {
         loadConversations();
 
         // If viewing this conversation, refresh messages
-        if (currentConvId && row.id === currentConvId) {
+        if (currentConvId && row?.id === currentConvId) {
           loadMessages(currentConvId);
         }
       }
