@@ -755,6 +755,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               <form id="voiceAgentForm" class="stack">
                 <div class="form2">
                   <div class="field">
+                    <label for="vapiPhoneNumberId">VAPI Phone Number ID</label>
+                    <input id="vapiPhoneNumberId" name="vapiPhoneNumberId" type="text" placeholder="Enter your VAPI phone number ID">
+                    <span class="field-hint">The ID of a phone number registered in your VAPI account. Required for outbound calls. Find it in the <a href="https://dashboard.vapi.ai/phone-numbers" target="_blank" rel="noopener">VAPI Dashboard → Phone Numbers</a>.</span>
+                  </div>
+                  <div class="field">
                     <label for="vapiAssistantId">VAPI Assistant ID</label>
                     <input id="vapiAssistantId" name="vapiAssistantId" type="text" placeholder="Enter your VAPI assistant ID">
                     <span id="vapiAssistantIdHint" class="field-hint">Required for external users. Internal users have this pre-configured.</span>

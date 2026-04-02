@@ -2305,7 +2305,7 @@ async function loadVoiceAi() {
     }
 
     // Lock config fields for internal users (only prompt + greeting editable)
-    const lockedFields = ["vapiAssistantId", "voiceAgentName", "voiceModel", "voiceId", "maxDuration", "transferPhone", "voiceAgentActive"];
+    const lockedFields = ["vapiPhoneNumberId", "vapiAssistantId", "voiceAgentName", "voiceModel", "voiceId", "maxDuration", "transferPhone", "voiceAgentActive"];
     lockedFields.forEach((fid) => {
       const el = document.getElementById(fid);
       if (!el) return;
@@ -2352,6 +2352,8 @@ async function loadVoiceAi() {
       const voiceAgentStatus = document.getElementById("voiceAgentStatus");
       const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
 
+      const vapiPhoneNumberId = document.getElementById("vapiPhoneNumberId");
+      if (vapiPhoneNumberId) vapiPhoneNumberId.value = config.vapi_phone_number_id || "";
       if (vapiAssistantId) vapiAssistantId.value = config.vapi_assistant_id || "";
       if (voiceAgentName) voiceAgentName.value = config.name || "";
       if (voiceModel) voiceModel.value = config.model || "gpt-4o";
@@ -2418,16 +2420,17 @@ async function handleVoiceAgentSave(e) {
     } else {
       // External users can configure everything
       payload = {
-        company_id:       currentCompanyId,
-        vapi_assistant_id: document.getElementById("vapiAssistantId")?.value || null,
-        name:             document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
-        model:            document.getElementById("voiceModel")?.value || "gpt-4o",
-        voice_id:         document.getElementById("voiceId")?.value || null,
-        max_duration:     Number(document.getElementById("maxDuration")?.value) || 300,
-        transfer_phone:   document.getElementById("transferPhone")?.value || null,
-        system_prompt:    document.getElementById("voiceSystemPrompt")?.value || null,
-        greeting:         document.getElementById("voiceGreeting")?.value || null,
-        is_active:        document.getElementById("voiceAgentActive")?.checked || false,
+        company_id:            currentCompanyId,
+        vapi_phone_number_id:  document.getElementById("vapiPhoneNumberId")?.value || null,
+        vapi_assistant_id:     document.getElementById("vapiAssistantId")?.value || null,
+        name:                  document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
+        model:                 document.getElementById("voiceModel")?.value || "gpt-4o",
+        voice_id:              document.getElementById("voiceId")?.value || null,
+        max_duration:          Number(document.getElementById("maxDuration")?.value) || 300,
+        transfer_phone:        document.getElementById("transferPhone")?.value || null,
+        system_prompt:         document.getElementById("voiceSystemPrompt")?.value || null,
+        greeting:              document.getElementById("voiceGreeting")?.value || null,
+        is_active:             document.getElementById("voiceAgentActive")?.checked || false,
       };
     }
 
