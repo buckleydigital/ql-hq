@@ -368,6 +368,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Settings ──────────────────────────────────────────────────────────────
   document.getElementById("companyProfileForm")?.addEventListener("submit", handleCompanyProfileSave);
   document.getElementById("passwordForm")?.addEventListener("submit", handlePasswordChange);
+  document.getElementById("settingsCompanyLogo")?.addEventListener("change", handleLogoFileChange);
+  document.getElementById("removeLogoBtn")?.addEventListener("click", handleRemoveLogo);
 
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
@@ -1460,7 +1462,7 @@ async function downloadQuotePDF(quoteId) {
 
     const { data: company } = await sb
       .from("companies")
-      .select("name, email, phone")
+      .select("name, email, phone, logo_url")
       .eq("id", currentCompanyId)
       .single();
 
@@ -1484,6 +1486,13 @@ async function downloadQuotePDF(quoteId) {
     const doc = new jsPDF();
     const pw = doc.internal.pageSize.getWidth();
     let y = 20;
+
+    // Company logo
+    if (co.logo_url) {
+      try {
+        doc.addImage(co.logo_url, "PNG", pw - 54, 10, 40, 40);
+      } catch (e) { /* skip logo if format unsupported */ }
+    }
 
     // Header
     doc.setFontSize(22);
@@ -1674,6 +1683,7 @@ async function loadSettings() {
       if (settingsCompanyName) settingsCompanyName.value = company.name || "";
       if (settingsCompanyEmail) settingsCompanyEmail.value = company.email || "";
       if (settingsCompanyPhone) settingsCompanyPhone.value = company.phone || "";
+      updateLogoPreview(company.logo_url);
     }
     if (profile) {
       if (settingsOwnerName) settingsOwnerName.value = profile.full_name || "";
@@ -1687,24 +1697,67 @@ async function loadSettings() {
   }
 }
 
+let pendingLogoDataUrl = null;
+let removeLogo = false;
+
+function updateLogoPreview(url) {
+  const preview = document.getElementById("settingsLogoPreview");
+  const removeBtn = document.getElementById("removeLogoBtn");
+  if (!preview) return;
+  if (url) {
+    preview.innerHTML = `<img src="${url}" style="width:48px;height:48px;object-fit:contain" alt="Logo">`;
+    if (removeBtn) removeBtn.style.display = "inline-flex";
+  } else {
+    preview.innerHTML = `<span class="muted" style="font-size:10px">No logo</span>`;
+    if (removeBtn) removeBtn.style.display = "none";
+  }
+}
+
+function handleLogoFileChange(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 500 * 1024) { toast("Logo must be under 500KB.", true); e.target.value = ""; return; }
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    pendingLogoDataUrl = ev.target.result;
+    removeLogo = false;
+    updateLogoPreview(pendingLogoDataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleRemoveLogo() {
+  pendingLogoDataUrl = null;
+  removeLogo = true;
+  updateLogoPreview(null);
+  const logoInput = document.getElementById("settingsCompanyLogo");
+  if (logoInput) logoInput.value = "";
+}
+
 async function handleCompanyProfileSave(e) {
   e.preventDefault();
   const companyName = document.getElementById("settingsCompanyName")?.value;
   const ownerName   = document.getElementById("settingsOwnerName")?.value;
   
   try {
+    const companyUpdate = {
+      name:  companyName,
+      email: document.getElementById("settingsCompanyEmail")?.value,
+      phone: document.getElementById("settingsCompanyPhone")?.value,
+    };
+    if (pendingLogoDataUrl) companyUpdate.logo_url = pendingLogoDataUrl;
+    if (removeLogo) companyUpdate.logo_url = null;
+
     const [{ error: ce }, { error: pe }] = await Promise.all([
-      sb.from("companies").update({
-        name:  companyName,
-        email: document.getElementById("settingsCompanyEmail")?.value,
-        phone: document.getElementById("settingsCompanyPhone")?.value,
-      }).eq("id", currentCompanyId),
+      sb.from("companies").update(companyUpdate).eq("id", currentCompanyId),
       sb.from("profiles").update({
         full_name: ownerName,
         phone:     document.getElementById("settingsOwnerPhone")?.value,
       }).eq("id", currentUser.id),
     ]);
     if (ce || pe) { toast((ce || pe).message, true); return; }
+    pendingLogoDataUrl = null;
+    removeLogo = false;
     toast("Profile saved.");
     
     const brandCompanyName = document.getElementById("brandCompanyName");
