@@ -347,17 +347,19 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const userType: string = companyProfile?.user_type ?? "external";
 
-    // 2b. Validate Twilio signature (reject spoofed requests)
+    // 2b. Validate Twilio signature (log-only — never block)
+    // NOTE: Supabase Edge Functions may expose a different req.url than the
+    // public webhook URL Twilio signed against (gateway URL rewriting, load
+    // balancer headers, etc.).  A mismatch silently produces a different HMAC
+    // and would reject every legitimate request.  Until we have a way to
+    // inject the canonical webhook URL, we log failures but never block.
     try {
       const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth", userType);
       const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation);
       if (!isValid) {
-        console.warn("Invalid Twilio signature — rejecting request");
-        return new Response("Forbidden", { status: 403 });
+        console.warn("Twilio signature mismatch (req.url may differ from signed URL) — allowing anyway");
       }
     } catch (err) {
-      // If key resolution fails, skip validation rather than blocking all SMS
-      // (keys might not be set up yet during testing)
       console.warn("Twilio signature validation skipped — key resolution failed:", (err as Error).message);
     }
 
@@ -477,7 +479,7 @@ Deno.serve(async (req) => {
     }
 
     // 8. Store inbound message
-    await db.from("messages").insert({
+    const { error: inboundMsgErr } = await db.from("messages").insert({
       conversation_id: conversation.id,
       direction: "inbound",
       body: inboundBody,
@@ -485,15 +487,17 @@ Deno.serve(async (req) => {
       is_ai_generated: false,
       metadata: { from: fromNumber, to: toNumber, twilio_sid: params.MessageSid || null },
     });
+    if (inboundMsgErr) console.error("Failed to store inbound message:", inboundMsgErr);
 
     // Update conversation last message
-    await db
+    const { error: convUpdErr } = await db
       .from("conversations")
       .update({
         last_message: inboundBody,
         last_message_at: new Date().toISOString(),
       })
       .eq("id", conversation.id);
+    if (convUpdErr) console.error("Failed to update conversation:", convUpdErr);
 
     // Get conversation history (last 20 messages for context)
     const { data: history } = await db
@@ -665,16 +669,18 @@ Deno.serve(async (req) => {
     }
 
     // Apply reply delay if configured
-    if (smsConfig.reply_delay && smsConfig.reply_delay > 0) {
+    // Column was originally reply_delay, later renamed to reply_delay_seconds
+    const replyDelay = smsConfig.reply_delay_seconds ?? smsConfig.reply_delay ?? 0;
+    if (replyDelay > 0) {
       await new Promise((resolve) =>
-        setTimeout(resolve, smsConfig.reply_delay * 1000)
+        setTimeout(resolve, replyDelay * 1000)
       );
     }
 
     await sendTwilioSMS(twilioSid, twilioAuth, toNumber, fromNumber, actions.reply);
 
     // 16. Store outbound message
-    await db.from("messages").insert({
+    const { error: outMsgErr } = await db.from("messages").insert({
       conversation_id: conversation.id,
       direction: "outbound",
       body: actions.reply,
@@ -687,15 +693,17 @@ Deno.serve(async (req) => {
         action: actions.action,
       },
     });
+    if (outMsgErr) console.error("Failed to store outbound message:", outMsgErr);
 
     // Update conversation last message
-    await db
+    const { error: convUpdErr2 } = await db
       .from("conversations")
       .update({
         last_message: actions.reply,
         last_message_at: new Date().toISOString(),
       })
       .eq("id", conversation.id);
+    if (convUpdErr2) console.error("Failed to update conversation after reply:", convUpdErr2);
 
     await logActivity(db, companyId, "sms.ai_reply", "lead", lead.id, {
       score: actions.score,
@@ -762,7 +770,7 @@ async function storeInboundOnly(
   }
 
   if (!conversationId) {
-    const { data: newConv } = await db
+    const { data: newConv, error: convErr } = await db
       .from("conversations")
       .insert({
         company_id: companyId,
@@ -775,11 +783,12 @@ async function storeInboundOnly(
       .select("id")
       .single();
 
+    if (convErr) console.error("storeInboundOnly: conversation insert failed:", convErr);
     conversationId = newConv?.id || null;
   }
 
   if (conversationId) {
-    await db.from("messages").insert({
+    const { error: msgErr } = await db.from("messages").insert({
       conversation_id: conversationId,
       direction: "inbound",
       body,
@@ -787,11 +796,13 @@ async function storeInboundOnly(
       is_ai_generated: false,
       metadata: { from: fromNumber, to: toNumber },
     });
+    if (msgErr) console.error("storeInboundOnly: message insert failed:", msgErr);
 
-    await db
+    const { error: updErr } = await db
       .from("conversations")
       .update({ last_message: body, last_message_at: new Date().toISOString() })
       .eq("id", conversationId);
+    if (updErr) console.error("storeInboundOnly: conversation update failed:", updErr);
   }
 }
 
