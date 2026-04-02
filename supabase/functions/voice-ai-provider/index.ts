@@ -69,6 +69,35 @@ async function getCallerUser(
   }
 }
 
+/**
+ * Resolve VAPI API key: tries DB first (resolve_api_key RPC), then falls back
+ * to the AGENCY_VAPI_KEY env secret for internal (agency) accounts.
+ */
+async function resolveVapiKey(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+  userType: string,
+): Promise<string | null> {
+  // 1. Try DB resolution (api_keys for external, agency_key_mappings/Vault for internal)
+  const { data, error } = await adminClient.rpc("resolve_api_key", {
+    p_company_id: companyId,
+    p_provider: "vapi",
+  });
+  if (!error && data) return data as string;
+
+  // 2. Only internal (agency) accounts fall back to platform env secrets.
+  //    External accounts must supply their own keys via the dashboard.
+  if (userType !== "external") {
+    const envVal = Deno.env.get("AGENCY_VAPI_KEY");
+    if (envVal) {
+      console.warn("VAPI key resolved from AGENCY_VAPI_KEY env secret (DB resolution failed)");
+      return envVal;
+    }
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -174,11 +203,8 @@ Deno.serve(async (req) => {
         .eq("company_id", profile.company_id)
         .maybeSingle();
 
-      // Resolve VAPI API key
-      const { data: vapiKey } = await adminClient.rpc("resolve_api_key", {
-        p_company_id: profile.company_id,
-        p_provider: "vapi",
-      });
+      // Resolve VAPI API key (DB first, env fallback for internal accounts)
+      const vapiKey = await resolveVapiKey(adminClient, profile.company_id, profile.user_type);
 
       if (!vapiKey) {
         return new Response(
@@ -246,11 +272,8 @@ Deno.serve(async (req) => {
       const resolvedAssistantId =
         assistantId || config?.vapi_assistant_id;
 
-      // Resolve VAPI key
-      const { data: vapiKey } = await adminClient.rpc("resolve_api_key", {
-        p_company_id: profile.company_id,
-        p_provider: "vapi",
-      });
+      // Resolve VAPI key (DB first, env fallback for internal accounts)
+      const vapiKey = await resolveVapiKey(adminClient, profile.company_id, profile.user_type);
 
       if (!vapiKey) {
         return new Response(
