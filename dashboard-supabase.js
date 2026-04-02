@@ -436,6 +436,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("openAppointmentModal")?.addEventListener("click", openAppointmentModalHandler);
   document.getElementById("cancelAppointmentModal")?.addEventListener("click", () => closeModal("appointmentModal"));
   document.getElementById("appointmentForm")?.addEventListener("submit", handleAppointmentSave);
+  document.getElementById("deleteAppointmentBtn")?.addEventListener("click", deleteAppointment);
 
   // ── Sale Modal ───────────────────────────────────────────────────────────
   document.getElementById("openSaleModal")?.addEventListener("click", openSaleModalHandler);
@@ -647,43 +648,103 @@ function navigateTo(page) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+let dashRange = "month";
+
+function getDashRangeStart() {
+  const now = new Date();
+  switch (dashRange) {
+    case "today":
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    case "month":
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    case "ytd":
+      return new Date(now.getFullYear(), 0, 1);
+    case "trailing12":
+      return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    default:
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+}
+
 async function loadDashboard() {
   if (!currentCompanyId) return;
 
+  // Attach range toggle listeners once
+  const toggle = document.getElementById("dashRangeToggle");
+  if (toggle && !toggle.dataset.bound) {
+    toggle.dataset.bound = "1";
+    toggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".range-btn");
+      if (!btn) return;
+      dashRange = btn.dataset.range;
+      toggle.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadDashboard();
+    });
+  }
+
+  const rangeStart = getDashRangeStart();
+
   try {
-    const [{ data: leads }, { data: cf }, { count: quoteCount }] = await Promise.all([
-      sb.from("leads").select("id, name, email, pipeline_stage, value, created_at").eq("company_id", currentCompanyId),
-      sb.from("custom_fields").select("id").eq("company_id", currentCompanyId),
-      sb.from("quotes").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId),
+    const [{ data: leads }, { data: quotes }, { data: appointments }] = await Promise.all([
+      sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
+      sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
+      sb.from("appointments").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
     ]);
 
-    const all    = leads || [];
-    const cfLen  = cf?.length || 0;
-    const open   = all.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
-    const totalQuotes = quoteCount || 0;
+    const all          = leads || [];
+    const allQuotes    = quotes || [];
+    const allAppts     = appointments || [];
+    const rangeLeads   = all.filter((l) => new Date(l.created_at) >= rangeStart);
+    const rangeQuotes  = allQuotes.filter((q) => new Date(q.created_at) >= rangeStart);
+    const rangeAppts   = allAppts.filter((a) => new Date(a.created_at) >= rangeStart);
 
-    const statLeadCount = document.getElementById("statLeadCount");
-    const statOpenPipeline = document.getElementById("statOpenPipeline");
-    const statQuotes = document.getElementById("statQuotes");
-    const statCustomFields = document.getElementById("statCustomFields");
-    
-    if (statLeadCount) statLeadCount.textContent = all.length;
-    if (statOpenPipeline) statOpenPipeline.textContent = open;
-    if (statQuotes) statQuotes.textContent = totalQuotes;
-    if (statCustomFields) statCustomFields.textContent = cfLen;
+    const open         = rangeLeads.filter((l) => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
+    const totalQuotes  = rangeQuotes.length;
 
+    // AI conversion: % of AI-enabled leads that got appointments
+    const aiLeads      = rangeLeads.filter((l) => l.ai_enabled !== false);
+    const aiLeadIds    = new Set(aiLeads.map((l) => l.id));
+    const aiAppts      = rangeAppts.filter((a) => aiLeadIds.has(a.lead_id));
+    const aiLeadsWithAppts = new Set(aiAppts.map((a) => a.lead_id)).size;
+    const aiConvRate   = aiLeads.length ? Math.round((aiLeadsWithAppts / aiLeads.length) * 100) : 0;
+
+    // % of leads quoted
+    const quotedLeadIds = new Set(rangeQuotes.map((q) => q.lead_id));
+    const leadsQuotedPct = rangeLeads.length ? Math.round((quotedLeadIds.size / rangeLeads.length) * 100) : 0;
+
+    // Sales conversion rate
+    const closedWon    = rangeLeads.filter((l) => l.pipeline_stage === "closed_won");
+    const closedLost   = rangeLeads.filter((l) => l.pipeline_stage === "closed_lost");
+    const totalClosed  = closedWon.length + closedLost.length;
+    const salesConv    = totalClosed ? Math.round((closedWon.length / totalClosed) * 100) : 0;
+
+    // Revenue & Avg deal
+    const revenue      = closedWon.reduce((a, l) => a + (Number(l.value) || 0), 0);
+    const avgDeal      = closedWon.length ? Math.round(revenue / closedWon.length) : 0;
+
+    // Update stat cards
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText("statLeadCount", rangeLeads.length);
+    setText("statOpenPipeline", open);
+    setText("statQuotes", totalQuotes);
+    setText("statSalesConversion", salesConv + "%");
+    setText("statAiConversion", aiConvRate + "%");
+    setText("statLeadsQuoted", leadsQuotedPct + "%");
+    setText("statRevenue", fmt(revenue));
+    setText("statAvgDeal", fmt(avgDeal));
+
+    // Chips
     const weekAgo     = new Date(Date.now() - 7 * 864e5);
     const newThisWeek = all.filter((l) => new Date(l.created_at) > weekAgo).length;
-    
-    const leadGrowthChip = document.getElementById("leadGrowthChip");
-    const qualifyingChip = document.getElementById("qualifyingChip");
-    const quoteChip = document.getElementById("quoteChip");
-    const customFieldChip = document.getElementById("customFieldChip");
-    
-    if (leadGrowthChip) leadGrowthChip.textContent = newThisWeek ? `+${newThisWeek} this week` : "No new";
-    if (qualifyingChip) qualifyingChip.textContent = `${all.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`;
-    if (quoteChip) quoteChip.textContent = `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`;
-    if (customFieldChip) customFieldChip.textContent = `${cfLen} field${cfLen === 1 ? "" : "s"}`;
+    setText("leadGrowthChip", newThisWeek ? `+${newThisWeek} this week` : "No new");
+    setText("qualifyingChip", `${rangeLeads.filter((l) => l.pipeline_stage === "follow_up").length} qualifying`);
+    setText("quoteChip", `${totalQuotes} quote${totalQuotes === 1 ? "" : "s"}`);
+    setText("salesConversionChip", `${closedWon.length} won / ${totalClosed} closed`);
+    setText("aiConversionChip", `${aiLeadsWithAppts} of ${aiLeads.length} AI leads`);
+    setText("leadsQuotedChip", `${quotedLeadIds.size} of ${rangeLeads.length} leads`);
+    setText("revenueChip", `${closedWon.length} deal${closedWon.length === 1 ? "" : "s"}`);
+    setText("avgDealChip", closedWon.length ? `from ${closedWon.length} deal${closedWon.length === 1 ? "" : "s"}` : "No deals");
 
     buildLeadVolumeChart(all);
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
@@ -1086,7 +1147,32 @@ async function handleQuoteSave(e) {
 async function openAppointmentModalHandler() {
   await populateLeadSelector("apptLeadSelect");
   document.getElementById("appointmentForm")?.reset();
+  document.getElementById("apptEditId").value = "";
+  document.getElementById("apptModalTitle").textContent = "New Appointment";
+  document.getElementById("deleteAppointmentBtn").style.display = "none";
   openModal("appointmentModal");
+}
+
+async function openEditAppointment(apptId) {
+  try {
+    const { data: a } = await sb.from("appointments").select("*").eq("id", apptId).single();
+    if (!a) { toast("Appointment not found.", true); return; }
+    await populateLeadSelector("apptLeadSelect");
+    document.getElementById("apptEditId").value = a.id;
+    document.getElementById("apptModalTitle").textContent = "Edit Appointment";
+    document.getElementById("apptLeadSelect").value = a.lead_id || "";
+    document.getElementById("apptTitle").value = a.title || "";
+    document.getElementById("apptType").value = a.appointment_type || "callback";
+    document.getElementById("apptStatus").value = a.status || "scheduled";
+    document.getElementById("apptStart").value = a.start_time ? a.start_time.slice(0, 16) : "";
+    document.getElementById("apptEnd").value = a.end_time ? a.end_time.slice(0, 16) : "";
+    document.getElementById("apptLocation").value = a.location || "";
+    document.getElementById("apptNotes").value = a.notes || "";
+    document.getElementById("deleteAppointmentBtn").style.display = "inline-flex";
+    openModal("appointmentModal");
+  } catch (err) {
+    toast("Failed to load appointment.", true);
+  }
 }
 
 async function handleAppointmentSave(e) {
@@ -1094,6 +1180,7 @@ async function handleAppointmentSave(e) {
   const leadId = document.getElementById("apptLeadSelect")?.value;
   if (!leadId) { toast("Please select a lead.", true); return; }
 
+  const editId = document.getElementById("apptEditId")?.value;
   const payload = {
     company_id:       currentCompanyId,
     lead_id:          leadId,
@@ -1107,13 +1194,32 @@ async function handleAppointmentSave(e) {
   };
 
   try {
-    const { error } = await sb.from("appointments").insert(payload);
+    let error;
+    if (editId) {
+      ({ error } = await sb.from("appointments").update(payload).eq("id", editId));
+    } else {
+      ({ error } = await sb.from("appointments").insert(payload));
+    }
     if (error) { toast(error.message, true); return; }
-    toast("Appointment created.");
+    toast(editId ? "Appointment updated." : "Appointment created.");
     closeModal("appointmentModal");
     loadAppointments();
   } catch (err) {
-    toast("Failed to create appointment.", true);
+    toast("Failed to save appointment.", true);
+  }
+}
+
+async function deleteAppointment() {
+  const editId = document.getElementById("apptEditId")?.value;
+  if (!editId) return;
+  if (!confirm("Delete this appointment?")) return;
+  try {
+    await sb.from("appointments").delete().eq("id", editId);
+    toast("Appointment deleted.");
+    closeModal("appointmentModal");
+    loadAppointments();
+  } catch (err) {
+    toast("Failed to delete appointment.", true);
   }
 }
 
@@ -1121,12 +1227,32 @@ async function handleAppointmentSave(e) {
 async function openSaleModalHandler() {
   await populateLeadSelector("saleLeadSelect");
   document.getElementById("saleForm")?.reset();
+  document.getElementById("saleEditId").value = "";
+  document.getElementById("saleModalTitle").textContent = "Record Sale";
   openModal("saleModal");
+}
+
+async function openEditSale(leadId) {
+  try {
+    const { data: lead } = await sb.from("leads").select("id, name, pipeline_stage, value, notes").eq("id", leadId).single();
+    if (!lead) { toast("Lead not found.", true); return; }
+    await populateLeadSelector("saleLeadSelect");
+    document.getElementById("saleEditId").value = lead.id;
+    document.getElementById("saleModalTitle").textContent = "Edit Sale";
+    document.getElementById("saleLeadSelect").value = lead.id;
+    document.getElementById("saleOutcome").value = lead.pipeline_stage || "closed_won";
+    document.getElementById("saleValue").value = lead.value || "";
+    document.getElementById("saleNotes").value = lead.notes || "";
+    openModal("saleModal");
+  } catch (err) {
+    toast("Failed to load sale.", true);
+  }
 }
 
 async function handleSaleSave(e) {
   e.preventDefault();
-  const leadId = document.getElementById("saleLeadSelect")?.value;
+  const editId = document.getElementById("saleEditId")?.value;
+  const leadId = editId || document.getElementById("saleLeadSelect")?.value;
   if (!leadId) { toast("Please select a lead.", true); return; }
 
   const outcome = document.getElementById("saleOutcome")?.value || "closed_won";
@@ -1140,11 +1266,11 @@ async function handleSaleSave(e) {
 
     const { error } = await sb.from("leads").update(updatePayload).eq("id", leadId);
     if (error) { toast(error.message, true); return; }
-    toast("Sale recorded.");
+    toast(editId ? "Sale updated." : "Sale recorded.");
     closeModal("saleModal");
     loadSales();
   } catch (err) {
-    toast("Failed to record sale.", true);
+    toast("Failed to save sale.", true);
   }
 }
 
@@ -1478,7 +1604,7 @@ async function loadSales() {
         <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
       </div>
       ${leads.length ? `<div class="table-lite">${leads.map((l) => `
-        <div class="row">
+        <div class="row" style="cursor:pointer" onclick="openEditSale('${l.id}')">
           <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
           <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
           <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
@@ -1508,7 +1634,7 @@ async function loadAppointments() {
     }
 
     el.innerHTML = `<div class="table-lite">${appointments.map((a) => `
-      <div class="row">
+      <div class="row" style="cursor:pointer" onclick="openEditAppointment('${a.id}')">
         <div>
           <strong style="font-size:13px">${a.title || "Appointment"}</strong>
           <span class="muted">${a.leads?.name || "Unknown lead"}</span>
