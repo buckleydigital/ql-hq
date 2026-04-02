@@ -110,6 +110,45 @@ async function getAccessToken() {
   return session.access_token;
 }
 
+// ─── Edge-function caller ─────────────────────────────────────────────────────
+// Centralises token refresh, header injection, and response parsing so every
+// call-site gets robust error handling with useful messages.
+async function edgeFn(fnName, body) {
+  const token = await getAccessToken();
+  if (!token) throw new Error("Not authenticated — please log in again.");
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${token}`,
+      "apikey":        SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  // Read as text first so we can always inspect the raw body
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    console.error(`[edgeFn] ${fnName} returned non-JSON (HTTP ${res.status}):`, text);
+    throw new Error(`Server error (HTTP ${res.status}). Check the browser console for details.`);
+  }
+
+  if (!res.ok || json.error) {
+    const msg =
+      (typeof json.error === "string" ? json.error : null) ||
+      json.message || json.msg ||
+      `Request failed (HTTP ${res.status})`;
+    console.error(`[edgeFn] ${fnName} error (HTTP ${res.status}):`, json);
+    throw new Error(msg);
+  }
+
+  return json;
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let sb;
 let currentUser      = null;
@@ -1880,21 +1919,7 @@ async function handleTeamInvite(e) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   try {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated.");
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-rep`, {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ email, name: fullName, phone }),
-    });
-
-    const json = await res.json();
-    if (!res.ok || json.error) throw new Error(json.error || "Invite failed.");
+    await edgeFn("invite-rep", { email, name: fullName, phone });
 
     toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
     document.getElementById("teamInviteForm")?.reset();
@@ -2032,29 +2057,20 @@ async function handleNewConversation(e) {
 
     if (error) { toast(error.message, true); return; }
 
+    let smsFailed = false;
     if (firstMsg) {
-      const token = await getAccessToken();
-      if (token) {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-          method: "POST",
-          headers: {
-            "Content-Type":  "application/json",
-            "Authorization": `Bearer ${token}`,
-            "apikey":        SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            conversation_id: conv.id,
-            body:            firstMsg,
-          }),
+      try {
+        await edgeFn("send-sms", {
+          conversation_id: conv.id,
+          body:            firstMsg,
         });
-        const json = await res.json();
-        if (!res.ok || json.error) {
-          toast(json.error || json.message || json.msg || "Conversation created but SMS failed to send.", true);
-        }
+      } catch (smsErr) {
+        smsFailed = true;
+        toast(smsErr.message || "Conversation created but SMS failed to send.", true);
       }
     }
 
-    toast("Conversation created.");
+    if (!smsFailed) toast("Conversation created.");
     closeModal("newConvModal");
     document.getElementById("newConvForm")?.reset();
     await loadConversations();
@@ -2064,7 +2080,8 @@ async function handleNewConversation(e) {
     const item  = document.querySelector(`.conv-item[data-conv-id="${conv.id}"]`);
     openConversation(conv.id, leadId, name, phone, item);
   } catch (err) {
-    toast("Failed to create conversation.", true);
+    console.error("handleNewConversation error:", err);
+    toast(err.message || "Failed to create conversation.", true);
   }
 }
 
@@ -2147,33 +2164,17 @@ async function handleSendMessage(e) {
   if (!content || !currentConvId) return;
 
   try {
-    const token = await getAccessToken();
-    if (!token) { toast("Not authenticated.", true); return; }
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        conversation_id: currentConvId,
-        body:            content,
-      }),
+    await edgeFn("send-sms", {
+      conversation_id: currentConvId,
+      body:            content,
     });
-
-    const json = await res.json();
-    if (!res.ok || json.error) {
-      toast(json.error || json.message || json.msg || "Failed to send SMS.", true);
-      return;
-    }
 
     if (input) input.value = "";
     await loadMessages(currentConvId);
     toast("SMS sent.");
   } catch (err) {
-    toast("Failed to send message.", true);
+    console.error("handleSendMessage error:", err);
+    toast(err.message, true);
   }
 }
 
@@ -2388,24 +2389,7 @@ async function handleVoiceProviderSave(e) {
   }
 
   try {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated.");
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ 
-        action: "save_key",
-        vapiKey: externalKey 
-      }),
-    });
-
-    const json = await res.json();
-    if (!res.ok || json.error) throw new Error(json.error || "Failed to save provider key.");
+    await edgeFn("voice-ai-provider", { action: "save_key", vapiKey: externalKey });
 
     toast("Provider key saved securely.");
     document.getElementById("voiceProviderForm")?.reset();
@@ -2417,24 +2401,8 @@ async function handleVoiceProviderSave(e) {
 
 async function testVoiceAgent() {
   try {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated.");
-
     toast("Testing voice agent connection...");
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ action: "test" }),
-    });
-
-    const json = await res.json();
-    if (!res.ok || json.error) throw new Error(json.error || "Test failed.");
-
+    await edgeFn("voice-ai-provider", { action: "test" });
     toast("Voice agent test successful!");
 
   } catch (err) {
@@ -2861,20 +2829,7 @@ async function openCallLeadModal() {
 
 async function loadVapiAssistants() {
   try {
-    const token = await getAccessToken();
-    if (!token) return;
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ action: "get_config" }),
-    });
-
-    const json = await res.json();
+    const json = await edgeFn("voice-ai-provider", { action: "get_config" });
 
     // Populate assistant dropdown if we have config
     const select = document.getElementById("callLeadAssistant");
@@ -2907,30 +2862,16 @@ async function handleCallLead() {
   }
 
   try {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated.");
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-ai-provider`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey":        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ 
-        action: "create_call",
-        leadId: leadId,
-        phoneNumber: phone,
-        assistantId: assistantId || undefined,
-        metadata: {
-          source: "dashboard",
-          initiated_by: currentUser?.id,
-        }
-      }),
+    const json = await edgeFn("voice-ai-provider", {
+      action: "create_call",
+      leadId: leadId,
+      phoneNumber: phone,
+      assistantId: assistantId || undefined,
+      metadata: {
+        source: "dashboard",
+        initiated_by: currentUser?.id,
+      }
     });
-
-    const json = await res.json();
-    if (!res.ok || json.error) throw new Error(json.error || "Failed to create call.");
 
     toast(`Call initiated! Call ID: ${json.callId?.slice(0, 8) || "N/A"}`);
     closeModal("callLeadModal");
