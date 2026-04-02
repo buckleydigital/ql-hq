@@ -650,7 +650,7 @@ function navigateTo(page) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-let dashRange = "month";
+let dashRange = "today";
 
 function getDashRangeStart() {
   const now = new Date();
@@ -878,11 +878,6 @@ async function handleCustomFieldSave(e) {
     await loadCustomFields();
     renderSettingsCustomFields();
     await renderCustomFieldInputs();
-    
-    const statCustomFields = document.getElementById("statCustomFields");
-    const customFieldChip = document.getElementById("customFieldChip");
-    if (statCustomFields) statCustomFields.textContent = customFields.length;
-    if (customFieldChip) customFieldChip.textContent = `${customFields.length} field${customFields.length === 1 ? "" : "s"}`;
   } catch (err) {
     toast("Failed to save custom field.", true);
   }
@@ -2361,7 +2356,7 @@ async function loadMessages(convId) {
       return `<div class="msg ${m.direction === "inbound" ? "inbound" : "outbound"}">
         ${content}
         <div class="msg-meta">
-          ${badge ? `<span class="msg-badge ${badge}">${badge}</span>` : ""}
+          ${badge ? `<span class="msg-badge ${badge}">${cap(badge)}</span>` : ""}
           <span>${fmtDate(m.created_at)}</span>
         </div>
       </div>`;

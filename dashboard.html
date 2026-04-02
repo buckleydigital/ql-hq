@@ -263,7 +263,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
 /* ── Responsive ─────────────────────────────────── */
 @media(max-width:1180px){
-  .grid4,.grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:1fr}
+  .grid4{grid-template-columns:repeat(2,1fr)}
+  .grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:1fr}
   .search{width:100%;max-width:none;order:3}
   .top{flex-wrap:wrap;height:auto}
 }
@@ -411,7 +412,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <button class="range-btn active" data-range="today">Today</button>
             <button class="range-btn" data-range="month">This Month</button>
             <button class="range-btn" data-range="ytd">YTD</button>
-            <button class="range-btn" data-range="trailing12">Trailing 12m</button>
+            <button class="range-btn" data-range="trailing12">Trailing 12 Months</button>
           </div>
           <button id="openLeadModalDashboard" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Lead</span></button>
         </div>
