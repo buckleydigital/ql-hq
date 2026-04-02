@@ -152,10 +152,10 @@ Return ONLY a valid JSON array, no other text.`;
                   description: String(item.description || ""),
                   quantity: Number(item.quantity) || 1,
                   unit_price: Number(item.unit_price) || 0,
-                  subtotal: Number(item.subtotal) || (Number(item.quantity || 1) * Number(item.unit_price || 0)),
+                  subtotal: Math.round((Number(item.quantity || 1) * Number(item.unit_price || 0)) * 100) / 100,
                 }));
-                subtotal = lineItems.reduce((sum, li) => sum + (Number(li.subtotal) || 0), 0);
-                tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+                subtotal = Math.round(lineItems.reduce((sum, li) => sum + (Number(li.subtotal) || 0), 0) * 100) / 100;
+                tax = Math.round(subtotal * taxRate) / 100;
                 total = Math.round((subtotal + tax) * 100) / 100;
               }
             }
