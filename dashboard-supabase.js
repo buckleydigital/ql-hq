@@ -91,21 +91,35 @@ function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 // getSession() returns the cached session and may contain an expired JWT.
 // This helper checks expiry and refreshes the token when needed so that
 // edge-function fetch() calls never send a stale token.
-async function getAccessToken() {
+// Set forceRefresh=true after a 401 to guarantee a fresh token on retry.
+async function getAccessToken(forceRefresh = false) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.access_token) return null;
+
+  if (forceRefresh) {
+    const { data: { session: refreshed } } = await sb.auth.refreshSession();
+    return refreshed?.access_token || null;
+  }
 
   try {
     const parts = session.access_token.split(".");
     if (parts.length !== 3) throw new Error("malformed");
-    const payload = JSON.parse(atob(parts[1]));
+    // JWT uses base64url encoding; convert to standard base64 for atob()
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    b64 += "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(b64));
     const nowSec  = Math.floor(Date.now() / 1000);
-    // If the token expires within the next 30 seconds, force a refresh
-    if (payload.exp && payload.exp - nowSec <= 30) {
+    // If the token expires within the next 60 seconds, force a refresh
+    if (payload.exp && payload.exp - nowSec <= 60) {
       const { data: { session: refreshed } } = await sb.auth.refreshSession();
       return refreshed?.access_token || null;
     }
-  } catch (e) { console.warn("JWT decode check failed, using token as-is:", e); }
+  } catch (e) {
+    // Decode failed — token may be corrupt; try refreshing instead of using it as-is
+    console.warn("JWT decode check failed, refreshing token:", e);
+    const { data: { session: refreshed } } = await sb.auth.refreshSession();
+    return refreshed?.access_token || null;
+  }
 
   return session.access_token;
 }
@@ -113,11 +127,10 @@ async function getAccessToken() {
 // ─── Edge-function caller ─────────────────────────────────────────────────────
 // Centralises token refresh, header injection, and response parsing so every
 // call-site gets robust error handling with useful messages.
-async function edgeFn(fnName, body) {
-  const token = await getAccessToken();
-  if (!token) throw new Error("Not authenticated — please log in again.");
+// Automatically retries once with a fresh token on 401 (Invalid JWT).
 
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+function edgeFetch(fnName, body, token) {
+  return fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
@@ -126,6 +139,22 @@ async function edgeFn(fnName, body) {
     },
     body: JSON.stringify(body),
   });
+}
+
+async function edgeFn(fnName, body) {
+  let token = await getAccessToken();
+  if (!token) throw new Error("Not authenticated — please log in again.");
+
+  let res = await edgeFetch(fnName, body, token);
+
+  // On 401, force-refresh the token and retry once before giving up
+  if (res.status === 401) {
+    console.warn(`[edgeFn] ${fnName} returned 401, refreshing token and retrying…`);
+    token = await getAccessToken(true);
+    if (!token) throw new Error("Not authenticated — please log in again.");
+
+    res = await edgeFetch(fnName, body, token);
+  }
 
   // Read as text first so we can always inspect the raw body
   const text = await res.text();
