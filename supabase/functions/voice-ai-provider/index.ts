@@ -168,24 +168,11 @@ Deno.serve(async (req) => {
 
     // ── test ─────────────────────────────────────────────────────────────────
     if (action === "test") {
-      // Check that voice agent config exists and has an assistant ID
       const { data: config } = await adminClient
         .from("voice_agent_config")
         .select("vapi_assistant_id, is_active")
         .eq("company_id", profile.company_id)
         .maybeSingle();
-
-      if (!config?.vapi_assistant_id) {
-        return new Response(
-          JSON.stringify({
-            error: "No VAPI Assistant ID configured. Please save your voice agent settings first.",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
 
       // Resolve VAPI API key
       const { data: vapiKey } = await adminClient.rpc("resolve_api_key", {
@@ -205,13 +192,15 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Test connection by fetching assistant details from VAPI
-      const vapiRes = await fetch(
-        `https://api.vapi.ai/assistant/${config.vapi_assistant_id}`,
-        {
-          headers: { Authorization: `Bearer ${vapiKey}` },
-        }
-      );
+      // If an assistant ID is configured, verify it exists in VAPI.
+      // Otherwise, just verify the API key works by listing assistants.
+      const testUrl = config?.vapi_assistant_id
+        ? `https://api.vapi.ai/assistant/${config.vapi_assistant_id}`
+        : "https://api.vapi.ai/assistant?limit=1";
+
+      const vapiRes = await fetch(testUrl, {
+        headers: { Authorization: `Bearer ${vapiKey}` },
+      });
 
       if (!vapiRes.ok) {
         const errBody = await vapiRes.text();
@@ -248,24 +237,14 @@ Deno.serve(async (req) => {
       // Get voice config
       const { data: config } = await adminClient
         .from("voice_agent_config")
-        .select("vapi_assistant_id, voice_id")
+        .select(
+          "vapi_assistant_id, voice_id, system_prompt, greeting, model, name"
+        )
         .eq("company_id", profile.company_id)
         .maybeSingle();
 
       const resolvedAssistantId =
         assistantId || config?.vapi_assistant_id;
-
-      if (!resolvedAssistantId) {
-        return new Response(
-          JSON.stringify({
-            error: "No VAPI assistant configured. Please set up Voice AI first.",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
 
       // Resolve VAPI key
       const { data: vapiKey } = await adminClient.rpc("resolve_api_key", {
@@ -283,23 +262,68 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Create call via VAPI API
-      // If a voice_id is configured, override the assistant's voice with
-      // ElevenLabs using that ID.
+      // Build the VAPI call payload.
+      // Two modes:
+      //   1. Named assistant — uses a pre-created assistantId (with optional
+      //      voice override via assistantOverrides).
+      //   2. Transient assistant — builds an inline assistant definition from
+      //      the stored config (system_prompt, greeting, voice_id, model).
+      //      No pre-created VAPI assistant is required.
       const callPayload: Record<string, unknown> = {
-        assistantId: resolvedAssistantId,
         customer: { number: phoneNumber },
         metadata: metadata || {},
       };
 
-      const resolvedVoiceId = config?.voice_id;
-      if (resolvedVoiceId) {
-        callPayload.assistantOverrides = {
-          voice: {
-            provider: "11labs",
-            voiceId: resolvedVoiceId,
+      if (resolvedAssistantId) {
+        // ── Named assistant mode ──
+        callPayload.assistantId = resolvedAssistantId;
+
+        const resolvedVoiceId = config?.voice_id;
+        if (resolvedVoiceId) {
+          callPayload.assistantOverrides = {
+            voice: {
+              provider: "11labs",
+              voiceId: resolvedVoiceId,
+            },
+          };
+        }
+      } else {
+        // ── Transient assistant mode ──
+        const systemPrompt = config?.system_prompt;
+        if (!systemPrompt) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "No VAPI assistant ID or system prompt configured. Please set up Voice AI first.",
+            }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        const transientAssistant: Record<string, unknown> = {
+          name: config?.name || "Voice Agent",
+          model: {
+            provider: "openai",
+            model: config?.model || "gpt-4o",
+            messages: [{ role: "system", content: systemPrompt }],
           },
         };
+
+        if (config?.greeting) {
+          transientAssistant.firstMessage = config.greeting;
+        }
+
+        if (config?.voice_id) {
+          transientAssistant.voice = {
+            provider: "11labs",
+            voiceId: config.voice_id,
+          };
+        }
+
+        callPayload.assistant = transientAssistant;
       }
 
       const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
