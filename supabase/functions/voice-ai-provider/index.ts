@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
       // Get voice config
       const { data: config } = await adminClient
         .from("voice_agent_config")
-        .select("vapi_assistant_id")
+        .select("vapi_assistant_id, voice_id")
         .eq("company_id", profile.company_id)
         .maybeSingle();
 
@@ -284,17 +284,31 @@ Deno.serve(async (req) => {
       }
 
       // Create call via VAPI API
+      // If a voice_id is configured, override the assistant's voice with
+      // ElevenLabs using that ID.
+      const callPayload: Record<string, unknown> = {
+        assistantId: resolvedAssistantId,
+        customer: { number: phoneNumber },
+        metadata: metadata || {},
+      };
+
+      const resolvedVoiceId = config?.voice_id;
+      if (resolvedVoiceId) {
+        callPayload.assistantOverrides = {
+          voice: {
+            provider: "11labs",
+            voiceId: resolvedVoiceId,
+          },
+        };
+      }
+
       const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${vapiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          assistantId: resolvedAssistantId,
-          customer: { number: phoneNumber },
-          metadata: metadata || {},
-        }),
+        body: JSON.stringify(callPayload),
       });
 
       if (!vapiRes.ok) {

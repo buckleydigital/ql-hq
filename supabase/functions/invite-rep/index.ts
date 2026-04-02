@@ -144,28 +144,56 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user already exists
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(
-      (u) => u.email === email
-    );
-
+    // Create-or-find the invited user.
+    // Try to create first; if the user already exists Supabase returns an
+    // error containing "already been registered" — we then fall back to a
+    // targeted listUsers lookup.
     let newUserId: string;
 
-    if (existingUser) {
-      // User already exists — just link them as a rep
-      newUserId = existingUser.id;
+    const { data: newUser, error: createError } =
+      await adminClient.auth.admin.createUser({
+        email,
+        user_metadata: {
+          full_name: name,
+          company_id: profile.company_id,
+          user_type: "external",
+        },
+        email_confirm: false, // magic link will confirm
+      });
 
-      // Update their profile to belong to this company if they don't have one
+    if (newUser?.user) {
+      // Brand-new user
+      newUserId = newUser.user.id;
+    } else if (
+      createError &&
+      /already|exists|duplicate|unique/i.test(createError.message || "")
+    ) {
+      // User already exists — look them up.
+      // NOTE: Supabase auth admin API does not support filtering listUsers by
+      // email, so we must list and search.  This is only reached when creation
+      // fails (existing user), not the common case.
+      const { data: allList } = await adminClient.auth.admin.listUsers();
+      const found = allList?.users?.find(
+        (u: { email?: string }) => u.email === email
+      );
+      if (!found) {
+        return new Response(
+          JSON.stringify({ error: "User appears to exist but could not be found" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      newUserId = found.id;
+
+      // Ensure they have a profile for this company
       const { data: existingProfile } = await adminClient
         .from("profiles")
         .select("id")
-        .eq("id", existingUser.id)
-        .single();
+        .eq("id", found.id)
+        .maybeSingle();
 
       if (!existingProfile) {
         await adminClient.from("profiles").insert({
-          id: existingUser.id,
+          id: found.id,
           company_id: profile.company_id,
           user_type: "external",
           full_name: name,
@@ -174,31 +202,10 @@ Deno.serve(async (req) => {
         });
       }
     } else {
-      // Create new user and send magic link
-      const { data: newUser, error: createError } =
-        await adminClient.auth.admin.createUser({
-          email,
-          user_metadata: {
-            full_name: name,
-            company_id: profile.company_id,
-            user_type: "external",
-          },
-          email_confirm: false, // don't auto-confirm — magic link will do it
-        });
-
-      if (createError || !newUser?.user) {
-        return new Response(
-          JSON.stringify({
-            error: createError?.message || "Failed to create user",
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      newUserId = newUser.user.id;
+      return new Response(
+        JSON.stringify({ error: createError?.message || "Failed to create user" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Send magic link email
