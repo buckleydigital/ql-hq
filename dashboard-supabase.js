@@ -189,6 +189,7 @@ let allLeads         = [];
 let dragLeadId       = null;
 let authInitialized  = false;
 let currentUserType  = null;  // 'internal' or 'external' — NEW
+let realtimeChannel  = null;  // Supabase realtime subscription
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -579,6 +580,9 @@ async function showApp() {
         if (sidebarCompany) sidebarCompany.textContent = company.name;
       }
     }
+
+    // Set up realtime subscriptions for live message updates
+    setupRealtimeSubscription();
 
     navigateTo("dashboard");
   } catch (err) {
@@ -2184,6 +2188,50 @@ async function loadMessages(convId) {
   } catch (err) {
     toast("Failed to load messages.", true);
   }
+}
+
+// ── Realtime Subscription ─────────────────────────────────────────────────────
+function setupRealtimeSubscription() {
+  if (!currentCompanyId || !sb) return;
+
+  // Clean up previous subscription
+  if (realtimeChannel) {
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+
+  realtimeChannel = sb
+    .channel("conversations-realtime")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "conversations" },
+      (payload) => {
+        const row = payload.new || payload.old;
+        if (row?.company_id !== currentCompanyId) return;
+
+        // Refresh conversation list
+        loadConversations();
+
+        // If viewing this conversation, refresh messages
+        if (currentConvId && row.id === currentConvId) {
+          loadMessages(currentConvId);
+        }
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages" },
+      (payload) => {
+        const msg = payload.new;
+        if (!msg || !currentConvId) return;
+
+        // If the new message belongs to the open conversation, refresh it
+        if (msg.conversation_id === currentConvId) {
+          loadMessages(currentConvId);
+        }
+      }
+    )
+    .subscribe();
 }
 
 async function handleSendMessage(e) {

@@ -31,8 +31,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Twilio sends application/x-www-form-urlencoded
 function parseTwilioBody(body: string): Record<string, string> {
   const params: Record<string, string> = {};
-  for (const pair of body.split("&")) {
-    const [key, val] = pair.split("=").map(decodeURIComponent);
+  const sp = new URLSearchParams(body);
+  for (const [key, val] of sp.entries()) {
     params[key] = val;
   }
   return params;
@@ -413,6 +413,7 @@ Deno.serve(async (req) => {
         .insert({
           company_id: companyId,
           first_name: "SMS Lead",
+          name: "SMS Lead",
           phone: fromNumber,
           source: "sms_inbound",
           pipeline_stage: "new_lead",
