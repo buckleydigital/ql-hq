@@ -244,8 +244,7 @@ Deno.serve(async (req) => {
     return json({ success: true, message, conversation_id: conversationId });
   } catch (err) {
     console.error("Send SMS error:", err);
-    const msg = err instanceof Error ? err.message : String(err);
-    return json({ error: msg || "Internal server error" }, 500);
+    return json({ error: "Internal server error" }, 500);
   }
 });
 
