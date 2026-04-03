@@ -75,15 +75,27 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── Pre-flight: check Resend API key is configured ─────────────────
+    // This is an infrastructure issue affecting ALL users, so it's safe to
+    // surface without leaking whether a specific email exists.
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY is not set in edge function secrets");
+      return new Response(
+        JSON.stringify({ error: "Email service is not configured. Please contact support." }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-
     // Generate password recovery link via Supabase Admin API
     const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:3000";
+    console.log("send-password-reset: using SITE_URL =", siteUrl);
+
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
@@ -111,34 +123,52 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send via Resend if configured, otherwise fall back to Supabase default
-    if (resendApiKey) {
-      const emailContent = passwordResetEmail(resetLink);
+    // ── Send via Resend ────────────────────────────────────────────────
+    const emailContent = passwordResetEmail(resetLink);
 
-      const resendRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendApiKey}`,
-        },
-        body: JSON.stringify({
-          from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
-          to: [email],
-          subject: emailContent.subject,
-          html: emailContent.html,
-        }),
-      });
+    const resendRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
+        to: [email],
+        subject: emailContent.subject,
+        html: emailContent.html,
+      }),
+    });
 
-      if (!resendRes.ok) {
-        const errText = await resendRes.text();
-        console.error("Resend password reset email failed:", errText);
-        // Still return success to not reveal user existence
+    if (!resendRes.ok) {
+      const errText = await resendRes.text();
+      console.error(`Resend API error (HTTP ${resendRes.status}):`, errText);
+
+      // Auth/config errors (401 = bad API key, 403 = domain not verified)
+      // affect ALL users and don't reveal whether this specific email exists.
+      // Surface them so the user knows the email service is broken.
+      if (resendRes.status === 401 || resendRes.status === 403) {
+        return new Response(
+          JSON.stringify({
+            error: "Email service configuration error. Please contact support.",
+          }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
-    } else {
-      console.warn("RESEND_API_KEY not set — password reset link generated but Resend email not sent");
+
+      // For other Resend errors (422 validation, 429 rate-limit, 5xx),
+      // return a transient error so the user can retry.
+      return new Response(
+        JSON.stringify({
+          error: "Unable to send reset email right now. Please try again shortly.",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // Always return success regardless of outcome (security best practice)
+    const resendData = await resendRes.json();
+    console.log("Password reset email sent via Resend, id:", resendData?.id);
+
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
