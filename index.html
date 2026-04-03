@@ -927,10 +927,11 @@ document.querySelectorAll('.stat-item').forEach(function(el){ statObs.observe(el
             },
             body: JSON.stringify(data)
         }).then(function(res){
-            if(!res.ok) throw new Error('Request failed');
+            if(!res.ok) throw new Error('Request failed with status ' + res.status);
             form.style.display = 'none';
             success.style.display = 'block';
-        }).catch(function(){
+        }).catch(function(err){
+            console.error('Form submission failed:', err);
             errEl.textContent = 'Something went wrong. Please try again.';
             errEl.style.display = 'block';
             btn.disabled = false;

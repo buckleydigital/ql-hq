@@ -2,7 +2,7 @@
 create table public.demo_requests (
   id         uuid primary key default gen_random_uuid(),
   name       text not null,
-  email      text not null,
+  email      text not null check (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
   phone      text,
   company    text,
   created_at timestamptz default now()
