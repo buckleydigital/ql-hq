@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
       const { data: quote, error } = await db
         .from("quotes")
-        .select("id, quote_number, status, subtotal, tax, total, valid_until, notes, line_items, sent_at, viewed_at, accepted_at, created_at, lead_id, company_id")
+        .select("id, quote_number, status, subtotal, tax, total, valid_until, notes, line_items, metadata, sent_at, viewed_at, accepted_at, created_at, lead_id, company_id")
         .eq("quote_token", token)
         .single();
 
@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
           valid_until: quote.valid_until,
           notes: quote.notes,
           line_items: quote.line_items,
+          metadata: quote.metadata,
           sent_at: quote.sent_at,
           viewed_at: quote.viewed_at,
           created_at: quote.created_at,

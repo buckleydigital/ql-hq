@@ -99,12 +99,33 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
   function renderQuote(q, co, lead) {
     const isResolved = q.status === "accepted" || q.status === "declined";
     const companyInitial = (co.name || "Q")[0].toUpperCase();
+    const meta = q.metadata || {};
 
     let lineItemsHtml = "";
     if (q.line_items && q.line_items.length > 0) {
-      lineItemsHtml = `<div class="line-items"><h3>Line Items</h3>${q.line_items.map(function(li) {
+      lineItemsHtml = `<div class="line-items"><h3>Scope of Work / Line Items</h3>${q.line_items.map(function(li) {
         return '<div class="line-item"><span>' + (li.description || li.name || "Item") + (li.quantity ? " × " + li.quantity : "") + '</span><span>' + fmt(li.total || li.price || 0) + '</span></div>';
-      }).join("")}</div>`;
+      }).join("")}` +
+      (q.subtotal ? '<div class="line-item" style="border-top:2px solid var(--border);font-weight:500"><span>Subtotal</span><span>' + fmt(q.subtotal) + '</span></div>' : '') +
+      (q.tax ? '<div class="line-item" style="font-weight:500"><span>Tax</span><span>' + fmt(q.tax) + '</span></div>' : '') +
+      `</div>`;
+    }
+
+    let abnHtml = "";
+    if (meta.show_abn !== false && meta.abn) {
+      abnHtml = '<div class="quote-row"><span class="label">ABN / Business Registration</span><span class="value">' + meta.abn + '</span></div>';
+    }
+
+    let depositHtml = "";
+    if (meta.show_deposit !== false && (meta.deposit_terms || meta.deposit_method)) {
+      depositHtml = '<div class="quote-notes" style="border-top:1px solid var(--border)"><strong>Deposit:</strong> ' +
+        (meta.deposit_method ? meta.deposit_method + '. ' : '') +
+        (meta.deposit_terms || '') + '</div>';
+    }
+
+    let serviceTermsHtml = "";
+    if (meta.show_service_terms !== false && meta.service_terms) {
+      serviceTermsHtml = '<div class="quote-notes" style="border-top:1px solid var(--border)"><strong>Service Terms:</strong> ' + meta.service_terms + '</div>';
     }
 
     let actionsHtml = "";
@@ -134,12 +155,15 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
         '<div class="quote-row"><span class="label">Status</span><span class="' + statusClass(q.status) + ' status-badge">' + (q.status || "Draft") + '</span></div>' +
         '<div class="quote-row"><span class="label">Prepared For</span><span class="value">' + (lead.name || lead.email || "—") + '</span></div>' +
         (co.email ? '<div class="quote-row"><span class="label">Contact</span><span class="value">' + co.email + (co.phone ? " · " + co.phone : "") + '</span></div>' : '') +
+        abnHtml +
         '<div class="quote-row"><span class="label">Date Issued</span><span class="value">' + fmtDate(q.created_at) + '</span></div>' +
-        (q.valid_until ? '<div class="quote-row"><span class="label">Valid Until</span><span class="value">' + fmtDate(q.valid_until) + '</span></div>' : '') +
+        ((meta.show_valid_until !== false && q.valid_until) ? '<div class="quote-row"><span class="label">Valid Until</span><span class="value">' + fmtDate(q.valid_until) + '</span></div>' : '') +
       '</div>' +
       lineItemsHtml +
       '<div class="quote-total">' + fmt(q.total) + '</div>' +
       (q.notes ? '<div class="quote-notes"><strong>Notes:</strong> ' + q.notes + '</div>' : '') +
+      depositHtml +
+      serviceTermsHtml +
       actionsHtml;
 
     // Attach action handlers

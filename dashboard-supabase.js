@@ -86,6 +86,8 @@ const STAGE_FROM_LABEL = Object.fromEntries(
   Object.entries(STAGE_LABELS).map(([k, v]) => [v, k])
 );
 
+const DEFAULT_TAX_RATE = 10;
+
 function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
 function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
@@ -524,6 +526,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("openQuoteModal")?.addEventListener("click", openQuoteModalHandler);
   document.getElementById("cancelQuoteModal")?.addEventListener("click", () => closeModal("quoteModal"));
   document.getElementById("quoteForm")?.addEventListener("submit", handleQuoteSave);
+  document.getElementById("addQuoteLineItemBtn")?.addEventListener("click", () => addQuoteLineItemRow());
+  document.getElementById("quoteLineTaxRate")?.addEventListener("input", recalcQuoteTotals);
+  document.getElementById("quoteDefaultsForm")?.addEventListener("submit", handleQuoteDefaultsSave);
 
   // ── Appointment Modal ────────────────────────────────────────────────────
   document.getElementById("openAppointmentModal")?.addEventListener("click", openAppointmentModalHandler);
@@ -1263,7 +1268,95 @@ async function populateLeadSelector(selectId) {
 async function openQuoteModalHandler() {
   await populateLeadSelector("quoteLeadSelect");
   document.getElementById("quoteForm")?.reset();
+  document.getElementById("quoteLineItems").innerHTML = "";
+  recalcQuoteTotals();
+  // Load quote defaults from company settings
+  await prefillQuoteDefaults();
   openModal("quoteModal");
+}
+
+async function prefillQuoteDefaults() {
+  if (!currentCompanyId) return;
+  try {
+    const [{ data: company }, { data: agentConfig }] = await Promise.all([
+      sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle(),
+      sb.from("sms_agent_config").select("quote_pricing_config").eq("company_id", currentCompanyId).maybeSingle(),
+    ]);
+    const s = company?.settings?.quote_defaults || {};
+    document.getElementById("quoteAbn").value = s.abn || "";
+    document.getElementById("quoteDepositMethod").value = s.deposit_method || "";
+    document.getElementById("quoteDepositTerms").value = s.deposit_terms || "";
+    document.getElementById("quoteServiceTerms").value = s.service_terms || "";
+    document.getElementById("quoteShowAbn").checked = s.show_abn !== false;
+    document.getElementById("quoteShowDeposit").checked = s.show_deposit !== false;
+    document.getElementById("quoteShowServiceTerms").checked = s.show_service_terms !== false;
+    document.getElementById("quoteShowValidUntil").checked = s.show_valid_until !== false;
+    // Set tax rate from pricing config
+    const pricingConfig = agentConfig?.quote_pricing_config || {};
+    document.getElementById("quoteLineTaxRate").value = pricingConfig.tax_rate ?? DEFAULT_TAX_RATE;
+    // Set default valid_until date
+    const validityDays = s.validity_days || 30;
+    const validDate = new Date();
+    validDate.setDate(validDate.getDate() + validityDays);
+    document.getElementById("quoteValidUntil").value = validDate.toISOString().split("T")[0];
+  } catch (err) {
+    console.error("Failed to load quote defaults:", err);
+  }
+}
+
+function addQuoteLineItemRow(item = {}) {
+  const container = document.getElementById("quoteLineItems");
+  const row = document.createElement("div");
+  row.className = "quote-line-item-row";
+  row.style.cssText = "display:grid;grid-template-columns:1.5fr .5fr .6fr .6fr auto;gap:8px;align-items:center";
+  row.innerHTML = `
+    <input type="text" class="qli-desc" placeholder="Description" value="${item.description || ""}">
+    <input type="number" class="qli-qty" min="0" step="1" placeholder="Qty" value="${item.quantity || 1}">
+    <input type="number" class="qli-rate" min="0" step="0.01" placeholder="Rate" value="${item.rate || ""}">
+    <input type="text" class="qli-total" readonly style="background:var(--surface);font-weight:500" value="${item.total || ""}">
+    <button type="button" class="iconbtn btn-danger qli-remove" title="Remove">
+      <span class="icon" data-icon="trash"></span>
+    </button>`;
+  container.appendChild(row);
+  // Attach event listeners
+  row.querySelector(".qli-qty").addEventListener("input", recalcQuoteTotals);
+  row.querySelector(".qli-rate").addEventListener("input", recalcQuoteTotals);
+  row.querySelector(".qli-remove").addEventListener("click", function() {
+    row.remove();
+    recalcQuoteTotals();
+  });
+  recalcQuoteTotals();
+  renderIcons();
+}
+
+function recalcQuoteTotals() {
+  let subtotal = 0;
+  document.querySelectorAll(".quote-line-item-row").forEach((row) => {
+    const qty = parseFloat(row.querySelector(".qli-qty")?.value) || 0;
+    const rate = parseFloat(row.querySelector(".qli-rate")?.value) || 0;
+    const lineTotal = qty * rate;
+    row.querySelector(".qli-total").value = lineTotal ? lineTotal.toFixed(2) : "";
+    subtotal += lineTotal;
+  });
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
+  const tax = subtotal * (taxRate / 100);
+  const total = subtotal + tax;
+  const fmtMoney = (v) => v ? fmt(v) : "";
+  document.getElementById("quoteSubtotal").value = fmtMoney(subtotal);
+  document.getElementById("quoteTax").value = fmtMoney(tax);
+  document.getElementById("quoteTotal").value = fmtMoney(total);
+}
+
+function collectQuoteLineItems() {
+  const items = [];
+  document.querySelectorAll(".quote-line-item-row").forEach((row) => {
+    const description = row.querySelector(".qli-desc")?.value?.trim();
+    const quantity = parseFloat(row.querySelector(".qli-qty")?.value) || 1;
+    const rate = parseFloat(row.querySelector(".qli-rate")?.value) || 0;
+    const total = quantity * rate;
+    if (description) items.push({ description, quantity, rate, total });
+  });
+  return items;
 }
 
 async function handleQuoteSave(e) {
@@ -1271,13 +1364,33 @@ async function handleQuoteSave(e) {
   const leadId = document.getElementById("quoteLeadSelect")?.value;
   if (!leadId) { toast("Please select a lead.", true); return; }
 
+  const lineItems = collectQuoteLineItems();
+  const subtotal = lineItems.reduce((sum, li) => sum + (li.total || 0), 0);
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
+  const tax = subtotal * (taxRate / 100);
+  const total = subtotal + tax;
+
   const payload = {
     company_id:   currentCompanyId,
     lead_id:      leadId,
     quote_number: document.getElementById("quoteNumber")?.value || null,
-    total:        Number(document.getElementById("quoteTotal")?.value) || null,
+    subtotal:     subtotal || null,
+    tax:          tax || null,
+    total:        total || null,
     status:       document.getElementById("quoteStatus")?.value || "draft",
     notes:        document.getElementById("quoteNotes")?.value || null,
+    valid_until:  document.getElementById("quoteValidUntil")?.value || null,
+    line_items:   lineItems.length ? lineItems : [],
+    metadata: {
+      abn:                document.getElementById("quoteAbn")?.value?.trim() || null,
+      deposit_method:     document.getElementById("quoteDepositMethod")?.value?.trim() || null,
+      deposit_terms:      document.getElementById("quoteDepositTerms")?.value?.trim() || null,
+      service_terms:      document.getElementById("quoteServiceTerms")?.value?.trim() || null,
+      show_abn:           document.getElementById("quoteShowAbn")?.checked ?? true,
+      show_deposit:       document.getElementById("quoteShowDeposit")?.checked ?? true,
+      show_service_terms: document.getElementById("quoteShowServiceTerms")?.checked ?? true,
+      show_valid_until:   document.getElementById("quoteShowValidUntil")?.checked ?? true,
+    },
   };
 
   try {
@@ -1549,7 +1662,7 @@ async function loadQuotes() {
   try {
     const { data } = await sb
       .from("quotes")
-      .select("id, quote_number, status, total, notes, created_at, sent_at, viewed_at, accepted_at, quote_token, lead_id, leads(name, email, phone)")
+      .select("id, quote_number, status, total, subtotal, tax, notes, created_at, sent_at, viewed_at, accepted_at, quote_token, valid_until, line_items, metadata, lead_id, leads(name, email, phone)")
       .eq("company_id", currentCompanyId)
       .order("created_at", { ascending: false });
     const quotes = data || [];
@@ -1563,11 +1676,12 @@ async function loadQuotes() {
       const lead = q.leads || {};
       const quoteLink = buildQuoteLink(q.quote_token);
       const isDraft = q.status === "draft";
+      const itemCount = Array.isArray(q.line_items) ? q.line_items.length : 0;
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
-        <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
+        <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}${itemCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}</span></div>
         <div><span class="chip">${cap(q.status || "draft")}</span></div>
-        <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}</span></div>
+        <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}${q.valid_until ? ` · Valid: ${fmtDate(q.valid_until)}` : ""}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
           ${isDraft ? `<button class="btn2" style="padding:4px 10px;font-size:11px" onclick="approveAndSendQuote('${q.id}')" title="Approve quote and send link to lead">Approve &amp; Send</button>` : ""}
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')" title="Download PDF"><span class="icon" data-icon="file"></span> PDF</button>
@@ -1603,7 +1717,7 @@ async function downloadQuotePDF(quoteId) {
   try {
     const { data: q } = await sb
       .from("quotes")
-      .select("id, quote_number, status, subtotal, tax, total, valid_until, notes, line_items, created_at, sent_at, lead_id, leads(name, email, phone, address)")
+      .select("id, quote_number, status, subtotal, tax, total, valid_until, notes, line_items, metadata, created_at, sent_at, lead_id, leads(name, email, phone, address)")
       .eq("id", quoteId)
       .single();
     if (!q) { toast("Quote not found.", true); return; }
@@ -1642,7 +1756,7 @@ async function downloadQuotePDF(quoteId) {
       } catch (e) { /* skip logo if format unsupported */ }
     }
 
-    // Header
+    // Company info header with ABN
     doc.setFontSize(22);
     doc.setFont(undefined, "bold");
     doc.text(co.name || "Company", 14, y);
@@ -1650,6 +1764,8 @@ async function downloadQuotePDF(quoteId) {
     doc.setFontSize(10);
     doc.setFont(undefined, "normal");
     if (co.email) { doc.text(co.email + (co.phone ? "  ·  " + co.phone : ""), 14, y); y += 6; }
+    const meta = q.metadata || {};
+    if (meta.show_abn !== false && meta.abn) { doc.text("ABN: " + meta.abn, 14, y); y += 6; }
 
     // Quote title
     y += 6;
@@ -1664,7 +1780,7 @@ async function downloadQuotePDF(quoteId) {
     doc.text("Status: " + (q.status || "Draft").toUpperCase(), 14, y);
     doc.text("Date: " + (q.created_at ? new Date(q.created_at).toLocaleDateString("en-AU") : "—"), pw - 14, y, { align: "right" });
     y += 6;
-    if (q.valid_until) {
+    if (meta.show_valid_until !== false && q.valid_until) {
       doc.text("Valid Until: " + new Date(q.valid_until).toLocaleDateString("en-AU"), 14, y);
       y += 6;
     }
@@ -1724,6 +1840,29 @@ async function downloadQuotePDF(quoteId) {
       doc.setFont(undefined, "normal");
       const lines = doc.splitTextToSize(q.notes, pw - 28);
       doc.text(lines, 14, y);
+      y += lines.length * 5 + 4;
+    }
+
+    // Deposit terms
+    if (meta.show_deposit !== false && (meta.deposit_terms || meta.deposit_method)) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, "bold");
+      doc.text("Deposit:", 14, y); y += 5;
+      doc.setFont(undefined, "normal");
+      const depositText = (meta.deposit_method ? meta.deposit_method + ". " : "") + (meta.deposit_terms || "");
+      const depLines = doc.splitTextToSize(depositText, pw - 28);
+      doc.text(depLines, 14, y);
+      y += depLines.length * 5 + 4;
+    }
+
+    // Service terms
+    if (meta.show_service_terms !== false && meta.service_terms) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, "bold");
+      doc.text("Service Terms:", 14, y); y += 5;
+      doc.setFont(undefined, "normal");
+      const stLines = doc.splitTextToSize(meta.service_terms, pw - 28);
+      doc.text(stLines, 14, y);
     }
 
     doc.save("Quote-" + (q.quote_number || q.id.slice(0,8)) + ".pdf");
@@ -1833,6 +1972,8 @@ async function loadSettings() {
       if (settingsCompanyEmail) settingsCompanyEmail.value = company.email || "";
       if (settingsCompanyPhone) settingsCompanyPhone.value = company.phone || "";
       updateLogoPreview(company.logo_url);
+      // Load quote defaults
+      loadQuoteDefaultsUI(company.settings?.quote_defaults || {});
     }
     if (profile) {
       if (settingsOwnerName) settingsOwnerName.value = profile.full_name || "";
@@ -1915,6 +2056,46 @@ async function handleCompanyProfileSave(e) {
     if (sidebarAccountName) sidebarAccountName.textContent = ownerName;
   } catch (err) {
     toast("Failed to save profile.", true);
+  }
+}
+
+// ─── Quote Defaults ───────────────────────────────────────────────────────────
+function loadQuoteDefaultsUI(defaults) {
+  setInputValue("defaultAbn", defaults.abn);
+  setInputValue("defaultQuoteValidityDays", defaults.validity_days ?? 30);
+  setInputValue("defaultDepositMethod", defaults.deposit_method);
+  setInputValue("defaultDepositTerms", defaults.deposit_terms);
+  setInputValue("defaultServiceTerms", defaults.service_terms);
+  setCheckboxValue("defaultShowAbn", defaults.show_abn !== false);
+  setCheckboxValue("defaultShowDeposit", defaults.show_deposit !== false);
+  setCheckboxValue("defaultShowServiceTerms", defaults.show_service_terms !== false);
+  setCheckboxValue("defaultShowValidUntil", defaults.show_valid_until !== false);
+}
+
+async function handleQuoteDefaultsSave(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+  try {
+    // Fetch current settings to merge
+    const { data: company } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
+    const currentSettings = company?.settings || {};
+    const quoteDefaults = {
+      abn:                document.getElementById("defaultAbn")?.value?.trim() || "",
+      validity_days:      parseInt(document.getElementById("defaultQuoteValidityDays")?.value) || 30,
+      deposit_method:     document.getElementById("defaultDepositMethod")?.value?.trim() || "",
+      deposit_terms:      document.getElementById("defaultDepositTerms")?.value?.trim() || "",
+      service_terms:      document.getElementById("defaultServiceTerms")?.value?.trim() || "",
+      show_abn:           document.getElementById("defaultShowAbn")?.checked ?? true,
+      show_deposit:       document.getElementById("defaultShowDeposit")?.checked ?? true,
+      show_service_terms: document.getElementById("defaultShowServiceTerms")?.checked ?? true,
+      show_valid_until:   document.getElementById("defaultShowValidUntil")?.checked ?? true,
+    };
+    const updatedSettings = { ...currentSettings, quote_defaults: quoteDefaults };
+    const { error } = await sb.from("companies").update({ settings: updatedSettings }).eq("id", currentCompanyId);
+    if (error) { toast(error.message, true); return; }
+    toast("Quote defaults saved.");
+  } catch (err) {
+    toast("Failed to save quote defaults.", true);
   }
 }
 
@@ -2331,7 +2512,7 @@ function renderTeamMembersList(profiles, invites) {
 
   const hasAny = profiles.length || invites.length;
   el.innerHTML = hasAny
-    ? memberRows + inviteRows
+    ? `<div class="team-list">${memberRows}${inviteRows}</div>`
     : `<div class="notice">No team members yet. Invite someone below.</div>`;
 
   renderIcons();
@@ -3443,7 +3624,7 @@ async function loadOppQuotes(leadId) {
   try {
     const { data: quotes } = await sb
       .from("quotes")
-      .select("id, quote_number, status, total, created_at, sent_at, accepted_at, quote_token")
+      .select("id, quote_number, status, total, created_at, sent_at, accepted_at, quote_token, line_items, valid_until")
       .eq("company_id", currentCompanyId)
       .eq("lead_id", leadId)
       .order("created_at", { ascending: false });
@@ -3456,11 +3637,12 @@ async function loadOppQuotes(leadId) {
     el.innerHTML = quotes.map((q) => {
       const quoteLink = buildQuoteLink(q.quote_token);
       const isDraft = q.status === "draft";
+      const itemCount = Array.isArray(q.line_items) ? q.line_items.length : 0;
       return `
       <div class="run">
         <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${cap(q.status || "draft")}</span></h3>
-        <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
-        <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
+        <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}${itemCount ? ` · ${itemCount} line item${itemCount > 1 ? "s" : ""}` : ""}</p>
+        <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}${q.valid_until ? ` · Valid until: ${fmtDate(q.valid_until)}` : ""}</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
           ${isDraft ? `<button class="btn2" style="padding:4px 10px;font-size:11px" onclick="approveAndSendQuote('${q.id}')">Approve & Send</button>` : ""}
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')">PDF</button>
