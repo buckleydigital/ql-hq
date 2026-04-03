@@ -561,7 +561,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                 <div class="field">
                   <label for="bulkSmsMessage">Message</label>
                   <textarea id="bulkSmsMessage" rows="4" placeholder="Hi {{first_name}}, just checking in! We'd love to help you with your project. Reply STOP to opt out." required></textarea>
-                  <span class="field-hint">Use <code>{{first_name}}</code> to personalize with each lead's first name.</span>
+                  <span class="field-hint">Use <code>{{first_name}}</code> or <code>{{first.name}}</code> for first name, <code>{{last_name}}</code> for last name.</span>
                 </div>
                 <div class="field">
                   <label>Preview</label>
