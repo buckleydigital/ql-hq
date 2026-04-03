@@ -1,6 +1,7 @@
 name = "qlhq-api-proxy"
 main = "src/index.ts"
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
 
 # Custom domain — configure in Cloudflare Dashboard → Workers → Triggers → Custom Domains
 # after deploying. Point api.quoteleadshq.com to this worker.
