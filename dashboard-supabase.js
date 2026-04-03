@@ -979,6 +979,7 @@ const PAGE_META = {
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
   "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
+  "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
 };
 
 function navigateTo(page) {
@@ -1015,6 +1016,7 @@ function navigateTo(page) {
     "ai-settings":      loadAiSettings,
     "voice-ai":         loadVoiceAi,
     "team-members":     loadTeamMembers,
+    "integrations":     loadIntegrations,
   };
   loaders[page]?.();
 }
@@ -4154,4 +4156,320 @@ async function approveAndSendQuote(quoteId) {
     toast(err.message || "Failed to approve and send quote.", true);
     console.error("approveAndSendQuote error:", err);
   }
+}
+
+// =============================================================================
+// ── Integrations (API Keys & Webhooks) ────────────────────────────────────────
+// =============================================================================
+
+async function loadIntegrations() {
+  if (!currentCompanyId) return;
+  await Promise.all([loadApiKeys(), loadWebhooks(), loadWebhookDeliveries()]);
+  wireIntegrationsUI();
+  renderIcons();
+}
+
+let integrationsWired = false;
+function wireIntegrationsUI() {
+  if (integrationsWired) return;
+  integrationsWired = true;
+
+  // API Key buttons
+  document.getElementById("createApiKeyBtn")?.addEventListener("click", () => {
+    document.getElementById("apiKeyFormPanel").style.display = "";
+    document.getElementById("apiKeyCreatedPanel").style.display = "none";
+    document.getElementById("apiKeyForm")?.reset();
+  });
+  document.getElementById("cancelApiKeyBtn")?.addEventListener("click", () => {
+    document.getElementById("apiKeyFormPanel").style.display = "none";
+  });
+  document.getElementById("apiKeyCreatedDoneBtn")?.addEventListener("click", () => {
+    document.getElementById("apiKeyCreatedPanel").style.display = "none";
+  });
+  document.getElementById("copyApiKeyBtn")?.addEventListener("click", () => {
+    const val = document.getElementById("apiKeyRawValue")?.textContent;
+    if (val) {
+      navigator.clipboard.writeText(val).then(() => toast("API key copied to clipboard!"));
+    }
+  });
+  document.getElementById("apiKeyForm")?.addEventListener("submit", handleCreateApiKey);
+
+  // Webhook buttons
+  document.getElementById("createWebhookBtn")?.addEventListener("click", () => {
+    document.getElementById("webhookFormPanel").style.display = "";
+    document.getElementById("webhookForm")?.reset();
+    document.getElementById("webhookEditId").value = "";
+  });
+  document.getElementById("cancelWebhookBtn")?.addEventListener("click", () => {
+    document.getElementById("webhookFormPanel").style.display = "none";
+  });
+  document.getElementById("copyWebhookSecretBtn")?.addEventListener("click", () => {
+    const val = document.getElementById("webhookSecretValue")?.textContent;
+    if (val) {
+      navigator.clipboard.writeText(val).then(() => toast("Webhook secret copied to clipboard!"));
+    }
+  });
+  document.getElementById("webhookSecretDoneBtn")?.addEventListener("click", () => {
+    document.getElementById("webhookSecretPanel").style.display = "none";
+  });
+  document.getElementById("webhookForm")?.addEventListener("submit", handleSaveWebhook);
+}
+
+// ── API Keys ──────────────────────────────────────────────────────────────────
+
+async function loadApiKeys() {
+  const container = document.getElementById("apiKeysTable");
+  if (!container) return;
+
+  const { data, error } = await sb
+    .from("company_api_tokens")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at", { ascending: false });
+
+  if (error) { container.innerHTML = `<div class="notice">Failed to load API keys.</div>`; return; }
+
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div class="notice">No API keys yet. Create one to start integrating.</div>`;
+    return;
+  }
+
+  const rows = data.map((k) => {
+    const revoked = !!k.revoked_at;
+    const expired = k.expires_at && new Date(k.expires_at) < new Date();
+    const status = revoked ? "Revoked" : expired ? "Expired" : "Active";
+    const statusClass = revoked || expired ? "muted" : "";
+    const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : "Never";
+    const created = new Date(k.created_at).toLocaleDateString();
+
+    return `<div class="row${revoked ? " muted" : ""}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <b>${esc(k.name)}</b>
+        <span style="font-family:monospace;font-size:12px;color:var(--text-2);margin-left:8px">${esc(k.token_prefix)}…</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);display:flex;gap:16px;align-items:center">
+        <span>${status}</span>
+        <span>Created ${created}</span>
+        <span>Last used: ${lastUsed}</span>
+        ${!revoked ? `<button class="btn" style="font-size:11px;padding:4px 10px" onclick="revokeApiKey('${k.id}')">Revoke</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+
+  container.innerHTML = rows;
+}
+
+async function handleCreateApiKey(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+
+  const name = document.getElementById("apiKeyName")?.value?.trim();
+  if (!name) { toast("Key name is required", true); return; }
+
+  // Collect scopes
+  const scopes = [];
+  if (document.getElementById("scopeLeadsRead")?.checked) scopes.push("leads:read");
+  if (document.getElementById("scopeLeadsWrite")?.checked) scopes.push("leads:write");
+  if (document.getElementById("scopeQuotesRead")?.checked) scopes.push("quotes:read");
+  if (document.getElementById("scopeAppointmentsRead")?.checked) scopes.push("appointments:read");
+  if (document.getElementById("scopeVoiceCallsRead")?.checked) scopes.push("voice-calls:read");
+  if (document.getElementById("scopePipelineRead")?.checked) scopes.push("pipeline:read");
+  if (document.getElementById("scopeSmsSend")?.checked) scopes.push("sms:send");
+
+  if (scopes.length === 0) { toast("Select at least one scope", true); return; }
+
+  // Expiry
+  const expiryDays = document.getElementById("apiKeyExpiry")?.value;
+  let expiresAt = null;
+  if (expiryDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + parseInt(expiryDays));
+    expiresAt = d.toISOString();
+  }
+
+  // Generate a random token (48 bytes = 64 base64 chars)
+  const rawBytes = new Uint8Array(48);
+  crypto.getRandomValues(rawBytes);
+  const rawToken = "qlhq_" + Array.from(rawBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const tokenPrefix = rawToken.slice(0, 12);
+
+  // SHA-256 hash
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(rawToken));
+  const tokenHash = Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const { error } = await sb.from("company_api_tokens").insert({
+    company_id: currentCompanyId,
+    token_hash: tokenHash,
+    token_prefix: tokenPrefix,
+    name,
+    scopes,
+    expires_at: expiresAt,
+  });
+
+  if (error) { toast("Failed to create API key: " + error.message, true); return; }
+
+  // Show the raw key to the user
+  document.getElementById("apiKeyFormPanel").style.display = "none";
+  document.getElementById("apiKeyCreatedPanel").style.display = "";
+  document.getElementById("apiKeyRawValue").textContent = rawToken;
+
+  toast("API key created! Copy it now — it won't be shown again.");
+  loadApiKeys();
+}
+
+async function revokeApiKey(id) {
+  if (!confirm("Revoke this API key? Any integrations using it will stop working.")) return;
+
+  const { error } = await sb
+    .from("company_api_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("company_id", currentCompanyId);
+
+  if (error) { toast("Failed to revoke key: " + error.message, true); return; }
+  toast("API key revoked.");
+  loadApiKeys();
+}
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+
+async function loadWebhooks() {
+  const container = document.getElementById("webhooksTable");
+  if (!container) return;
+
+  const { data, error } = await sb
+    .from("webhook_endpoints")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("created_at", { ascending: false });
+
+  if (error) { container.innerHTML = `<div class="notice">Failed to load webhooks.</div>`; return; }
+
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div class="notice">No webhooks configured. Add one to receive event notifications.</div>`;
+    return;
+  }
+
+  const rows = data.map((wh) => {
+    const events = Array.isArray(wh.events) ? wh.events.join(", ") : "";
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-family:monospace;font-size:13px">${esc(wh.url)}</div>
+        <div style="font-size:11px;color:var(--text-2);margin-top:2px">${esc(events)}</div>
+      </div>
+      <div style="font-size:12px;display:flex;gap:8px;align-items:center">
+        <span style="color:${wh.active ? "var(--green)" : "var(--text-2)"}">${wh.active ? "Active" : "Inactive"}</span>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="toggleWebhook('${wh.id}', ${!wh.active})">${wh.active ? "Disable" : "Enable"}</button>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="deleteWebhook('${wh.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  container.innerHTML = rows;
+}
+
+async function handleSaveWebhook(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+
+  const url = document.getElementById("webhookUrl")?.value?.trim();
+  if (!url) { toast("Webhook URL is required", true); return; }
+
+  // Collect events
+  const events = [];
+  document.querySelectorAll(".wh-event:checked").forEach((el) => events.push(el.value));
+  if (events.length === 0) { toast("Select at least one event", true); return; }
+
+  // Generate signing secret
+  const secretBytes = new Uint8Array(32);
+  crypto.getRandomValues(secretBytes);
+  const secret = "whsec_" + Array.from(secretBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+  const editId = document.getElementById("webhookEditId")?.value;
+
+  if (editId) {
+    const { error } = await sb
+      .from("webhook_endpoints")
+      .update({ url, events })
+      .eq("id", editId)
+      .eq("company_id", currentCompanyId);
+    if (error) { toast("Failed to update webhook: " + error.message, true); return; }
+    toast("Webhook updated.");
+  } else {
+    const { error } = await sb.from("webhook_endpoints").insert({
+      company_id: currentCompanyId,
+      url,
+      events,
+      secret,
+    });
+    if (error) { toast("Failed to create webhook: " + error.message, true); return; }
+    // Show signing secret in a persistent panel so user can copy it
+    document.getElementById("webhookSecretPanel").style.display = "";
+    document.getElementById("webhookSecretValue").textContent = secret;
+    toast("Webhook created! Copy the signing secret below.");
+  }
+
+  document.getElementById("webhookFormPanel").style.display = "none";
+  loadWebhooks();
+}
+
+async function toggleWebhook(id, active) {
+  const { error } = await sb
+    .from("webhook_endpoints")
+    .update({ active })
+    .eq("id", id)
+    .eq("company_id", currentCompanyId);
+  if (error) { toast("Failed to update webhook", true); return; }
+  toast(active ? "Webhook enabled." : "Webhook disabled.");
+  loadWebhooks();
+}
+
+async function deleteWebhook(id) {
+  if (!confirm("Delete this webhook endpoint? This cannot be undone.")) return;
+  const { error } = await sb
+    .from("webhook_endpoints")
+    .delete()
+    .eq("id", id)
+    .eq("company_id", currentCompanyId);
+  if (error) { toast("Failed to delete webhook: " + error.message, true); return; }
+  toast("Webhook deleted.");
+  loadWebhooks();
+}
+
+async function loadWebhookDeliveries() {
+  const container = document.getElementById("webhookDeliveriesTable");
+  if (!container) return;
+
+  const { data, error } = await sb
+    .from("webhook_deliveries")
+    .select("*, webhook_endpoints(url)")
+    .eq("company_id", currentCompanyId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) { container.innerHTML = `<div class="notice">Failed to load deliveries.</div>`; return; }
+
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div class="notice">No webhook deliveries yet.</div>`;
+    return;
+  }
+
+  const rows = data.map((d) => {
+    const ts = new Date(d.created_at).toLocaleString();
+    const statusColor = d.success ? "var(--green)" : "var(--red, #e74c3c)";
+    const url = d.webhook_endpoints?.url || "—";
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="flex:1;display:flex;gap:12px;align-items:center">
+        <span style="color:${statusColor};font-weight:600">${d.response_status || "ERR"}</span>
+        <span>${esc(d.event)}</span>
+        <span class="muted" style="font-family:monospace;font-size:11px">${esc(url)}</span>
+      </div>
+      <span class="muted">${ts}</span>
+    </div>`;
+  }).join("");
+
+  container.innerHTML = rows;
 }

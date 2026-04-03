@@ -63,3 +63,6 @@ verify_jwt = false
 
 [functions.signup]
 verify_jwt = false
+
+[functions.api]
+verify_jwt = false
