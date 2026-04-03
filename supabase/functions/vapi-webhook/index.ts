@@ -123,17 +123,15 @@ Deno.serve(async (req) => {
       // compute it from startedAt / endedAt timestamps on the call object.
       if (message.call?.duration != null) {
         updatePayload.duration = Math.round(message.call.duration);
-      } else if (message.call?.startedAt && message.call?.endedAt) {
-        const started = new Date(message.call.startedAt).getTime();
-        const ended = new Date(message.call.endedAt).getTime();
-        if (!isNaN(started) && !isNaN(ended) && ended > started) {
-          updatePayload.duration = Math.round((ended - started) / 1000);
-        }
-      } else if (message.startedAt && message.endedAt) {
-        const started = new Date(message.startedAt).getTime();
-        const ended = new Date(message.endedAt).getTime();
-        if (!isNaN(started) && !isNaN(ended) && ended > started) {
-          updatePayload.duration = Math.round((ended - started) / 1000);
+      } else {
+        const s = message.call?.startedAt || message.startedAt;
+        const e = message.call?.endedAt || message.endedAt;
+        if (s && e) {
+          const started = new Date(s).getTime();
+          const ended = new Date(e).getTime();
+          if (!isNaN(started) && !isNaN(ended) && ended > started) {
+            updatePayload.duration = Math.round((ended - started) / 1000);
+          }
         }
       }
 
