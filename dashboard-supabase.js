@@ -2331,7 +2331,7 @@ function renderTeamMembersList(profiles, invites) {
 
   const hasAny = profiles.length || invites.length;
   el.innerHTML = hasAny
-    ? memberRows + inviteRows
+    ? `<div class="team-list">${memberRows}${inviteRows}</div>`
     : `<div class="notice">No team members yet. Invite someone below.</div>`;
 
   renderIcons();

@@ -160,7 +160,7 @@ textarea{min-height:100px;resize:vertical}
 .thread h3,.run h3{font-size:13px;font-weight:500;margin-bottom:4px}
 .thread p,.run p{font-size:12px;color:var(--muted);line-height:1.5}
 .meta-line{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.check-row{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font-weight:400;text-transform:none;letter-spacing:0}
+.check-row{display:flex;align-items:center;gap:10px;min-height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font-weight:400;text-transform:none;letter-spacing:0}
 .check-row input{width:auto;min-height:auto;padding:0}
 .form-note{font-size:12px;color:var(--muted);line-height:1.5}
 .field-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:2px}
@@ -203,7 +203,6 @@ textarea{min-height:100px;resize:vertical}
 .conv-lead-info h2{font-size:14px;font-weight:500}
 .conv-lead-actions{display:flex;align-items:center;gap:10px}
 .ai-toggle{display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);font-size:11px;font-weight:700;user-select:none}
-.ai-toggle input{width:auto;min-height:auto;padding:0;accent-color:var(--accent)}
 .ai-toggle-status{font-weight:700}
 .ai-toggle-status.on{color:#16a34a}
 .ai-toggle-status.off{color:#dc2626}
@@ -226,6 +225,7 @@ textarea{min-height:100px;resize:vertical}
 .conv-back-btn{display:none;align-items:center;justify-content:center;width:32px;height:32px;min-height:32px;padding:0;border:none;background:none;cursor:pointer;color:var(--text);flex-shrink:0}
 
 /* ── Team Members ───────────────────────────────── */
+.team-list{display:flex;flex-direction:column;gap:10px}
 .team-row{display:grid;grid-template-columns:1fr 100px 120px auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
 .chip-pending{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:#92400e}
 [data-theme=dark] .chip-pending{color:#fbbf24}
@@ -243,10 +243,21 @@ textarea{min-height:100px;resize:vertical}
 
 /* Toggle switches */
 .toggle-group{display:flex;flex-wrap:wrap;gap:12px}
-.toggle-item{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;transition:all .15s}
+.toggle-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;transition:all .15s}
 .toggle-item:hover{border-color:var(--accent)}
-.toggle-item input[type="checkbox"]{width:18px;height:18px;accent-color:var(--accent)}
+.toggle-item input[type="checkbox"]{position:relative;width:40px;height:22px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:999px;outline:none;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;padding:0;min-height:auto}
+.toggle-item input[type="checkbox"]::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.toggle-item input[type="checkbox"]:checked{background:var(--accent)}
+.toggle-item input[type="checkbox"]:checked::after{transform:translateX(18px)}
 .toggle-label{font-size:12px;font-weight:500}
+.check-row input[type="checkbox"]{position:relative;width:40px;height:22px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:999px;outline:none;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;padding:0;min-height:auto}
+.check-row input[type="checkbox"]::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.check-row input[type="checkbox"]:checked{background:var(--accent)}
+.check-row input[type="checkbox"]:checked::after{transform:translateX(18px)}
+.ai-toggle input[type="checkbox"]{position:relative;width:36px;height:20px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:999px;outline:none;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;padding:0;min-height:auto}
+.ai-toggle input[type="checkbox"]::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.ai-toggle input[type="checkbox"]:checked{background:#16a34a}
+.ai-toggle input[type="checkbox"]:checked::after{transform:translateX(16px)}
 
 /* Section cards */
 .section-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface-2);margin-bottom:16px}
@@ -378,7 +389,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div>
       <div class="nav-sec">CRM</div>
       <div class="nav">
-        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">CRM</span><span id="crmCount" class="count">0</span><span class="icon chev" data-icon="chevron-right"></span></button>
+        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">CRM</span><span class="icon chev" data-icon="chevron-right"></span></button>
         <div class="sub" id="crmSubmenu">
           <button class="sub-item" data-page="opportunities" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Opportunities</span></button>
           <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
@@ -1044,6 +1055,28 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <section class="panel"><div class="panel-h"><div><h2>Custom Lead Fields</h2><p>Adding a field updates the Supabase schema used by lead records.</p></div></div><div class="panel-b"><div id="settingsCustomFields"></div><div class="actions" style="margin-top:14px"><button id="openCustomFieldModalSettings" class="btn" type="button">Create Custom Field</button></div></div></section>
           </div>
         </div>
+        <!-- Quote Defaults -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>Quote Defaults</h2><p>Set default values for new quotes. These will be pre-filled when creating a new quote.</p></div></div>
+          <div class="panel-b">
+            <form id="quoteDefaultsForm" class="stack">
+              <div class="form2">
+                <div class="field"><label for="defaultAbn">ABN / Business Registration</label><input id="defaultAbn" type="text" placeholder="e.g., 12 345 678 901"></div>
+                <div class="field"><label for="defaultQuoteValidityDays">Default Validity (Days)</label><input id="defaultQuoteValidityDays" type="number" min="1" max="365" value="30" placeholder="e.g., 30"></div>
+                <div class="field"><label for="defaultDepositMethod">Default Deposit Method</label><input id="defaultDepositMethod" type="text" placeholder="e.g., Bank Transfer"></div>
+                <div class="full"><label for="defaultDepositTerms">Default Deposit Terms</label><textarea id="defaultDepositTerms" rows="2" placeholder="e.g., 50% deposit required upon acceptance of this quote…" style="min-height:60px"></textarea></div>
+                <div class="full"><label for="defaultServiceTerms">Default Service Terms</label><textarea id="defaultServiceTerms" rows="2" placeholder="e.g., Work to commence within 14 days of acceptance…" style="min-height:60px"></textarea></div>
+              </div>
+              <div class="toggle-group">
+                <label class="toggle-item"><input id="defaultShowAbn" type="checkbox" checked><span class="toggle-label">Show ABN on Quotes</span></label>
+                <label class="toggle-item"><input id="defaultShowDeposit" type="checkbox" checked><span class="toggle-label">Show Deposit on Quotes</span></label>
+                <label class="toggle-item"><input id="defaultShowServiceTerms" type="checkbox" checked><span class="toggle-label">Show Service Terms on Quotes</span></label>
+                <label class="toggle-item"><input id="defaultShowValidUntil" type="checkbox" checked><span class="toggle-label">Show Valid Until on Quotes</span></label>
+              </div>
+              <div class="actions"><button class="btn2" type="submit">Save Quote Defaults</button></div>
+            </form>
+          </div>
+        </section>
         <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>
       </div>
 
@@ -1225,17 +1258,47 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
 <!-- ── Quote Modal ──────────────────────────────────────────────────────────── -->
 <div id="quoteModal" class="modal">
-  <div class="modal-card small">
+  <div class="modal-card">
     <div class="mh"><h2>New Quote</h2><p>Create a manual quote linked to an existing lead.</p></div>
     <div class="mb">
       <form id="quoteForm" class="stack">
         <div class="form2">
           <div class="field"><label for="quoteLeadSelect">Lead</label><select id="quoteLeadSelect" required><option value="">— Select a lead —</option></select></div>
           <div class="field"><label for="quoteNumber">Quote Number</label><input id="quoteNumber" type="text" placeholder="e.g., Q-001"></div>
-          <div class="field"><label for="quoteTotal">Total ($)</label><input id="quoteTotal" type="number" min="0" step="0.01" placeholder="0.00"></div>
           <div class="field"><label for="quoteStatus">Status</label><select id="quoteStatus"><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option></select></div>
-          <div class="full"><label for="quoteNotes">Notes</label><textarea id="quoteNotes" rows="3" placeholder="Quote details or description…"></textarea></div>
+          <div class="field"><label for="quoteValidUntil">Valid Until</label><input id="quoteValidUntil" type="date"></div>
         </div>
+
+        <!-- Line Items / Scope of Work -->
+        <div class="section-card" style="margin-bottom:0">
+          <div class="section-card-title"><span class="icon" data-icon="file"></span> Line Items / Scope of Work</div>
+          <div id="quoteLineItems" class="stack" style="gap:8px"></div>
+          <button id="addQuoteLineItemBtn" class="btn" type="button" style="margin-top:8px"><span class="icon" data-icon="plus"></span> Add Line Item</button>
+          <div class="form2" style="margin-top:12px">
+            <div class="field"><label>Subtotal</label><input id="quoteSubtotal" type="text" readonly style="background:var(--surface);font-weight:600"></div>
+            <div class="field"><label>Tax</label><input id="quoteTax" type="text" readonly style="background:var(--surface);font-weight:600"></div>
+            <div class="field"><label>Total ($)</label><input id="quoteTotal" type="text" readonly style="background:var(--surface);font-weight:700;font-size:15px"></div>
+          </div>
+        </div>
+
+        <!-- Quote Options -->
+        <div class="section-card" style="margin-bottom:0">
+          <div class="section-card-title"><span class="icon" data-icon="settings"></span> Quote Options</div>
+          <div class="form2">
+            <div class="field"><label for="quoteAbn">ABN / Business Registration</label><input id="quoteAbn" type="text" placeholder="e.g., 12 345 678 901"></div>
+            <div class="field"><label for="quoteDepositMethod">Deposit Method</label><input id="quoteDepositMethod" type="text" placeholder="e.g., Bank Transfer, Credit Card"></div>
+            <div class="full"><label for="quoteDepositTerms">Deposit Terms</label><textarea id="quoteDepositTerms" rows="2" placeholder="e.g., 50% deposit required upon acceptance…" style="min-height:60px"></textarea></div>
+            <div class="full"><label for="quoteServiceTerms">Service Terms</label><textarea id="quoteServiceTerms" rows="2" placeholder="e.g., Work to commence within 14 days of acceptance…" style="min-height:60px"></textarea></div>
+          </div>
+          <div class="toggle-group" style="margin-top:12px">
+            <label class="toggle-item"><input id="quoteShowAbn" type="checkbox" checked><span class="toggle-label">Show ABN</span></label>
+            <label class="toggle-item"><input id="quoteShowDeposit" type="checkbox" checked><span class="toggle-label">Show Deposit</span></label>
+            <label class="toggle-item"><input id="quoteShowServiceTerms" type="checkbox" checked><span class="toggle-label">Show Service Terms</span></label>
+            <label class="toggle-item"><input id="quoteShowValidUntil" type="checkbox" checked><span class="toggle-label">Show Valid Until</span></label>
+          </div>
+        </div>
+
+        <div class="full"><label for="quoteNotes">Notes</label><textarea id="quoteNotes" rows="3" placeholder="Quote details or description…"></textarea></div>
       </form>
     </div>
     <div class="mf"><div></div><div class="actions"><button id="cancelQuoteModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="quoteForm">Save Quote</button></div></div>
