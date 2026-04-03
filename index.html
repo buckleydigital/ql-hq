@@ -429,7 +429,9 @@ section, .section { padding: 96px 40px; }
 .cta-note span+span::before { content: ' · '; }
 .cta-logo { width: 54px; height: 54px; border-radius: 14px; margin-bottom: 22px; box-shadow: var(--shadow); position: relative; z-index: 1; display: block; margin-inline: auto; }
 /* FOOTER */
-footer { border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; position: relative; }
+footer { border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; position: relative; overflow: hidden; }
+footer::before { content: ''; position: absolute; inset: 0; background: url('hq-footer-bg.png') center center / contain no-repeat; opacity: 0.5; z-index: 0; pointer-events: none; }
+footer > * { position: relative; z-index: 1; }
 .foot-links { display: flex; gap: 28px; flex-wrap: wrap; }
 .foot-links a { font-size: 13px; color: var(--ink-faint); text-decoration: none; transition: color 0.2s; }
 .foot-links a:hover { color: var(--ink); }
