@@ -2560,9 +2560,13 @@ async function handleTeamInvite(e) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   try {
-    await edgeFn("invite-rep", { email, name: fullName, phone });
+    const result = await edgeFn("invite-rep", { email, name: fullName, phone });
 
-    toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
+    if (result.email_sent) {
+      toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
+    } else {
+      toast(`User added but the invitation email could not be sent${result.email_error ? ": " + result.email_error : ""}`, true);
+    }
     document.getElementById("teamInviteForm")?.reset();
     loadTeamMembers();
   } catch (err) {
