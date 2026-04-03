@@ -285,7 +285,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 /* ── Responsive ─────────────────────────────────── */
 @media(max-width:1180px){
   .grid4{grid-template-columns:repeat(2,1fr)}
-  .grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:1fr}
+  .grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:minmax(0,1fr)}
   .search{width:100%;max-width:none;order:3}
   .top{flex-wrap:wrap;height:auto}
   .conv-layout.conv-open .conv-sidebar{display:none}
@@ -312,7 +312,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   .actions{width:100%}
   .actions .btn,.actions .btn2,.actions .iconbtn{flex:1}
   .form2,.custom-row,.grid4,.mini-grid,.split-panels,.settings-grid,.settings-grid-3{grid-template-columns:1fr}
-  .item,.table-lite .row,.team-row{grid-template-columns:1fr}
+  .item,.table-lite .row,.team-row{grid-template-columns:1fr!important;overflow:hidden}
   .kanban{grid-template-columns:1fr}
   .table-wrap{overflow:visible}
   table,thead,tbody,tr,th,td{display:block;min-width:0}
