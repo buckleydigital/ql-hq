@@ -41,6 +41,9 @@ verify_jwt = false
 [functions.voice-ai-provider]
 verify_jwt = false
 
+[functions.vapi-webhook]
+verify_jwt = false
+
 # Webhook / public functions — use alternative auth (Twilio signatures,
 # opaque quote tokens, or internal-only invocation) instead of JWT.
 [functions.quote-public]

@@ -309,10 +309,16 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Build the webhook URL so VAPI sends status updates & end-of-call
+      // reports back to our vapi-webhook edge function.
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const webhookUrl = `${supabaseUrl}/functions/v1/vapi-webhook`;
+
       const callPayload: Record<string, unknown> = {
         phoneNumberId: vapiPhoneNumberId,
         customer: { number: phoneNumber },
         metadata: metadata || {},
+        serverUrl: webhookUrl,
       };
 
       if (resolvedAssistantId) {
