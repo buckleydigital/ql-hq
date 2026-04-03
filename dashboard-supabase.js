@@ -375,6 +375,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
+  document.getElementById("addPricingItemBtn")?.addEventListener("click", addPricingItemRow);
 
   // ── Voice AI ──────────────────────────────────────────────────────────────
   document.getElementById("voiceAgentForm")?.addEventListener("submit", handleVoiceAgentSave);
@@ -1420,12 +1421,14 @@ async function loadQuotes() {
     el.innerHTML = `<div class="table-lite">${quotes.map((q) => {
       const lead = q.leads || {};
       const quoteLink = buildQuoteLink(q.quote_token);
+      const isDraft = q.status === "draft";
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
         <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${lead.name || lead.email || lead.phone || "—"}</span></div>
         <div><span class="chip">${cap(q.status || "draft")}</span></div>
         <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
+          ${isDraft ? `<button class="btn2" style="padding:4px 10px;font-size:11px" onclick="approveAndSendQuote('${q.id}')" title="Approve quote and send link to lead">Approve &amp; Send</button>` : ""}
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')" title="Download PDF"><span class="icon" data-icon="file"></span> PDF</button>
           ${quoteLink ? `<button class="btn" style="padding:4px 10px;font-size:11px" onclick="copyQuoteLink('${quoteLink}')" title="Copy shareable link"><span class="icon" data-icon="external-link"></span> Link</button>` : ""}
         </div>
@@ -1870,6 +1873,9 @@ async function loadAiSettings() {
       setInputValue("aiFollowupMessage", data.followup_message);
       setInputValue("aiDaysUntilFollowup", data.days_until_followup);
       
+      // Quote pricing config
+      loadPricingConfigUI(data.quote_pricing_config);
+      
       // System prompt (only editable for external users)
       const systemPromptEl = document.getElementById("aiSystemPrompt");
       if (systemPromptEl) {
@@ -1959,6 +1965,9 @@ async function handleAiSettingsSave(e) {
     automate_quote_followup: document.getElementById("aiAutomateQuoteFollowup")?.checked ?? false,
     followup_message:       document.getElementById("aiFollowupMessage")?.value || "Hi {{first_name}}, just following up on your quote!",
     days_until_followup:    Number(document.getElementById("aiDaysUntilFollowup")?.value) || 3,
+    
+    // Quote pricing config
+    quote_pricing_config:   collectPricingConfig(),
   };
   
   // Only include system_prompt for external users
@@ -1981,6 +1990,65 @@ async function handleAiSettingsSave(e) {
     toast("Failed to save AI settings.", true);
     console.error("Save AI settings error:", err);
   }
+}
+
+// ─── Quote Pricing Item Management ────────────────────────────────────────────
+function addPricingItemRow(item) {
+  const container = document.getElementById("quotePricingItems");
+  if (!container) return;
+  const defaults = typeof item === "object" && item !== null && !(item instanceof Event)
+    ? item
+    : { description: "", type: "fixed", rate: "", unit: "" };
+
+  const row = document.createElement("div");
+  row.className = "pricing-item-row";
+  row.style.cssText = "display:grid;grid-template-columns:1.5fr .8fr .6fr .8fr auto;gap:8px;align-items:center";
+  row.innerHTML = `
+    <input type="text" class="pi-desc" placeholder="e.g. Material Cost" value="${esc(defaults.description || "")}">
+    <select class="pi-type">
+      <option value="fixed"${defaults.type === "fixed" ? " selected" : ""}>Fixed</option>
+      <option value="per_hour"${defaults.type === "per_hour" ? " selected" : ""}>Per Hour</option>
+      <option value="per_m2"${defaults.type === "per_m2" ? " selected" : ""}>Per m²</option>
+      <option value="per_kw"${defaults.type === "per_kw" ? " selected" : ""}>Per kW</option>
+      <option value="per_unit"${defaults.type === "per_unit" ? " selected" : ""}>Per Unit</option>
+    </select>
+    <input type="number" class="pi-rate" min="0" step="0.01" placeholder="Rate" value="${defaults.rate ?? ""}">
+    <input type="text" class="pi-unit" placeholder="e.g. per job" value="${esc(defaults.unit || "")}">
+    <button type="button" class="iconbtn btn-danger" onclick="this.closest('.pricing-item-row').remove()" title="Remove item">
+      <span class="icon" data-icon="trash"></span>
+    </button>`;
+  container.appendChild(row);
+  renderIcons();
+}
+
+function collectPricingConfig() {
+  const items = [];
+  document.querySelectorAll(".pricing-item-row").forEach((row) => {
+    const desc = row.querySelector(".pi-desc")?.value?.trim();
+    const type = row.querySelector(".pi-type")?.value || "fixed";
+    const rate = parseFloat(row.querySelector(".pi-rate")?.value) || 0;
+    const unit = row.querySelector(".pi-unit")?.value?.trim() || "";
+    if (desc) items.push({ description: desc, type, rate, unit });
+  });
+  return {
+    items,
+    formula: document.getElementById("quotePricingFormula")?.value?.trim() || "",
+    tax_rate: parseFloat(document.getElementById("quoteTaxRate")?.value) || 0,
+    currency: document.getElementById("quoteCurrency")?.value?.trim() || "AUD",
+  };
+}
+
+function loadPricingConfigUI(config) {
+  const container = document.getElementById("quotePricingItems");
+  if (!container) return;
+  container.innerHTML = "";
+  const cfg = config || {};
+  if (Array.isArray(cfg.items)) {
+    cfg.items.forEach((item) => addPricingItemRow(item));
+  }
+  setInputValue("quotePricingFormula", cfg.formula);
+  setInputValue("quoteTaxRate", cfg.tax_rate ?? 10);
+  setInputValue("quoteCurrency", cfg.currency || "AUD");
 }
 
 async function loadTwilioNumbers() {
@@ -2209,8 +2277,9 @@ async function loadNotifications() {
         <div>
           <span class="chip">${cap(n.type?.replace(/_/g, " ") || "notification")}</span>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;align-items:center">
           <span class="muted">${fmtDate(n.created_at)}</span>
+          ${n.type === "quote_drafted" && n.metadata?.quote_id ? `<button class="btn2" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();approveAndSendQuote('${n.metadata.quote_id}')">Approve &amp; Send</button>` : ""}
         </div>
       </div>`).join("")}</div>`;
   } catch (err) {
@@ -3097,12 +3166,14 @@ async function loadOppQuotes(leadId) {
 
     el.innerHTML = quotes.map((q) => {
       const quoteLink = buildQuoteLink(q.quote_token);
+      const isDraft = q.status === "draft";
       return `
       <div class="run">
         <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${cap(q.status || "draft")}</span></h3>
         <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}</p>
         <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
+          ${isDraft ? `<button class="btn2" style="padding:4px 10px;font-size:11px" onclick="approveAndSendQuote('${q.id}')">Approve & Send</button>` : ""}
           <button class="btn" style="padding:4px 10px;font-size:11px" onclick="downloadQuotePDF('${q.id}')">PDF</button>
           ${quoteLink ? `<button class="btn" style="padding:4px 10px;font-size:11px" onclick="copyQuoteLink('${quoteLink}')">Copy Link</button>` : ""}
         </div>
@@ -3263,5 +3334,76 @@ async function handleCallLead() {
       btn.disabled = false;
       btn.innerHTML = btn.dataset.originalText || `<span class="icon" data-icon="phone"></span> Start Call`;
     }
+  }
+}
+
+// ─── Approve & Send Quote ─────────────────────────────────────────────────────
+// Updates quote status to "sent", sends the public link via SMS to the lead,
+// and creates a message in the conversation thread.
+async function approveAndSendQuote(quoteId) {
+  if (!currentCompanyId) return;
+  if (!confirm("Approve this quote and send it to the lead via SMS?")) return;
+
+  try {
+    // 1. Load quote with lead info
+    const { data: quote, error: qErr } = await sb
+      .from("quotes")
+      .select("id, quote_number, quote_token, status, lead_id, total, leads(name, phone)")
+      .eq("id", quoteId)
+      .single();
+
+    if (qErr || !quote) { toast("Quote not found.", true); return; }
+    if (quote.status !== "draft") { toast("Only draft quotes can be approved.", true); return; }
+
+    const lead = quote.leads || {};
+    if (!lead.phone) { toast("Lead has no phone number — cannot send SMS.", true); return; }
+
+    // 2. Update quote status to "sent"
+    const { error: updateErr } = await sb
+      .from("quotes")
+      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .eq("id", quoteId);
+
+    if (updateErr) { toast("Failed to update quote status.", true); return; }
+
+    // 3. Build quote link and SMS body
+    const quoteLink = buildQuoteLink(quote.quote_token);
+    const leadName = lead.name ? lead.name.split(" ")[0] : "there";
+    const smsBody = `Hi ${leadName}, here's your quote #${quote.quote_number || quoteId.slice(0, 8)}${quote.total ? " for " + fmt(quote.total) : ""}. You can view, accept, or decline it here: ${quoteLink}`;
+
+    // 4. Send SMS via edge function
+    const result = await edgeFn("send-sms", {
+      lead_id: quote.lead_id,
+      body: smsBody,
+    });
+
+    // 5. Log activity
+    await sb.from("activity_log").insert({
+      company_id: currentCompanyId,
+      action: "quote.approved_and_sent",
+      entity_type: "quote",
+      entity_id: quoteId,
+      details: {
+        quote_number: quote.quote_number,
+        lead_id: quote.lead_id,
+        conversation_id: result.conversation_id || null,
+        sent_via: "sms",
+      },
+    });
+
+    toast("Quote approved and sent to " + (lead.name || lead.phone) + "!");
+
+    // 6. Refresh relevant UI
+    loadQuotes();
+    loadNotifications();
+    loadNotificationBadge();
+
+    // Refresh opportunity quotes if modal is open
+    const currentLeadId = document.getElementById("oppModalLeadId")?.value;
+    if (currentLeadId === quote.lead_id) loadOppQuotes(quote.lead_id);
+
+  } catch (err) {
+    toast(err.message || "Failed to approve and send quote.", true);
+    console.error("approveAndSendQuote error:", err);
   }
 }

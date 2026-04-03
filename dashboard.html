@@ -698,6 +698,29 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   </div>
                 </div>
 
+                <!-- Quote Pricing Config -->
+                <div class="section-card">
+                  <div class="section-card-title"><span class="icon" data-icon="file"></span> Quote Pricing Config</div>
+                  <p class="form-note" style="margin-bottom:12px">Define your pricing items (material costs, labour rates, per m², per kW, etc.) so AI can auto-generate line items when drafting quotes.</p>
+                  <div id="quotePricingItems" class="stack" style="gap:8px"></div>
+                  <button id="addPricingItemBtn" class="btn" type="button" style="margin-top:8px"><span class="icon" data-icon="plus"></span> Add Pricing Item</button>
+                  <div class="settings-grid" style="margin-top:16px">
+                    <div class="field">
+                      <label for="quoteTaxRate">Tax Rate (%)</label>
+                      <input id="quoteTaxRate" type="number" min="0" max="100" step="0.5" value="10" placeholder="e.g. 10">
+                    </div>
+                    <div class="field">
+                      <label for="quoteCurrency">Currency</label>
+                      <input id="quoteCurrency" type="text" value="AUD" placeholder="e.g. AUD, USD, GBP">
+                    </div>
+                    <div class="field settings-full">
+                      <label for="quotePricingFormula">Pricing Formula / Notes</label>
+                      <textarea id="quotePricingFormula" rows="3" placeholder="e.g. Labour hours × hourly rate + material costs + travel. Describe how you typically calculate job pricing so AI can apply it."></textarea>
+                      <span class="field-hint">Describe your pricing formula or any notes the AI should consider when calculating quotes.</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- System Prompt -->
                 <div class="section-card">
                   <div class="section-card-title"><span class="icon" data-icon="spark"></span> AI System Prompt</div>

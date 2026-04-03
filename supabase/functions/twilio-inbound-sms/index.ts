@@ -668,7 +668,8 @@ Deno.serve(async (req) => {
       }
 
       // Fire-and-forget call to quote-draft function
-      // It will use the conversation context to build a proper draft
+      // It will use the conversation context and pricing config to build a draft.
+      // The quote-draft function creates the notification (with quote_id) itself.
       try {
         const quotePayload = {
           company_id: companyId,
@@ -698,20 +699,6 @@ Deno.serve(async (req) => {
           quote_context: actions.quoteContext,
           source: "ai_sms",
         });
-
-        // Create notification for AI-triggered quote
-        const leadName = getLeadDisplayName(lead);
-        await db.from("notifications").insert({
-          company_id: companyId,
-          lead_id: lead.id,
-          type: "quote_drafted",
-          title: `AI initiated a quote for ${leadName}`,
-          message: actions.quoteContext || "Quote drafting triggered from SMS conversation",
-          metadata: {
-            quote_context: actions.quoteContext,
-            source: "ai_sms",
-          },
-        }).catch((err: unknown) => console.error("Failed to create notification:", err));
       } catch (err) {
         console.error("Failed to trigger quote-draft:", err);
       }
