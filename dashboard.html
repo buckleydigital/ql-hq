@@ -336,6 +336,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
         <button class="btn2" type="submit">Sign In</button>
+        <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
+      </form>
+      <form id="forgotPasswordForm" class="auth-form hidden">
+        <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
+        <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email"></div>
+        <button class="btn2" type="submit">Send Reset Link</button>
+        <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>
     </section>
   </div>
@@ -1231,6 +1238,25 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div class="mf">
       <div></div>
       <div class="actions"><button id="closeCallDetailModal" class="btn" type="button">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Password Reset Modal ────────────────────────────────────────────────── -->
+<div id="passwordResetModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh"><h2>Set New Password</h2><p>Choose a new password for your account.</p></div>
+    <div class="mb">
+      <form id="passwordResetForm" class="stack">
+        <div class="form2">
+          <div class="field"><label for="newPassword">New Password</label><input id="newPassword" type="password" required minlength="6" autocomplete="new-password" placeholder="Minimum 6 characters"></div>
+          <div class="field"><label for="confirmNewPassword">Confirm Password</label><input id="confirmNewPassword" type="password" required minlength="6" autocomplete="new-password" placeholder="Re-enter your new password"></div>
+        </div>
+      </form>
+    </div>
+    <div class="mf">
+      <div></div>
+      <div class="actions"><button class="btn2" type="submit" form="passwordResetForm">Update Password</button></div>
     </div>
   </div>
 </div>

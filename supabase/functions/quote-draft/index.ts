@@ -17,6 +17,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { quoteDraftedEmail } from "../_shared/email-templates.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -233,6 +234,66 @@ Return ONLY a valid JSON array, no other text.`;
         source: "ai_sms",
       },
     }).catch((notifErr: unknown) => console.error("Failed to create notification:", notifErr));
+
+    // Send email notification via Resend (non-blocking)
+    try {
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (resendApiKey) {
+        // Look up company name
+        const { data: company } = await db
+          .from("companies")
+          .select("name")
+          .eq("id", company_id)
+          .single();
+
+        // Look up owners/admins to email
+        const { data: ownerProfiles } = await db
+          .from("profiles")
+          .select("id")
+          .eq("company_id", company_id)
+          .in("role", ["owner", "admin"]);
+
+        if (ownerProfiles && ownerProfiles.length > 0) {
+          const emails: string[] = [];
+          for (const profile of ownerProfiles) {
+            const { data: userData } = await db.auth.admin.getUserById(profile.id);
+            if (userData?.user?.email) {
+              emails.push(userData.user.email);
+            }
+          }
+
+          if (emails.length > 0) {
+            const fmtTotal = new Intl.NumberFormat("en-AU", {
+              style: "currency",
+              currency: pricingConfig.currency || "AUD",
+            }).format(total);
+
+            const emailContent = quoteDraftedEmail(
+              lead_name || "a lead",
+              quoteNumber,
+              fmtTotal,
+              company?.name || "Your company",
+            );
+
+            fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${resendApiKey}`,
+              },
+              body: JSON.stringify({
+                from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
+                to: emails,
+                subject: emailContent.subject,
+                html: emailContent.html,
+              }),
+            }).catch((err) => console.error("Resend API call failed:", err));
+          }
+        }
+      }
+    } catch (emailErr) {
+      console.error("Notification email failed:", emailErr);
+    }
 
     return new Response(JSON.stringify({ success: true, quote }), {
       status: 200,

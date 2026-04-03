@@ -24,9 +24,64 @@
 // =============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callbackBookedEmail,
+  onsiteBookedEmail,
+} from "../_shared/email-templates.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+/**
+ * Send a notification email via Resend to company owners/admins.
+ * Non-blocking — failures are logged but never interrupt the SMS flow.
+ */
+async function sendNotificationEmail(
+  db: SupabaseClient,
+  companyId: string,
+  emailContent: { subject: string; html: string },
+): Promise<void> {
+  try {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) return; // Resend not configured — skip silently
+
+    // Look up owners and admins for this company via auth.users join
+    const { data: ownerProfiles } = await db
+      .from("profiles")
+      .select("id")
+      .eq("company_id", companyId)
+      .in("role", ["owner", "admin"]);
+
+    if (!ownerProfiles || ownerProfiles.length === 0) return;
+
+    // Fetch emails from auth.users via admin API
+    const emails: string[] = [];
+    for (const profile of ownerProfiles) {
+      const { data: userData } = await db.auth.admin.getUserById(profile.id);
+      if (userData?.user?.email) {
+        emails.push(userData.user.email);
+      }
+    }
+
+    if (emails.length === 0) return;
+
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
+        to: emails,
+        subject: emailContent.subject,
+        html: emailContent.html,
+      }),
+    }).catch((err) => console.error("Resend API call failed:", err));
+  } catch (err) {
+    console.error("sendNotificationEmail failed:", err);
+  }
+}
 
 // Twilio sends application/x-www-form-urlencoded
 function parseTwilioBody(body: string): Record<string, string> {
@@ -651,6 +706,16 @@ Deno.serve(async (req) => {
           source: "ai_sms",
         },
       }).catch((err: unknown) => console.error("Failed to create notification:", err));
+
+      // Send email notification via Resend (non-blocking)
+      const companyData = smsConfig.companies || {};
+      const companyName = String(companyData.name || "Your company");
+      const scheduledTimeStr = startTime.toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
+      const emailContent = appointmentType === "callback"
+        ? callbackBookedEmail(leadName, scheduledTimeStr, companyName)
+        : onsiteBookedEmail(leadName, scheduledTimeStr, companyName);
+      sendNotificationEmail(db, companyId, emailContent)
+        .catch((err) => console.error("Notification email failed:", err));
     }
 
     // 14. Trigger quote-draft edge function if conditions met

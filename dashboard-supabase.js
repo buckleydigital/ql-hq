@@ -211,7 +211,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateThemeIcon();
 
   // Set up auth state listener FIRST (before checking session)
-  sb.auth.onAuthStateChange((_event, session) => {
+  sb.auth.onAuthStateChange((event, session) => {
+    // Handle password recovery flow — show reset modal
+    if (event === "PASSWORD_RECOVERY") {
+      currentUser = session?.user || null;
+      showApp();
+      // Show password reset modal after app loads
+      setTimeout(() => showPasswordResetModal(), 500);
+      authInitialized = true;
+      return;
+    }
+
     if (authInitialized) return;
     authInitialized = true;
     
@@ -291,6 +301,75 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       emailInput && (emailInput.disabled = false);
       passwordInput && (passwordInput.disabled = false);
+    }
+  });
+
+  // ── Forgot Password ──────────────────────────────────────────────────────
+  const forgotPasswordLink = document.getElementById("forgotPasswordLink");
+  const backToLogin = document.getElementById("backToLogin");
+  const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+
+  forgotPasswordLink?.addEventListener("click", () => {
+    loginForm?.classList.add("hidden");
+    forgotPasswordForm?.classList.remove("hidden");
+    // Pre-fill email if already entered on login form
+    const loginEmail = document.getElementById("loginEmail");
+    const forgotEmail = document.getElementById("forgotEmail");
+    if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
+  });
+
+  backToLogin?.addEventListener("click", () => {
+    forgotPasswordForm?.classList.add("hidden");
+    loginForm?.classList.remove("hidden");
+  });
+
+  forgotPasswordForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const submitBtn = forgotPasswordForm.querySelector('button[type="submit"]');
+    const emailInput = document.getElementById("forgotEmail");
+    const email = emailInput?.value || "";
+
+    if (!email) {
+      toast("Please enter your email address.", true);
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending...";
+    }
+
+    try {
+      // Use our Resend-powered edge function for password reset
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok && data.error) {
+        toast(data.error, true);
+      } else {
+        toast("Password reset link sent! Check your email.");
+        // Switch back to login form after a short delay
+        setTimeout(() => {
+          forgotPasswordForm?.classList.add("hidden");
+          loginForm?.classList.remove("hidden");
+        }, 2000);
+      }
+    } catch (err) {
+      toast("Failed to send reset link. Please try again.", true);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Send Reset Link";
+      }
     }
   });
 
@@ -470,6 +549,56 @@ function waitFor(fn, timeout = 5000) {
 
 function openModal(id)  { document.getElementById(id)?.classList.add("open"); }
 function closeModal(id) { document.getElementById(id)?.classList.remove("open"); }
+
+// ── Password Reset Modal ──────────────────────────────────────────────────
+function showPasswordResetModal() {
+  openModal("passwordResetModal");
+}
+
+// Password reset form handler
+document.getElementById("passwordResetForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const newPassword = document.getElementById("newPassword")?.value || "";
+  const confirmPassword = document.getElementById("confirmNewPassword")?.value || "";
+
+  if (newPassword.length < 6) {
+    toast("Password must be at least 6 characters.", true);
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    toast("Passwords do not match.", true);
+    return;
+  }
+
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Updating...";
+  }
+
+  try {
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) {
+      toast(error.message, true);
+    } else {
+      toast("Password updated successfully!");
+      closeModal("passwordResetModal");
+      const pwEl = document.getElementById("newPassword");
+      const cfEl = document.getElementById("confirmNewPassword");
+      if (pwEl) pwEl.value = "";
+      if (cfEl) cfEl.value = "";
+    }
+  } catch (err) {
+    toast("Failed to update password. Please try again.", true);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Update Password";
+    }
+  }
+});
 
 function toast(msg, isError = false) {
   const wrap = document.getElementById("toastWrap");
