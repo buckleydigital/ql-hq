@@ -394,6 +394,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav">
         <button class="nav-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
         <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
+        <button class="nav-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Bulk SMS</span></button>
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
@@ -525,6 +526,59 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <div class="conv-input-row"><input id="convMessageInput" type="text" placeholder="Type a message..." autocomplete="off"><button class="btn2" type="submit">Send</button></div>
                   <div class="conv-compose-meta"><span class="muted">Sent as company, not AI</span></div>
                 </form>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Bulk SMS (Database Reactivation) -->
+      <div id="page-bulk-sms" class="page hidden">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Bulk SMS</h2><p>Database reactivation — send a personalized SMS to multiple leads at once.</p></div>
+            </div>
+            <div class="panel-b">
+              <div class="stack" style="max-width:640px">
+                <div class="field">
+                  <label for="bulkSmsStageFilter">Target Leads</label>
+                  <select id="bulkSmsStageFilter">
+                    <option value="all">All Leads with Phone Numbers</option>
+                    <option value="new_lead">New Lead</option>
+                    <option value="follow_up">Qualifying</option>
+                    <option value="quote_in_progress">Quote in Progress</option>
+                    <option value="quoted">Quoted</option>
+                    <option value="closed_won">Closed Won</option>
+                    <option value="closed_lost">Closed Lost</option>
+                  </select>
+                  <span class="field-hint">Choose which pipeline stage(s) to target, or send to all leads.</span>
+                </div>
+                <div style="padding:10px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:13px">
+                  <strong id="bulkSmsLeadCount">0</strong> leads will receive this message.
+                  <span id="bulkSmsNoPhone" class="muted" style="margin-left:6px"></span>
+                </div>
+                <div class="field">
+                  <label for="bulkSmsMessage">Message</label>
+                  <textarea id="bulkSmsMessage" rows="4" placeholder="Hi {{first_name}}, just checking in! We'd love to help you with your project. Reply STOP to opt out." required></textarea>
+                  <span class="field-hint">Use <code>{{first_name}}</code> to personalize with each lead's first name.</span>
+                </div>
+                <div class="field">
+                  <label>Preview</label>
+                  <div id="bulkSmsPreview" style="padding:10px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:13px;color:var(--muted);white-space:pre-wrap">Type a message above to see a preview…</div>
+                </div>
+                <div class="actions" style="justify-content:flex-start">
+                  <button id="bulkSmsSendBtn" class="btn2" type="button" disabled><span class="icon" data-icon="mail"></span> Send Bulk SMS</button>
+                </div>
+                <div id="bulkSmsProgress" class="hidden" style="margin-top:8px">
+                  <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+                    <div style="flex:1;height:8px;border-radius:4px;background:var(--border);overflow:hidden">
+                      <div id="bulkSmsProgressBar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .3s ease"></div>
+                    </div>
+                    <span id="bulkSmsProgressText">0 / 0</span>
+                  </div>
+                  <div id="bulkSmsResultSummary" class="muted" style="margin-top:6px;font-size:12px"></div>
+                </div>
               </div>
             </div>
           </section>
