@@ -27,7 +27,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import {
   callbackBookedEmail,
   onsiteBookedEmail,
-} from "../_shared/email-templates.ts";
+} from "./email-templates.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

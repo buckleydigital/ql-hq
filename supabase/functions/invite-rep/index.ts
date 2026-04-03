@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { inviteRepEmail } from "../_shared/email-templates.ts";
+import { inviteRepEmail } from "./email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
