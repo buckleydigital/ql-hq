@@ -229,6 +229,14 @@ textarea{min-height:100px;resize:vertical}
 .team-row{display:grid;grid-template-columns:1fr 100px 120px auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
 .chip-pending{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:#92400e}
 [data-theme=dark] .chip-pending{color:#fbbf24}
+.chip-hot{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#991b1b}
+[data-theme=dark] .chip-hot{color:#f87171}
+.chip-warm{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:#92400e}
+[data-theme=dark] .chip-warm{color:#fbbf24}
+.chip-cold{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:#1e40af}
+[data-theme=dark] .chip-cold{color:#60a5fa}
+.chip-new{background:rgba(107,114,128,.12);border-color:rgba(107,114,128,.3);color:#374151}
+[data-theme=dark] .chip-new{color:#9ca3af}
 
 /* Mobile overlay */
 .mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15}
@@ -467,7 +475,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <section class="panel">
           <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button><button id="openLeadModal" class="btn2" type="button">New Lead</button></div></div>
           <div class="panel-b">
-            <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
             <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Add your first lead to start filling the CRM with real records.</p><button id="openLeadModalEmpty" class="btn2" type="button">Add First Lead</button></div>
           </div>
         </section>
@@ -1181,7 +1189,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="field"><label>Status</label><input id="oppOverviewStatus" type="text" readonly></div>
           <div class="field"><label>Source</label><input id="oppOverviewSource" type="text" readonly></div>
           <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text" readonly></div>
+          <div class="field"><label>AI Score</label><input id="oppOverviewAiScore" type="text" readonly></div>
+          <div class="field"><label>AI Status</label><input id="oppOverviewAiStatus" type="text" readonly></div>
           <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text" readonly></div>
+          <div class="full"><label>AI Summary</label><textarea id="oppOverviewAiSummary" rows="3" readonly style="background:var(--surface-2);font-style:italic"></textarea></div>
           <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3" readonly></textarea></div>
         </div>
         <div class="actions" style="margin-top:16px">
