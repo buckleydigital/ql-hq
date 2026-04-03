@@ -223,6 +223,7 @@ textarea{min-height:100px;resize:vertical}
 .conv-input-row{display:flex;gap:8px}
 .conv-input-row input{flex:1}
 .conv-compose-meta{margin-top:5px;font-size:11px}
+.conv-back-btn{display:none;align-items:center;justify-content:center;width:32px;height:32px;min-height:32px;padding:0;border:none;background:none;cursor:pointer;color:var(--text);flex-shrink:0}
 
 /* ── Team Members ───────────────────────────────── */
 .team-row{display:grid;grid-template-columns:1fr 100px 120px auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
@@ -267,6 +268,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   .grid2,.gridset,.auth-card,.mini-grid,.split-panels,.conv-layout{grid-template-columns:1fr}
   .search{width:100%;max-width:none;order:3}
   .top{flex-wrap:wrap;height:auto}
+  .conv-layout.conv-open .conv-sidebar{display:none}
+  .conv-layout.conv-open .conv-main{border-radius:var(--radius)}
+  .conv-layout:not(.conv-open) .conv-sidebar{border-radius:var(--radius)}
+  .conv-layout:not(.conv-open) .conv-main{display:none}
+  .conv-layout{min-height:auto}
+  .conv-back-btn{display:inline-flex}
 }
 @media(max-width:860px){
   .app,.app.collapsed{grid-template-columns:1fr!important}
@@ -505,6 +512,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div id="convDetailEmpty" class="empty" style="min-height:460px"><span class="icon" data-icon="message"></span><h3>Select a conversation</h3><p>Pick a thread from the left to view messages.</p></div>
             <div id="convDetail" class="hidden">
               <div class="conv-header">
+                <button id="convBackBtn" class="conv-back-btn" type="button" title="Back to conversations"><span class="icon" data-icon="arrow-left"></span></button>
                 <div class="conv-lead-info"><h2 id="convLeadName">Lead Name</h2><span id="convLeadPhone" class="muted"></span></div>
                 <div class="conv-lead-actions">
                   <label class="ai-toggle" title="Toggle AI for this lead"><input id="convAiToggle" type="checkbox" checked><span class="ai-toggle-label">AI</span><span id="convAiStatus" class="ai-toggle-status on">ON</span></label>

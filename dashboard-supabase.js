@@ -50,6 +50,7 @@ const ICONS = {
   "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
   refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
   bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
+  "arrow-left":      `<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>`,
 };
 
 function renderIcons() {
@@ -506,6 +507,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Conversations ─────────────────────────────────────────────────────────
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
   document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
+  document.getElementById("convBackBtn")?.addEventListener("click", closeConversationDetail);
 
   // ── Notifications ───────────────────────────────────────────────────────
   document.getElementById("markAllReadBtn")?.addEventListener("click", markAllNotificationsRead);
@@ -764,6 +766,9 @@ function navigateTo(page) {
   document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = document.getElementById(`page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
+
+  // Reset conversation mobile view when navigating away
+  document.querySelector(".conv-layout")?.classList.remove("conv-open");
 
   const [title, sub] = PAGE_META[page] || [page, ""];
   const pageTitle = document.getElementById("pageTitle");
@@ -2601,6 +2606,7 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
 
   document.getElementById("convDetailEmpty")?.classList.add("hidden");
   document.getElementById("convDetail")?.classList.remove("hidden");
+  document.querySelector(".conv-layout")?.classList.add("conv-open");
   
   const convLeadName = document.getElementById("convLeadName");
   const convLeadPhone = document.getElementById("convLeadPhone");
@@ -2635,6 +2641,15 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
       console.error("Load lead AI settings error:", err);
     }
   }
+}
+
+function closeConversationDetail() {
+  document.querySelector(".conv-layout")?.classList.remove("conv-open");
+  currentConvId = null;
+  currentLeadId = null;
+  document.getElementById("convDetail")?.classList.add("hidden");
+  document.getElementById("convDetailEmpty")?.classList.remove("hidden");
+  document.querySelectorAll(".conv-item").forEach((el) => el.classList.remove("active"));
 }
 
 async function loadMessages(convId) {
