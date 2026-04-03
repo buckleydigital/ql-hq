@@ -337,10 +337,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   const forgotPasswordLink = document.getElementById("forgotPasswordLink");
   const backToLogin = document.getElementById("backToLogin");
   const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+  const signupForm = document.getElementById("signupForm");
+  const authTabs = document.getElementById("authTabs");
+
+  // ── Auth Tab Switching (Sign In / Sign Up) ──────────────────────────────
+  authTabs?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-tab]");
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+
+    // Update active tab
+    authTabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    // Show the correct form, hide others
+    loginForm?.classList.toggle("hidden", tab !== "login");
+    signupForm?.classList.toggle("hidden", tab !== "signup");
+    forgotPasswordForm?.classList.add("hidden");
+  });
 
   forgotPasswordLink?.addEventListener("click", () => {
     loginForm?.classList.add("hidden");
+    signupForm?.classList.add("hidden");
     forgotPasswordForm?.classList.remove("hidden");
+    authTabs?.classList.add("hidden");
     // Pre-fill email if already entered on login form
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
@@ -350,6 +370,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   backToLogin?.addEventListener("click", () => {
     forgotPasswordForm?.classList.add("hidden");
     loginForm?.classList.remove("hidden");
+    authTabs?.classList.remove("hidden");
+    // Reset tab active state to Sign In
+    authTabs?.querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.tab === "login");
+    });
   });
 
   forgotPasswordForm?.addEventListener("submit", async (e) => {
@@ -399,6 +424,97 @@ document.addEventListener("DOMContentLoaded", async () => {
         submitBtn.disabled = false;
         submitBtn.textContent = "Send Reset Link";
       }
+    }
+  });
+
+  // ── Sign Up Form ──────────────────────────────────────────────────────────
+  signupForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const submitBtn = signupForm.querySelector('button[type="submit"]');
+    const nameInput = document.getElementById("signupName");
+    const companyInput = document.getElementById("signupCompany");
+    const emailInput = document.getElementById("signupEmail");
+    const passwordInput = document.getElementById("signupPassword");
+    const keyInput = document.getElementById("signupActivationKey");
+
+    const full_name = nameInput?.value?.trim() || "";
+    const company_name = companyInput?.value?.trim() || "";
+    const email = emailInput?.value?.trim() || "";
+    const password = passwordInput?.value || "";
+    const activation_key = keyInput?.value?.trim() || "";
+
+    if (!full_name || !company_name || !email || !password || !activation_key) {
+      toast("Please fill in all fields.", true);
+      return;
+    }
+    if (password.length < 6) {
+      toast("Password must be at least 6 characters.", true);
+      return;
+    }
+
+    // Disable form during submission
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating account...";
+    }
+    const inputs = signupForm.querySelectorAll("input");
+    inputs.forEach((i) => (i.disabled = true));
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          full_name,
+          company_name,
+          activation_key,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast(data.error || "Sign up failed. Please try again.", true);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Create Account";
+        }
+        inputs.forEach((i) => (i.disabled = false));
+        return;
+      }
+
+      // Account created — auto sign in
+      toast("Account created! Signing you in...");
+      const { error: signInError } = await sb.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        toast("Account created but auto sign-in failed. Please sign in manually.", true);
+        // Switch to login tab and pre-fill email
+        authTabs?.querySelectorAll("button").forEach((b) => {
+          b.classList.toggle("active", b.dataset.tab === "login");
+        });
+        signupForm?.classList.add("hidden");
+        loginForm?.classList.remove("hidden");
+        const loginEmail = document.getElementById("loginEmail");
+        if (loginEmail) loginEmail.value = email;
+      }
+    } catch (err) {
+      toast("Sign up failed. Please try again.", true);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create Account";
+      }
+      inputs.forEach((i) => (i.disabled = false));
     }
   });
 
@@ -688,6 +804,7 @@ function showAuth() {
   const loginForm = document.getElementById("loginForm");
   if (loginForm) {
     loginForm.reset();
+    loginForm.classList.remove("hidden");
     const submitBtn = loginForm.querySelector('button[type="submit"]');
     const emailInput = document.getElementById("loginEmail");
     const passwordInput = document.getElementById("loginPassword");
@@ -698,6 +815,26 @@ function showAuth() {
     }
     if (emailInput) emailInput.disabled = false;
     if (passwordInput) passwordInput.disabled = false;
+  }
+
+  // Reset signup form state
+  const signupForm = document.getElementById("signupForm");
+  if (signupForm) {
+    signupForm.reset();
+    signupForm.classList.add("hidden");
+  }
+
+  // Reset forgot password form
+  const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+  if (forgotPasswordForm) forgotPasswordForm.classList.add("hidden");
+
+  // Reset tabs to Sign In
+  const authTabs = document.getElementById("authTabs");
+  if (authTabs) {
+    authTabs.classList.remove("hidden");
+    authTabs.querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.tab === "login");
+    });
   }
 }
 
