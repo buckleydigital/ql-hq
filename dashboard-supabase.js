@@ -4203,6 +4203,15 @@ function wireIntegrationsUI() {
   document.getElementById("cancelWebhookBtn")?.addEventListener("click", () => {
     document.getElementById("webhookFormPanel").style.display = "none";
   });
+  document.getElementById("copyWebhookSecretBtn")?.addEventListener("click", () => {
+    const val = document.getElementById("webhookSecretValue")?.textContent;
+    if (val) {
+      navigator.clipboard.writeText(val).then(() => toast("Webhook secret copied to clipboard!"));
+    }
+  });
+  document.getElementById("webhookSecretDoneBtn")?.addEventListener("click", () => {
+    document.getElementById("webhookSecretPanel").style.display = "none";
+  });
   document.getElementById("webhookForm")?.addEventListener("submit", handleSaveWebhook);
 }
 
@@ -4397,7 +4406,10 @@ async function handleSaveWebhook(e) {
       secret,
     });
     if (error) { toast("Failed to create webhook: " + error.message, true); return; }
-    toast("Webhook created! Signing secret: " + secret);
+    // Show signing secret in a persistent panel so user can copy it
+    document.getElementById("webhookSecretPanel").style.display = "";
+    document.getElementById("webhookSecretValue").textContent = secret;
+    toast("Webhook created! Copy the signing secret below.");
   }
 
   document.getElementById("webhookFormPanel").style.display = "none";

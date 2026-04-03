@@ -1201,6 +1201,18 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
           </section>
 
+          <!-- Webhook Secret Created (show once) -->
+          <section id="webhookSecretPanel" class="panel" style="display:none">
+            <div class="panel-h"><div><h2>🔒 Webhook Signing Secret</h2><p>Copy this secret now — it will not be shown again. Use it to verify webhook signatures.</p></div></div>
+            <div class="panel-b">
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:14px;word-break:break-all;position:relative">
+                <code id="webhookSecretValue"></code>
+                <button id="copyWebhookSecretBtn" class="btn" type="button" style="position:absolute;top:8px;right:8px;font-size:11px;padding:4px 10px">Copy</button>
+              </div>
+              <div class="actions" style="margin-top:12px"><button id="webhookSecretDoneBtn" class="btn2" type="button">Done</button></div>
+            </div>
+          </section>
+
           <!-- Webhook Deliveries Log -->
           <section class="panel">
             <div class="panel-h"><div><h2>Recent Deliveries</h2><p>Last 50 webhook delivery attempts across all endpoints.</p></div></div>

@@ -33,7 +33,7 @@ async function fireWebhooks(
         try {
           const res = await fetch(ep.url, { method: "POST", headers: { "Content-Type": "application/json", "X-Webhook-Signature": signature, "X-Webhook-Event": event }, body });
           responseStatus = res.status; responseBody = (await res.text()).slice(0, 1000); success = res.ok;
-        } catch (err) { responseBody = (err as Error).message; }
+        } catch (err) { responseBody = `${(err as Error).name}: ${(err as Error).message}`; }
         await adminClient.from("webhook_deliveries").insert({ webhook_id: ep.id, company_id: companyId, event, payload: JSON.parse(body), response_status: responseStatus, response_body: responseBody, success });
       })();
     }

@@ -107,8 +107,10 @@ function hasScope(scopes: string[], required: string): boolean {
 
 // ── Pagination helpers ────────────────────────────────────────────────────────
 function parsePagination(url: URL): { page: number; perPage: number } {
-  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-  const perPage = Math.min(100, Math.max(1, parseInt(url.searchParams.get("per_page") || "25", 10)));
+  const rawPage = parseInt(url.searchParams.get("page") || "1", 10);
+  const rawPerPage = parseInt(url.searchParams.get("per_page") || "25", 10);
+  const page = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1);
+  const perPage = Math.min(100, Math.max(1, Number.isFinite(rawPerPage) ? rawPerPage : 25));
   return { page, perPage };
 }
 
@@ -152,7 +154,11 @@ async function handleListLeads(
 
   if (stage) query = query.eq("pipeline_stage", stage);
   if (aiStatus) query = query.eq("ai_status", aiStatus);
-  if (search) query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
+  if (search) {
+    // Escape special PostgREST characters in the search term
+    const safe = search.replace(/[%_\\]/g, (c) => "\\" + c);
+    query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,email.ilike.%${safe}%`);
+  }
 
   const { data, error, count } = await query;
   if (error) return json({ error: error.message }, 500);
@@ -497,11 +503,12 @@ async function fireWebhooks(
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
 
-      const body = JSON.stringify({
+      const bodyObj = {
         event,
         timestamp: new Date().toISOString(),
         data: payload,
-      });
+      };
+      const body = JSON.stringify(bodyObj);
 
       // HMAC-SHA256 signature
       const encoder = new TextEncoder();
@@ -537,14 +544,14 @@ async function fireWebhooks(
           responseBody = (await res.text()).slice(0, 1000);
           success = res.ok;
         } catch (err) {
-          responseBody = (err as Error).message;
+          responseBody = `${(err as Error).name}: ${(err as Error).message}`;
         }
 
         await db.from("webhook_deliveries").insert({
           webhook_id: ep.id,
           company_id: companyId,
           event,
-          payload: JSON.parse(body),
+          payload: bodyObj,
           response_status: responseStatus,
           response_body: responseBody,
           success,

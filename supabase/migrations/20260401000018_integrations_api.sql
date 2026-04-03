@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.company_api_tokens (
   token_hash   TEXT NOT NULL,                          -- SHA-256 hex of the raw token
   token_prefix TEXT NOT NULL,                          -- first 8 chars for UI identification
   name         TEXT NOT NULL DEFAULT 'Unnamed Key',    -- user-given label
-  scopes       JSONB NOT NULL DEFAULT '["leads:read","leads:write","quotes:read","appointments:read","voice-calls:read","pipeline:read","sms:send"]'::jsonb,
+  scopes       JSONB NOT NULL DEFAULT '["leads:read","quotes:read","appointments:read","voice-calls:read","pipeline:read"]'::jsonb,
   last_used_at TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at   TIMESTAMPTZ,                            -- NULL = never expires
