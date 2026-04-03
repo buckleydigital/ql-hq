@@ -2530,8 +2530,8 @@ function renderTeamMembersList(profiles, invites) {
     </div>`).join("");
 
   const inviteRows = invites.map((inv) => {
-    const escapedEmail = (inv.email || "").replace(/'/g, "\\'");
-    const escapedName = (inv.full_name || "").replace(/'/g, "\\'");
+    const escapedEmail = (inv.email || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedName = (inv.full_name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     return `
     <div class="team-row">
       <div><strong style="font-size:13px">${inv.full_name || inv.email}</strong><span class="muted">${inv.email}</span></div>
@@ -2572,7 +2572,7 @@ async function handleTeamInvite(e) {
     if (result.email_sent) {
       toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
     } else {
-      toast(`User added but the invitation email could not be sent. Try resending from the list below.`, true);
+      toast(`User added but the invitation email could not be sent${result.email_error ? ": " + result.email_error : ""}. Try resending from the list below.`, true);
     }
     document.getElementById("teamInviteForm")?.reset();
     loadTeamMembers();

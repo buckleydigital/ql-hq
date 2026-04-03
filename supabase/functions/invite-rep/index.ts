@@ -275,7 +275,7 @@ Deno.serve(async (req) => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
       console.error("RESEND_API_KEY is not configured");
-      emailError = emailError || "Email service is not configured";
+      emailError = emailError || "Unable to send invitation email — please contact support";
     } else if (!linkData?.properties?.action_link) {
       console.error("No action_link available for invite email");
       emailError = emailError || "Failed to generate invitation link";
@@ -362,7 +362,10 @@ Deno.serve(async (req) => {
       .update({ status: "revoked", revoked_at: new Date().toISOString() })
       .eq("company_id", profile.company_id)
       .eq("email", email)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .then(({ error: revokeErr }) => {
+        if (revokeErr) console.error("Failed to revoke old pending invites:", revokeErr);
+      });
 
     await adminClient.from("sales_rep_invites").insert({
       company_id: profile.company_id,
