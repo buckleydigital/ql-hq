@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { passwordResetEmail } from "../_shared/email-templates.ts";
+import { passwordResetEmail } from "./email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

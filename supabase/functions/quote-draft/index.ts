@@ -17,7 +17,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { quoteDraftedEmail } from "../_shared/email-templates.ts";
+import { quoteDraftedEmail } from "./email-templates.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
