@@ -221,7 +221,7 @@ async function callOpenAI(
 // AI status helper: derive heat label from score
 // ---------------------------------------------------------------------------
 function aiStatusFromScore(score: number | null | undefined): string {
-  if (score == null || score === 0) return "new";
+  if (score == null) return "new";
   if (score >= 75) return "hot";
   if (score >= 40) return "warm";
   return "cold";
@@ -869,11 +869,15 @@ Respond ONLY with the JSON object, no markdown fences.`;
           try {
             const parsed = JSON.parse(rawContent);
             const aiStatus = (parsed.status === "hot" || parsed.status === "warm" || parsed.status === "cold") ? parsed.status : aiStatusFromScore(parsed.score ?? actions.score);
-            await db.from("leads").update({
+            const leadUpdate: Record<string, unknown> = {
               ai_summary: parsed.summary || null,
               ai_status: aiStatus,
-              ai_score: parsed.score ?? actions.score ?? undefined,
-            }).eq("id", lead.id);
+            };
+            const finalScore = parsed.score ?? actions.score;
+            if (typeof finalScore === "number" && finalScore >= 0 && finalScore <= 100) {
+              leadUpdate.ai_score = finalScore;
+            }
+            await db.from("leads").update(leadUpdate).eq("id", lead.id);
           } catch {
             // If JSON parse fails, store raw as summary
             await db.from("leads").update({

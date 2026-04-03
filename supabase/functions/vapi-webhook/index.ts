@@ -230,18 +230,19 @@ Deno.serve(async (req) => {
 
               if (openaiKey) {
                 const transcript = message.transcript as string;
+                const todayStr = new Date().toISOString().split("T")[0];
                 const analysisPrompt = `You are analysing a voice call transcript for a business CRM. Produce a JSON object with exactly these keys:
 - "summary": a concise 2-3 sentence summary of the call including what was discussed, any commitments made, and the outcome.
 - "score": an integer 0-100 reflecting lead quality / likelihood to convert based on the conversation.
 - "status": one of "hot", "warm", "cold" based on the score (>=75 hot, >=40 warm, else cold).
 - "appointment_detected": boolean — true ONLY if a specific appointment date/time AND type (callback, onsite visit, site inspection, meeting, etc.) were clearly agreed upon in the conversation.
-- "appointment_time": ISO 8601 datetime string of the agreed appointment, or null if none detected. Use the current year ${new Date().getFullYear()} if year is not stated.
+- "appointment_time": ISO 8601 datetime string of the agreed appointment, or null if none detected. If no year is stated, assume the nearest future occurrence of the given date relative to today (${todayStr}).
 - "appointment_type": one of "callback", "onsite", or "other" — or null if no appointment detected. Use "callback" for phone callbacks, "onsite" for site visits/inspections/meetings at a location.
 - "appointment_note": a brief description of the appointment purpose, or null.
 
 IMPORTANT: Only set appointment_detected to true if BOTH a specific time/date AND a type of appointment are clearly identifiable in the conversation. Do not guess or infer appointments that were not explicitly agreed upon.
 
-Today's date: ${new Date().toISOString().split("T")[0]}
+Today's date: ${todayStr}
 
 Transcript:
 ${transcript}
@@ -316,10 +317,11 @@ Respond ONLY with the JSON object, no markdown fences.`;
                       parsed.appointment_type
                     ) {
                       const apptTime = new Date(parsed.appointment_time);
+                      const ONE_DAY_MS = 24 * 60 * 60 * 1000;
                       // Validate the parsed time is a valid future-ish date
                       if (
                         !isNaN(apptTime.getTime()) &&
-                        apptTime.getTime() > Date.now() - 86400000 // allow up to 1 day in past for timezone tolerance
+                        apptTime.getTime() > Date.now() - ONE_DAY_MS // allow up to 1 day in past for timezone tolerance
                       ) {
                         const apptType =
                           parsed.appointment_type === "callback" ||
@@ -342,8 +344,9 @@ Respond ONLY with the JSON object, no markdown fences.`;
                               ? "Site Visit"
                               : "Appointment";
 
+                        const DEFAULT_APPT_DURATION_MS = 30 * 60 * 1000;
                         const endTime = new Date(
-                          apptTime.getTime() + 30 * 60 * 1000,
+                          apptTime.getTime() + DEFAULT_APPT_DURATION_MS,
                         );
 
                         await adminClient.from("appointments").insert({

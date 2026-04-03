@@ -93,7 +93,7 @@ function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
 // AI status helper: derive heat label from score, or use stored ai_status
 function aiStatusFromScore(score) {
-  if (score == null || score === 0) return "new";
+  if (score == null) return "new";
   if (score >= 75) return "hot";
   if (score >= 40) return "warm";
   return "cold";
