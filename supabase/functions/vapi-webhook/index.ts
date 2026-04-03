@@ -195,6 +195,241 @@ Deno.serve(async (req) => {
         console.log(
           `Call ${vapiCallId} end-of-call-report processed (status: ${updatePayload.status})`,
         );
+
+        // ── Post-call AI analysis: summary, score, appointment detection ──
+        // Only run for completed calls with a transcript
+        if (
+          updatePayload.status === "completed" &&
+          message.transcript
+        ) {
+          try {
+            // 1. Fetch the voice_call to get lead_id and company_id
+            const { data: callRecord } = await adminClient
+              .from("voice_calls")
+              .select("lead_id, company_id")
+              .eq("vapi_call_id", vapiCallId)
+              .single();
+
+            if (callRecord?.lead_id && callRecord?.company_id) {
+              // 2. Resolve OpenAI API key
+              let openaiKey: string | null = null;
+              const { data: resolvedKey } = await adminClient.rpc(
+                "resolve_api_key",
+                {
+                  p_company_id: callRecord.company_id,
+                  p_provider: "openai",
+                },
+              );
+              if (resolvedKey) {
+                openaiKey = resolvedKey as string;
+              } else {
+                // Fall back to platform env secret
+                const envKey = Deno.env.get("OPEN_AI_API_KEY");
+                if (envKey) openaiKey = envKey;
+              }
+
+              if (openaiKey) {
+                const transcript = message.transcript as string;
+                const analysisPrompt = `You are analysing a voice call transcript for a business CRM. Produce a JSON object with exactly these keys:
+- "summary": a concise 2-3 sentence summary of the call including what was discussed, any commitments made, and the outcome.
+- "score": an integer 0-100 reflecting lead quality / likelihood to convert based on the conversation.
+- "status": one of "hot", "warm", "cold" based on the score (>=75 hot, >=40 warm, else cold).
+- "appointment_detected": boolean — true ONLY if a specific appointment date/time AND type (callback, onsite visit, site inspection, meeting, etc.) were clearly agreed upon in the conversation.
+- "appointment_time": ISO 8601 datetime string of the agreed appointment, or null if none detected. Use the current year ${new Date().getFullYear()} if year is not stated.
+- "appointment_type": one of "callback", "onsite", or "other" — or null if no appointment detected. Use "callback" for phone callbacks, "onsite" for site visits/inspections/meetings at a location.
+- "appointment_note": a brief description of the appointment purpose, or null.
+
+IMPORTANT: Only set appointment_detected to true if BOTH a specific time/date AND a type of appointment are clearly identifiable in the conversation. Do not guess or infer appointments that were not explicitly agreed upon.
+
+Today's date: ${new Date().toISOString().split("T")[0]}
+
+Transcript:
+${transcript}
+
+Respond ONLY with the JSON object, no markdown fences.`;
+
+                const aiRes = await fetch(
+                  "https://api.openai.com/v1/chat/completions",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${openaiKey}`,
+                    },
+                    body: JSON.stringify({
+                      model: "gpt-4o",
+                      messages: [
+                        { role: "user", content: analysisPrompt },
+                      ],
+                      temperature: 0.3,
+                      max_tokens: 400,
+                    }),
+                  },
+                );
+
+                if (aiRes.ok) {
+                  const aiJson = await aiRes.json();
+                  const rawContent =
+                    aiJson.choices?.[0]?.message?.content?.trim() ?? "";
+                  try {
+                    const parsed = JSON.parse(rawContent);
+
+                    // Derive status from score if not provided
+                    const aiStatus =
+                      parsed.status === "hot" ||
+                      parsed.status === "warm" ||
+                      parsed.status === "cold"
+                        ? parsed.status
+                        : parsed.score >= 75
+                          ? "hot"
+                          : parsed.score >= 40
+                            ? "warm"
+                            : "cold";
+
+                    // Update lead with AI summary, score, and status
+                    const leadUpdate: Record<string, unknown> = {
+                      ai_summary: parsed.summary || null,
+                      ai_status: aiStatus,
+                    };
+                    if (
+                      typeof parsed.score === "number" &&
+                      parsed.score >= 0 &&
+                      parsed.score <= 100
+                    ) {
+                      leadUpdate.ai_score = parsed.score;
+                      leadUpdate.ai_score_reason = "Updated from AI voice call analysis";
+                    }
+
+                    await adminClient
+                      .from("leads")
+                      .update(leadUpdate)
+                      .eq("id", callRecord.lead_id);
+
+                    console.log(
+                      `Lead ${callRecord.lead_id} AI summary updated from voice call`,
+                    );
+
+                    // Auto-create appointment if time + type detected
+                    if (
+                      parsed.appointment_detected === true &&
+                      parsed.appointment_time &&
+                      parsed.appointment_type
+                    ) {
+                      const apptTime = new Date(parsed.appointment_time);
+                      // Validate the parsed time is a valid future-ish date
+                      if (
+                        !isNaN(apptTime.getTime()) &&
+                        apptTime.getTime() > Date.now() - 86400000 // allow up to 1 day in past for timezone tolerance
+                      ) {
+                        const apptType =
+                          parsed.appointment_type === "callback" ||
+                          parsed.appointment_type === "onsite"
+                            ? parsed.appointment_type
+                            : "other";
+
+                        // Fetch lead name for the appointment title
+                        const { data: leadData } = await adminClient
+                          .from("leads")
+                          .select("name, assigned_to, pipeline_stage")
+                          .eq("id", callRecord.lead_id)
+                          .single();
+
+                        const leadName = leadData?.name || "Voice Lead";
+                        const titlePrefix =
+                          apptType === "callback"
+                            ? "Callback"
+                            : apptType === "onsite"
+                              ? "Site Visit"
+                              : "Appointment";
+
+                        const endTime = new Date(
+                          apptTime.getTime() + 30 * 60 * 1000,
+                        );
+
+                        await adminClient.from("appointments").insert({
+                          company_id: callRecord.company_id,
+                          lead_id: callRecord.lead_id,
+                          assigned_to: leadData?.assigned_to || null,
+                          title: `${titlePrefix}: ${leadName}`,
+                          description:
+                            parsed.appointment_note ||
+                            "Auto-scheduled from AI voice call",
+                          status: "scheduled",
+                          appointment_type: apptType,
+                          start_time: apptTime.toISOString(),
+                          end_time: endTime.toISOString(),
+                          booked_by: "ai",
+                        });
+
+                        // Advance pipeline if still at new_lead
+                        if (leadData?.pipeline_stage === "new_lead") {
+                          await adminClient
+                            .from("leads")
+                            .update({ pipeline_stage: "follow_up" })
+                            .eq("id", callRecord.lead_id);
+                        }
+
+                        // Create notification
+                        const scheduledStr = apptTime.toLocaleString("en-AU", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        });
+                        await adminClient
+                          .from("notifications")
+                          .insert({
+                            company_id: callRecord.company_id,
+                            lead_id: callRecord.lead_id,
+                            type:
+                              apptType === "callback"
+                                ? "callback_booked"
+                                : "onsite_booked",
+                            title: `AI booked ${apptType === "callback" ? "a callback" : apptType === "onsite" ? "an on-site visit" : "an appointment"} with ${leadName}`,
+                            message: `Scheduled for ${scheduledStr} (detected from voice call)`,
+                            metadata: {
+                              appointment_type: apptType,
+                              start_time: apptTime.toISOString(),
+                              source: "ai_voice",
+                            },
+                          })
+                          .catch((notifErr: unknown) =>
+                            console.error(
+                              "Failed to create voice appointment notification:",
+                              notifErr,
+                            ),
+                          );
+
+                        console.log(
+                          `Auto-created ${apptType} appointment for lead ${callRecord.lead_id} from voice call transcript`,
+                        );
+                      } else {
+                        console.warn(
+                          `Appointment time detected but invalid or too far in past: ${parsed.appointment_time}`,
+                        );
+                      }
+                    }
+                  } catch (parseErr) {
+                    console.error(
+                      "Failed to parse AI analysis response:",
+                      parseErr,
+                    );
+                  }
+                } else {
+                  console.error(
+                    "OpenAI call failed for voice analysis:",
+                    aiRes.status,
+                  );
+                }
+              } else {
+                console.warn(
+                  "No OpenAI key available for voice call analysis",
+                );
+              }
+            }
+          } catch (analysisErr) {
+            // Non-blocking: don't fail the webhook if analysis fails
+            console.error("Post-call AI analysis error:", analysisErr);
+          }
+        }
       }
 
       return new Response(JSON.stringify({ ok: true }), {

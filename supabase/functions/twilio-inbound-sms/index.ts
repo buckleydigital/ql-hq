@@ -218,6 +218,16 @@ async function callOpenAI(
 }
 
 // ---------------------------------------------------------------------------
+// AI status helper: derive heat label from score
+// ---------------------------------------------------------------------------
+function aiStatusFromScore(score: number | null | undefined): string {
+  if (score == null || score === 0) return "new";
+  if (score >= 75) return "hot";
+  if (score >= 40) return "warm";
+  return "cold";
+}
+
+// ---------------------------------------------------------------------------
 // Send SMS via Twilio
 // ---------------------------------------------------------------------------
 async function sendTwilioSMS(
@@ -814,6 +824,66 @@ Deno.serve(async (req) => {
         });
       } catch (err) {
         console.error("Failed to trigger quote-draft:", err);
+      }
+    }
+
+    // 14b. Generate AI summary when a goal was met (callback, onsite, or quote)
+    if (actions.action === "callback" || actions.action === "onsite" || actions.action === "quote") {
+      try {
+        const summaryMessages = (history || [])
+          .slice(-20)
+          .map((m) => `${m.direction === "inbound" ? "Lead" : "Us"}: ${m.body}`)
+          .join("\n");
+
+        const summaryPrompt = `You are summarising a business conversation for a CRM. Given the conversation below, produce a JSON object with exactly these keys:
+- "summary": a concise 2-3 sentence summary of the conversation so far, including what the lead wants, any appointments or quotes discussed, and current status.
+- "score": an integer 0-100 reflecting lead quality / likelihood to convert.
+- "status": one of "hot", "warm", "cold" based on the score (>=75 hot, >=40 warm, else cold).
+
+Conversation:
+${summaryMessages}
+
+Latest action taken: ${actions.action}
+${actions.appointmentTime ? "Appointment time: " + actions.appointmentTime : ""}
+${actions.quoteContext ? "Quote context: " + actions.quoteContext : ""}
+
+Respond ONLY with the JSON object, no markdown fences.`;
+
+        const summaryRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: "user", content: summaryPrompt }],
+            temperature: 0.3,
+            max_tokens: 300,
+          }),
+        });
+
+        if (summaryRes.ok) {
+          const summaryJson = await summaryRes.json();
+          const rawContent = summaryJson.choices?.[0]?.message?.content?.trim() ?? "";
+          try {
+            const parsed = JSON.parse(rawContent);
+            const aiStatus = (parsed.status === "hot" || parsed.status === "warm" || parsed.status === "cold") ? parsed.status : aiStatusFromScore(parsed.score ?? actions.score);
+            await db.from("leads").update({
+              ai_summary: parsed.summary || null,
+              ai_status: aiStatus,
+              ai_score: parsed.score ?? actions.score ?? undefined,
+            }).eq("id", lead.id);
+          } catch {
+            // If JSON parse fails, store raw as summary
+            await db.from("leads").update({
+              ai_summary: rawContent || null,
+              ai_status: aiStatusFromScore(actions.score),
+            }).eq("id", lead.id);
+          }
+        }
+      } catch (summaryErr) {
+        console.error("AI summary generation failed:", summaryErr);
       }
     }
 
