@@ -50,6 +50,7 @@ const ICONS = {
   "message-circle": `<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>`,
   refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
   bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
+  "arrow-left":      `<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>`,
 };
 
 function renderIcons() {
@@ -506,6 +507,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Conversations ─────────────────────────────────────────────────────────
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
   document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
+  document.getElementById("convBackBtn")?.addEventListener("click", closeConversationDetail);
+
+  // ── Bulk SMS ────────────────────────────────────────────────────────────
+  document.getElementById("bulkSmsStageFilter")?.addEventListener("change", updateBulkSmsLeadCount);
+  document.getElementById("bulkSmsMessage")?.addEventListener("input", updateBulkSmsPreview);
+  document.getElementById("bulkSmsSendBtn")?.addEventListener("click", handleBulkSmsSend);
 
   // ── Notifications ───────────────────────────────────────────────────────
   document.getElementById("markAllReadBtn")?.addEventListener("click", markAllNotificationsRead);
@@ -748,6 +755,7 @@ const PAGE_META = {
   sales:              ["Sales",             "Closed won and lost performance summary."],
   notifications:      ["Notifications",    "AI activity and goal completions."],
   conversations:      ["Conversations",     "SMS threads with leads."],
+  "bulk-sms":         ["Bulk SMS",           "Database reactivation — send personalized SMS to multiple leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
   "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
@@ -765,6 +773,9 @@ function navigateTo(page) {
   const pageEl = document.getElementById(`page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
 
+  // Reset conversation mobile view when navigating away
+  document.querySelector(".conv-layout")?.classList.remove("conv-open");
+
   const [title, sub] = PAGE_META[page] || [page, ""];
   const pageTitle = document.getElementById("pageTitle");
   const pageSubtitle = document.getElementById("pageSubtitle");
@@ -779,6 +790,7 @@ function navigateTo(page) {
     appointments:       loadAppointments,
     sales:              loadSales,
     conversations:      loadConversations,
+    "bulk-sms":         loadBulkSms,
     notifications:      loadNotifications,
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
@@ -2601,6 +2613,7 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
 
   document.getElementById("convDetailEmpty")?.classList.add("hidden");
   document.getElementById("convDetail")?.classList.remove("hidden");
+  document.querySelector(".conv-layout")?.classList.add("conv-open");
   
   const convLeadName = document.getElementById("convLeadName");
   const convLeadPhone = document.getElementById("convLeadPhone");
@@ -2635,6 +2648,15 @@ async function openConversation(convId, leadId, name, phone, itemEl) {
       console.error("Load lead AI settings error:", err);
     }
   }
+}
+
+function closeConversationDetail() {
+  document.querySelector(".conv-layout")?.classList.remove("conv-open");
+  currentConvId = null;
+  currentLeadId = null;
+  document.getElementById("convDetail")?.classList.add("hidden");
+  document.getElementById("convDetailEmpty")?.classList.remove("hidden");
+  document.querySelectorAll(".conv-item").forEach((el) => el.classList.remove("active"));
 }
 
 async function loadMessages(convId) {
@@ -2759,6 +2781,124 @@ async function handleAiToggle() {
     await sb.from("leads").update({ ai_enabled: on }).eq("id", currentLeadId);
   } catch (err) {
     toast("Failed to update AI setting.", true);
+  }
+}
+
+// ─── Bulk SMS ─────────────────────────────────────────────────────────────────
+let bulkSmsLeads = [];
+
+async function loadBulkSms() {
+  if (!currentCompanyId) return;
+  await updateBulkSmsLeadCount();
+  updateBulkSmsPreview();
+}
+
+async function updateBulkSmsLeadCount() {
+  if (!currentCompanyId) return;
+  const stage = document.getElementById("bulkSmsStageFilter")?.value || "all";
+  try {
+    let query = sb
+      .from("leads")
+      .select("id, name, first_name, phone, pipeline_stage")
+      .eq("company_id", currentCompanyId);
+
+    if (stage !== "all") {
+      query = query.eq("pipeline_stage", stage);
+    }
+
+    const { data } = await query.order("created_at", { ascending: false });
+    const all = data || [];
+    bulkSmsLeads = all.filter((l) => l.phone?.trim());
+    const noPhone = all.length - bulkSmsLeads.length;
+
+    const countEl = document.getElementById("bulkSmsLeadCount");
+    const noPhoneEl = document.getElementById("bulkSmsNoPhone");
+    const sendBtn = document.getElementById("bulkSmsSendBtn");
+    if (countEl) countEl.textContent = bulkSmsLeads.length;
+    if (noPhoneEl) noPhoneEl.textContent = noPhone > 0 ? `(${noPhone} skipped — no phone number)` : "";
+    if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0 || !document.getElementById("bulkSmsMessage")?.value?.trim();
+  } catch (err) {
+    toast("Failed to load leads for bulk SMS.", true);
+  }
+}
+
+function updateBulkSmsPreview() {
+  const msgEl = document.getElementById("bulkSmsMessage");
+  const previewEl = document.getElementById("bulkSmsPreview");
+  const sendBtn = document.getElementById("bulkSmsSendBtn");
+  const raw = msgEl?.value || "";
+  if (!raw.trim()) {
+    if (previewEl) previewEl.textContent = "Type a message above to see a preview…";
+    if (sendBtn) sendBtn.disabled = true;
+    return;
+  }
+  // Show preview using first lead or a sample name
+  const sampleName = bulkSmsLeads.length > 0
+    ? getFirstName(bulkSmsLeads[0])
+    : "John";
+  const preview = raw.replace(/\{\{first_name\}\}/gi, sampleName);
+  if (previewEl) previewEl.textContent = preview;
+  if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0;
+}
+
+function getFirstName(lead) {
+  if (lead.first_name?.trim()) return lead.first_name.trim();
+  if (lead.name?.trim()) return lead.name.trim().split(/\s+/)[0];
+  return "there";
+}
+
+async function handleBulkSmsSend() {
+  const msgTemplate = document.getElementById("bulkSmsMessage")?.value?.trim();
+  if (!msgTemplate) { toast("Please enter a message.", true); return; }
+  if (!bulkSmsLeads.length) { toast("No leads to send to.", true); return; }
+
+  const count = bulkSmsLeads.length;
+  if (!confirm(`You are about to send ${count} SMS message${count > 1 ? "s" : ""}. This will use ${count} SMS credit${count > 1 ? "s" : ""}. Continue?`)) return;
+
+  const sendBtn = document.getElementById("bulkSmsSendBtn");
+  const progressWrap = document.getElementById("bulkSmsProgress");
+  const progressBar = document.getElementById("bulkSmsProgressBar");
+  const progressText = document.getElementById("bulkSmsProgressText");
+  const resultSummary = document.getElementById("bulkSmsResultSummary");
+
+  if (sendBtn) sendBtn.disabled = true;
+  if (progressWrap) progressWrap.classList.remove("hidden");
+  if (progressBar) progressBar.style.width = "0%";
+  if (progressText) progressText.textContent = `0 / ${count}`;
+  if (resultSummary) resultSummary.textContent = "";
+
+  let sent = 0;
+  let failed = 0;
+  const errors = [];
+
+  for (const lead of bulkSmsLeads) {
+    const firstName = getFirstName(lead);
+    const body = msgTemplate.replace(/\{\{first_name\}\}/gi, firstName);
+
+    try {
+      await edgeFn("send-sms", { lead_id: lead.id, body });
+      sent++;
+    } catch (err) {
+      failed++;
+      errors.push(`${lead.name || lead.id}: ${err.message}`);
+    }
+
+    const done = sent + failed;
+    const pct = Math.round((done / count) * 100);
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    if (progressText) progressText.textContent = `${done} / ${count}`;
+  }
+
+  let summary = `✅ ${sent} sent`;
+  if (failed) summary += ` · ❌ ${failed} failed`;
+  if (resultSummary) resultSummary.textContent = summary;
+  if (sendBtn) sendBtn.disabled = false;
+
+  if (failed && errors.length) {
+    console.error("Bulk SMS errors:", errors);
+    toast(`Bulk SMS complete: ${sent} sent, ${failed} failed. Check console for details.`, true);
+  } else {
+    toast(`Bulk SMS complete! ${sent} message${sent > 1 ? "s" : ""} sent.`);
   }
 }
 
