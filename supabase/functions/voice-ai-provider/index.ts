@@ -313,6 +313,7 @@ Deno.serve(async (req) => {
       // reports back to our vapi-webhook edge function.
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const webhookUrl = `${supabaseUrl}/functions/v1/vapi-webhook`;
+      const webhookSecret = Deno.env.get("VAPI_WEBHOOK_SECRET");
 
       const callPayload: Record<string, unknown> = {
         phoneNumberId: vapiPhoneNumberId,
@@ -327,6 +328,9 @@ Deno.serve(async (req) => {
         const overrides: Record<string, unknown> = {
           serverUrl: webhookUrl,
         };
+        if (webhookSecret) {
+          overrides.serverUrlSecret = webhookSecret;
+        }
         const resolvedVoiceId = config?.voice_id;
         if (resolvedVoiceId) {
           overrides.voice = {
@@ -360,6 +364,9 @@ Deno.serve(async (req) => {
             messages: [{ role: "system", content: systemPrompt }],
           },
         };
+        if (webhookSecret) {
+          transientAssistant.serverUrlSecret = webhookSecret;
+        }
 
         if (config?.greeting) {
           transientAssistant.firstMessage = config.greeting;

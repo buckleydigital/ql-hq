@@ -45,10 +45,9 @@ async function fireWebhooks(
  *
  * Receives server events from VAPI and updates voice_calls records accordingly.
  *
- * Security: No JWT verification — VAPI sends events to the serverUrl we provide
- * at call creation time. The URL is not publicly discoverable and all updates
- * are scoped to existing vapi_call_id records. VAPI also supports server
- * authentication via credentialId if additional security is needed later.
+ * Security: Verified via x-vapi-secret header. The VAPI_WEBHOOK_SECRET env var
+ * must match the serverUrlSecret provided at call creation time. VAPI sends
+ * this secret as the x-vapi-secret header on every webhook request.
  *
  * Handled event types:
  *   - status-update:        Updates call status (ringing → in_progress, etc.)
@@ -65,6 +64,19 @@ Deno.serve(async (req) => {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // ── Verify VAPI webhook secret ──────────────────────────────────────────
+  const webhookSecret = Deno.env.get("VAPI_WEBHOOK_SECRET");
+  if (webhookSecret) {
+    const incomingSecret = req.headers.get("x-vapi-secret");
+    if (incomingSecret !== webhookSecret) {
+      console.warn("VAPI webhook: invalid or missing x-vapi-secret header");
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   try {
