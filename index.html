@@ -427,11 +427,9 @@ section, .section { padding: 96px 40px; }
 .cta-section p { font-size: 17px; color: var(--ink-muted); margin-bottom: 34px; max-width: 450px; margin-inline: auto; line-height: 1.7; position: relative; z-index: 1; }
 .cta-note { font-size: 13px; color: var(--ink-faint); margin-top: 16px; position: relative; z-index: 1; }
 .cta-note span+span::before { content: ' · '; }
-.cta-logo { width: 54px; height: 54px; border-radius: 14px; margin-bottom: 22px; box-shadow: var(--shadow); position: relative; z-index: 1; display: block; margin-inline: auto; }
+.cta-bg-img { width: clamp(200px, 40vw, 400px); margin-bottom: 28px; position: relative; z-index: 1; display: block; margin-inline: auto; opacity: 0.5; pointer-events: none; }
 /* FOOTER */
-footer { border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; position: relative; overflow: hidden; }
-footer::before { content: ''; position: absolute; inset: 0; background: url('hq-footer-bg.png') center center / contain no-repeat; opacity: 0.5; z-index: 0; pointer-events: none; }
-footer > * { position: relative; z-index: 1; }
+footer { border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 .foot-links { display: flex; gap: 28px; flex-wrap: wrap; }
 .foot-links a { font-size: 13px; color: var(--ink-faint); text-decoration: none; transition: color 0.2s; }
 .foot-links a:hover { color: var(--ink); }
@@ -775,7 +773,7 @@ footer > * { position: relative; z-index: 1; }
 <section class="cta-section" id="cta">
     <div class="cta-glow"></div>
     <div class="cta-grid-bg"></div>
-    <img src="product-logo.png" alt="QuoteLeadsHQ" class="cta-logo" onerror="this.style.display='none'"/>
+    <img src="hq-footer-bg.png" alt="" class="cta-bg-img" onerror="this.style.display='none'"/>
     <h2>Stop leaving jobs<br/>on the table.</h2>
     <p>Every unanswered lead is a job your competitor just picked up. QuoteLeadsHQ closes the loop - from first contact to signed quote - while you focus on the work.</p>
     <div style="position:relative;z-index:1"><a href="/get-started" class="btn-primary" style="font-size:16px;padding:15px 36px">Get Access <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a></div>
