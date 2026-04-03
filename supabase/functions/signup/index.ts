@@ -5,11 +5,29 @@
 // The activation key is stored as a Supabase Edge Function secret
 // (SIGNUP_ACTIVATION_KEY) and is never exposed to the client.
 //
-// Payload: { email, password, full_name, company_name, activation_key }
+// Payload: { email, password, full_name, company_name, activation_key, cf_turnstile_response }
 // No auth required — this is a public endpoint for unauthenticated users.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+async function verifyTurnstile(token: string): Promise<boolean> {
+  const secret = Deno.env.get("CF_TURNSTILE_SECRET");
+  if (!secret) {
+    console.error("CF_TURNSTILE_SECRET is not set");
+    return false;
+  }
+  const res = await fetch(
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token }),
+    },
+  );
+  const data = await res.json();
+  return data.success === true;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,8 +48,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, password, full_name, company_name, activation_key } =
+    const { email, password, full_name, company_name, activation_key, cf_turnstile_response } =
       await req.json();
+
+    // ── Verify Turnstile CAPTCHA ──────────────────────────────────────────
+    if (!cf_turnstile_response || typeof cf_turnstile_response !== "string") {
+      return jsonResponse({ error: "CAPTCHA verification is required." }, 400);
+    }
+    const turnstileOk = await verifyTurnstile(cf_turnstile_response);
+    if (!turnstileOk) {
+      return jsonResponse({ error: "CAPTCHA verification failed. Please try again." }, 403);
+    }
 
     // ── Validate required fields ──────────────────────────────────────────
     if (!email || typeof email !== "string") {

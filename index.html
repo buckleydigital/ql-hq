@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet"/>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; font-size: 16px; }
@@ -810,6 +811,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <input type="email" name="email" placeholder="Email address" required autocomplete="email"/>
         <input type="tel" name="phone" placeholder="Phone number" autocomplete="tel"/>
         <input type="text" name="company" placeholder="Company name" autocomplete="organization"/>
+        <div class="cta-form-full" style="display:flex;justify-content:center"><div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div></div>
         <button type="submit">Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
         <div class="cta-form-error" id="ctaFormError" style="display:none"></div>
     </form>
@@ -908,34 +910,43 @@ document.querySelectorAll('.stat-item').forEach(function(el){ statObs.observe(el
     form.addEventListener('submit', function(e){
         e.preventDefault();
         errEl.style.display = 'none';
-        var btn = form.querySelector('button');
+        var btn = form.querySelector('button[type="submit"]');
         btn.disabled = true;
         btn.textContent = 'Sending…';
+        var turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
+        var token = turnstileInput ? turnstileInput.value : '';
+        if(!token){
+            errEl.textContent = 'Please complete the CAPTCHA verification.';
+            errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+            return;
+        }
         var data = {
             name: form.name.value.trim(),
             email: form.email.value.trim(),
             phone: form.phone.value.trim() || null,
-            company: form.company.value.trim() || null
+            company: form.company.value.trim() || null,
+            cf_turnstile_response: token
         };
-        fetch(SUPABASE_URL + '/rest/v1/demo_requests', {
+        fetch(SUPABASE_URL + '/functions/v1/demo-request', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON,
-                'Authorization': 'Bearer ' + SUPABASE_ANON,
-                'Prefer': 'return=minimal'
+                'apikey': SUPABASE_ANON
             },
             body: JSON.stringify(data)
         }).then(function(res){
-            if(!res.ok) throw new Error('Request failed with status ' + res.status);
+            if(!res.ok) return res.json().then(function(d){ throw new Error(d.error || 'Request failed'); });
             form.style.display = 'none';
             success.style.display = 'block';
         }).catch(function(err){
             console.error('Form submission failed:', err);
-            errEl.textContent = 'Something went wrong. Please try again.';
+            errEl.textContent = err.message || 'Something went wrong. Please try again.';
             errEl.style.display = 'block';
             btn.disabled = false;
             btn.innerHTML = 'Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+            if(window.turnstile){ turnstile.reset(); }
         });
     });
 })();
