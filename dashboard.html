@@ -575,6 +575,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <span class="field-hint">Use <code>{{first_name}}</code> or <code>{{first.name}}</code> for first name, <code>{{last_name}}</code> for last name.</span>
                 </div>
                 <div class="field">
+                  <label for="bulkSmsPreviewLead">Preview As</label>
+                  <select id="bulkSmsPreviewLead">
+                    <option value="">Sample Lead (John Smith)</option>
+                  </select>
+                </div>
+                <div class="field">
                   <label>Preview</label>
                   <div id="bulkSmsPreview" style="padding:10px 14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:13px;color:var(--muted);white-space:pre-wrap">Type a message above to see a preview…</div>
                 </div>
