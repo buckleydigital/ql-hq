@@ -2842,17 +2842,17 @@ function updateBulkSmsPreview() {
 }
 
 function getFirstName(lead) {
-  if (lead.first_name?.trim()) return lead.first_name.trim();
   if (lead.name?.trim()) return lead.name.trim().split(/\s+/)[0];
+  if (lead.first_name?.trim()) return lead.first_name.trim();
   return "there";
 }
 
 function getLastName(lead) {
-  if (lead.last_name?.trim()) return lead.last_name.trim();
   if (lead.name?.trim()) {
     const parts = lead.name.trim().split(/\s+/);
     return parts.length > 1 ? parts.slice(1).join(" ") : "";
   }
+  if (lead.last_name?.trim()) return lead.last_name.trim();
   return "";
 }
 
