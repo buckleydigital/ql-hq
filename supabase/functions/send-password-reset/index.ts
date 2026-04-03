@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
         type: "recovery",
         email,
         options: {
-          redirectTo: `${siteUrl}/dashboard.html`,
+          redirectTo: `${siteUrl}/dashboard`,
         },
       });
 
