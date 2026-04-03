@@ -6,6 +6,40 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Outbound webhook helper ───────────────────────────────────────────────────
+async function fireWebhooks(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+  event: string,
+  payload: unknown,
+) {
+  try {
+    const { data: endpoints } = await adminClient
+      .from("webhook_endpoints")
+      .select("id, url, secret, events")
+      .eq("company_id", companyId)
+      .eq("active", true);
+    if (!endpoints || endpoints.length === 0) return;
+    for (const ep of endpoints) {
+      const events = Array.isArray(ep.events) ? ep.events : [];
+      if (!events.includes(event)) continue;
+      const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+      const signature = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      (async () => {
+        let success = false, responseStatus = 0, responseBody = "";
+        try {
+          const res = await fetch(ep.url, { method: "POST", headers: { "Content-Type": "application/json", "X-Webhook-Signature": signature, "X-Webhook-Event": event }, body });
+          responseStatus = res.status; responseBody = (await res.text()).slice(0, 1000); success = res.ok;
+        } catch (err) { responseBody = (err as Error).message; }
+        await adminClient.from("webhook_deliveries").insert({ webhook_id: ep.id, company_id: companyId, event, payload: JSON.parse(body), response_status: responseStatus, response_body: responseBody, success });
+      })();
+    }
+  } catch (err) { console.error("fireWebhooks error:", err); }
+}
+
 /**
  * VAPI Webhook — Edge Function
  *
@@ -196,6 +230,14 @@ Deno.serve(async (req) => {
           `Call ${vapiCallId} end-of-call-report processed (status: ${updatePayload.status})`,
         );
 
+        // Fire webhook for call completion
+        if (updatePayload.status === "completed") {
+          const { data: callForWh } = await adminClient.from("voice_calls").select("company_id, lead_id").eq("vapi_call_id", vapiCallId).single();
+          if (callForWh) {
+            fireWebhooks(adminClient, callForWh.company_id, "call.completed", { vapi_call_id: vapiCallId, lead_id: callForWh.lead_id, status: "completed" });
+          }
+        }
+
         // ── Post-call AI analysis: summary, score, appointment detection ──
         // Only run for completed calls with a transcript
         if (
@@ -371,6 +413,8 @@ Respond ONLY with the JSON object, no markdown fences.`;
                             .update({ pipeline_stage: "follow_up" })
                             .eq("id", callRecord.lead_id);
                         }
+
+                        fireWebhooks(adminClient, callRecord.company_id, "appointment.booked", { lead_id: callRecord.lead_id, lead_name: leadName, appointment_type: apptType, start_time: apptTime.toISOString(), source: "ai_voice" });
 
                         // Create notification
                         const scheduledStr = apptTime.toLocaleString("en-AU", {
