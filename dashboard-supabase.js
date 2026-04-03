@@ -91,6 +91,32 @@ const DEFAULT_TAX_RATE = 10;
 function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
 function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
+// AI status helper: derive heat label from score, or use stored ai_status
+function aiStatusFromScore(score) {
+  if (score == null || score === 0) return "new";
+  if (score >= 75) return "hot";
+  if (score >= 40) return "warm";
+  return "cold";
+}
+
+function aiStatusLabel(lead) {
+  const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
+  const labels = { hot: "🔥 Hot", warm: "🌤 Warm", cold: "❄️ Cold", new: "New" };
+  return labels[status] || status;
+}
+
+function aiStatusChipClass(lead) {
+  const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
+  return "chip-" + (status || "new");
+}
+
+function aiScoreDisplay(lead) {
+  if (lead.ai_score == null) return "—";
+  const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
+  const labels = { hot: "Hot", warm: "Warm", cold: "Cold", new: "New" };
+  return `${labels[status] || status} ${lead.ai_score}/100`;
+}
+
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 // getSession() returns the cached session and may contain an expired JWT.
 // This helper checks expiry and refreshes the token when needed so that
@@ -1088,6 +1114,9 @@ function renderLeadsTable(leads) {
       <td><strong>${l.address || "—"}</strong>${l.postcode ? `<span class="muted">${l.postcode}</span>` : ""}</td>
       <td>${l.source ? `<span class="chip">${l.source}</span>` : "—"}</td>
       <td><span class="chip">${stageLabel(l.pipeline_stage)}</span></td>
+      <td><span class="chip ${aiStatusChipClass(l)}">${aiScoreDisplay(l)}</span></td>
+      <td><span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span></td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.ai_summary || '').replace(/"/g, '&quot;')}">${l.ai_summary || "—"}</td>
       <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
       <td>
         <div style="display:flex;gap:6px">
@@ -1544,7 +1573,7 @@ async function loadOpportunities() {
   try {
     const { data } = await sb
       .from("leads")
-      .select("id, name, email, phone, pipeline_stage, value, created_at")
+      .select("id, name, email, phone, pipeline_stage, value, ai_score, ai_status, ai_summary, created_at")
       .eq("company_id", currentCompanyId);
     allLeads = data || [];
     buildKanban(allLeads);
@@ -1581,6 +1610,7 @@ function buildKanban(leads) {
                 <h3>${l.name || "—"}</h3>
                 <p>${l.email || l.phone || "—"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
+                ${l.ai_score != null ? `<div style="margin-top:6px"><span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span></div>` : ""}
                 <div class="kcard-actions" style="position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:0;transition:opacity .15s">
                   <button class="iconbtn" style="width:28px;height:28px;min-height:28px" onclick="event.stopPropagation();callLeadDirect('${l.id}')" type="button" title="Call with AI"><span class="icon" data-icon="phone" style="width:12px;height:12px"></span></button>
                 </div>
@@ -3596,7 +3626,10 @@ async function openOpportunityModal(leadId) {
   document.getElementById("oppOverviewStatus").value = stageLabel(lead.pipeline_stage) || "—";
   document.getElementById("oppOverviewSource").value = lead.source || "—";
   document.getElementById("oppOverviewValue").value = lead.value ? fmt(lead.value) : "—";
+  document.getElementById("oppOverviewAiScore").value = aiScoreDisplay(lead);
+  document.getElementById("oppOverviewAiStatus").value = aiStatusLabel(lead);
   document.getElementById("oppOverviewAddress").value = lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "—";
+  document.getElementById("oppOverviewAiSummary").value = lead.ai_summary || "No AI summary yet.";
   document.getElementById("oppOverviewNotes").value = lead.notes || "—";
 
   // Reset tabs to overview
