@@ -1225,35 +1225,38 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <section class="panel">
             <div class="panel-h"><div><h2>API Documentation</h2><p>Use these endpoints with your API key to integrate with external tools.</p></div></div>
             <div class="panel-b">
+              <div style="font-size:13px;color:var(--text-2);margin-bottom:12px;line-height:1.6">
+                Base URL: <code>https://api.quoteleadshq.com/v1</code>
+              </div>
               <div class="stack" style="gap:12px">
                 <div class="section-card">
                   <div class="section-card-title"><span class="icon" data-icon="users"></span> Leads</div>
                   <div style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-2)">
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/leads<span class="muted"> — List leads (paginated, filterable by stage/ai_status/search)</span></div>
-                    <div><b style="color:var(--blue)">POST</b> /functions/v1/api/leads<span class="muted"> — Create a lead (name, phone, email, etc.)</span></div>
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/leads/:id<span class="muted"> — Get a single lead</span></div>
-                    <div><b style="color:var(--yellow)">PATCH</b> /functions/v1/api/leads/:id<span class="muted"> — Update a lead</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/leads<span class="muted"> — List leads (paginated, filterable by stage/ai_status/search)</span></div>
+                    <div><b style="color:var(--blue)">POST</b> /v1/leads<span class="muted"> — Create a lead (name, phone, email, etc.)</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/leads/:id<span class="muted"> — Get a single lead</span></div>
+                    <div><b style="color:var(--yellow)">PATCH</b> /v1/leads/:id<span class="muted"> — Update a lead</span></div>
                   </div>
                 </div>
                 <div class="section-card">
                   <div class="section-card-title"><span class="icon" data-icon="file"></span> Quotes</div>
                   <div style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-2)">
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/quotes<span class="muted"> — List quotes (filterable by status)</span></div>
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/quotes/:id<span class="muted"> — Get a single quote with line items</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/quotes<span class="muted"> — List quotes (filterable by status)</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/quotes/:id<span class="muted"> — Get a single quote with line items</span></div>
                   </div>
                 </div>
                 <div class="section-card">
                   <div class="section-card-title"><span class="icon" data-icon="message"></span> SMS</div>
                   <div style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-2)">
-                    <div><b style="color:var(--blue)">POST</b> /functions/v1/api/sms<span class="muted"> — Send SMS to a lead (lead_id, message)</span></div>
+                    <div><b style="color:var(--blue)">POST</b> /v1/sms<span class="muted"> — Send SMS to a lead (lead_id, message)</span></div>
                   </div>
                 </div>
                 <div class="section-card">
                   <div class="section-card-title"><span class="icon" data-icon="calendar"></span> Appointments &amp; Calls</div>
                   <div style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-2)">
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/appointments<span class="muted"> — List appointments (filterable by type)</span></div>
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/voice-calls<span class="muted"> — List voice calls</span></div>
-                    <div><b style="color:var(--green)">GET</b> /functions/v1/api/pipeline<span class="muted"> — Pipeline stage counts</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/appointments<span class="muted"> — List appointments (filterable by type)</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/voice-calls<span class="muted"> — List voice calls</span></div>
+                    <div><b style="color:var(--green)">GET</b> /v1/pipeline<span class="muted"> — Pipeline stage counts</span></div>
                   </div>
                 </div>
                 <div class="section-card">
