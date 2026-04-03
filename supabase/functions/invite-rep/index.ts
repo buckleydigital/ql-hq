@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { inviteRepEmail } from "../_shared/email-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -208,8 +209,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send magic link email
-    const { error: magicLinkError } =
+    // Send magic link email via Resend
+    const { data: linkData, error: magicLinkError } =
       await adminClient.auth.admin.generateLink({
         type: "magiclink",
         email,
@@ -221,6 +222,46 @@ Deno.serve(async (req) => {
     if (magicLinkError) {
       console.error("Magic link error:", magicLinkError);
       // Don't fail — user is created, they can use "forgot password" flow
+    }
+
+    // Send branded invite email via Resend (falls back to Supabase default if Resend not configured)
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (resendApiKey && linkData?.properties?.action_link) {
+      try {
+        // Look up company name for the email
+        const { data: company } = await adminClient
+          .from("companies")
+          .select("name")
+          .eq("id", profile.company_id)
+          .single();
+
+        const emailContent = inviteRepEmail(
+          name,
+          company?.name || "a team",
+          linkData.properties.action_link,
+        );
+
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resendApiKey}`,
+          },
+          body: JSON.stringify({
+            from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
+            to: [email],
+            subject: emailContent.subject,
+            html: emailContent.html,
+          }),
+        });
+
+        if (!resendRes.ok) {
+          const errData = await resendRes.text();
+          console.error("Resend invite email failed:", errData);
+        }
+      } catch (emailErr) {
+        console.error("Resend invite email error:", emailErr);
+      }
     }
 
     // Create the sales rep record
