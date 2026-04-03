@@ -308,23 +308,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create the sales rep record
+    // Create or update the sales rep record (upsert avoids duplicate-key
+    // errors when re-inviting an existing team member to the same company).
     const defaultVisibility = "assigned_only";
     const { data: rep, error: repError } = await adminClient
       .from("sales_reps")
-      .insert({
-        company_id: profile.company_id,
-        user_id: newUserId,
-        name,
-        email,
-        phone: phone || null,
-        leads_visibility: visibility?.leads || defaultVisibility,
-        quotes_visibility: visibility?.quotes || defaultVisibility,
-        appointments_visibility: visibility?.appointments || defaultVisibility,
-        sales_visibility: visibility?.sales || defaultVisibility,
-        conversations_visibility:
-          visibility?.conversations || defaultVisibility,
-      })
+      .upsert(
+        {
+          company_id: profile.company_id,
+          user_id: newUserId,
+          name,
+          email,
+          phone: phone || null,
+          is_active: true,
+          leads_visibility: visibility?.leads || defaultVisibility,
+          quotes_visibility: visibility?.quotes || defaultVisibility,
+          appointments_visibility: visibility?.appointments || defaultVisibility,
+          sales_visibility: visibility?.sales || defaultVisibility,
+          conversations_visibility:
+            visibility?.conversations || defaultVisibility,
+        },
+        { onConflict: "company_id, user_id" }
+      )
       .select()
       .single();
 
