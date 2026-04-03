@@ -514,6 +514,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Bulk SMS ────────────────────────────────────────────────────────────
   document.getElementById("bulkSmsStageFilter")?.addEventListener("change", updateBulkSmsLeadCount);
   document.getElementById("bulkSmsMessage")?.addEventListener("input", updateBulkSmsPreview);
+  document.getElementById("bulkSmsPreviewLead")?.addEventListener("change", updateBulkSmsPreview);
   document.getElementById("bulkSmsSendBtn")?.addEventListener("click", handleBulkSmsSend);
 
   // ── Notifications ───────────────────────────────────────────────────────
@@ -2998,6 +2999,25 @@ async function updateBulkSmsLeadCount() {
     if (countEl) countEl.textContent = bulkSmsLeads.length;
     if (noPhoneEl) noPhoneEl.textContent = noPhone > 0 ? `(${noPhone} skipped — no phone number)` : "";
     if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0 || !document.getElementById("bulkSmsMessage")?.value?.trim();
+
+    // Populate preview lead selector
+    const previewSelect = document.getElementById("bulkSmsPreviewLead");
+    if (previewSelect) {
+      const prevVal = previewSelect.value;
+      previewSelect.innerHTML = '<option value="">Sample Lead (John Smith)</option>';
+      bulkSmsLeads.forEach((l) => {
+        const displayName = l.name?.trim() || [l.first_name, l.last_name].filter(Boolean).join(" ") || l.phone;
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = displayName;
+        previewSelect.appendChild(opt);
+      });
+      // Restore previous selection if still in list
+      if (prevVal && bulkSmsLeads.some((l) => l.id === prevVal)) {
+        previewSelect.value = prevVal;
+      }
+    }
+    updateBulkSmsPreview();
   } catch (err) {
     toast("Failed to load leads for bulk SMS.", true);
   }
@@ -3013,8 +3033,11 @@ function updateBulkSmsPreview() {
     if (sendBtn) sendBtn.disabled = true;
     return;
   }
-  // Show preview using first lead or a sample name
-  const sampleLead = bulkSmsLeads.length > 0 ? bulkSmsLeads[0] : null;
+  // Show preview using selected lead, or fall back to first lead / sample name
+  const selectedId = document.getElementById("bulkSmsPreviewLead")?.value;
+  const sampleLead = selectedId
+    ? bulkSmsLeads.find((l) => l.id === selectedId) || null
+    : bulkSmsLeads.length > 0 ? bulkSmsLeads[0] : null;
   const sampleName = sampleLead ? getFirstName(sampleLead) : "John";
   const sampleLastName = sampleLead ? getLastName(sampleLead) : "Smith";
   const preview = replaceMergeTags(raw, sampleName, sampleLastName);
