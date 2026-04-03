@@ -254,6 +254,9 @@ Deno.serve(async (req) => {
     }
 
     // Send magic link email via Resend
+    let emailSent = false;
+    let emailError: string | null = null;
+
     const { data: linkData, error: magicLinkError } =
       await adminClient.auth.admin.generateLink({
         type: "magiclink",
@@ -265,12 +268,18 @@ Deno.serve(async (req) => {
 
     if (magicLinkError) {
       console.error("Magic link error:", magicLinkError);
-      // Don't fail — user is created, they can use "forgot password" flow
+      emailError = "Failed to generate invitation link";
     }
 
-    // Send branded invite email via Resend (falls back to Supabase default if Resend not configured)
+    // Send branded invite email via Resend
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (resendApiKey && linkData?.properties?.action_link) {
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY is not configured");
+      emailError = emailError || "Email service is not configured";
+    } else if (!linkData?.properties?.action_link) {
+      console.error("No action_link available for invite email");
+      emailError = emailError || "Failed to generate invitation link";
+    } else {
       try {
         // Look up company name for the email
         const { data: company } = await adminClient
@@ -299,12 +308,16 @@ Deno.serve(async (req) => {
           }),
         });
 
-        if (!resendRes.ok) {
+        if (resendRes.ok) {
+          emailSent = true;
+        } else {
           const errData = await resendRes.text();
           console.error("Resend invite email failed:", errData);
+          emailError = "Email service failed to deliver the invitation";
         }
       } catch (emailErr) {
         console.error("Resend invite email error:", emailErr);
+        emailError = "Email service encountered an error";
       }
     }
 
@@ -340,7 +353,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Track invite in sales_rep_invites table for dashboard visibility
+    // Track invite in sales_rep_invites table for dashboard visibility.
+    // Use upsert-like logic: revoke any existing pending invite for this
+    // email+company then insert a fresh one, so re-invites don't create
+    // duplicate rows.
+    await adminClient
+      .from("sales_rep_invites")
+      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("company_id", profile.company_id)
+      .eq("email", email)
+      .eq("status", "pending");
+
     await adminClient.from("sales_rep_invites").insert({
       company_id: profile.company_id,
       email,
@@ -351,7 +374,11 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        message: `Invite sent to ${email}`,
+        message: emailSent
+          ? `Invite sent to ${email}`
+          : `User added but invitation email could not be sent`,
+        email_sent: emailSent,
+        email_error: emailError,
         rep,
       }),
       {

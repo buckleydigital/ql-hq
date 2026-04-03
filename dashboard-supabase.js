@@ -2529,17 +2529,24 @@ function renderTeamMembersList(profiles, invites) {
       <div></div>
     </div>`).join("");
 
-  const inviteRows = invites.map((inv) => `
+  const inviteRows = invites.map((inv) => {
+    const escapedEmail = (inv.email || "").replace(/'/g, "\\'");
+    const escapedName = (inv.full_name || "").replace(/'/g, "\\'");
+    return `
     <div class="team-row">
       <div><strong style="font-size:13px">${inv.full_name || inv.email}</strong><span class="muted">${inv.email}</span></div>
       <div><span class="chip chip-pending">Pending</span></div>
       <div><span class="muted" style="font-size:11px">Invited ${fmtDate(inv.invited_at)}</span></div>
       <div>
+        <button class="iconbtn" onclick="resendInvite('${escapedEmail}', '${escapedName}')" type="button" title="Resend invite">
+          <span class="icon" data-icon="mail"></span>
+        </button>
         <button class="iconbtn btn-danger" onclick="revokeInvite('${inv.id}')" type="button" title="Revoke invite">
           <span class="icon" data-icon="trash"></span>
         </button>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 
   const hasAny = profiles.length || invites.length;
   el.innerHTML = hasAny
@@ -2560,15 +2567,33 @@ async function handleTeamInvite(e) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   try {
-    await edgeFn("invite-rep", { email, name: fullName, phone });
+    const result = await edgeFn("invite-rep", { email, name: fullName, phone });
 
-    toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
+    if (result.email_sent) {
+      toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
+    } else {
+      toast(`User added but the invitation email could not be sent. Try resending from the list below.`, true);
+    }
     document.getElementById("teamInviteForm")?.reset();
     loadTeamMembers();
   } catch (err) {
     toast(err.message, true);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "Send Invite"; }
+  }
+}
+
+async function resendInvite(email, fullName) {
+  try {
+    const result = await edgeFn("invite-rep", { email, name: fullName || email });
+    if (result.email_sent) {
+      toast(`Invite resent to ${email}.`);
+    } else {
+      toast(result.email_error || "Failed to send invitation email.", true);
+    }
+    loadTeamMembers();
+  } catch (err) {
+    toast(err.message, true);
   }
 }
 
