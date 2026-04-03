@@ -382,8 +382,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const data = await res.json();
 
-      if (!res.ok && data.error) {
-        toast(data.error, true);
+      if (!res.ok) {
+        toast(data.error || "Failed to send reset link. Please try again.", true);
       } else {
         toast("Password reset link sent! Check your email.");
         // Switch back to login form after a short delay
