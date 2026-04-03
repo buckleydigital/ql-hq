@@ -351,9 +351,9 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="ah" style="padding:36px 0 0"><h1>Protected access for your team and lead data</h1><p>This workspace is only available to users with an account. Log in to manage company details, pipeline stages, and lead capture.</p></div>
       </div>
       <ul>
-        <li>Account-based access gate with session persistence.</li>
-        <li>Lead records stored in Supabase with editable custom fields.</li>
-        <li>Company profile and password management inside settings.</li>
+        <li>Manage leads, quotes, and appointments in one place.</li>
+        <li>AI-powered SMS and voice agents to qualify and follow up.</li>
+        <li>Pipeline tracking from first contact to closed deal.</li>
       </ul>
     </section>
     <section class="auth-main">
@@ -802,6 +802,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <div class="field">
                       <label for="quoteTaxRate">Tax Rate (%)</label>
                       <input id="quoteTaxRate" type="number" min="0" max="100" step="0.5" value="10" placeholder="e.g. 10">
+                    </div>
+                    <div class="field">
+                      <label for="quoteTaxMode">Tax Mode</label>
+                      <select id="quoteTaxMode">
+                        <option value="exclusive">Add GST (prices excl. GST)</option>
+                        <option value="inclusive">Include GST (prices incl. GST)</option>
+                      </select>
                     </div>
                     <div class="field">
                       <label for="quoteCurrency">Currency</label>
@@ -1293,8 +1300,9 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <button id="addQuoteLineItemBtn" class="btn" type="button" style="margin-top:8px"><span class="icon" data-icon="plus"></span> Add Line Item</button>
           <div class="form2" style="margin-top:12px">
             <div class="field"><label for="quoteLineTaxRate">Tax Rate (%)</label><input id="quoteLineTaxRate" type="number" min="0" max="100" step="0.5" value="10" placeholder="e.g. 10"></div>
-            <div class="field"><label>Subtotal</label><input id="quoteSubtotal" type="text" readonly style="background:var(--surface);font-weight:600"></div>
-            <div class="field"><label>Tax</label><input id="quoteTax" type="text" readonly style="background:var(--surface);font-weight:600"></div>
+            <div class="field"><label for="quoteLineTaxMode">Tax Mode</label><select id="quoteLineTaxMode"><option value="exclusive">Add GST</option><option value="inclusive">GST Inclusive</option></select></div>
+            <div class="field"><label id="quoteSubtotalLabel">Subtotal</label><input id="quoteSubtotal" type="text" readonly style="background:var(--surface);font-weight:600"></div>
+            <div class="field"><label id="quoteTaxLabel">GST</label><input id="quoteTax" type="text" readonly style="background:var(--surface);font-weight:600"></div>
             <div class="field"><label>Total ($)</label><input id="quoteTotal" type="text" readonly style="background:var(--surface);font-weight:700;font-size:15px"></div>
           </div>
         </div>

@@ -106,8 +106,8 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
       lineItemsHtml = `<div class="line-items"><h3>Scope of Work / Line Items</h3>${q.line_items.map(function(li) {
         return '<div class="line-item"><span>' + (li.description || li.name || "Item") + (li.quantity ? " × " + li.quantity : "") + '</span><span>' + fmt(li.total || li.price || 0) + '</span></div>';
       }).join("")}` +
-      (q.subtotal ? '<div class="line-item" style="border-top:2px solid var(--border);font-weight:500"><span>Subtotal</span><span>' + fmt(q.subtotal) + '</span></div>' : '') +
-      (q.tax ? '<div class="line-item" style="font-weight:500"><span>Tax</span><span>' + fmt(q.tax) + '</span></div>' : '') +
+      (q.subtotal ? '<div class="line-item" style="border-top:2px solid var(--border);font-weight:500"><span>Subtotal' + (meta.tax_mode === 'inclusive' ? ' (excl. GST)' : '') + '</span><span>' + fmt(q.subtotal) + '</span></div>' : '') +
+      (q.tax ? '<div class="line-item" style="font-weight:500"><span>GST' + (meta.tax_mode === 'inclusive' ? ' (incl.)' : '') + '</span><span>' + fmt(q.tax) + '</span></div>' : '') +
       `</div>`;
     }
 

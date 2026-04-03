@@ -122,6 +122,7 @@ Deno.serve(async (req) => {
     let tax = 0;
     let total = 0;
     let taxRate = 0;
+    let taxMode = "exclusive";
 
     // Load company's pricing config from sms_agent_config
     const { data: smsConfig } = await db
@@ -134,11 +135,12 @@ Deno.serve(async (req) => {
     const pricingConfig = smsConfig?.quote_pricing_config || {};
     const pricingItems = Array.isArray(pricingConfig.items) ? pricingConfig.items : [];
     taxRate = typeof pricingConfig.tax_rate === "number" ? pricingConfig.tax_rate : 0;
+    taxMode = pricingConfig.tax_mode || "exclusive";
 
     if (pricingItems.length > 0 && (quote_context || conversation_summary)) {
       // Use OpenAI to interpret conversation context and generate line items
       // based on the company's pricing configuration
-      const openAiKey = Deno.env.get("OPENAI_API_KEY");
+      const openAiKey = Deno.env.get("OPEN_AI_API_KEY");
       if (openAiKey) {
         try {
           const pricingDescription = pricingItems
@@ -196,8 +198,15 @@ Return ONLY a valid JSON array, no other text.`;
                   subtotal: Math.round((Number(item.quantity || 1) * Number(item.unit_price || 0)) * 100) / 100,
                 }));
                 subtotal = Math.round(lineItems.reduce((sum, li) => sum + (Number(li.subtotal) || 0), 0) * 100) / 100;
-                tax = Math.round(subtotal * taxRate) / 100;
-                total = Math.round((subtotal + tax) * 100) / 100;
+                if (taxMode === "inclusive") {
+                  // Prices already include GST — back-calculate
+                  total = subtotal;
+                  tax = Math.round((subtotal - subtotal / (1 + taxRate / 100)) * 100) / 100;
+                  subtotal = Math.round((total - tax) * 100) / 100;
+                } else {
+                  tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+                  total = Math.round((subtotal + tax) * 100) / 100;
+                }
               }
             }
           }
@@ -226,6 +235,7 @@ Return ONLY a valid JSON array, no other text.`;
           conversation_summary: conversation_summary?.slice(0, 2000), // cap length
           pricing_config_used: pricingItems.length > 0,
           tax_rate: taxRate,
+          tax_mode: taxMode,
           currency: pricingConfig.currency || "AUD",
         },
       })

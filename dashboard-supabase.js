@@ -555,6 +555,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("quoteForm")?.addEventListener("submit", handleQuoteSave);
   document.getElementById("addQuoteLineItemBtn")?.addEventListener("click", () => addQuoteLineItemRow());
   document.getElementById("quoteLineTaxRate")?.addEventListener("input", recalcQuoteTotals);
+  document.getElementById("quoteLineTaxMode")?.addEventListener("change", recalcQuoteTotals);
   document.getElementById("quoteDefaultsForm")?.addEventListener("submit", handleQuoteDefaultsSave);
 
   // ── Appointment Modal ────────────────────────────────────────────────────
@@ -1324,6 +1325,7 @@ async function prefillQuoteDefaults() {
     // Set tax rate from pricing config
     const pricingConfig = agentConfig?.quote_pricing_config || {};
     document.getElementById("quoteLineTaxRate").value = pricingConfig.tax_rate ?? DEFAULT_TAX_RATE;
+    document.getElementById("quoteLineTaxMode").value = pricingConfig.tax_mode || "exclusive";
     // Set default valid_until date
     const validityDays = s.validity_days || 30;
     const validDate = new Date();
@@ -1369,12 +1371,28 @@ function recalcQuoteTotals() {
     subtotal += lineTotal;
   });
   const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
-  const tax = subtotal * (taxRate / 100);
-  const total = subtotal + tax;
+  const taxMode = document.getElementById("quoteLineTaxMode")?.value || "exclusive";
+  let tax, total;
+  if (taxMode === "inclusive") {
+    // Prices already include GST — back-calculate the tax component
+    total = subtotal;
+    tax = subtotal - (subtotal / (1 + taxRate / 100));
+    subtotal = total - tax;
+  } else {
+    // Add GST on top of prices
+    tax = subtotal * (taxRate / 100);
+    total = subtotal + tax;
+  }
+  const taxLabel = taxMode === "inclusive" ? "GST (incl.)" : "GST";
+  const subtotalLabel = taxMode === "inclusive" ? "Subtotal (excl. GST)" : "Subtotal";
   const fmtMoney = (v) => v ? fmt(v) : "";
   document.getElementById("quoteSubtotal").value = fmtMoney(subtotal);
   document.getElementById("quoteTax").value = fmtMoney(tax);
   document.getElementById("quoteTotal").value = fmtMoney(total);
+  const taxLabelEl = document.getElementById("quoteTaxLabel");
+  const subtotalLabelEl = document.getElementById("quoteSubtotalLabel");
+  if (taxLabelEl) taxLabelEl.textContent = taxLabel;
+  if (subtotalLabelEl) subtotalLabelEl.textContent = subtotalLabel;
 }
 
 function collectQuoteLineItems() {
@@ -1395,10 +1413,19 @@ async function handleQuoteSave(e) {
   if (!leadId) { toast("Please select a lead.", true); return; }
 
   const lineItems = collectQuoteLineItems();
-  const subtotal = lineItems.reduce((sum, li) => sum + (li.total || 0), 0);
+  const rawSubtotal = lineItems.reduce((sum, li) => sum + (li.total || 0), 0);
   const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
-  const tax = subtotal * (taxRate / 100);
-  const total = subtotal + tax;
+  const taxMode = document.getElementById("quoteLineTaxMode")?.value || "exclusive";
+  let subtotal, tax, total;
+  if (taxMode === "inclusive") {
+    total = rawSubtotal;
+    tax = rawSubtotal - (rawSubtotal / (1 + taxRate / 100));
+    subtotal = total - tax;
+  } else {
+    subtotal = rawSubtotal;
+    tax = subtotal * (taxRate / 100);
+    total = subtotal + tax;
+  }
 
   const payload = {
     company_id:   currentCompanyId,
@@ -1420,6 +1447,8 @@ async function handleQuoteSave(e) {
       show_deposit:       document.getElementById("quoteShowDeposit")?.checked ?? true,
       show_service_terms: document.getElementById("quoteShowServiceTerms")?.checked ?? true,
       show_valid_until:   document.getElementById("quoteShowValidUntil")?.checked ?? true,
+      tax_rate:           taxRate,
+      tax_mode:           taxMode,
     },
   };
 
@@ -2387,6 +2416,7 @@ function collectPricingConfig() {
     items,
     formula: document.getElementById("quotePricingFormula")?.value?.trim() || "",
     tax_rate: parseFloat(document.getElementById("quoteTaxRate")?.value) || 0,
+    tax_mode: document.getElementById("quoteTaxMode")?.value || "exclusive",
     currency: document.getElementById("quoteCurrency")?.value?.trim() || "AUD",
   };
 }
@@ -2401,6 +2431,7 @@ function loadPricingConfigUI(config) {
   }
   setInputValue("quotePricingFormula", cfg.formula);
   setInputValue("quoteTaxRate", cfg.tax_rate ?? 10);
+  setInputValue("quoteTaxMode", cfg.tax_mode || "exclusive");
   setInputValue("quoteCurrency", cfg.currency || "AUD");
 }
 
