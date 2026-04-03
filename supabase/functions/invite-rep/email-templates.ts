@@ -1,7 +1,7 @@
 // =============================================================================
 // QuoteLeadsHQ — Email Templates
 // =============================================================================
-// Shared HTML email templates used across edge functions.
+// Co-located email templates for this edge function.
 // All templates use inline styles for maximum email client compatibility.
 // =============================================================================
 
