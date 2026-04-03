@@ -2799,7 +2799,7 @@ async function updateBulkSmsLeadCount() {
   try {
     let query = sb
       .from("leads")
-      .select("id, name, first_name, phone, pipeline_stage")
+      .select("id, name, first_name, last_name, phone, pipeline_stage")
       .eq("company_id", currentCompanyId);
 
     if (stage !== "all") {
@@ -2833,10 +2833,10 @@ function updateBulkSmsPreview() {
     return;
   }
   // Show preview using first lead or a sample name
-  const sampleName = bulkSmsLeads.length > 0
-    ? getFirstName(bulkSmsLeads[0])
-    : "John";
-  const preview = raw.replace(/\{\{first_name\}\}/gi, sampleName);
+  const sampleLead = bulkSmsLeads.length > 0 ? bulkSmsLeads[0] : null;
+  const sampleName = sampleLead ? getFirstName(sampleLead) : "John";
+  const sampleLastName = sampleLead ? getLastName(sampleLead) : "Smith";
+  const preview = replaceMergeTags(raw, sampleName, sampleLastName);
   if (previewEl) previewEl.textContent = preview;
   if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0;
 }
@@ -2845,6 +2845,25 @@ function getFirstName(lead) {
   if (lead.first_name?.trim()) return lead.first_name.trim();
   if (lead.name?.trim()) return lead.name.trim().split(/\s+/)[0];
   return "there";
+}
+
+function getLastName(lead) {
+  if (lead.last_name?.trim()) return lead.last_name.trim();
+  if (lead.name?.trim()) {
+    const parts = lead.name.trim().split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(" ") : "";
+  }
+  return "";
+}
+
+// Matches {{first_name}}, {{first.name}}, {{firstName}}, {{first name}} (case-insensitive)
+const FIRST_NAME_RE = /\{\{\s*first[_. ]?name\s*\}\}/gi;
+const LAST_NAME_RE  = /\{\{\s*last[_. ]?name\s*\}\}/gi;
+
+function replaceMergeTags(text, firstName, lastName) {
+  return text
+    .replace(FIRST_NAME_RE, firstName)
+    .replace(LAST_NAME_RE, lastName);
 }
 
 async function handleBulkSmsSend() {
@@ -2873,7 +2892,8 @@ async function handleBulkSmsSend() {
 
   for (const lead of bulkSmsLeads) {
     const firstName = getFirstName(lead);
-    const body = msgTemplate.replace(/\{\{first_name\}\}/gi, firstName);
+    const lastName = getLastName(lead);
+    const body = replaceMergeTags(msgTemplate, firstName, lastName);
 
     try {
       await edgeFn("send-sms", { lead_id: lead.id, body });
