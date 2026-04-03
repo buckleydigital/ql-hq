@@ -167,11 +167,9 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
 .hero-orb-2 { width: 150px; height: 150px; background: rgba(100,120,255,0.06); bottom: 25%; left: 12%; animation-delay: -3s; }
 @keyframes orbFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
 .hero-logo {
-    width: 72px; height: 72px; border-radius: 18px; object-fit: contain;
+    width: 108px; height: 108px; object-fit: contain;
     margin-bottom: 28px; position: relative; z-index: 1;
-    box-shadow: 0 8px 30px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.3);
     animation: heroLogoIn .8s cubic-bezier(.16,1,.3,1) both;
-    border: 1px solid var(--border-mid);
 }
 @keyframes heroLogoIn { from{opacity:0;transform:scale(.7) translateY(16px)} to{opacity:1;transform:none} }
 .badge {
@@ -425,6 +423,36 @@ section, .section { padding: 96px 40px; }
 }
 .cta-section h2 { font-family: var(--serif); font-size: clamp(30px, 5vw, 58px); font-weight: 500; letter-spacing: -1.5px; margin-bottom: 18px; color: var(--ink); position: relative; z-index: 1; }
 .cta-section p { font-size: 17px; color: var(--ink-muted); margin-bottom: 34px; max-width: 450px; margin-inline: auto; line-height: 1.7; position: relative; z-index: 1; }
+.cta-form {
+    position: relative; z-index: 1; max-width: 480px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.cta-form input {
+    width: 100%; padding: 13px 16px; border-radius: 8px; font-size: 14px;
+    font-family: var(--sans); background: var(--bg-lift); color: var(--ink);
+    border: 1px solid var(--border-mid); outline: none; transition: border-color 0.2s;
+}
+.cta-form input::placeholder { color: var(--ink-faint); }
+.cta-form input:focus { border-color: var(--accent); }
+.cta-form .cta-form-full { grid-column: 1 / -1; }
+.cta-form button {
+    grid-column: 1 / -1; padding: 14px 28px; border-radius: 8px;
+    background: var(--accent); color: #fff; border: none; cursor: pointer;
+    font-size: 15px; font-weight: 500; font-family: var(--sans);
+    transition: opacity 0.2s, transform 0.2s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.cta-form button:hover { opacity: 0.88; transform: translateY(-1px); }
+.cta-form button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.cta-success {
+    position: relative; z-index: 1; max-width: 480px; margin: 0 auto;
+    background: var(--bg-card); border: 1px solid var(--border-mid);
+    border-radius: 12px; padding: 32px 28px; text-align: center;
+}
+.cta-success .cta-success-icon { font-size: 36px; margin-bottom: 12px; }
+.cta-success h3 { font-size: 20px; font-weight: 500; margin-bottom: 8px; color: var(--ink); }
+.cta-success p { font-size: 15px; color: var(--ink-muted); line-height: 1.6; }
+.cta-form-error { grid-column: 1 / -1; font-size: 13px; color: #ef4444; text-align: center; }
 .cta-note { font-size: 13px; color: var(--ink-faint); margin-top: 16px; position: relative; z-index: 1; }
 .cta-note span+span::before { content: ' · '; }
 .cta-bg-img { width: clamp(200px, 40vw, 400px); margin-bottom: 28px; position: relative; z-index: 1; display: block; margin-inline: auto; opacity: 1; pointer-events: none; }
@@ -456,7 +484,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     section,.section { padding: 64px 24px; }
     .site-header { padding: 0 24px; }
     .hero { padding: 120px 20px 56px; }
-    .hero-logo { width: 60px; height: 60px; border-radius: 15px; }
+    .hero-logo { width: 90px; height: 90px; }
     .stats-bar { flex-direction: column; padding: 0 24px; }
     .stat-item { border-right: none; border-bottom: 1px solid var(--border); }
     .stat-item:last-child { border-bottom: none; }
@@ -476,6 +504,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 @media(max-width:480px) {
     .hero h1 { letter-spacing: -1.5px; }
     .flow-stage { flex: 0 0 100%; }
+    .cta-form { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -775,8 +804,20 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="cta-grid-bg"></div>
     <img src="hq-footer-bg.png" alt="" class="cta-bg-img" onerror="this.style.display='none'"/>
     <h2>Stop leaving jobs<br/>on the table.</h2>
-    <p>Every unanswered lead is a job your competitor just picked up. QuoteLeadsHQ closes the loop - from first contact to signed quote - while you focus on the work.</p>
-    <div style="position:relative;z-index:1"><a href="/get-started" class="btn-primary" style="font-size:16px;padding:15px 36px">Get Access <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a></div>
+    <p>Every unanswered lead is a job your competitor just picked up. Get an obligation-free custom AI demo for your trade business.</p>
+    <form class="cta-form" id="ctaForm" autocomplete="on">
+        <input type="text" name="name" placeholder="Your name" required autocomplete="name"/>
+        <input type="email" name="email" placeholder="Email address" required autocomplete="email"/>
+        <input type="tel" name="phone" placeholder="Phone number" autocomplete="tel"/>
+        <input type="text" name="company" placeholder="Company name" autocomplete="organization"/>
+        <button type="submit">Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+        <div class="cta-form-error" id="ctaFormError" style="display:none"></div>
+    </form>
+    <div class="cta-success" id="ctaSuccess" style="display:none">
+        <div class="cta-success-icon">✅</div>
+        <h3>You're on the list!</h3>
+        <p>We'll be in touch shortly with an obligation-free custom AI demo tailored to your business.</p>
+    </div>
     <div class="cta-note">
         <span>No lock-in contracts</span>
         <span>Australian owned and operated</span>
@@ -856,6 +897,47 @@ var statObs = new IntersectionObserver(function(entries){
     });
 }, {threshold: 0.6});
 document.querySelectorAll('.stat-item').forEach(function(el){ statObs.observe(el); });
+// Get Started form submission
+(function(){
+    var form = document.getElementById('ctaForm');
+    var success = document.getElementById('ctaSuccess');
+    var errEl = document.getElementById('ctaFormError');
+    var SUPABASE_URL = 'https://wjadekgptkstfdootuol.supabase.co';
+    var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYWRla2dwdGtzdGZkb290dW9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTc3NzQsImV4cCI6MjA5MDU3Mzc3NH0.g45wqe_F9KHh3TVzkq8LimxxT4UiuTZpJZcWkzzD7IM';
+    if(!form) return;
+    form.addEventListener('submit', function(e){
+        e.preventDefault();
+        errEl.style.display = 'none';
+        var btn = form.querySelector('button');
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        var data = {
+            name: form.name.value.trim(),
+            email: form.email.value.trim(),
+            phone: form.phone.value.trim() || null,
+            company: form.company.value.trim() || null
+        };
+        fetch(SUPABASE_URL + '/rest/v1/demo_requests', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON,
+                'Authorization': 'Bearer ' + SUPABASE_ANON,
+                'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify(data)
+        }).then(function(res){
+            if(!res.ok) throw new Error('Request failed');
+            form.style.display = 'none';
+            success.style.display = 'block';
+        }).catch(function(){
+            errEl.textContent = 'Something went wrong. Please try again.';
+            errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+        });
+    });
+})();
 </script>
 </body>
 </html>
