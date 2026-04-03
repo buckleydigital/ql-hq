@@ -86,6 +86,8 @@ const STAGE_FROM_LABEL = Object.fromEntries(
   Object.entries(STAGE_LABELS).map(([k, v]) => [v, k])
 );
 
+const DEFAULT_TAX_RATE = 10;
+
 function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
 function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
@@ -1291,14 +1293,14 @@ async function prefillQuoteDefaults() {
     document.getElementById("quoteShowValidUntil").checked = s.show_valid_until !== false;
     // Set tax rate from pricing config
     const pricingConfig = agentConfig?.quote_pricing_config || {};
-    document.getElementById("quoteLineTaxRate").value = pricingConfig.tax_rate ?? 10;
+    document.getElementById("quoteLineTaxRate").value = pricingConfig.tax_rate ?? DEFAULT_TAX_RATE;
     // Set default valid_until date
     const validityDays = s.validity_days || 30;
     const validDate = new Date();
     validDate.setDate(validDate.getDate() + validityDays);
     document.getElementById("quoteValidUntil").value = validDate.toISOString().split("T")[0];
   } catch (err) {
-    // Silently fail - defaults will just be empty
+    console.error("Failed to load quote defaults:", err);
   }
 }
 
@@ -1336,10 +1338,10 @@ function recalcQuoteTotals() {
     row.querySelector(".qli-total").value = lineTotal ? lineTotal.toFixed(2) : "";
     subtotal += lineTotal;
   });
-  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || 10;
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
-  const fmtMoney = (v) => v ? "$" + v.toFixed(2) : "";
+  const fmtMoney = (v) => v ? fmt(v) : "";
   document.getElementById("quoteSubtotal").value = fmtMoney(subtotal);
   document.getElementById("quoteTax").value = fmtMoney(tax);
   document.getElementById("quoteTotal").value = fmtMoney(total);
@@ -1364,7 +1366,7 @@ async function handleQuoteSave(e) {
 
   const lineItems = collectQuoteLineItems();
   const subtotal = lineItems.reduce((sum, li) => sum + (li.total || 0), 0);
-  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || 10;
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || DEFAULT_TAX_RATE;
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
 
