@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
     // error containing "already been registered" — we then fall back to a
     // targeted listUsers lookup.
     let newUserId: string;
+    let isNewUser = false;
 
     const { data: newUser, error: createError } =
       await adminClient.auth.admin.createUser({
@@ -203,12 +204,13 @@ Deno.serve(async (req) => {
           company_id: profile.company_id,
           user_type: "external",
         },
-        email_confirm: false, // magic link will confirm
+        email_confirm: false, // invite link will confirm
       });
 
     if (newUser?.user) {
       // Brand-new user
       newUserId = newUser.user.id;
+      isNewUser = true;
     } else if (
       createError &&
       /already|exists|duplicate|unique/i.test(createError.message || "")
@@ -253,31 +255,55 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send magic link email via Resend
+    // Generate an invite link to send via Resend.
+    // For NEW (unconfirmed) users use type "invite" — magiclink fails for
+    // unconfirmed users and returns no action_link, which silently prevents
+    // the Resend API from ever being called.
+    // For EXISTING users use "magiclink"; fall back to "recovery" if that fails.
     let emailSent = false;
     let emailError: string | null = null;
+    let actionLink: string | null = null;
 
-    const { data: linkData, error: magicLinkError } =
+    const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:3000";
+    const linkType = isNewUser ? "invite" : "magiclink";
+
+    const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
-        type: "magiclink",
+        type: linkType,
         email,
         options: {
-          redirectTo: `${Deno.env.get("SITE_URL") ?? "http://localhost:3000"}/dashboard`,
+          redirectTo: `${siteUrl}/dashboard`,
         },
       });
 
-    if (magicLinkError) {
-      console.error("Magic link error:", magicLinkError);
-      emailError = "Failed to generate invitation link";
+    if (linkData?.properties?.action_link) {
+      actionLink = linkData.properties.action_link;
+    } else {
+      console.warn(`generateLink(${linkType}) failed:`, linkError?.message || "no action_link");
+      // Fallback: try "recovery" type — works for both confirmed & unconfirmed
+      const { data: fallbackData, error: fallbackError } =
+        await adminClient.auth.admin.generateLink({
+          type: "recovery",
+          email,
+          options: {
+            redirectTo: `${siteUrl}/dashboard`,
+          },
+        });
+      if (fallbackData?.properties?.action_link) {
+        actionLink = fallbackData.properties.action_link;
+      } else {
+        console.error("Recovery link fallback also failed:", fallbackError?.message || "no action_link");
+        emailError = "Failed to generate invitation link";
+      }
     }
 
     // Send branded invite email via Resend
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
-      console.error("RESEND_API_KEY is not configured");
+      console.error("RESEND_API_KEY is not configured — invite email will not be sent");
       emailError = emailError || "Unable to send invitation email — please contact support";
-    } else if (!linkData?.properties?.action_link) {
-      console.error("No action_link available for invite email");
+    } else if (!actionLink) {
+      console.error("No invite link available — Resend API will not be called");
       emailError = emailError || "Failed to generate invitation link";
     } else {
       try {
@@ -291,7 +317,7 @@ Deno.serve(async (req) => {
         const emailContent = inviteRepEmail(
           name,
           company?.name || "a team",
-          linkData.properties.action_link,
+          actionLink,
         );
 
         const resendRes = await fetch("https://api.resend.com/emails", {
@@ -312,7 +338,7 @@ Deno.serve(async (req) => {
           emailSent = true;
         } else {
           const errData = await resendRes.text();
-          console.error("Resend invite email failed:", errData);
+          console.error("Resend API error:", resendRes.status, errData);
           emailError = "Email service failed to deliver the invitation";
         }
       } catch (emailErr) {
