@@ -1158,7 +1158,7 @@ function renderRecentLeads(leads) {
   }
   el.innerHTML = `<div class="list">${leads.map((l) => `
     <div class="item" style="grid-template-columns:1.6fr 1fr 1fr">
-      <div><h3>${esc(l.name) || "—"}</h3><p>${esc(l.email) || "—"}</p></div>
+      <div><h3>${esc(l.name || "—")}</h3><p>${esc(l.email || "—")}</p></div>
       <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
       <div><p style="font-size:11px;color:var(--muted)">${fmtDate(l.created_at)}</p></div>
     </div>`).join("")}</div>`;
@@ -1927,7 +1927,7 @@ async function loadQuotes() {
       const itemCount = Array.isArray(q.line_items) ? q.line_items.length : 0;
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
-        <div><strong style="font-size:13px">Quote #${q.quote_number || q.id.slice(0,8)}</strong><span class="muted">${esc(lead.name || lead.email || lead.phone) || "—"}${itemCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}</span></div>
+        <div><strong style="font-size:13px">Quote #${esc(q.quote_number || q.id.slice(0,8))}</strong><span class="muted">${esc(lead.name || lead.email || lead.phone || "—")}${itemCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}</span></div>
         <div><span class="chip">${cap(q.status || "draft")}</span></div>
         <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}${q.valid_until ? ` · Valid: ${fmtDate(q.valid_until)}` : ""}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -2180,19 +2180,19 @@ async function loadAppointments() {
     el.innerHTML = `<div class="table-lite">${appointments.map((a) => `
       <div class="row" style="cursor:pointer" onclick="openEditAppointment('${a.id}')">
         <div>
-          <strong style="font-size:13px">${esc(a.title) || "Appointment"}</strong>
-          <span class="muted">${esc(a.leads?.name) || "Unknown lead"}</span>
+          <strong style="font-size:13px">${esc(a.title || "Appointment")}</strong>
+          <span class="muted">${esc(a.leads?.name || "Unknown lead")}</span>
         </div>
         <div>
           <span class="chip">${cap(a.status || "scheduled")}</span>
-          ${a.appointment_type ? `<span class="chip">${esc(cap(a.appointment_type))}</span>` : ""}
+          ${a.appointment_type ? `<span class="chip">${cap(esc(a.appointment_type))}</span>` : ""}
           ${a.booked_by === "ai" ? `<span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ""}
         </div>
         <div>
           <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
           <span class="muted">${fmtTime(a.start_time)}${a.end_time ? ` – ${fmtTime(a.end_time)}` : ""}</span>
         </div>
-        <div><span class="muted">${esc(a.location) || "—"}</span></div>
+        <div><span class="muted">${esc(a.location || "—")}</span></div>
       </div>`).join("")}</div>`;
   } catch (err) {
     toast("Failed to load appointments.", true);
@@ -2642,7 +2642,7 @@ async function loadTwilioNumbers() {
     el.innerHTML = `<div class="table-lite">${data.map((n) => `
       <div class="row">
         <div><strong style="font-size:13px">${esc(n.phone_number)}</strong></div>
-        <div><span class="muted">${esc(n.friendly_name) || "—"}</span></div>
+        <div><span class="muted">${esc(n.friendly_name || "—")}</span></div>
         <button class="iconbtn btn-danger" onclick="deleteTwilioNumber('${n.id}')" type="button">
           <span class="icon" data-icon="trash"></span>
         </button>
