@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>QuoteLeadsHQ</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -364,6 +365,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <form id="loginForm" class="auth-form">
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Sign In</button>
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
       </form>
@@ -373,11 +375,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="field"><label for="signupEmail">Email</label><input id="signupEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="signupPassword">Password</label><input id="signupPassword" name="password" type="password" required autocomplete="new-password" minlength="6"></div>
         <div class="field"><label for="signupActivationKey">Activation Key</label><input id="signupActivationKey" name="activation_key" type="password" required autocomplete="off"><p class="field-hint">Enter the activation key provided to you.</p></div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Create Account</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
         <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
         <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email"></div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Send Reset Link</button>
         <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>

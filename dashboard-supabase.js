@@ -299,6 +299,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const emailInput = document.getElementById("loginEmail");
     const passwordInput = document.getElementById("loginPassword");
     
+    // Get Turnstile token
+    const turnstileInput = loginForm.querySelector('[name="cf-turnstile-response"]');
+    const cfToken = turnstileInput ? turnstileInput.value : "";
+    if (!cfToken) {
+      toast("Please complete the CAPTCHA verification.", true);
+      return;
+    }
+
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.dataset.originalText = submitBtn.textContent;
@@ -308,6 +316,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     passwordInput && (passwordInput.disabled = true);
     
     try {
+      // Verify Turnstile token server-side before authenticating
+      const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/verify-turnstile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
+        body: JSON.stringify({ cf_turnstile_response: cfToken }),
+      });
+      if (!verifyRes.ok) {
+        const verifyData = await verifyRes.json().catch(() => ({}));
+        toast(verifyData.error || "CAPTCHA verification failed.", true);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";
+        }
+        emailInput && (emailInput.disabled = false);
+        passwordInput && (passwordInput.disabled = false);
+        if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
+        return;
+      }
+
       const { data, error } = await sb.auth.signInWithPassword({
         email:    emailInput?.value || "",
         password: passwordInput?.value || "",
@@ -321,6 +348,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         emailInput && (emailInput.disabled = false);
         passwordInput && (passwordInput.disabled = false);
+        if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
       }
     } catch (err) {
       toast("Login failed. Please try again.", true);
@@ -330,6 +358,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       emailInput && (emailInput.disabled = false);
       passwordInput && (passwordInput.disabled = false);
+      if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
     }
   });
 
@@ -389,6 +418,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    // Get Turnstile token
+    const turnstileInput = forgotPasswordForm.querySelector('[name="cf-turnstile-response"]');
+    const cfToken = turnstileInput ? turnstileInput.value : "";
+    if (!cfToken) {
+      toast("Please complete the CAPTCHA verification.", true);
+      return;
+    }
+
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = "Sending...";
@@ -402,13 +439,14 @@ document.addEventListener("DOMContentLoaded", async () => {
           "Content-Type": "application/json",
           "apikey": SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         toast(data.error || "Failed to send reset link. Please try again.", true);
+        if (window.turnstile) turnstile.reset(forgotPasswordForm.querySelector('.cf-turnstile'));
       } else {
         toast("Password reset link sent! Check your email.");
         // Switch back to login form after a short delay
@@ -419,6 +457,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (err) {
       toast("Failed to send reset link. Please try again.", true);
+      if (window.turnstile) turnstile.reset(forgotPasswordForm.querySelector('.cf-turnstile'));
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -443,6 +482,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const email = emailInput?.value?.trim() || "";
     const password = passwordInput?.value || "";
     const activation_key = keyInput?.value?.trim() || "";
+
+    // Get Turnstile token
+    const turnstileInput = signupForm.querySelector('[name="cf-turnstile-response"]');
+    const cfToken = turnstileInput ? turnstileInput.value : "";
+    if (!cfToken) {
+      toast("Please complete the CAPTCHA verification.", true);
+      return;
+    }
 
     if (!full_name || !company_name || !email || !password || !activation_key) {
       toast("Please fill in all fields.", true);
@@ -474,6 +521,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           full_name,
           company_name,
           activation_key,
+          cf_turnstile_response: cfToken,
         }),
       });
 
@@ -486,6 +534,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           submitBtn.textContent = "Create Account";
         }
         inputs.forEach((i) => (i.disabled = false));
+        if (window.turnstile) turnstile.reset(signupForm.querySelector('.cf-turnstile'));
         return;
       }
 
