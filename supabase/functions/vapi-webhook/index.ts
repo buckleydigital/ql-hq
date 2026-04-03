@@ -10,7 +10,11 @@ const corsHeaders = {
  * VAPI Webhook — Edge Function
  *
  * Receives server events from VAPI and updates voice_calls records accordingly.
- * No JWT — this is a public webhook endpoint authenticated by VAPI's server secret.
+ *
+ * Security: No JWT verification — VAPI sends events to the serverUrl we provide
+ * at call creation time. The URL is not publicly discoverable and all updates
+ * are scoped to existing vapi_call_id records. VAPI also supports server
+ * authentication via credentialId if additional security is needed later.
  *
  * Handled event types:
  *   - status-update:        Updates call status (ringing → in_progress, etc.)
