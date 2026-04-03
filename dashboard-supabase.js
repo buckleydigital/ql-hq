@@ -525,6 +525,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cancelQuoteModal")?.addEventListener("click", () => closeModal("quoteModal"));
   document.getElementById("quoteForm")?.addEventListener("submit", handleQuoteSave);
   document.getElementById("addQuoteLineItemBtn")?.addEventListener("click", () => addQuoteLineItemRow());
+  document.getElementById("quoteLineTaxRate")?.addEventListener("input", recalcQuoteTotals);
   document.getElementById("quoteDefaultsForm")?.addEventListener("submit", handleQuoteDefaultsSave);
 
   // ── Appointment Modal ────────────────────────────────────────────────────
@@ -1275,7 +1276,10 @@ async function openQuoteModalHandler() {
 async function prefillQuoteDefaults() {
   if (!currentCompanyId) return;
   try {
-    const { data: company } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
+    const [{ data: company }, { data: agentConfig }] = await Promise.all([
+      sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle(),
+      sb.from("sms_agent_config").select("quote_pricing_config").eq("company_id", currentCompanyId).maybeSingle(),
+    ]);
     const s = company?.settings?.quote_defaults || {};
     document.getElementById("quoteAbn").value = s.abn || "";
     document.getElementById("quoteDepositMethod").value = s.deposit_method || "";
@@ -1285,6 +1289,9 @@ async function prefillQuoteDefaults() {
     document.getElementById("quoteShowDeposit").checked = s.show_deposit !== false;
     document.getElementById("quoteShowServiceTerms").checked = s.show_service_terms !== false;
     document.getElementById("quoteShowValidUntil").checked = s.show_valid_until !== false;
+    // Set tax rate from pricing config
+    const pricingConfig = agentConfig?.quote_pricing_config || {};
+    document.getElementById("quoteLineTaxRate").value = pricingConfig.tax_rate ?? 10;
     // Set default valid_until date
     const validityDays = s.validity_days || 30;
     const validDate = new Date();
@@ -1305,20 +1312,19 @@ function addQuoteLineItemRow(item = {}) {
     <input type="number" class="qli-qty" min="0" step="1" placeholder="Qty" value="${item.quantity || 1}">
     <input type="number" class="qli-rate" min="0" step="0.01" placeholder="Rate" value="${item.rate || ""}">
     <input type="text" class="qli-total" readonly style="background:var(--surface);font-weight:500" value="${item.total || ""}">
-    <button type="button" class="iconbtn btn-danger" onclick="removeQuoteLineItem(this)" title="Remove">
+    <button type="button" class="iconbtn btn-danger qli-remove" title="Remove">
       <span class="icon" data-icon="trash"></span>
     </button>`;
   container.appendChild(row);
-  // Attach recalc listeners
+  // Attach event listeners
   row.querySelector(".qli-qty").addEventListener("input", recalcQuoteTotals);
   row.querySelector(".qli-rate").addEventListener("input", recalcQuoteTotals);
+  row.querySelector(".qli-remove").addEventListener("click", function() {
+    row.remove();
+    recalcQuoteTotals();
+  });
   recalcQuoteTotals();
   renderIcons();
-}
-
-function removeQuoteLineItem(btn) {
-  btn.closest(".quote-line-item-row").remove();
-  recalcQuoteTotals();
 }
 
 function recalcQuoteTotals() {
@@ -1330,9 +1336,7 @@ function recalcQuoteTotals() {
     row.querySelector(".qli-total").value = lineTotal ? lineTotal.toFixed(2) : "";
     subtotal += lineTotal;
   });
-  // Get tax rate from AI settings pricing config (fallback 10%)
-  const taxRateEl = document.getElementById("quoteTaxRate");
-  const taxRate = taxRateEl ? (parseFloat(taxRateEl.value) || 10) : 10;
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || 10;
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
   const fmtMoney = (v) => v ? "$" + v.toFixed(2) : "";
@@ -1360,8 +1364,7 @@ async function handleQuoteSave(e) {
 
   const lineItems = collectQuoteLineItems();
   const subtotal = lineItems.reduce((sum, li) => sum + (li.total || 0), 0);
-  const taxRateEl = document.getElementById("quoteTaxRate");
-  const taxRate = taxRateEl ? (parseFloat(taxRateEl.value) || 10) : 10;
+  const taxRate = parseFloat(document.getElementById("quoteLineTaxRate")?.value) || 10;
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
 

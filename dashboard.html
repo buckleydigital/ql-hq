@@ -1275,6 +1275,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div id="quoteLineItems" class="stack" style="gap:8px"></div>
           <button id="addQuoteLineItemBtn" class="btn" type="button" style="margin-top:8px"><span class="icon" data-icon="plus"></span> Add Line Item</button>
           <div class="form2" style="margin-top:12px">
+            <div class="field"><label for="quoteLineTaxRate">Tax Rate (%)</label><input id="quoteLineTaxRate" type="number" min="0" max="100" step="0.5" value="10" placeholder="e.g. 10"></div>
             <div class="field"><label>Subtotal</label><input id="quoteSubtotal" type="text" readonly style="background:var(--surface);font-weight:600"></div>
             <div class="field"><label>Tax</label><input id="quoteTax" type="text" readonly style="background:var(--surface);font-weight:600"></div>
             <div class="field"><label>Total ($)</label><input id="quoteTotal" type="text" readonly style="background:var(--surface);font-weight:700;font-size:15px"></div>
