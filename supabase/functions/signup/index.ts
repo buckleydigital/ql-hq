@@ -68,9 +68,9 @@ Deno.serve(async (req) => {
     const expectedBytes = new TextEncoder().encode(expectedKey.trim());
 
     let isMatch = keyBytes.length === expectedBytes.length;
-    const len = Math.max(keyBytes.length, expectedBytes.length);
+    const len = expectedBytes.length;
     for (let i = 0; i < len; i++) {
-      if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) {
+      if ((keyBytes[i] ?? 0) !== expectedBytes[i]) {
         isMatch = false;
       }
     }
