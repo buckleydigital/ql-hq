@@ -585,8 +585,10 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
     } else {
       toast("Password updated successfully!");
       closeModal("passwordResetModal");
-      document.getElementById("newPassword").value = "";
-      document.getElementById("confirmNewPassword").value = "";
+      const pwEl = document.getElementById("newPassword");
+      const cfEl = document.getElementById("confirmNewPassword");
+      if (pwEl) pwEl.value = "";
+      if (cfEl) cfEl.value = "";
     }
   } catch (err) {
     toast("Failed to update password. Please try again.", true);

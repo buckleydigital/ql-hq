@@ -708,7 +708,8 @@ Deno.serve(async (req) => {
       }).catch((err: unknown) => console.error("Failed to create notification:", err));
 
       // Send email notification via Resend (non-blocking)
-      const companyName = (smsConfig.companies as Record<string, unknown>)?.name as string || "Your company";
+      const companyData = smsConfig.companies || {};
+      const companyName = String(companyData.name || "Your company");
       const scheduledTimeStr = startTime.toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
       const emailContent = appointmentType === "callback"
         ? callbackBookedEmail(leadName, scheduledTimeStr, companyName)
