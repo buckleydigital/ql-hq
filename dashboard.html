@@ -357,12 +357,23 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </ul>
     </section>
     <section class="auth-main">
+      <div id="authTabs" class="switch">
+        <button type="button" class="active" data-tab="login">Sign In</button>
+        <button type="button" data-tab="signup">Sign Up</button>
+      </div>
       <form id="loginForm" class="auth-form">
-        <div class="ah" style="padding:0 0 16px"><h1>Sign in</h1></div>
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
         <button class="btn2" type="submit">Sign In</button>
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
+      </form>
+      <form id="signupForm" class="auth-form hidden">
+        <div class="field"><label for="signupName">Full Name</label><input id="signupName" name="full_name" type="text" required autocomplete="name"></div>
+        <div class="field"><label for="signupCompany">Company Name</label><input id="signupCompany" name="company_name" type="text" required></div>
+        <div class="field"><label for="signupEmail">Email</label><input id="signupEmail" name="email" type="email" required autocomplete="email"></div>
+        <div class="field"><label for="signupPassword">Password</label><input id="signupPassword" name="password" type="password" required autocomplete="new-password" minlength="6"></div>
+        <div class="field"><label for="signupActivationKey">Activation Key</label><input id="signupActivationKey" name="activation_key" type="password" required autocomplete="off"><p class="field-hint">Enter the activation key provided to you.</p></div>
+        <button class="btn2" type="submit">Create Account</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
         <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
