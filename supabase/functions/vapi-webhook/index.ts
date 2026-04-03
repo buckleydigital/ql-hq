@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
     if (message.type === "end-of-call-report") {
       const updatePayload: Record<string, unknown> = {
         status: "completed",
-        ended_at: new Date().toISOString(),
+        ended_at: message.call?.endedAt || message.endedAt || new Date().toISOString(),
       };
 
       // Transcript — plain text string
@@ -119,9 +119,20 @@ Deno.serve(async (req) => {
         updatePayload.recording_url = message.recordingUrl;
       }
 
-      // Duration (from the call object)
+      // Duration — VAPI may send message.call.duration directly, or we
+      // compute it from startedAt / endedAt timestamps on the call object.
       if (message.call?.duration != null) {
         updatePayload.duration = Math.round(message.call.duration);
+      } else {
+        const s = message.call?.startedAt || message.startedAt;
+        const e = message.call?.endedAt || message.endedAt;
+        if (s && e) {
+          const started = new Date(s).getTime();
+          const ended = new Date(e).getTime();
+          if (!isNaN(started) && !isNaN(ended) && ended > started) {
+            updatePayload.duration = Math.round((ended - started) / 1000);
+          }
+        }
       }
 
       // Cost
