@@ -318,22 +318,23 @@ Deno.serve(async (req) => {
         phoneNumberId: vapiPhoneNumberId,
         customer: { number: phoneNumber },
         metadata: metadata || {},
-        serverUrl: webhookUrl,
       };
 
       if (resolvedAssistantId) {
         // ── Named assistant mode ──
         callPayload.assistantId = resolvedAssistantId;
 
+        const overrides: Record<string, unknown> = {
+          serverUrl: webhookUrl,
+        };
         const resolvedVoiceId = config?.voice_id;
         if (resolvedVoiceId) {
-          callPayload.assistantOverrides = {
-            voice: {
-              provider: "11labs",
-              voiceId: resolvedVoiceId,
-            },
+          overrides.voice = {
+            provider: "11labs",
+            voiceId: resolvedVoiceId,
           };
         }
+        callPayload.assistantOverrides = overrides;
       } else {
         // ── Transient assistant mode ──
         const systemPrompt = config?.system_prompt;
@@ -352,6 +353,7 @@ Deno.serve(async (req) => {
 
         const transientAssistant: Record<string, unknown> = {
           name: config?.name || "Voice Agent",
+          serverUrl: webhookUrl,
           model: {
             provider: "openai",
             model: config?.model || "gpt-4o",
