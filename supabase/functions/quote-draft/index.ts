@@ -17,7 +17,47 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { quoteDraftedEmail } from "./email-templates.ts";
+
+// ── Inline email template (avoids local-file import that breaks deployment) ──
+const _BRAND_COLOR = "#1f6fff";
+const _BRAND_NAME = "QuoteLeadsHQ";
+function _baseLayout(content: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f9;padding:40px 20px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08)">
+<tr><td style="background:${_BRAND_COLOR};padding:24px 32px">
+  <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600">${_BRAND_NAME}</h1>
+</td></tr>
+<tr><td style="padding:32px">
+  ${content}
+</td></tr>
+<tr><td style="padding:16px 32px;background:#f8f9fb;border-top:1px solid #e5e7eb">
+  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center">
+    &copy; ${new Date().getFullYear()} ${_BRAND_NAME}. All rights reserved.
+  </p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+function quoteDraftedEmail(leadName: string, quoteNumber: string, total: string, companyName: string): { subject: string; html: string } {
+  return {
+    subject: `Quote ${quoteNumber} drafted for ${leadName}`,
+    html: _baseLayout(`
+      <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Quote Drafted</h2>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151">Your AI assistant has drafted a quote for <strong>${leadName}</strong>.</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Quote:</strong> ${quoteNumber}</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Total:</strong> ${total}</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Company:</strong> ${companyName}</p>
+      <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to review the quote, make adjustments, and send it to the lead.</p>
+    `),
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {

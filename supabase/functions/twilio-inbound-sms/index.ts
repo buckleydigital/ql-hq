@@ -24,10 +24,58 @@
 // =============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  callbackBookedEmail,
-  onsiteBookedEmail,
-} from "./email-templates.ts";
+
+// ── Inline email templates (avoids local-file import that breaks deployment) ──
+const _BRAND_COLOR = "#1f6fff";
+const _BRAND_NAME = "QuoteLeadsHQ";
+function _baseLayout(content: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f9;padding:40px 20px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08)">
+<tr><td style="background:${_BRAND_COLOR};padding:24px 32px">
+  <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600">${_BRAND_NAME}</h1>
+</td></tr>
+<tr><td style="padding:32px">
+  ${content}
+</td></tr>
+<tr><td style="padding:16px 32px;background:#f8f9fb;border-top:1px solid #e5e7eb">
+  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center">
+    &copy; ${new Date().getFullYear()} ${_BRAND_NAME}. All rights reserved.
+  </p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+function callbackBookedEmail(leadName: string, scheduledTime: string, companyName: string): { subject: string; html: string } {
+  return {
+    subject: `Callback booked with ${leadName}`,
+    html: _baseLayout(`
+      <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Callback Booked</h2>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151">Your AI assistant has booked a callback with <strong>${leadName}</strong>.</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Scheduled for:</strong> ${scheduledTime}</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Company:</strong> ${companyName}</p>
+      <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to your dashboard to view details and prepare for the call.</p>
+    `),
+  };
+}
+function onsiteBookedEmail(leadName: string, scheduledTime: string, companyName: string): { subject: string; html: string } {
+  return {
+    subject: `On-site visit booked with ${leadName}`,
+    html: _baseLayout(`
+      <h2 style="margin:0 0 16px;font-size:18px;color:#111827">On-Site Visit Booked</h2>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151">Your AI assistant has booked an on-site visit with <strong>${leadName}</strong>.</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Scheduled for:</strong> ${scheduledTime}</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#374151"><strong>Company:</strong> ${companyName}</p>
+      <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to your dashboard to view details and prepare for the visit.</p>
+    `),
+  };
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
