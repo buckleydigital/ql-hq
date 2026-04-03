@@ -383,15 +383,13 @@ Deno.serve(async (req) => {
     // Use upsert-like logic: revoke any existing pending invite for this
     // email+company then insert a fresh one, so re-invites don't create
     // duplicate rows.
-    await adminClient
+    const { error: revokeErr } = await adminClient
       .from("sales_rep_invites")
       .update({ status: "revoked", revoked_at: new Date().toISOString() })
       .eq("company_id", profile.company_id)
       .eq("email", email)
-      .eq("status", "pending")
-      .then(({ error: revokeErr }) => {
-        if (revokeErr) console.error("Failed to revoke old pending invites:", revokeErr);
-      });
+      .eq("status", "pending");
+    if (revokeErr) console.error("Failed to revoke old pending invites:", revokeErr);
 
     await adminClient.from("sales_rep_invites").insert({
       company_id: profile.company_id,

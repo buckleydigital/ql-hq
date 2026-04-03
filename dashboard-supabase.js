@@ -2565,7 +2565,7 @@ async function handleTeamInvite(e) {
     if (result.email_sent) {
       toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
     } else {
-      toast(`User added but the invitation email could not be sent${result.email_error ? ": " + result.email_error : ""}.`, true);
+      toast(`User added but the invitation email could not be sent${result.email_error ? ": " + result.email_error : ""}`, true);
     }
     document.getElementById("teamInviteForm")?.reset();
     loadTeamMembers();
