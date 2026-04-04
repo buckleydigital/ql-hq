@@ -621,6 +621,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
+  // ── Import Leads Modal ─────────────────────────────────────────────────────
+  document.getElementById("openImportLeadsModal")?.addEventListener("click", openImportLeadsModal);
+  document.getElementById("cancelImportModal")?.addEventListener("click", () => { resetImportModal(); closeModal("importLeadsModal"); });
+  document.getElementById("csvFileInput")?.addEventListener("change", handleCsvFileSelected);
+  document.getElementById("importNextBtn")?.addEventListener("click", handleImportNext);
+  document.getElementById("importBackBtn")?.addEventListener("click", handleImportBack);
+  document.getElementById("importConsentCheck")?.addEventListener("change", updateImportButtonState);
+
   // ── Custom Field Modal ────────────────────────────────────────────────────
   const doOpenCFModal = () => openModal("customFieldModal");
   ["openCustomFieldModalFromLeads","openCustomFieldModalSettings"].forEach((id) =>
@@ -1459,6 +1467,358 @@ function formatPhoneE164(raw) {
     phone = "+61" + phone;
   }
   return phone;
+}
+
+// ─── CSV Import ──────────────────────────────────────────────────────────────
+let csvParsedRows = [];
+let csvHeaders = [];
+let csvColumnMappings = {};
+let importStep = 1;
+
+const IMPORT_FIELD_OPTIONS = [
+  { value: "",          label: "— Skip —" },
+  { value: "name",      label: "Name (full)" },
+  { value: "first_name",label: "First Name" },
+  { value: "last_name", label: "Last Name" },
+  { value: "email",     label: "Email" },
+  { value: "phone",     label: "Phone" },
+  { value: "address",   label: "Address" },
+  { value: "postcode",  label: "Postcode" },
+  { value: "source",    label: "Source" },
+  { value: "value",     label: "Estimated Value" },
+  { value: "notes",     label: "Notes" },
+];
+
+function guessFieldMapping(header) {
+  const h = header.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (/^(name|fullname|customername|contactname|leadname)$/.test(h)) return "name";
+  if (/^(firstname|first)$/.test(h)) return "first_name";
+  if (/^(lastname|last|surname)$/.test(h)) return "last_name";
+  if (/^(email|emailaddress|e-mail)$/.test(h)) return "email";
+  if (/^(phone|phonenumber|mobile|cell|tel|telephone|contact)$/.test(h)) return "phone";
+  if (/^(address|streetaddress|street|location)$/.test(h)) return "address";
+  if (/^(postcode|postalcode|zip|zipcode)$/.test(h)) return "postcode";
+  if (/^(source|leadsource|channel|origin)$/.test(h)) return "source";
+  if (/^(value|estimatedvalue|dealvalue|amount|revenue)$/.test(h)) return "value";
+  if (/^(notes|note|comment|comments|description)$/.test(h)) return "notes";
+  return "";
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let current = "";
+  let inQuotes = false;
+  const lines = text.split("\n");
+  for (const line of lines) {
+    if (inQuotes) {
+      current += "\n" + line;
+    } else {
+      current = line;
+    }
+    const quoteCount = (current.match(/"/g) || []).length;
+    inQuotes = quoteCount % 2 !== 0;
+    if (!inQuotes) {
+      const row = [];
+      let field = "";
+      let insideQuote = false;
+      for (let i = 0; i < current.length; i++) {
+        const c = current[i];
+        if (c === '"') {
+          if (insideQuote && current[i + 1] === '"') { field += '"'; i++; }
+          else insideQuote = !insideQuote;
+        } else if (c === "," && !insideQuote) {
+          row.push(field.trim());
+          field = "";
+        } else {
+          field += c;
+        }
+      }
+      row.push(field.trim());
+      if (row.some((v) => v)) rows.push(row);
+      current = "";
+    }
+  }
+  return rows;
+}
+
+function openImportLeadsModal() {
+  resetImportModal();
+  loadCustomFields();
+  openModal("importLeadsModal");
+}
+
+function resetImportModal() {
+  csvParsedRows = [];
+  csvHeaders = [];
+  csvColumnMappings = {};
+  importStep = 1;
+  const fileInput = document.getElementById("csvFileInput");
+  if (fileInput) fileInput.value = "";
+  showImportStep(1);
+  const nextBtn = document.getElementById("importNextBtn");
+  if (nextBtn) { nextBtn.disabled = true; nextBtn.textContent = "Continue"; }
+  document.getElementById("importBackBtn")?.classList.add("hidden");
+  const consent = document.getElementById("importConsentCheck");
+  if (consent) consent.checked = false;
+  const helper = document.getElementById("importHelper");
+  if (helper) helper.textContent = "Select a CSV file to get started.";
+}
+
+function showImportStep(step) {
+  importStep = step;
+  document.getElementById("importStep1")?.classList.toggle("hidden", step !== 1);
+  document.getElementById("importStep2")?.classList.toggle("hidden", step !== 2);
+  document.getElementById("importStep3")?.classList.toggle("hidden", step !== 3);
+}
+
+function handleCsvFileSelected(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const nextBtn = document.getElementById("importNextBtn");
+  const helper = document.getElementById("importHelper");
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    toast("Please select a CSV file.", true);
+    e.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const text = ev.target?.result;
+    if (!text) return;
+    const allRows = parseCSV(text);
+    if (allRows.length < 2) {
+      toast("CSV must have a header row and at least one data row.", true);
+      e.target.value = "";
+      return;
+    }
+    csvHeaders = allRows[0];
+    csvParsedRows = allRows.slice(1);
+    if (nextBtn) nextBtn.disabled = false;
+    if (helper) helper.textContent = `${csvParsedRows.length} row${csvParsedRows.length !== 1 ? "s" : ""} detected. Click Continue to map columns.`;
+  };
+  reader.readAsText(file);
+}
+
+function buildMappingTable() {
+  const tbody = document.getElementById("importMappingBody");
+  if (!tbody) return;
+
+  const cfOptions = (customFields || []).map((f) => ({
+    value: "cf_" + f.key,
+    label: f.label + " (custom)",
+  }));
+  const allOptions = [...IMPORT_FIELD_OPTIONS, ...cfOptions];
+
+  const usedValues = new Set();
+  const guesses = csvHeaders.map((h) => {
+    const g = guessFieldMapping(h);
+    if (g && !usedValues.has(g)) { usedValues.add(g); return g; }
+    const cfMatch = cfOptions.find((cf) => {
+      const k = cf.value.replace("cf_", "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const hNorm = h.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return k === hNorm && !usedValues.has(cf.value);
+    });
+    if (cfMatch) { usedValues.add(cfMatch.value); return cfMatch.value; }
+    return "";
+  });
+
+  tbody.innerHTML = csvHeaders.map((header, i) => {
+    const sample = csvParsedRows.slice(0, 3).map((r) => r[i] || "").filter(Boolean).join(", ");
+    const guess = guesses[i] || "";
+    csvColumnMappings[i] = guess;
+    const opts = allOptions.map((o) =>
+      `<option value="${o.value}"${o.value === guess ? " selected" : ""}>${o.label}</option>`
+    ).join("");
+    return `<tr>
+      <td><strong>${escapeHtml(header)}</strong></td>
+      <td><select class="import-col-map" data-col="${i}">${opts}</select></td>
+      <td class="muted">${escapeHtml(sample.substring(0, 80))}${sample.length > 80 ? "…" : ""}</td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll(".import-col-map").forEach((sel) =>
+    sel.addEventListener("change", (e) => {
+      csvColumnMappings[e.target.dataset.col] = e.target.value;
+      updateImportPreview();
+      updateImportButtonState();
+    })
+  );
+  updateImportPreview();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+function updateImportPreview() {
+  const previewDiv = document.getElementById("importPreview");
+  const head = document.getElementById("importPreviewHead");
+  const body = document.getElementById("importPreviewBody");
+  if (!previewDiv || !head || !body) return;
+
+  const mapped = Object.entries(csvColumnMappings).filter(([, v]) => v);
+  if (!mapped.length) { previewDiv.classList.add("hidden"); return; }
+  previewDiv.classList.remove("hidden");
+
+  const cfOptions = (customFields || []);
+  const fieldLabel = (val) => {
+    if (val === "first_name") return "First Name";
+    if (val === "last_name") return "Last Name";
+    const opt = IMPORT_FIELD_OPTIONS.find((o) => o.value === val);
+    if (opt) return opt.label;
+    const cf = cfOptions.find((f) => "cf_" + f.key === val);
+    return cf ? cf.label : val;
+  };
+
+  head.innerHTML = `<tr>${mapped.map(([, v]) => `<th>${escapeHtml(fieldLabel(v))}</th>`).join("")}</tr>`;
+  body.innerHTML = csvParsedRows.slice(0, 3).map((row) =>
+    `<tr>${mapped.map(([colIdx]) => `<td>${escapeHtml(row[colIdx] || "")}</td>`).join("")}</tr>`
+  ).join("");
+}
+
+function updateImportButtonState() {
+  const nextBtn = document.getElementById("importNextBtn");
+  if (!nextBtn) return;
+  if (importStep === 2) {
+    const hasMapping = Object.values(csvColumnMappings).some((v) => v);
+    const consentOk = document.getElementById("importConsentCheck")?.checked;
+    nextBtn.disabled = !(hasMapping && consentOk);
+    nextBtn.textContent = "Import " + csvParsedRows.length + " Lead" + (csvParsedRows.length !== 1 ? "s" : "");
+  }
+}
+
+function handleImportNext() {
+  if (importStep === 1) {
+    if (!csvHeaders.length) return;
+    showImportStep(2);
+    buildMappingTable();
+    updateImportButtonState();
+    document.getElementById("importBackBtn")?.classList.remove("hidden");
+    const helper = document.getElementById("importHelper");
+    if (helper) helper.textContent = "Map your columns, then confirm consent below.";
+  } else if (importStep === 2) {
+    runImport();
+  }
+}
+
+function handleImportBack() {
+  if (importStep === 2) {
+    showImportStep(1);
+    document.getElementById("importBackBtn")?.classList.add("hidden");
+    const nextBtn = document.getElementById("importNextBtn");
+    if (nextBtn) { nextBtn.disabled = false; nextBtn.textContent = "Continue"; }
+    const helper = document.getElementById("importHelper");
+    if (helper) helper.textContent = `${csvParsedRows.length} row${csvParsedRows.length !== 1 ? "s" : ""} detected. Click Continue to map columns.`;
+  }
+}
+
+async function runImport() {
+  const nextBtn = document.getElementById("importNextBtn");
+  const backBtn = document.getElementById("importBackBtn");
+  const cancelBtn = document.getElementById("cancelImportModal");
+  if (nextBtn) nextBtn.disabled = true;
+  backBtn?.classList.add("hidden");
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  showImportStep(3);
+  const progress = document.getElementById("importProgress");
+  const details = document.getElementById("importResultDetails");
+  if (progress) progress.textContent = "Importing leads…";
+  if (details) details.textContent = "";
+
+  const mapped = Object.entries(csvColumnMappings).filter(([, v]) => v);
+  if (!mapped.length) {
+    if (progress) progress.textContent = "No columns mapped.";
+    if (cancelBtn) cancelBtn.disabled = false;
+    return;
+  }
+
+  const hasFirstName = mapped.some(([, v]) => v === "first_name");
+  const hasLastName = mapped.some(([, v]) => v === "last_name");
+  const hasName = mapped.some(([, v]) => v === "name");
+
+  const leads = [];
+  const errors = [];
+  csvParsedRows.forEach((row, rowIdx) => {
+    const lead = { company_id: currentCompanyId, pipeline_stage: "new_lead", source: "CSV Import" };
+    const custom_data = {};
+    let firstName = "";
+    let lastName = "";
+
+    mapped.forEach(([colIdx, field]) => {
+      const val = (row[colIdx] || "").trim();
+      if (!val) return;
+      if (field === "first_name") { firstName = val; return; }
+      if (field === "last_name")  { lastName = val; return; }
+      if (field.startsWith("cf_")) {
+        custom_data[field.replace("cf_", "")] = val;
+        return;
+      }
+      if (field === "phone") { lead.phone = formatPhoneE164(val); return; }
+      if (field === "value") { lead.value = Number(val) || null; return; }
+      lead[field] = val;
+    });
+
+    if (!hasName && (hasFirstName || hasLastName)) {
+      lead.name = [firstName, lastName].filter(Boolean).join(" ") || null;
+    }
+
+    if (Object.keys(custom_data).length) lead.custom_data = custom_data;
+
+    if (!lead.name && !lead.phone && !lead.email) {
+      errors.push(`Row ${rowIdx + 2}: skipped — no name, phone or email.`);
+      return;
+    }
+    leads.push(lead);
+  });
+
+  if (!leads.length) {
+    if (progress) progress.textContent = "No valid leads to import.";
+    if (details) details.textContent = errors.join("\n");
+    if (cancelBtn) cancelBtn.disabled = false;
+    return;
+  }
+
+  const BATCH = 500;
+  let imported = 0;
+  let failed = 0;
+  for (let i = 0; i < leads.length; i += BATCH) {
+    const batch = leads.slice(i, i + BATCH);
+    if (progress) progress.textContent = `Importing… ${Math.min(i + BATCH, leads.length)} / ${leads.length}`;
+    try {
+      const { error } = await sb.from("leads").insert(batch);
+      if (error) { failed += batch.length; errors.push(error.message); }
+      else imported += batch.length;
+    } catch (err) {
+      failed += batch.length;
+      errors.push(err.message);
+    }
+  }
+
+  if (progress) {
+    progress.textContent = imported > 0
+      ? `Successfully imported ${imported} lead${imported !== 1 ? "s" : ""}!`
+      : "Import failed.";
+  }
+  if (details) {
+    const parts = [];
+    if (failed) parts.push(`${failed} failed.`);
+    if (errors.length) parts.push(errors.slice(0, 5).join(" · "));
+    details.textContent = parts.join(" ");
+  }
+
+  if (cancelBtn) cancelBtn.disabled = false;
+  if (nextBtn) { nextBtn.textContent = "Done"; nextBtn.disabled = false; }
+  nextBtn?.removeEventListener("click", handleImportNext);
+  nextBtn?.addEventListener("click", () => { resetImportModal(); closeModal("importLeadsModal"); }, { once: true });
+
+  if (imported > 0) {
+    loadLeads();
+    loadDashboard();
+    loadPipeline();
+  }
 }
 
 // ─── Populate Lead Selector ──────────────────────────────────────────────────

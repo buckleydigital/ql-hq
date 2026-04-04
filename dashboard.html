@@ -489,7 +489,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Leads -->
       <div id="page-leads" class="page hidden">
         <section class="panel">
-          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button><button id="openLeadModal" class="btn2" type="button">New Lead</button></div></div>
+          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openImportLeadsModal" class="btn" type="button">Import CSV</button><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button><button id="openLeadModal" class="btn2" type="button">New Lead</button></div></div>
           <div class="panel-b">
             <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
             <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Add your first lead to start filling the CRM with real records.</p><button id="openLeadModalEmpty" class="btn2" type="button">Add First Lead</button></div>
@@ -1300,6 +1300,62 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </form>
     </div>
     <div class="mf"><div class="helper">Custom fields saved here are attached directly to each lead record.</div><div class="actions"><button id="cancelLeadModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="leadForm">Save Lead</button></div></div>
+  </div>
+</div>
+
+<!-- ── Import Leads Modal ────────────────────────────────────────────────── -->
+<div id="importLeadsModal" class="modal">
+  <div class="modal-card">
+    <div class="mh">
+      <h2>Import Leads from CSV</h2>
+      <p>Upload a CSV file and map the columns to lead fields. Only CSV files are supported.</p>
+    </div>
+    <div class="mb">
+      <!-- Step 1: File Upload -->
+      <div id="importStep1">
+        <div class="full" style="margin-bottom:14px">
+          <label for="csvFileInput">Choose CSV file</label>
+          <input id="csvFileInput" type="file" accept=".csv,text/csv">
+        </div>
+        <div class="notice">Supported columns: name, email, phone, address, postcode, source, notes, value, and any custom fields you've created.</div>
+      </div>
+      <!-- Step 2: Column Mapping -->
+      <div id="importStep2" class="hidden">
+        <p style="font-size:13px;margin-bottom:14px">Map each column from your spreadsheet to a lead field. Set columns you don't need to <strong>Skip</strong>.</p>
+        <div class="table-wrap">
+          <table id="importMappingTable" style="min-width:600px">
+            <thead><tr><th>CSV Column</th><th>Maps To</th><th>Sample Data</th></tr></thead>
+            <tbody id="importMappingBody"></tbody>
+          </table>
+        </div>
+        <div id="importPreview" class="hidden" style="margin-top:18px">
+          <label>Preview (first 3 rows)</label>
+          <div class="table-wrap" style="margin-top:8px">
+            <table id="importPreviewTable" style="min-width:600px">
+              <thead id="importPreviewHead"></thead>
+              <tbody id="importPreviewBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="check-row" style="margin-top:18px">
+          <input id="importConsentCheck" type="checkbox">
+          <span style="font-size:13px">I confirm that all contacts in this file have given their consent to be contacted.</span>
+        </div>
+      </div>
+      <!-- Step 3: Progress / Results -->
+      <div id="importStep3" class="hidden" style="text-align:center;padding:20px 0">
+        <div id="importProgress" style="font-size:14px;font-weight:500"></div>
+        <div id="importResultDetails" style="margin-top:12px;font-size:12px;color:var(--muted)"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <div class="helper" id="importHelper">Select a CSV file to get started.</div>
+      <div class="actions">
+        <button id="cancelImportModal" class="btn" type="button">Cancel</button>
+        <button id="importBackBtn" class="btn hidden" type="button">Back</button>
+        <button id="importNextBtn" class="btn2" type="button" disabled>Continue</button>
+      </div>
+    </div>
   </div>
 </div>
 
