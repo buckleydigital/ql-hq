@@ -432,6 +432,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
+        <button class="nav-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">AI Insights</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
         <button class="nav-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
       </div>
@@ -1115,6 +1116,58 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           </div>
         </section>
         <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>
+      </div>
+
+      <!-- ── AI Insights Page ──────────────────────────────────────────────── -->
+      <div id="page-ai-insights" class="page hidden">
+        <div class="stack">
+
+          <!-- Performance Overview -->
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>AI Performance</h2>
+                <p>See how your AI agents are performing and improving over time.</p>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div id="aiInsightsStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px">
+                <div class="notice">Loading…</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Conversion Comparison -->
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>AI vs Human Conversion</h2>
+                <p>Compare conversion rates between AI-handled and human-handled leads.</p>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div id="aiConversionBars" style="display:flex;gap:24px;align-items:flex-end;min-height:160px;padding:16px 0">
+                <div class="notice">Loading…</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Company Knowledge Base -->
+          <section class="panel">
+            <div class="panel-h">
+              <div>
+                <h2>AI Knowledge Base</h2>
+                <p>Learnings your AI has extracted from past interactions. These are automatically injected into future conversations.</p>
+              </div>
+            </div>
+            <div class="panel-b">
+              <div id="aiKnowledgeList" class="table-lite">
+                <div class="notice">Loading…</div>
+              </div>
+            </div>
+          </section>
+
+        </div>
       </div>
 
       <!-- ── Integrations Page ──────────────────────────────────────────────── -->

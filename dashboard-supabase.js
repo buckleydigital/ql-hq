@@ -1001,6 +1001,7 @@ const PAGE_META = {
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
   "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
+  "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
 };
@@ -1038,6 +1039,7 @@ function navigateTo(page) {
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
     "voice-ai":         loadVoiceAi,
+    "ai-insights":      loadAiInsights,
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
   };
@@ -4543,6 +4545,118 @@ async function approveAndSendQuote(quoteId) {
     toast(err.message || "Failed to approve and send quote.", true);
     console.error("approveAndSendQuote error:", err);
   }
+}
+
+// =============================================================================
+// ── AI Insights ───────────────────────────────────────────────────────────────
+// =============================================================================
+
+async function loadAiInsights() {
+  if (!currentCompanyId) return;
+
+  const statsEl = document.getElementById("aiInsightsStats");
+  const convEl = document.getElementById("aiConversionBars");
+  const knowledgeEl = document.getElementById("aiKnowledgeList");
+
+  // ── Fetch performance stats ─────────────────────────────────────────────
+  const { data: stats } = await sb
+    .from("ai_performance_stats")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .eq("period", "all_time")
+    .maybeSingle();
+
+  if (statsEl) {
+    if (!stats) {
+      statsEl.innerHTML = `<div class="notice">No data yet. AI insights will appear as your AI agents handle more conversations.</div>`;
+    } else {
+      const statCards = [
+        { label: "Total Leads", value: stats.total_leads, icon: "users" },
+        { label: "AI-Handled", value: stats.ai_handled_leads, icon: "spark" },
+        { label: "AI Conversions", value: stats.ai_conversions, icon: "chart" },
+        { label: "Avg AI Score", value: Math.round(stats.avg_ai_score || 0), icon: "spark" },
+        { label: "Callbacks Booked", value: stats.callbacks_booked, icon: "phone" },
+        { label: "On-sites Booked", value: stats.onsites_booked, icon: "calendar" },
+        { label: "Quotes Generated", value: stats.quotes_generated, icon: "file" },
+        { label: "Voice Calls", value: stats.voice_calls_completed, icon: "phone" },
+        { label: "Knowledge Items", value: stats.knowledge_items_count, icon: "spark" },
+      ];
+
+      statsEl.innerHTML = statCards.map((s) => `
+        <div style="background:var(--surface-2);border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:700;color:var(--text)">${s.value}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(s.label)}</div>
+        </div>
+      `).join("");
+    }
+  }
+
+  // ── Conversion comparison ───────────────────────────────────────────────
+  if (convEl) {
+    if (!stats || stats.total_leads === 0) {
+      convEl.innerHTML = `<div class="notice">Not enough data to compare conversion rates yet.</div>`;
+    } else {
+      const aiRate = stats.ai_conversion_rate || 0;
+      const humanRate = stats.human_conversion_rate || 0;
+      const maxRate = Math.max(aiRate, humanRate, 1);
+
+      convEl.innerHTML = `
+        <div style="flex:1;text-align:center">
+          <div style="background:var(--accent,#1f6fff);border-radius:6px 6px 0 0;height:${Math.max(8, (aiRate / maxRate) * 120)}px;margin:0 auto;width:60px"></div>
+          <div style="margin-top:8px;font-weight:600;font-size:20px">${aiRate.toFixed(1)}%</div>
+          <div style="font-size:12px;color:var(--muted)">AI Conversion</div>
+          <div style="font-size:11px;color:var(--muted)">${stats.ai_conversions} / ${stats.ai_handled_leads} leads</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="background:var(--muted);border-radius:6px 6px 0 0;height:${Math.max(8, (humanRate / maxRate) * 120)}px;margin:0 auto;width:60px"></div>
+          <div style="margin-top:8px;font-weight:600;font-size:20px">${humanRate.toFixed(1)}%</div>
+          <div style="font-size:12px;color:var(--muted)">Human Conversion</div>
+          <div style="font-size:11px;color:var(--muted)">${stats.human_conversions} / ${stats.human_handled_leads} leads</div>
+        </div>
+      `;
+    }
+  }
+
+  // ── Knowledge base ──────────────────────────────────────────────────────
+  if (knowledgeEl) {
+    const { data: knowledge } = await sb
+      .from("company_knowledge")
+      .select("id, category, insight, tags, source_type, times_used, created_at")
+      .eq("company_id", currentCompanyId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (!knowledge || knowledge.length === 0) {
+      knowledgeEl.innerHTML = `<div class="notice">No AI learnings yet. As leads progress through your pipeline, the AI will extract insights automatically.</div>`;
+    } else {
+      const categoryLabels = {
+        winning_pattern: "✅ Winning Pattern",
+        failed_pattern: "⚠️ Failed Pattern",
+        objection_response: "💬 Objection Response",
+        scheduling_approach: "📅 Scheduling",
+        quote_approach: "💰 Quote Approach",
+        service_insight: "🔧 Service Insight",
+        style_preference: "🎨 Style Preference",
+      };
+
+      knowledgeEl.innerHTML = knowledge.map((k) => {
+        const catLabel = categoryLabels[k.category] || k.category;
+        const tags = (k.tags || []).map((t) => `<span style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-size:10px">${esc(t)}</span>`).join(" ");
+        const ts = new Date(k.created_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+        return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">${catLabel} <span style="font-weight:400;margin-left:4px">${esc(k.source_type)}</span></div>
+            <div style="font-size:13px;color:var(--text)">${esc(k.insight)}</div>
+            <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${tags}</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${ts}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  renderIcons();
 }
 
 // =============================================================================
