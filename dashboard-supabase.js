@@ -3330,7 +3330,7 @@ function renderTeamMembersList(profiles, invites, reps) {
       <div><span class="chip">${p.role || "member"}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div>
-        ${(rep || isOwnerAdmin) ? `<button class="btn" type="button" onclick="this.closest('.team-row').querySelector('.team-perms').style.display=this.closest('.team-row').querySelector('.team-perms').style.display==='none'?'block':'none'" style="font-size:11px;padding:4px 10px"><span class="icon" data-icon="settings" style="width:12px;height:12px"></span> Permissions</button>` : ""}
+        ${(rep || isOwnerAdmin) ? `<button class="btn" type="button" onclick="toggleTeamPerms(this)" style="font-size:11px;padding:4px 10px"><span class="icon" data-icon="settings" style="width:12px;height:12px"></span> Permissions</button>` : ""}
       </div>
       ${permsHtml}
     </div>`;
@@ -3384,6 +3384,12 @@ async function saveRepPerms(repId, btn) {
   }
 }
 window.saveRepPerms = saveRepPerms;
+
+function toggleTeamPerms(btn) {
+  const perms = btn.closest('.team-row')?.querySelector('.team-perms');
+  if (perms) perms.style.display = perms.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleTeamPerms = toggleTeamPerms;
 
 async function handleTeamInvite(e) {
   e.preventDefault();

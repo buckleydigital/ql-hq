@@ -336,12 +336,13 @@ begin
             if v_pc = p_postcode then
               return (v_rule->>'rep_id')::uuid;
             elsif v_pc like '%-%' then
-              -- Range: "2000-2050"
+              -- Range: "2000-2050" — use numeric comparison for safety
               declare
                 v_lo text := split_part(v_pc, '-', 1);
                 v_hi text := split_part(v_pc, '-', 2);
               begin
-                if p_postcode >= v_lo and p_postcode <= v_hi then
+                if lpad(p_postcode, 10, '0') >= lpad(v_lo, 10, '0')
+                   and lpad(p_postcode, 10, '0') <= lpad(v_hi, 10, '0') then
                   return (v_rule->>'rep_id')::uuid;
                 end if;
               end;
