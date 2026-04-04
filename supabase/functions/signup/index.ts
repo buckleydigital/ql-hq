@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
     // The handle_new_user() database trigger automatically:
     // 1. Creates a new company with the provided company_name
     // 2. Creates a profile linked to that company with role 'owner'
-    // 3. The welcome email trigger sends a branded welcome email
+    // NOTE: Welcome email is currently disabled (migration 20260401000020)
 
     return jsonResponse(
       {
