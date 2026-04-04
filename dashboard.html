@@ -752,9 +752,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                       <textarea id="aiSpecialOffers" rows="2" placeholder="Any current promotions the AI should mention..."></textarea>
                     </div>
                     <div class="field settings-full">
+                      <label class="toggle-label"><input id="aiAutoSendWelcome" type="checkbox"> Auto-send welcome message to new leads</label>
+                      <span class="field-hint">When enabled, this message is automatically sent via SMS as soon as a new lead with a phone number is created (via dashboard, API, or integrations).</span>
+                    </div>
+                    <div class="field settings-full">
                       <label for="aiWelcomeMessage">Welcome Message</label>
                       <textarea id="aiWelcomeMessage" rows="2" placeholder="Hi {{first_name}}, thanks for reaching out!">Hi {{first_name}}, thanks for reaching out!</textarea>
-                      <span class="field-hint">Use {{first_name}} for personalization</span>
+                      <span class="field-hint">Use {{first_name}} to insert the lead's name. This is the first message leads receive from your Twilio number.</span>
                     </div>
                   </div>
                 </div>
@@ -1399,7 +1403,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" type="tel"></div>
           <div class="field"><label for="leadPostcode">Postcode</label><input id="leadPostcode" name="postcode" type="text"></div>
           <div class="full"><label for="leadAddress">Address</label><input id="leadAddress" name="address" type="text"></div>
-          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option>Website</option><option>Phone Call</option><option>Referral</option><option>Google Ads</option><option>Facebook Ads</option><option>Manual Entry</option></select></div>
+          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option value="Google">Google</option><option value="Meta">Meta</option><option value="Website/Organic">Website/Organic</option><option value="Other">Other</option></select></div>
           <div class="field"><label for="leadStatus">Opportunity Status</label><select id="leadStatus" name="status"><option>New Lead</option><option>Qualifying</option><option>Quote in Progress</option><option>Quoted</option><option>Closed Won</option><option>Closed Lost</option></select></div>
           <div class="field"><label for="leadValue">Estimated Value</label><input id="leadValue" name="value" type="number" min="0" step="0.01"></div>
           <div class="full"><label for="leadNotes">Notes</label><textarea id="leadNotes" name="notes"></textarea></div>
