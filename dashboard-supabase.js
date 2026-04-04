@@ -1474,6 +1474,7 @@ let csvParsedRows = [];
 let csvHeaders = [];
 let csvColumnMappings = {};
 let importStep = 1;
+let importDone = false;
 
 const IMPORT_FIELD_OPTIONS = [
   { value: "",          label: "— Skip —" },
@@ -1552,6 +1553,7 @@ function resetImportModal() {
   csvHeaders = [];
   csvColumnMappings = {};
   importStep = 1;
+  importDone = false;
   const fileInput = document.getElementById("csvFileInput");
   if (fileInput) fileInput.value = "";
   showImportStep(1);
@@ -1690,6 +1692,11 @@ function updateImportButtonState() {
 }
 
 function handleImportNext() {
+  if (importDone) {
+    resetImportModal();
+    closeModal("importLeadsModal");
+    return;
+  }
   if (importStep === 1) {
     if (!csvHeaders.length) return;
     showImportStep(2);
@@ -1742,7 +1749,7 @@ async function runImport() {
   const leads = [];
   const errors = [];
   csvParsedRows.forEach((row, rowIdx) => {
-    const lead = { company_id: currentCompanyId, pipeline_stage: "new_lead", source: "CSV Import" };
+    const lead = { company_id: currentCompanyId, pipeline_stage: "new_lead" };
     const custom_data = {};
     let firstName = "";
     let lastName = "";
@@ -1765,10 +1772,12 @@ async function runImport() {
       lead.name = [firstName, lastName].filter(Boolean).join(" ") || null;
     }
 
+    if (!lead.source) lead.source = "CSV Import";
+
     if (Object.keys(custom_data).length) lead.custom_data = custom_data;
 
     if (!lead.name && !lead.phone && !lead.email) {
-      errors.push(`Row ${rowIdx + 2}: skipped — no name, phone or email.`);
+      errors.push(`CSV row ${rowIdx + 2}: skipped — no name, phone or email.`);
       return;
     }
     leads.push(lead);
@@ -1811,8 +1820,7 @@ async function runImport() {
 
   if (cancelBtn) cancelBtn.disabled = false;
   if (nextBtn) { nextBtn.textContent = "Done"; nextBtn.disabled = false; }
-  nextBtn?.removeEventListener("click", handleImportNext);
-  nextBtn?.addEventListener("click", () => { resetImportModal(); closeModal("importLeadsModal"); }, { once: true });
+  importDone = true;
 
   if (imported > 0) {
     loadLeads();
