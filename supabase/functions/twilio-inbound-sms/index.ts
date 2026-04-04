@@ -89,6 +89,7 @@ async function fetchCompanyKnowledge(
   _context?: { action?: string; tags?: string[] },
 ): Promise<string> {
   try {
+    // Fetch company-specific learnings
     const { data: knowledge } = await db
       .from("company_knowledge")
       .select("category, insight")
@@ -97,13 +98,29 @@ async function fetchCompanyKnowledge(
       .order("created_at", { ascending: false })
       .limit(5);
 
-    if (!knowledge || knowledge.length === 0) return "";
+    // Fetch industry-level baseline insights (cross-company, anonymized)
+    const { data: industryInsights } = await db
+      .from("industry_insights")
+      .select("insight")
+      .eq("is_active", true)
+      .gte("confidence", 0.3)
+      .order("confidence", { ascending: false })
+      .limit(2);
 
-    const insights = knowledge
-      .map((k) => `- ${k.insight}`)
-      .join("\n");
+    const parts: string[] = [];
 
-    return `\n\nBased on past successful interactions with this company's customers, keep these learnings in mind:\n${insights}\nApply these insights naturally without mentioning them explicitly.`;
+    if (knowledge && knowledge.length > 0) {
+      const insights = knowledge.map((k) => `- ${k.insight}`).join("\n");
+      parts.push(`Based on past successful interactions with this company's customers, keep these learnings in mind:\n${insights}`);
+    }
+
+    if (industryInsights && industryInsights.length > 0) {
+      const industry = industryInsights.map((i) => `- ${i.insight}`).join("\n");
+      parts.push(`Industry benchmarks:\n${industry}`);
+    }
+
+    if (parts.length === 0) return "";
+    return `\n\n${parts.join("\n\n")}\nApply these insights naturally without mentioning them explicitly.`;
   } catch {
     return "";
   }

@@ -215,6 +215,83 @@ If the conversation is too short or there's insufficient data to extract meaning
 }
 
 // ---------------------------------------------------------------------------
+// Style calibration: analyze successful conversations for style patterns
+// ---------------------------------------------------------------------------
+async function extractStyleCalibration(
+  openaiKey: string,
+  smsHistory: string,
+  event: string,
+): Promise<Array<{
+  category: string;
+  insight: string;
+  tags: string[];
+  source_type: string;
+}>> {
+  // Only run style calibration on successful outcomes
+  if (event !== "closed_won" && event !== "appointment.booked") return [];
+  if (!smsHistory || smsHistory.length < 100) return [];
+
+  const prompt = `Analyze this successful SMS conversation for communication style patterns. The outcome was successful (${event}).
+
+Conversation:
+${smsHistory}
+
+Identify 1-2 specific style characteristics that contributed to success:
+- Average message length (short/medium/long)
+- Tone (very casual/casual/professional/formal)
+- Response approach (direct/consultative/empathetic)
+- Follow-up timing patterns if visible
+
+Return a JSON array with objects having:
+- category: always "style_preference"
+- insight: a concise, actionable style instruction (e.g., "Keep SMS replies under 10 words for this company's customers — they respond best to very brief, direct messages.")
+- tags: relevant tags like "tone", "length", "follow-up", "formality"
+- source_type: "sms"
+
+Respond ONLY with the JSON array. Return [] if insufficient data.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 400,
+      }),
+    });
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const raw = json.choices?.[0]?.message?.content?.trim() ?? "[]";
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (l: Record<string, unknown>) =>
+          l.insight && typeof l.insight === "string" && l.category === "style_preference",
+      )
+      .map((l: Record<string, unknown>) => ({
+        category: "style_preference",
+        insight: (l.insight as string).slice(0, 500),
+        tags: Array.isArray(l.tags)
+          ? (l.tags as string[]).filter((t) => typeof t === "string").slice(0, 5)
+          : ["style"],
+        source_type: "sms",
+      }))
+      .slice(0, 2);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Compute performance stats for a company
 // ---------------------------------------------------------------------------
 async function computePerformanceStats(
@@ -323,6 +400,103 @@ async function computePerformanceStats(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Cross-company anonymized insights (network effect moat)
+// ---------------------------------------------------------------------------
+async function updateIndustryInsights(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<void> {
+  // Get the company's service description to determine industry
+  const { data: smsConfig } = await db
+    .from("sms_agent_config")
+    .select("service_description")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (!smsConfig?.service_description) return;
+
+  // Simple industry detection from service description
+  const serviceDesc = (smsConfig.service_description as string).toLowerCase();
+  const industryKeywords: Record<string, string[]> = {
+    plumbing: ["plumb", "pipe", "drain", "water", "tap", "toilet", "hot water"],
+    electrical: ["electri", "wiring", "power", "light", "switch", "circuit"],
+    roofing: ["roof", "gutter", "tile", "leak"],
+    landscaping: ["landscape", "garden", "lawn", "mowing", "tree"],
+    cleaning: ["clean", "wash", "carpet", "window clean"],
+    building: ["build", "construct", "renovate", "renovation", "extension"],
+    hvac: ["hvac", "air condition", "heating", "cooling"],
+    painting: ["paint", "colour", "interior paint", "exterior paint"],
+    general_trades: ["handyman", "repair", "maintenance", "general"],
+  };
+
+  let industry = "general_services";
+  for (const [ind, keywords] of Object.entries(industryKeywords)) {
+    if (keywords.some((k) => serviceDesc.includes(k))) {
+      industry = ind;
+      break;
+    }
+  }
+
+  // Count company's stats for this industry aggregation
+  const { data: stats } = await db
+    .from("ai_performance_stats")
+    .select("ai_conversion_rate, avg_ai_score, callbacks_booked, onsites_booked, quotes_generated, total_leads")
+    .eq("company_id", companyId)
+    .eq("period", "all_time")
+    .maybeSingle();
+
+  if (!stats || stats.total_leads < 10) return; // Need minimum data
+
+  // Count total companies contributing to this industry
+  const { count: industryCompanyCount } = await db
+    .from("industry_insights")
+    .select("id", { count: "exact", head: true })
+    .eq("industry", industry)
+    .eq("is_active", true);
+
+  const sampleSize = (industryCompanyCount ?? 0) + 1;
+  const confidence = Math.min(0.95, sampleSize / 20); // Max confidence at 20+ companies
+
+  // Generate a statistical insight
+  const callbackRate = stats.total_leads > 0
+    ? ((stats.callbacks_booked / stats.total_leads) * 100).toFixed(1)
+    : "0";
+
+  const insight = `In the ${industry.replace("_", " ")} industry, companies that offer callbacks early in the conversation see a ${callbackRate}% callback booking rate. Average AI lead score: ${Math.round(stats.avg_ai_score)}/100.`;
+
+  // Upsert (one insight per industry, updated over time)
+  const { data: existing } = await db
+    .from("industry_insights")
+    .select("id")
+    .eq("industry", industry)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    await db
+      .from("industry_insights")
+      .update({
+        insight,
+        sample_size: sampleSize,
+        confidence,
+        metadata: { last_contributing_company_count: sampleSize },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+  } else {
+    await db.from("industry_insights").insert({
+      industry,
+      insight,
+      sample_size: sampleSize,
+      confidence,
+      tags: [industry, "conversion", "callbacks"],
+      metadata: { last_contributing_company_count: sampleSize },
+    });
+  }
+}
+
 // =============================================================================
 // Main handler
 // =============================================================================
@@ -423,6 +597,35 @@ Deno.serve(async (req) => {
               }
             }
           }
+
+          // ── Style calibration (on successful outcomes) ──────────────────
+          const styleLearnings = await extractStyleCalibration(
+            openaiKey,
+            smsHistory,
+            event,
+          );
+          for (const sl of styleLearnings) {
+            const normalised = sl.insight.toLowerCase().trim();
+            const isDuplicate = existingInsights.some(
+              (e) =>
+                e === normalised ||
+                (e.length > 30 &&
+                  normalised.length > 30 &&
+                  e.substring(0, 30) === normalised.substring(0, 30)),
+            );
+            if (!isDuplicate) {
+              await db.from("company_knowledge").insert({
+                company_id: companyId,
+                category: sl.category,
+                insight: sl.insight,
+                tags: sl.tags,
+                source_type: sl.source_type,
+                source_lead_id: leadId,
+                metadata: { event, type: "style_calibration" },
+              });
+              extractedCount++;
+            }
+          }
         }
       } else {
         console.warn("No OpenAI key available for knowledge extraction");
@@ -434,6 +637,13 @@ Deno.serve(async (req) => {
       await computePerformanceStats(db, companyId);
     } catch (statsErr) {
       console.error("Performance stats computation failed:", statsErr);
+    }
+
+    // ── Update cross-company industry insights ──────────────────────────────
+    try {
+      await updateIndustryInsights(db, companyId);
+    } catch (industryErr) {
+      console.error("Industry insights update failed:", industryErr);
     }
 
     // ── Log the learning event ──────────────────────────────────────────────

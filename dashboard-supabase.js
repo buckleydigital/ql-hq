@@ -4656,6 +4656,34 @@ async function loadAiInsights() {
     }
   }
 
+  // ── Industry insights ───────────────────────────────────────────────────
+  const industryEl = document.getElementById("aiIndustryInsights");
+  if (industryEl) {
+    const { data: insights } = await sb
+      .from("industry_insights")
+      .select("industry, insight, sample_size, confidence, updated_at")
+      .eq("is_active", true)
+      .order("confidence", { ascending: false })
+      .limit(10);
+
+    if (!insights || insights.length === 0) {
+      industryEl.innerHTML = `<div class="notice">Industry insights will appear as more companies use the platform.</div>`;
+    } else {
+      industryEl.innerHTML = insights.map((i) => {
+        const confPct = Math.round((i.confidence || 0) * 100);
+        const ts = new Date(i.updated_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+        return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:capitalize">${esc(i.industry.replace(/_/g, " "))}</div>
+            <div style="font-size:13px;color:var(--text)">${esc(i.insight)}</div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted)">${i.sample_size} companies · ${confPct}% confidence</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${ts}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
   renderIcons();
 }
 

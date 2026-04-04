@@ -114,3 +114,38 @@ create policy "ai_perf_stats_service_role"
   on public.ai_performance_stats for all
   using (true)
   with check (true);
+
+-- ── 3. Industry Insights (Cross-Company Anonymized) ─────────────────────────
+-- Aggregated, anonymized insights across all companies for network effects.
+-- No company-specific data is stored — only statistical patterns.
+create table if not exists public.industry_insights (
+  id              uuid primary key default gen_random_uuid(),
+  -- Industry/service category (e.g., "plumbing", "electrical", "roofing")
+  industry        text not null,
+  -- The aggregated insight
+  insight         text not null,
+  -- Statistical backing
+  sample_size     int not null default 0,
+  confidence      numeric(3,2) not null default 0, -- 0.00-1.00
+  -- Metadata
+  tags            text[] not null default '{}',
+  metadata        jsonb not null default '{}',
+  is_active       boolean not null default true,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create index if not exists idx_industry_insights_industry
+  on public.industry_insights(industry, is_active);
+
+-- RLS: all authenticated users can read industry insights (they're anonymized)
+alter table public.industry_insights enable row level security;
+
+create policy "industry_insights_select"
+  on public.industry_insights for select
+  using (auth.role() = 'authenticated');
+
+create policy "industry_insights_service_role"
+  on public.industry_insights for all
+  using (true)
+  with check (true);
