@@ -4040,7 +4040,7 @@ async function loadVoiceAi() {
     }
 
     // Lock config fields for internal users (only prompt, greeting, transfer phone & voice select editable)
-    const lockedFields = ["vapiPhoneNumberId", "voiceAgentName", "voiceModel", "maxDuration", "voiceAgentActive"];
+    const lockedFields = ["vapiPhoneNumberId", "voiceAgentName", "voiceModel", "maxDuration"];
     lockedFields.forEach((fid) => {
       const el = document.getElementById(fid);
       if (!el) return;
@@ -4210,6 +4210,7 @@ async function handleVoiceAgentSave(e) {
         greeting:      document.getElementById("voiceGreeting")?.value || null,
         transfer_phone: document.getElementById("transferPhone")?.value || null,
         voice_id:      resolvedVoiceId,
+        is_active:     document.getElementById("voiceAgentActive")?.checked || false,
       };
     } else {
       // External users can configure everything
@@ -4236,16 +4237,14 @@ async function handleVoiceAgentSave(e) {
 
     toast("Voice agent configuration saved.");
 
-    // Update status display (only relevant for external users who can toggle active)
-    if (!isInternal) {
-      const voiceAgentStatus = document.getElementById("voiceAgentStatus");
-      const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
-      if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
-      if (voiceAgentStatusHelp) {
-        voiceAgentStatusHelp.textContent = payload.is_active 
-          ? "Voice agent is ready to receive calls." 
-          : "Voice agent is not configured";
-      }
+    // Update status display
+    const voiceAgentStatus = document.getElementById("voiceAgentStatus");
+    const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
+    if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
+    if (voiceAgentStatusHelp) {
+      voiceAgentStatusHelp.textContent = payload.is_active 
+        ? "Voice agent is ready to receive calls." 
+        : "Voice agent is currently inactive.";
     }
 
   } catch (err) {
