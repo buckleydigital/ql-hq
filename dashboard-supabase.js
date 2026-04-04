@@ -1509,7 +1509,7 @@ function parseCSV(text) {
   const rows = [];
   let current = "";
   let inQuotes = false;
-  const lines = text.split("\n");
+  const lines = text.split(/\r?\n/);
   for (const line of lines) {
     if (inQuotes) {
       current += "\n" + line;
