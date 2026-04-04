@@ -117,20 +117,6 @@ function aiScoreDisplay(lead) {
   return `${labels[status] || status} ${lead.ai_score}/100`;
 }
 
-// ─── AI Learner trigger (fire-and-forget) ─────────────────────────────────────
-async function triggerAILearner(event, leadId) {
-  if (!currentCompanyId || !leadId) return;
-  try {
-    const token = await getAccessToken();
-    await fetch(`${SUPABASE_URL}/functions/v1/ai-learner`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ event, company_id: currentCompanyId, lead_id: leadId }),
-    });
-  } catch (err) {
-    console.warn("AI learner trigger failed:", err);
-  }
-}
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 // getSession() returns the cached session and may contain an expired JWT.
@@ -2274,10 +2260,7 @@ async function kanbanDrop(event, newStage) {
       loadPipeline();
     } else {
       toast(`Moved to "${stageLabel(newStage)}"`);
-      // Trigger AI learner for closed outcomes
-      if (newStage === "closed_won" || newStage === "closed_lost") {
-        triggerAILearner(newStage, leadId);
-      }
+
     }
   } catch (err) {
     toast("Failed to update status.", true);

@@ -54,29 +54,7 @@ async function fireWebhooks(
   } catch (err) { console.error("fireWebhooks error:", err); }
 }
 
-// ── Fire-and-forget call to ai-learner for knowledge extraction ──────────────
-function triggerAILearner(
-  event: string,
-  companyId: string,
-  leadId: string,
-  metadata?: Record<string, unknown>,
-): void {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  fetch(`${supabaseUrl}/functions/v1/ai-learner`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${serviceKey}`,
-    },
-    body: JSON.stringify({
-      event,
-      company_id: companyId,
-      lead_id: leadId,
-      metadata,
-    }),
-  }).catch((err) => console.error("ai-learner trigger failed:", err));
-}
+
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -250,8 +228,6 @@ Deno.serve(async (req) => {
           .update({ pipeline_stage: "closed_won" })
           .eq("id", quote.lead_id);
         fireWebhooks(db, quote.company_id, "quote.accepted", { quote_id: quote.id, quote_number: quote.quote_number, lead_id: quote.lead_id });
-        // Trigger AI learner — closed_won + quote acceptance
-        triggerAILearner("closed_won", quote.company_id, quote.lead_id);
       }
 
       // If declined, advance to closed_lost
@@ -261,8 +237,6 @@ Deno.serve(async (req) => {
           .update({ pipeline_stage: "closed_lost" })
           .eq("id", quote.lead_id);
         fireWebhooks(db, quote.company_id, "quote.declined", { quote_id: quote.id, quote_number: quote.quote_number, lead_id: quote.lead_id });
-        // Trigger AI learner — closed_lost analysis
-        triggerAILearner("closed_lost", quote.company_id, quote.lead_id);
       }
 
       return new Response(JSON.stringify({ success: true, status: update.status }), {
