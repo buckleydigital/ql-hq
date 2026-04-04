@@ -414,7 +414,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav">
         <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">CRM</span><span class="icon chev" data-icon="chevron-right"></span></button>
         <div class="sub" id="crmSubmenu">
-          <button class="sub-item" data-page="opportunities" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Opportunities</span></button>
+          <button class="sub-item" data-page="pipeline" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Pipeline</span></button>
           <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
           <button class="sub-item" data-page="quotes" type="button"><span class="icon" data-icon="file"></span><span class="nav-text">Quotes</span></button>
           <button class="sub-item" data-page="appointments" type="button"><span class="icon" data-icon="calendar"></span><span class="nav-text">Appointments</span></button>
@@ -497,10 +497,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         </section>
       </div>
 
-      <!-- Opportunities / Kanban -->
-      <div id="page-opportunities" class="page hidden">
+      <!-- Pipeline / Kanban -->
+      <div id="page-pipeline" class="page hidden">
         <section class="panel">
-          <div class="panel-h"><div><h2>Pipeline Board</h2><p>Drag cards between columns to update lead status.</p></div><button id="openLeadModalPipeline" class="btn2" type="button">New Opportunity</button></div>
+          <div class="panel-h"><div><h2>Pipeline Board</h2><p>Drag cards between columns to update lead status.</p></div><button id="openLeadModalPipeline" class="btn2" type="button">New Lead</button></div>
           <div class="panel-b"><div id="kanbanBoard" class="kanban"></div></div>
         </section>
       </div>
@@ -1343,11 +1343,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 </div>
 
 
-<!-- ── Opportunity Detail Modal ─────────────────────────────────────────────── -->
+<!-- ── Lead Detail Modal ────────────────────────────────────────────────────── -->
 <div id="opportunityModal" class="modal">
   <div class="modal-card" style="width:min(1100px,95%);max-height:90vh;">
     <div class="mh">
-      <h2 id="oppModalTitle">Opportunity Details</h2>
+      <h2 id="oppModalTitle">Lead Details</h2>
       <p id="oppModalSubtitle">View all information, conversations, quotes, and call history.</p>
     </div>
     <div class="mb">

@@ -963,12 +963,12 @@ async function showApp() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
-const CRM_PAGES = ["opportunities","leads","quotes","appointments","sales"];
+const CRM_PAGES = ["pipeline","leads","quotes","appointments","sales"];
 
 const PAGE_META = {
   dashboard:          ["Dashboard",         "A live view of your lead and pipeline workspace."],
   leads:              ["Leads",             "Manage and capture your lead records."],
-  opportunities:      ["Opportunities",     "Track deals through your pipeline stages."],
+  pipeline:            ["Pipeline",           "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
@@ -1005,7 +1005,7 @@ function navigateTo(page) {
   const loaders = {
     dashboard:          loadDashboard,
     leads:              loadLeads,
-    opportunities:      loadOpportunities,
+    pipeline:            loadPipeline,
     quotes:             loadQuotes,
     appointments:       loadAppointments,
     sales:              loadSales,
@@ -1782,10 +1782,10 @@ async function handleSaleSave(e) {
   }
 }
 
-// ─── Opportunities / Kanban ───────────────────────────────────────────────────
+// ─── Pipeline / Kanban ────────────────────────────────────────────────────────
 const KANBAN_STAGES = ["new_lead","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
 
-async function loadOpportunities() {
+async function loadPipeline() {
   if (!currentCompanyId) return;
   try {
     const { data } = await sb
@@ -1795,7 +1795,7 @@ async function loadOpportunities() {
     allLeads = data || [];
     buildKanban(allLeads);
   } catch (err) {
-    toast("Failed to load opportunities.", true);
+    toast("Failed to load pipeline.", true);
   }
 }
 
@@ -1886,13 +1886,13 @@ async function kanbanDrop(event, newStage) {
     const { error } = await sb.from("leads").update({ pipeline_stage: newStage }).eq("id", leadId);
     if (error) {
       toast(error.message, true);
-      loadOpportunities();
+      loadPipeline();
     } else {
       toast(`Moved to "${stageLabel(newStage)}"`);
     }
   } catch (err) {
     toast("Failed to update status.", true);
-    loadOpportunities();
+    loadPipeline();
   }
   dragLeadId = null;
 }
@@ -3839,7 +3839,7 @@ async function openOpportunityModal(leadId) {
   // Set title
   const oppModalTitle = document.getElementById("oppModalTitle");
   const oppModalSubtitle = document.getElementById("oppModalSubtitle");
-  if (oppModalTitle) oppModalTitle.textContent = lead.name || "Opportunity Details";
+  if (oppModalTitle) oppModalTitle.textContent = lead.name || "Lead Details";
   if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${stageLabel(lead.pipeline_stage)} · Created: ${fmtDate(lead.created_at)}`;
 
   // Populate overview
