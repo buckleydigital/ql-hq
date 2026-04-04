@@ -226,6 +226,13 @@ async function handleCreateLead(
   // Fire webhook
   await fireWebhooks(db, companyId, "lead.created", data);
 
+  // Auto-send welcome SMS if enabled (fire-and-forget)
+  if (data.phone) {
+    sendWelcomeSmsIfEnabled(db, companyId, data).catch((err: unknown) =>
+      console.warn("Welcome SMS failed:", (err as Error).message)
+    );
+  }
+
   return json({ data }, 201);
 }
 
@@ -491,6 +498,142 @@ async function handlePipeline(
   }
 
   return json({ data: result });
+}
+
+// ── Auto-send Welcome SMS ─────────────────────────────────────────────────────
+// Checks company sms_agent_config for auto_send_welcome flag and sends the
+// customised welcome_message to the new lead via Twilio.
+async function sendWelcomeSmsIfEnabled(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  lead: Record<string, unknown>,
+): Promise<void> {
+  const { data: smsConfig } = await db
+    .from("sms_agent_config")
+    .select("auto_send_welcome, welcome_message, is_active, twilio_number, company_id")
+    .eq("company_id", companyId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (!smsConfig?.auto_send_welcome || !smsConfig.is_active || !smsConfig.twilio_number) return;
+
+  // Resolve {{first_name}} placeholder
+  const firstName = (lead.first_name as string) ||
+    ((lead.name as string) || "").split(" ")[0] || "";
+  const template = (smsConfig.welcome_message as string) || "Hi {{first_name}}, thanks for reaching out!";
+  const body = template.replace(/\{\{first_name\}\}/gi, firstName || "there");
+
+  // Check SMS credits
+  const { data: creditOk } = await db.rpc("deduct_sms_credit", {
+    p_company_id: companyId,
+  });
+  if (!creditOk) {
+    console.warn("No SMS credits for welcome message");
+    return;
+  }
+
+  // Resolve Twilio keys
+  const { data: companyProfile } = await db
+    .from("profiles")
+    .select("user_type")
+    .eq("company_id", companyId)
+    .limit(1)
+    .maybeSingle();
+  const userType: string = (companyProfile?.user_type as string) ?? "external";
+
+  let twilioSid: string | null = null;
+  let twilioAuth: string | null = null;
+  try {
+    const { data: sid } = await db.rpc("resolve_api_key", {
+      p_company_id: companyId,
+      p_provider: "twilio",
+    });
+    const { data: auth } = await db.rpc("resolve_api_key", {
+      p_company_id: companyId,
+      p_provider: "twilio_auth",
+    });
+    twilioSid = sid;
+    twilioAuth = auth;
+  } catch {
+    // fall through
+  }
+
+  if (!twilioSid || !twilioAuth) {
+    if (userType === "external") return;
+    twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID") || null;
+    twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN") || null;
+  }
+  if (!twilioSid || !twilioAuth) return;
+
+  // Send via Twilio
+  const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+  const res = await fetch(twilioUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${twilioSid}:${twilioAuth}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      To: lead.phone as string,
+      From: smsConfig.twilio_number as string,
+      Body: body,
+    }).toString(),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error("Welcome SMS Twilio error:", errBody);
+    // Refund deducted credit
+    await db.rpc("refund_sms_credit", { p_company_id: companyId }).catch(() => {});
+    return;
+  }
+
+  // Get or create conversation for message storage
+  const { data: existingConv } = await db
+    .from("conversations")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("lead_id", lead.id as string)
+    .eq("channel", "sms")
+    .eq("is_open", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let conversationId = existingConv?.id || null;
+  if (!conversationId) {
+    const { data: newConv } = await db
+      .from("conversations")
+      .insert({
+        company_id: companyId,
+        lead_id: lead.id,
+        channel: "sms",
+        is_open: true,
+        last_message: body,
+        last_message_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    conversationId = newConv?.id || null;
+  }
+
+  if (conversationId) {
+    await db.from("messages").insert({
+      conversation_id: conversationId,
+      direction: "outbound",
+      body,
+      channel: "sms",
+      is_ai_generated: true,
+      agent_type: "ai",
+      metadata: { welcome_message: true, auto_sent: true },
+    });
+
+    await db
+      .from("conversations")
+      .update({ last_message: body, last_message_at: new Date().toISOString() })
+      .eq("id", conversationId);
+  }
 }
 
 // ── Webhook firing ────────────────────────────────────────────────────────────

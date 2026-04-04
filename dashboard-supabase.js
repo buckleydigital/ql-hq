@@ -1477,12 +1477,22 @@ async function handleLeadSave(e) {
       if (routedRep) payload.assigned_to = routedRep;
     }
 
-    const { error } = id
-      ? await sb.from("leads").update(payload).eq("id", id)
-      : await sb.from("leads").insert(payload);
+    if (id) {
+      const { error } = await sb.from("leads").update(payload).eq("id", id);
+      if (error) { toast(error.message, true); return; }
+      toast("Lead updated.");
+    } else {
+      const { data: newLead, error } = await sb.from("leads").insert(payload).select().single();
+      if (error) { toast(error.message, true); return; }
+      toast("Lead created.");
 
-    if (error) { toast(error.message, true); return; }
-    toast(id ? "Lead updated." : "Lead created.");
+      // Auto-send welcome SMS if enabled and lead has a phone number
+      if (newLead?.phone) {
+        sendWelcomeSmsIfEnabled(newLead).catch((err) =>
+          console.warn("Welcome SMS failed:", err)
+        );
+      }
+    }
     closeModal("leadModal");
     loadLeads();
     loadDashboard();
@@ -1501,6 +1511,47 @@ async function deleteLead(id) {
     loadDashboard();
   } catch (err) {
     toast("Failed to delete lead.", true);
+  }
+}
+
+// ─── Auto-send Welcome SMS ────────────────────────────────────────────────────
+// Checks if the company has auto_send_welcome enabled and AI is active, then
+// sends the customised welcome_message via the send-sms edge function.
+async function sendWelcomeSmsIfEnabled(lead) {
+  try {
+    const { data: smsConfig } = await sb
+      .from("sms_agent_config")
+      .select("auto_send_welcome, welcome_message, is_active, twilio_number")
+      .eq("company_id", currentCompanyId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!smsConfig?.auto_send_welcome || !smsConfig.is_active || !smsConfig.twilio_number) return;
+
+    // Resolve {{first_name}} placeholder
+    const firstName = lead.first_name || (lead.name || "").split(" ")[0] || "";
+    let body = (smsConfig.welcome_message || "Hi {{first_name}}, thanks for reaching out!")
+      .replace(/\{\{first_name\}\}/gi, firstName || "there");
+
+    // Send via the existing send-sms edge function
+    const { data: session } = await sb.auth.getSession();
+    const token = session?.session?.access_token;
+    if (!token) return;
+
+    await fetch(`${sb.supabaseUrl}/functions/v1/send-sms`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        lead_id: lead.id,
+        body,
+      }),
+    });
+  } catch (err) {
+    console.warn("sendWelcomeSmsIfEnabled error:", err);
   }
 }
 
@@ -2960,6 +3011,7 @@ async function loadAiSettings() {
       setCheckboxValue("aiQuoteDraftingEnabled", data.quote_drafting_enabled);
       setCheckboxValue("aiLeadScoringEnabled", data.lead_scoring_enabled);
       setCheckboxValue("aiAutoCallInbound", data.auto_call_inbound);
+      setCheckboxValue("aiAutoSendWelcome", data.auto_send_welcome);
       
       // Call-back settings
       setInputValue("aiAgentName", data.agent_name);
@@ -3053,6 +3105,7 @@ async function handleAiSettingsSave(e) {
     quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
     lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked ?? true,
     auto_call_inbound:     document.getElementById("aiAutoCallInbound")?.checked ?? false,
+    auto_send_welcome:     document.getElementById("aiAutoSendWelcome")?.checked ?? false,
     
     // Call-back settings
     agent_name:             document.getElementById("aiAgentName")?.value || "Sales Team",
