@@ -1421,6 +1421,15 @@ async function handleLeadSave(e) {
   };
 
   try {
+    // Auto-route new leads based on company routing config
+    if (!id) {
+      const { data: routedRep } = await sb.rpc("route_lead", {
+        p_company_id: currentCompanyId,
+        p_postcode: payload.postcode || null,
+      });
+      if (routedRep) payload.assigned_to = routedRep;
+    }
+
     const { error } = id
       ? await sb.from("leads").update(payload).eq("id", id)
       : await sb.from("leads").insert(payload);

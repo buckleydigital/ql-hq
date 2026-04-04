@@ -629,6 +629,12 @@ Deno.serve(async (req) => {
     }
 
     if (!lead) {
+      // Route lead to a rep based on company settings
+      const { data: routedRep } = await db.rpc("route_lead", {
+        p_company_id: companyId,
+        p_postcode: null,
+      });
+
       // Create a new lead from this inbound SMS
       const { data: newLead, error: leadErr } = await db
         .from("leads")
@@ -642,6 +648,7 @@ Deno.serve(async (req) => {
           ai_enabled: true,
           ai_score: 10,
           ai_score_reason: "New inbound SMS enquiry",
+          assigned_to: routedRep || null,
         })
         .select()
         .single();
