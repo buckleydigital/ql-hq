@@ -4039,8 +4039,8 @@ async function loadVoiceAi() {
         : "You must provide your own VAPI API key and Assistant ID.";
     }
 
-    // Lock config fields for internal users (only prompt + greeting editable)
-    const lockedFields = ["vapiPhoneNumberId", "vapiAssistantId", "voiceAgentName", "voiceModel", "voiceId", "maxDuration", "transferPhone", "voiceAgentActive"];
+    // Lock config fields for internal users (only prompt, greeting, transfer phone & voice select editable)
+    const lockedFields = ["vapiPhoneNumberId", "voiceAgentName", "voiceModel", "maxDuration", "voiceAgentActive"];
     lockedFields.forEach((fid) => {
       const el = document.getElementById(fid);
       if (!el) return;
@@ -4054,6 +4054,47 @@ async function loadVoiceAi() {
         el.style.cursor = "";
       }
     });
+
+    // Hide VAPI Assistant ID field entirely for internal users
+    const assistantField = document.getElementById("vapiAssistantIdField");
+    if (assistantField) assistantField.style.display = isInternal ? "none" : "";
+
+    // For internal users: hide raw Voice ID input, show voice dropdown
+    // For external users: show raw Voice ID input, hide dropdown
+    const voiceIdField = document.getElementById("voiceIdField");
+    const voiceSelectField = document.getElementById("voiceSelectField");
+    const customVoiceIdField = document.getElementById("customVoiceIdField");
+    if (voiceIdField) voiceIdField.style.display = isInternal ? "none" : "";
+    if (voiceSelectField) voiceSelectField.style.display = isInternal ? "" : "none";
+    if (customVoiceIdField) customVoiceIdField.style.display = "none";
+
+    // Populate voice dropdown for internal users
+    if (isInternal) {
+      const voiceSelect = document.getElementById("voiceSelect");
+      if (voiceSelect) {
+        const { data: voices, error: voicesErr } = await sb.from("elevenlabs_voices").select("name, voice_id").order("name");
+        if (voicesErr) console.warn("Failed to load voices:", voicesErr.message);
+        voiceSelect.innerHTML = '<option value="">Select a voice…</option>';
+        (voices || []).forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voice_id;
+          opt.textContent = v.name;
+          voiceSelect.appendChild(opt);
+        });
+        // Add "Custom Voice ID" option at the end
+        const customOpt = document.createElement("option");
+        customOpt.value = "__custom__";
+        customOpt.textContent = "Custom Voice ID…";
+        voiceSelect.appendChild(customOpt);
+
+        // Toggle custom voice ID input when "Custom" is selected
+        voiceSelect.addEventListener("change", () => {
+          if (customVoiceIdField) {
+            customVoiceIdField.style.display = voiceSelect.value === "__custom__" ? "" : "none";
+          }
+        });
+      }
+    }
 
     // Update field hints for internal users
     const assistantHint = document.getElementById("vapiAssistantIdHint");
@@ -4069,7 +4110,7 @@ async function loadVoiceAi() {
     if (providerForm) providerForm.style.display = isInternal ? "none" : "";
     if (providerInfo) {
       providerInfo.innerHTML = isInternal
-        ? `<p><strong>Agency-Managed:</strong> Your voice agent is pre-configured by your agency. Only the system prompt and greeting are editable.</p>`
+        ? `<p><strong>Agency-Managed:</strong> Your voice agent is pre-configured by your agency. You can edit the system prompt, greeting, transfer number, and voice selection.</p>`
         : `<p><strong>External Users:</strong> You must provide your own VAPI API key and Assistant ID to use voice AI.</p>`;
     }
 
@@ -4093,6 +4134,18 @@ async function loadVoiceAi() {
       if (voiceAgentName) voiceAgentName.value = config.name || "";
       if (voiceModel) voiceModel.value = config.model || "gpt-4o";
       if (voiceId) voiceId.value = config.voice_id || "";
+      const voiceSelect = document.getElementById("voiceSelect");
+      if (voiceSelect && config.voice_id) {
+        voiceSelect.value = config.voice_id;
+        // If the saved voice_id isn't in the preset options, select "Custom" and populate the custom input
+        if (voiceSelect.value !== config.voice_id) {
+          voiceSelect.value = "__custom__";
+          const customInput = document.getElementById("customVoiceId");
+          if (customInput) customInput.value = config.voice_id;
+          const customField = document.getElementById("customVoiceIdField");
+          if (customField) customField.style.display = "";
+        }
+      }
       if (maxDuration) maxDuration.value = config.max_duration || 300;
       if (transferPhone) transferPhone.value = config.transfer_phone || "";
       if (voiceSystemPrompt) voiceSystemPrompt.value = config.system_prompt || "";
@@ -4146,11 +4199,17 @@ async function handleVoiceAgentSave(e) {
 
     let payload;
     if (isInternal) {
-      // Internal users can only update system prompt and greeting
+      // Internal users can update system prompt, greeting, transfer phone, and voice selection
+      const selectedVoice = document.getElementById("voiceSelect")?.value;
+      const resolvedVoiceId = selectedVoice === "__custom__"
+        ? (document.getElementById("customVoiceId")?.value || null)
+        : (selectedVoice || null);
       payload = {
         company_id:    currentCompanyId,
         system_prompt: document.getElementById("voiceSystemPrompt")?.value || null,
         greeting:      document.getElementById("voiceGreeting")?.value || null,
+        transfer_phone: document.getElementById("transferPhone")?.value || null,
+        voice_id:      resolvedVoiceId,
       };
     } else {
       // External users can configure everything

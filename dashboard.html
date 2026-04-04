@@ -934,7 +934,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <input id="vapiPhoneNumberId" name="vapiPhoneNumberId" type="text" placeholder="Enter your VAPI phone number ID">
                     <span class="field-hint">The ID of a phone number registered in your VAPI account. Required for outbound calls. Find it in the <a href="https://dashboard.vapi.ai/phone-numbers" target="_blank" rel="noopener">VAPI Dashboard → Phone Numbers</a>.</span>
                   </div>
-                  <div class="field">
+                  <div class="field" id="vapiAssistantIdField">
                     <label for="vapiAssistantId">VAPI Assistant ID</label>
                     <input id="vapiAssistantId" name="vapiAssistantId" type="text" placeholder="Enter your VAPI assistant ID">
                     <span id="vapiAssistantIdHint" class="field-hint">Required for external users. Internal users have this pre-configured.</span>
@@ -951,10 +951,22 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                       <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                     </select>
                   </div>
-                  <div class="field">
+                  <div class="field" id="voiceIdField">
                     <label for="voiceId">ElevenLabs Voice ID</label>
                     <input id="voiceId" name="voiceId" type="text" placeholder="e.g., 21m00Tcm4TlvDq8ikWAM">
                     <span class="field-hint">Enter an ElevenLabs voice ID. Find IDs at <a href="https://elevenlabs.io/voice-library" target="_blank" rel="noopener">elevenlabs.io/voice-library</a>.</span>
+                  </div>
+                  <div class="field" id="voiceSelectField" style="display:none">
+                    <label for="voiceSelect">Voice Agent</label>
+                    <select id="voiceSelect" name="voiceSelect">
+                      <option value="">Select a voice…</option>
+                    </select>
+                    <span class="field-hint">Choose a preset voice or enter a custom ElevenLabs Voice ID.</span>
+                  </div>
+                  <div class="field" id="customVoiceIdField" style="display:none">
+                    <label for="customVoiceId">Custom ElevenLabs Voice ID</label>
+                    <input id="customVoiceId" name="customVoiceId" type="text" placeholder="e.g., 21m00Tcm4TlvDq8ikWAM">
+                    <span class="field-hint">Enter a voice ID from <a href="https://elevenlabs.io/voice-library" target="_blank" rel="noopener">elevenlabs.io/voice-library</a>.</span>
                   </div>
                   <div class="field">
                     <label for="maxDuration">Max Duration (seconds)</label>
