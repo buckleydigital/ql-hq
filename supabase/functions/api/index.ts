@@ -502,7 +502,7 @@ async function handlePipeline(
 
 // ── Auto-send Welcome SMS ─────────────────────────────────────────────────────
 // Checks company sms_agent_config for auto_send_welcome flag and sends the
-// customised welcome_message to the new lead via Twilio.
+// customized welcome_message to the new lead via Twilio.
 async function sendWelcomeSmsIfEnabled(
   db: ReturnType<typeof createClient>,
   companyId: string,

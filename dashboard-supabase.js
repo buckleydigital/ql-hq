@@ -1516,7 +1516,7 @@ async function deleteLead(id) {
 
 // ─── Auto-send Welcome SMS ────────────────────────────────────────────────────
 // Checks if the company has auto_send_welcome enabled and AI is active, then
-// sends the customised welcome_message via the send-sms edge function.
+// sends the customized welcome_message via the send-sms edge function.
 async function sendWelcomeSmsIfEnabled(lead) {
   try {
     const { data: smsConfig } = await sb
