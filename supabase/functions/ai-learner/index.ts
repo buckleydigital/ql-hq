@@ -16,6 +16,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Minimum prefix length for substring-based duplicate detection
 const DEDUP_PREFIX_LENGTH = 30;
 
+// Skip OpenAI extraction if this lead was already analyzed within this window
+const DEDUP_WINDOW_HOURS = 24;
+
+// Max style learnings per company before skipping further style calibration
+const MAX_STYLE_LEARNINGS = 5;
+
+// Minimum interval between stats recomputations per company (in minutes)
+const STATS_THROTTLE_MINUTES = 60;
+
+// Use the cheaper mini model for structured extraction tasks
+const EXTRACTION_MODEL = "gpt-4o-mini";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -166,7 +178,7 @@ If the conversation is too short or there's insufficient data to extract meaning
       Authorization: `Bearer ${openaiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: EXTRACTION_MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
       max_tokens: 800,
@@ -261,7 +273,7 @@ Respond ONLY with the JSON array. Return [] if insufficient data.`;
         Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: EXTRACTION_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens: 400,
@@ -538,106 +550,167 @@ Deno.serve(async (req) => {
     let extractedCount = 0;
 
     if (leadId) {
-      const openaiKey = await resolveOpenAIKey(db, companyId);
+      // ── Dedup guard: skip if this lead was already analyzed recently ─────
+      const dedupCutoff = new Date(
+        Date.now() - DEDUP_WINDOW_HOURS * 60 * 60 * 1000,
+      ).toISOString();
 
-      if (openaiKey) {
-        const { smsHistory, voiceTranscripts, lead } = await gatherLeadHistory(
-          db,
-          leadId,
+      const { count: recentAnalysisCount } = await db
+        .from("company_knowledge")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .eq("source_lead_id", leadId)
+        .gte("created_at", dedupCutoff);
+
+      if ((recentAnalysisCount ?? 0) > 0) {
+        console.log(
+          `Lead ${leadId} already analyzed within ${DEDUP_WINDOW_HOURS}h — skipping OpenAI extraction`,
         );
+      } else {
+        const openaiKey = await resolveOpenAIKey(db, companyId);
 
-        // Only extract if there's meaningful interaction history
-        if ((smsHistory.length > 20 || voiceTranscripts.length > 20) && lead) {
-          const learnings = await extractLearnings(
-            openaiKey,
-            event,
-            smsHistory,
-            voiceTranscripts,
-            lead,
-            metadata,
+        if (openaiKey) {
+          const { smsHistory, voiceTranscripts, lead } = await gatherLeadHistory(
+            db,
+            leadId,
           );
 
-          if (learnings.length > 0) {
-            // Check for duplicate insights (simple dedup by similarity)
-            const { data: existing } = await db
-              .from("company_knowledge")
-              .select("insight")
-              .eq("company_id", companyId)
-              .eq("is_active", true)
-              .order("created_at", { ascending: false })
-              .limit(50);
-
-            const existingInsights = (existing || []).map((e) =>
-              (e.insight as string).toLowerCase().trim(),
+          // Only extract if there's meaningful interaction history
+          if ((smsHistory.length > 20 || voiceTranscripts.length > 20) && lead) {
+            const learnings = await extractLearnings(
+              openaiKey,
+              event,
+              smsHistory,
+              voiceTranscripts,
+              lead,
+              metadata,
             );
 
-            for (const learning of learnings) {
-              // Simple dedup: skip if a very similar insight already exists
-              const normalised = learning.insight.toLowerCase().trim();
-              const isDuplicate = existingInsights.some(
-                (e) =>
-                  e === normalised ||
-                  (e.length > DEDUP_PREFIX_LENGTH &&
-                    normalised.length > DEDUP_PREFIX_LENGTH &&
-                    e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
+            if (learnings.length > 0) {
+              // Check for duplicate insights (simple dedup by similarity)
+              const { data: existing } = await db
+                .from("company_knowledge")
+                .select("insight")
+                .eq("company_id", companyId)
+                .eq("is_active", true)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              const existingInsights = (existing || []).map((e) =>
+                (e.insight as string).toLowerCase().trim(),
               );
 
-              if (!isDuplicate) {
-                await db.from("company_knowledge").insert({
-                  company_id: companyId,
-                  category: learning.category,
-                  insight: learning.insight,
-                  tags: learning.tags,
-                  source_type: learning.source_type,
-                  source_lead_id: leadId,
-                  metadata: {
-                    event,
-                    lead_score: lead.ai_score,
-                    lead_stage: lead.pipeline_stage,
-                  },
-                });
-                extractedCount++;
+              for (const learning of learnings) {
+                // Simple dedup: skip if a very similar insight already exists
+                const normalised = learning.insight.toLowerCase().trim();
+                const isDuplicate = existingInsights.some(
+                  (e) =>
+                    e === normalised ||
+                    (e.length > DEDUP_PREFIX_LENGTH &&
+                      normalised.length > DEDUP_PREFIX_LENGTH &&
+                      e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
+                );
+
+                if (!isDuplicate) {
+                  await db.from("company_knowledge").insert({
+                    company_id: companyId,
+                    category: learning.category,
+                    insight: learning.insight,
+                    tags: learning.tags,
+                    source_type: learning.source_type,
+                    source_lead_id: leadId,
+                    metadata: {
+                      event,
+                      lead_score: lead.ai_score,
+                      lead_stage: lead.pipeline_stage,
+                    },
+                  });
+                  extractedCount++;
+                }
               }
             }
-          }
 
-          // ── Style calibration (on successful outcomes) ──────────────────
-          const styleLearnings = await extractStyleCalibration(
-            openaiKey,
-            smsHistory,
-            event,
-          );
-          for (const sl of styleLearnings) {
-            const normalised = sl.insight.toLowerCase().trim();
-            const isDuplicate = existingInsights.some(
-              (e) =>
-                e === normalised ||
-                (e.length > DEDUP_PREFIX_LENGTH &&
-                  normalised.length > DEDUP_PREFIX_LENGTH &&
-                  e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
-            );
-            if (!isDuplicate) {
-              await db.from("company_knowledge").insert({
-                company_id: companyId,
-                category: sl.category,
-                insight: sl.insight,
-                tags: sl.tags,
-                source_type: sl.source_type,
-                source_lead_id: leadId,
-                metadata: { event, type: "style_calibration" },
-              });
-              extractedCount++;
+            // ── Style calibration (throttled — skip if we already have enough) ──
+            const { count: styleCount } = await db
+              .from("company_knowledge")
+              .select("id", { count: "exact", head: true })
+              .eq("company_id", companyId)
+              .eq("category", "style_preference")
+              .eq("is_active", true);
+
+            if ((styleCount ?? 0) < MAX_STYLE_LEARNINGS) {
+              const styleLearnings = await extractStyleCalibration(
+                openaiKey,
+                smsHistory,
+                event,
+              );
+              const { data: existingForStyle } = await db
+                .from("company_knowledge")
+                .select("insight")
+                .eq("company_id", companyId)
+                .eq("is_active", true)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              const existingStyleInsights = (existingForStyle || []).map((e) =>
+                (e.insight as string).toLowerCase().trim(),
+              );
+
+              for (const sl of styleLearnings) {
+                const normalised = sl.insight.toLowerCase().trim();
+                const isDuplicate = existingStyleInsights.some(
+                  (e) =>
+                    e === normalised ||
+                    (e.length > DEDUP_PREFIX_LENGTH &&
+                      normalised.length > DEDUP_PREFIX_LENGTH &&
+                      e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
+                );
+                if (!isDuplicate) {
+                  await db.from("company_knowledge").insert({
+                    company_id: companyId,
+                    category: sl.category,
+                    insight: sl.insight,
+                    tags: sl.tags,
+                    source_type: sl.source_type,
+                    source_lead_id: leadId,
+                    metadata: { event, type: "style_calibration" },
+                  });
+                  extractedCount++;
+                }
+              }
+            } else {
+              console.log(
+                `Company ${companyId} already has ${styleCount} style learnings — skipping style calibration`,
+              );
             }
           }
+        } else {
+          console.warn("No OpenAI key available for knowledge extraction");
         }
-      } else {
-        console.warn("No OpenAI key available for knowledge extraction");
       }
     }
 
-    // ── Recompute performance stats ─────────────────────────────────────────
+    // ── Recompute performance stats (throttled — max once per hour) ──────────
     try {
-      await computePerformanceStats(db, companyId);
+      const throttleCutoff = new Date(
+        Date.now() - STATS_THROTTLE_MINUTES * 60 * 1000,
+      ).toISOString();
+
+      const { data: recentStats } = await db
+        .from("ai_performance_stats")
+        .select("computed_at")
+        .eq("company_id", companyId)
+        .eq("period", "all_time")
+        .gte("computed_at", throttleCutoff)
+        .maybeSingle();
+
+      if (!recentStats) {
+        await computePerformanceStats(db, companyId);
+      } else {
+        console.log(
+          `Stats for ${companyId} computed recently (${recentStats.computed_at}) — skipping recomputation`,
+        );
+      }
     } catch (statsErr) {
       console.error("Performance stats computation failed:", statsErr);
     }
