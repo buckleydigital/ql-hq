@@ -310,10 +310,20 @@ Deno.serve(async (req) => {
       const { data: config } = await adminClient
         .from("voice_agent_config")
         .select(
-          "vapi_phone_number_id, vapi_assistant_id, voice_id, system_prompt, greeting, model, name"
+          "is_active, vapi_phone_number_id, vapi_assistant_id, voice_id, system_prompt, greeting, model, name"
         )
         .eq("company_id", profile.company_id)
         .maybeSingle();
+
+      if (config && config.is_active === false) {
+        return new Response(
+          JSON.stringify({ error: "Voice agent is currently disabled. Enable it in Voice AI settings." }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
       const resolvedAssistantId =
         assistantId || config?.vapi_assistant_id;
