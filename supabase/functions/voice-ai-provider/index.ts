@@ -384,11 +384,12 @@ Deno.serve(async (req) => {
             voiceId: resolvedVoiceId,
           };
         }
-        // Inject company knowledge as a system message override
+        // Inject company knowledge as an additional system message
+        // (appended to any existing assistant messages, not replacing them)
         const namedKnowledge = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
         if (namedKnowledge) {
           overrides.model = {
-            messages: [{ role: "system", content: namedKnowledge.trim() }],
+            messages: [{ role: "system", content: `Additional context for this call:${namedKnowledge.trim()}` }],
           };
         }
         callPayload.assistantOverrides = overrides;

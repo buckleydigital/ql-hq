@@ -13,6 +13,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Minimum prefix length for substring-based duplicate detection
+const DEDUP_PREFIX_LENGTH = 30;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -461,7 +464,7 @@ async function updateIndustryInsights(
   // Generate a statistical insight
   const callbackRate = stats.total_leads > 0
     ? ((stats.callbacks_booked / stats.total_leads) * 100).toFixed(1)
-    : "0";
+    : "0.0";
 
   const insight = `In the ${industry.replace("_", " ")} industry, companies that offer callbacks early in the conversation see a ${callbackRate}% callback booking rate. Average AI lead score: ${Math.round(stats.avg_ai_score)}/100.`;
 
@@ -574,9 +577,9 @@ Deno.serve(async (req) => {
               const isDuplicate = existingInsights.some(
                 (e) =>
                   e === normalised ||
-                  (e.length > 30 &&
-                    normalised.length > 30 &&
-                    e.substring(0, 30) === normalised.substring(0, 30)),
+                  (e.length > DEDUP_PREFIX_LENGTH &&
+                    normalised.length > DEDUP_PREFIX_LENGTH &&
+                    e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
               );
 
               if (!isDuplicate) {
@@ -609,9 +612,9 @@ Deno.serve(async (req) => {
             const isDuplicate = existingInsights.some(
               (e) =>
                 e === normalised ||
-                (e.length > 30 &&
-                  normalised.length > 30 &&
-                  e.substring(0, 30) === normalised.substring(0, 30)),
+                (e.length > DEDUP_PREFIX_LENGTH &&
+                  normalised.length > DEDUP_PREFIX_LENGTH &&
+                  e.substring(0, DEDUP_PREFIX_LENGTH) === normalised.substring(0, DEDUP_PREFIX_LENGTH)),
             );
             if (!isDuplicate) {
               await db.from("company_knowledge").insert({
