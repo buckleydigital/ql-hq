@@ -13,9 +13,8 @@ drop view if exists public.pipeline_board;
 drop trigger if exists sync_opportunity_stage on public.opportunities;
 drop function if exists public.sync_opportunity_pipeline_stage();
 
--- The sync_lead_stage trigger updates opportunities when leads change —
--- it will become a no-op once the table is gone, so drop it too, then
--- recreate the function without the opportunities update.
+-- The sync_lead_stage trigger syncs lead pipeline changes to opportunities —
+-- since the opportunities table is being dropped, this trigger is no longer needed.
 drop trigger if exists sync_lead_stage on public.leads;
 drop function if exists public.sync_lead_pipeline_stage();
 

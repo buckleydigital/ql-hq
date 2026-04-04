@@ -968,7 +968,7 @@ const CRM_PAGES = ["pipeline","leads","quotes","appointments","sales"];
 const PAGE_META = {
   dashboard:          ["Dashboard",         "A live view of your lead and pipeline workspace."],
   leads:              ["Leads",             "Manage and capture your lead records."],
-  pipeline:            ["Pipeline",           "Track leads through your pipeline stages."],
+  pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
@@ -1005,7 +1005,7 @@ function navigateTo(page) {
   const loaders = {
     dashboard:          loadDashboard,
     leads:              loadLeads,
-    pipeline:            loadPipeline,
+    pipeline:           loadPipeline,
     quotes:             loadQuotes,
     appointments:       loadAppointments,
     sales:              loadSales,
