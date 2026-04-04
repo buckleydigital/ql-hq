@@ -1115,6 +1115,34 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </form>
           </div>
         </section>
+        <!-- Lead Routing -->
+        <section id="leadRoutingPanel" class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>Lead Routing</h2><p>Choose how new leads are assigned to team members. Only owners and admins can configure this.</p></div></div>
+          <div class="panel-b">
+            <form id="leadRoutingForm" class="stack">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
+                  <input type="radio" name="routingMode" value="all" checked style="accent-color:var(--accent)">
+                  <div><strong style="font-size:13px">Everyone sees all leads</strong><br><span class="muted" style="font-size:11px">All team members can view every lead. No automatic assignment.</span></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
+                  <input type="radio" name="routingMode" value="round_robin" style="accent-color:var(--accent)">
+                  <div><strong style="font-size:13px">Round Robin</strong><br><span class="muted" style="font-size:11px">New leads are distributed evenly across active team members in rotation.</span></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
+                  <input type="radio" name="routingMode" value="postcode" style="accent-color:var(--accent)">
+                  <div><strong style="font-size:13px">By Postcode</strong><br><span class="muted" style="font-size:11px">Assign leads to specific team members based on the lead's postcode. Falls back to round robin if no match.</span></div>
+                </label>
+              </div>
+              <div id="postcodeRulesContainer" style="display:none;margin-top:12px">
+                <div style="font-size:12px;font-weight:600;margin-bottom:8px">Postcode Rules</div>
+                <div id="postcodeRulesList" class="stack" style="gap:8px"></div>
+                <button type="button" class="btn" onclick="addPostcodeRule()" style="margin-top:8px;font-size:11px">+ Add Postcode Rule</button>
+              </div>
+              <div class="actions"><button class="btn2" type="submit">Save Routing</button></div>
+            </form>
+          </div>
+        </section>
         <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>
       </div>
 
