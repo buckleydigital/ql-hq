@@ -117,6 +117,7 @@ function aiScoreDisplay(lead) {
   return `${labels[status] || status} ${lead.ai_score}/100`;
 }
 
+
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 // getSession() returns the cached session and may contain an expired JWT.
 // This helper checks expiry and refreshes the token when needed so that
@@ -219,6 +220,8 @@ let allLeads         = [];
 let dragLeadId       = null;
 let authInitialized  = false;
 let currentUserType  = null;  // 'internal' or 'external' — NEW
+let currentUserRole  = null;  // 'owner' | 'admin' | 'member'
+let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
@@ -704,6 +707,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── Team Members ──────────────────────────────────────────────────────────
   document.getElementById("teamInviteForm")?.addEventListener("submit", handleTeamInvite);
+  document.getElementById("leadRoutingForm")?.addEventListener("submit", handleLeadRoutingSave);
 
   // ── Conversations ─────────────────────────────────────────────────────────
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
@@ -923,6 +927,7 @@ async function showApp() {
     if (profile?.user_type) {
       currentUserType = profile.user_type;
     }
+    currentUserRole = profile?.role || 'member';
 
     if (profile) {
       currentCompanyId = profile.company_id;
@@ -957,6 +962,29 @@ async function showApp() {
       }
     }
 
+    // Fetch current user's permissions from sales_reps
+    if (currentCompanyId && currentUser) {
+      const { data: repData } = await sb
+        .from("sales_reps")
+        .select("can_edit_leads, can_edit_quotes, can_edit_appointments, can_manage_pipeline, can_send_sms, can_initiate_calls, leads_visibility, quotes_visibility, appointments_visibility, sales_visibility, conversations_visibility")
+        .eq("company_id", currentCompanyId)
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (repData) {
+        currentUserPerms = repData;
+      } else if (currentUserRole === 'owner' || currentUserRole === 'admin') {
+        // Owners/admins get full permissions even without a sales_reps record
+        currentUserPerms = {
+          can_edit_leads: true, can_edit_quotes: true, can_edit_appointments: true,
+          can_manage_pipeline: true, can_send_sms: true, can_initiate_calls: true,
+          leads_visibility: 'all', quotes_visibility: 'all', appointments_visibility: 'all',
+          sales_visibility: 'all', conversations_visibility: 'all',
+        };
+      }
+      applyPermissionRestrictions();
+    }
+
     // Set up realtime subscriptions for live message updates
     setupRealtimeSubscription();
 
@@ -986,9 +1014,30 @@ const PAGE_META = {
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
   "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
+  "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
 };
+
+function isAdmin() {
+  return currentUserRole === 'owner' || currentUserRole === 'admin';
+}
+
+function applyPermissionRestrictions() {
+  // Non-admin users: hide admin-only nav items
+  const adminOnlyPages = ['team-members', 'ai-settings', 'voice-ai', 'integrations'];
+  adminOnlyPages.forEach((page) => {
+    const navBtn = document.querySelector(`[data-page="${page}"]`);
+    if (navBtn) navBtn.style.display = isAdmin() ? '' : 'none';
+  });
+
+  // Hide edit buttons based on permissions
+  document.querySelectorAll('[data-perm]').forEach((el) => {
+    const perm = el.dataset.perm;
+    const allowed = isAdmin() || currentUserPerms[perm];
+    el.style.display = allowed ? '' : 'none';
+  });
+}
 
 function navigateTo(page) {
   document.querySelectorAll("[data-page]").forEach((btn) =>
@@ -1023,6 +1072,7 @@ function navigateTo(page) {
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
     "voice-ai":         loadVoiceAi,
+    "ai-insights":      loadAiInsights,
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
   };
@@ -1418,6 +1468,15 @@ async function handleLeadSave(e) {
   };
 
   try {
+    // Auto-route new leads based on company routing config
+    if (!id) {
+      const { data: routedRep } = await sb.rpc("route_lead", {
+        p_company_id: currentCompanyId,
+        p_postcode: payload.postcode || null,
+      });
+      if (routedRep) payload.assigned_to = routedRep;
+    }
+
     const { error } = id
       ? await sb.from("leads").update(payload).eq("id", id)
       : await sb.from("leads").insert(payload);
@@ -2257,6 +2316,7 @@ async function kanbanDrop(event, newStage) {
       loadPipeline();
     } else {
       toast(`Moved to "${stageLabel(newStage)}"`);
+
     }
   } catch (err) {
     toast("Failed to update status.", true);
@@ -2598,8 +2658,116 @@ async function loadSettings() {
     }
     await loadCustomFields();
     renderSettingsCustomFields();
+    loadLeadRoutingUI(company?.settings || {});
   } catch (err) {
     toast("Failed to load settings.", true);
+  }
+}
+
+// ── Lead Routing ────────────────────────────────────────────────────────────
+function loadLeadRoutingUI(settings) {
+  const routing = settings?.lead_routing || {};
+  const mode = routing.mode || "all";
+
+  // Set radio
+  const radios = document.querySelectorAll('[name="routingMode"]');
+  radios.forEach((r) => { r.checked = r.value === mode; });
+
+  // Show/hide postcode rules
+  togglePostcodeRules(mode);
+
+  // Load postcode rules
+  if (routing.postcode_rules?.length) {
+    const list = document.getElementById("postcodeRulesList");
+    if (list) {
+      list.innerHTML = "";
+      routing.postcode_rules.forEach((rule) => addPostcodeRule(rule));
+    }
+  }
+
+  // Radio change handler
+  radios.forEach((r) => r.addEventListener("change", () => togglePostcodeRules(r.value)));
+
+  // Hide panel for non-admins
+  const panel = document.getElementById("leadRoutingPanel");
+  if (panel) panel.style.display = isAdmin() ? "" : "none";
+}
+
+function togglePostcodeRules(mode) {
+  const container = document.getElementById("postcodeRulesContainer");
+  if (container) container.style.display = mode === "postcode" ? "block" : "none";
+}
+
+async function addPostcodeRule(existing) {
+  const list = document.getElementById("postcodeRulesList");
+  if (!list) return;
+
+  // Fetch reps for dropdown
+  let repsOptions = "";
+  if (!list._repsCache) {
+    const { data: reps } = await sb
+      .from("sales_reps")
+      .select("id, user_id, name")
+      .eq("company_id", currentCompanyId)
+      .eq("is_active", true);
+    list._repsCache = reps || [];
+  }
+  repsOptions = list._repsCache.map((r) =>
+    `<option value="${r.user_id}" ${existing?.rep_id === r.user_id ? "selected" : ""}>${r.name}</option>`
+  ).join("");
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:8px;align-items:center";
+  row.innerHTML = `
+    <input type="text" class="pc-postcodes" placeholder="e.g. 2000, 2010-2050" value="${existing?.postcodes?.join(", ") || ""}" style="flex:1;font-size:12px">
+    <select class="pc-rep" style="font-size:12px;min-width:140px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2)">
+      <option value="">Select rep…</option>
+      ${repsOptions}
+    </select>
+    <button type="button" class="iconbtn btn-danger" onclick="this.parentElement.remove()" style="flex-shrink:0"><span class="icon" data-icon="trash"></span></button>
+  `;
+  list.appendChild(row);
+  renderIcons();
+}
+window.addPostcodeRule = addPostcodeRule;
+
+async function handleLeadRoutingSave(e) {
+  e.preventDefault();
+  const mode = document.querySelector('[name="routingMode"]:checked')?.value || "all";
+
+  const routing = { mode, round_robin_index: 0 };
+
+  if (mode === "postcode") {
+    const rules = [];
+    document.querySelectorAll("#postcodeRulesList > div").forEach((row) => {
+      const postcodes = row.querySelector(".pc-postcodes")?.value
+        .split(",").map((s) => s.trim()).filter(Boolean);
+      const rep_id = row.querySelector(".pc-rep")?.value;
+      if (postcodes.length && rep_id) rules.push({ postcodes, rep_id });
+    });
+    routing.postcode_rules = rules;
+  }
+
+  try {
+    // Read current settings, merge in lead_routing
+    const { data: company } = await sb
+      .from("companies")
+      .select("settings")
+      .eq("id", currentCompanyId)
+      .maybeSingle();
+
+    const settings = company?.settings || {};
+    settings.lead_routing = routing;
+
+    const { error } = await sb
+      .from("companies")
+      .update({ settings })
+      .eq("id", currentCompanyId);
+
+    if (error) { toast(error.message, true); return; }
+    toast("Lead routing saved.");
+  } catch (err) {
+    toast("Failed to save routing.", true);
   }
 }
 
@@ -3086,7 +3254,7 @@ async function loadTeamMembers() {
   if (!currentCompanyId) return;
 
   try {
-    const [{ data: profiles }, { data: invites }] = await Promise.all([
+    const [{ data: profiles }, { data: invites }, { data: reps }] = await Promise.all([
       sb.from("profiles")
         .select("id, full_name, phone, role, is_active, created_at")
         .eq("company_id", currentCompanyId)
@@ -3096,25 +3264,77 @@ async function loadTeamMembers() {
         .eq("company_id", currentCompanyId)
         .eq("status", "pending")
         .order("invited_at", { ascending: false }),
+      sb.from("sales_reps")
+        .select("*")
+        .eq("company_id", currentCompanyId),
     ]);
 
-    renderTeamMembersList(profiles || [], invites || []);
+    renderTeamMembersList(profiles || [], invites || [], reps || []);
   } catch (err) {
     toast("Failed to load team members.", true);
   }
 }
 
-function renderTeamMembersList(profiles, invites) {
+function renderTeamMembersList(profiles, invites, reps) {
   const el = document.getElementById("teamMembersList");
   if (!el) return;
 
-  const memberRows = profiles.map((p) => `
-    <div class="team-row">
-      <div><strong style="font-size:13px">${p.full_name || "—"}</strong><span class="muted">${p.phone || "—"}</span></div>
+  const repMap = {};
+  reps.forEach((r) => { repMap[r.user_id] = r; });
+
+  const VIS_LABELS = { all: "All", assigned_only: "Assigned Only", none: "None" };
+
+  const memberRows = profiles.map((p) => {
+    const rep = repMap[p.id];
+    const isOwnerAdmin = p.role === "owner" || p.role === "admin";
+    const canManage = isAdmin() && !isOwnerAdmin && p.id !== currentUser?.id;
+
+    let permsHtml = "";
+    if (rep && !isOwnerAdmin) {
+      permsHtml = `
+        <div class="team-perms" data-rep-id="${rep.id}" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:none">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Visibility</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-bottom:12px">
+            ${["leads","quotes","appointments","sales","conversations"].map((s) => `
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+                <span style="min-width:90px;color:var(--muted)">${s.charAt(0).toUpperCase()+s.slice(1)}</span>
+                <select data-vis="${s}" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2)" ${canManage ? "" : "disabled"}>
+                  ${["all","assigned_only","none"].map((v) => `<option value="${v}" ${rep[s+"_visibility"]===v?"selected":""}>${VIS_LABELS[v]}</option>`).join("")}
+                </select>
+              </div>`).join("")}
+          </div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Permissions</div>
+          <div class="toggle-group" style="gap:8px">
+            ${[
+              ["can_edit_leads","Edit Leads"],
+              ["can_edit_quotes","Edit Quotes"],
+              ["can_edit_appointments","Edit Appointments"],
+              ["can_manage_pipeline","Manage Pipeline"],
+              ["can_send_sms","Send SMS"],
+              ["can_initiate_calls","Initiate Calls"],
+            ].map(([key, label]) => `
+              <label class="toggle-item" style="padding:6px 10px;font-size:11px">
+                <input type="checkbox" data-perm-key="${key}" ${rep[key]?"checked":""} ${canManage?"":"disabled"}>
+                <span class="toggle-label">${label}</span>
+              </label>`).join("")}
+          </div>
+          ${canManage ? `<div class="actions" style="margin-top:10px"><button class="btn" type="button" onclick="saveRepPerms('${rep.id}', this)" style="font-size:11px;padding:6px 14px">Save Permissions</button></div>` : ""}
+        </div>`;
+    } else if (isOwnerAdmin) {
+      permsHtml = `<div class="team-perms" style="margin-top:4px;display:none"><span class="muted" style="font-size:11px">Owners and admins have full access to all sections.</span></div>`;
+    }
+
+    return `
+    <div class="team-row" style="flex-wrap:wrap">
+      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${p.full_name || "—"}</strong><span class="muted">${p.phone || "—"}</span></div>
       <div><span class="chip">${p.role || "member"}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
-      <div></div>
-    </div>`).join("");
+      <div>
+        ${(rep || isOwnerAdmin) ? `<button class="btn" type="button" onclick="toggleTeamPerms(this)" style="font-size:11px;padding:4px 10px"><span class="icon" data-icon="settings" style="width:12px;height:12px"></span> Permissions</button>` : ""}
+      </div>
+      ${permsHtml}
+    </div>`;
+  }).join("");
 
   const inviteRows = invites.map((inv) => `
     <div class="team-row">
@@ -3136,6 +3356,41 @@ function renderTeamMembersList(profiles, invites) {
   renderIcons();
 }
 
+async function saveRepPerms(repId, btn) {
+  const container = btn.closest('.team-perms');
+  if (!container) return;
+
+  const update = {};
+  // Visibility selects
+  container.querySelectorAll('[data-vis]').forEach((sel) => {
+    update[sel.dataset.vis + '_visibility'] = sel.value;
+  });
+  // Permission toggles
+  container.querySelectorAll('[data-perm-key]').forEach((cb) => {
+    update[cb.dataset.permKey] = cb.checked;
+  });
+
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    const { error } = await sb.from("sales_reps").update(update).eq("id", repId);
+    if (error) { toast(error.message, true); return; }
+    toast("Permissions saved.");
+  } catch (err) {
+    toast("Failed to save permissions.", true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save Permissions";
+  }
+}
+window.saveRepPerms = saveRepPerms;
+
+function toggleTeamPerms(btn) {
+  const perms = btn.closest('.team-row')?.querySelector('.team-perms');
+  if (perms) perms.style.display = perms.style.display === 'none' ? 'block' : 'none';
+}
+window.toggleTeamPerms = toggleTeamPerms;
+
 async function handleTeamInvite(e) {
   e.preventDefault();
   const email    = document.getElementById("inviteEmail")?.value?.trim();
@@ -3147,7 +3402,10 @@ async function handleTeamInvite(e) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
 
   try {
-    const result = await edgeFn("invite-rep", { email, name: fullName, phone });
+    const result = await edgeFn("invite-rep", { email, name: fullName, phone, visibility: {
+      leads: "assigned_only", quotes: "assigned_only", appointments: "assigned_only",
+      sales: "assigned_only", conversations: "assigned_only",
+    }});
 
     if (result.email_sent) {
       toast(`Invite sent to ${email}. They'll receive an email to set up their account.`);
@@ -4524,6 +4782,146 @@ async function approveAndSendQuote(quoteId) {
     toast(err.message || "Failed to approve and send quote.", true);
     console.error("approveAndSendQuote error:", err);
   }
+}
+
+// =============================================================================
+// ── AI Insights ───────────────────────────────────────────────────────────────
+// =============================================================================
+
+async function loadAiInsights() {
+  if (!currentCompanyId) return;
+
+  const statsEl = document.getElementById("aiInsightsStats");
+  const convEl = document.getElementById("aiConversionBars");
+  const knowledgeEl = document.getElementById("aiKnowledgeList");
+
+  // ── Fetch performance stats ─────────────────────────────────────────────
+  const { data: stats } = await sb
+    .from("ai_performance_stats")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .eq("period", "all_time")
+    .maybeSingle();
+
+  if (statsEl) {
+    if (!stats) {
+      statsEl.innerHTML = `<div class="notice">No data yet. AI insights will appear as your AI agents handle more conversations.</div>`;
+    } else {
+      const statCards = [
+        { label: "Total Leads", value: stats.total_leads, icon: "users" },
+        { label: "AI-Handled", value: stats.ai_handled_leads, icon: "spark" },
+        { label: "AI Conversions", value: stats.ai_conversions, icon: "chart" },
+        { label: "Avg AI Score", value: Math.round(stats.avg_ai_score || 0), icon: "spark" },
+        { label: "Callbacks Booked", value: stats.callbacks_booked, icon: "phone" },
+        { label: "On-sites Booked", value: stats.onsites_booked, icon: "calendar" },
+        { label: "Quotes Generated", value: stats.quotes_generated, icon: "file" },
+        { label: "Voice Calls", value: stats.voice_calls_completed, icon: "phone" },
+        { label: "Knowledge Items", value: stats.knowledge_items_count, icon: "spark" },
+      ];
+
+      statsEl.innerHTML = statCards.map((s) => `
+        <div style="background:var(--surface-2);border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:700;color:var(--text)">${s.value}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(s.label)}</div>
+        </div>
+      `).join("");
+    }
+  }
+
+  // ── Conversion comparison ───────────────────────────────────────────────
+  if (convEl) {
+    if (!stats || stats.total_leads === 0) {
+      convEl.innerHTML = `<div class="notice">Not enough data to compare conversion rates yet.</div>`;
+    } else {
+      const aiRate = stats.ai_conversion_rate || 0;
+      const humanRate = stats.human_conversion_rate || 0;
+      const maxRate = Math.max(aiRate, humanRate, 1);
+
+      convEl.innerHTML = `
+        <div style="flex:1;text-align:center">
+          <div style="background:var(--accent,#1f6fff);border-radius:6px 6px 0 0;height:${Math.max(8, (aiRate / maxRate) * 120)}px;margin:0 auto;width:60px"></div>
+          <div style="margin-top:8px;font-weight:600;font-size:20px">${aiRate.toFixed(1)}%</div>
+          <div style="font-size:12px;color:var(--muted)">AI Conversion</div>
+          <div style="font-size:11px;color:var(--muted)">${stats.ai_conversions} / ${stats.ai_handled_leads} leads</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="background:var(--muted);border-radius:6px 6px 0 0;height:${Math.max(8, (humanRate / maxRate) * 120)}px;margin:0 auto;width:60px"></div>
+          <div style="margin-top:8px;font-weight:600;font-size:20px">${humanRate.toFixed(1)}%</div>
+          <div style="font-size:12px;color:var(--muted)">Human Conversion</div>
+          <div style="font-size:11px;color:var(--muted)">${stats.human_conversions} / ${stats.human_handled_leads} leads</div>
+        </div>
+      `;
+    }
+  }
+
+  // ── Knowledge base ──────────────────────────────────────────────────────
+  if (knowledgeEl) {
+    const { data: knowledge } = await sb
+      .from("company_knowledge")
+      .select("id, category, insight, tags, source_type, times_used, created_at")
+      .eq("company_id", currentCompanyId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (!knowledge || knowledge.length === 0) {
+      knowledgeEl.innerHTML = `<div class="notice">No AI learnings yet. As leads progress through your pipeline, the AI will extract insights automatically.</div>`;
+    } else {
+      const categoryLabels = {
+        winning_pattern: "✅ Winning Pattern",
+        failed_pattern: "⚠️ Failed Pattern",
+        objection_response: "💬 Objection Response",
+        scheduling_approach: "📅 Scheduling",
+        quote_approach: "💰 Quote Approach",
+        service_insight: "🔧 Service Insight",
+        style_preference: "🎨 Style Preference",
+      };
+
+      knowledgeEl.innerHTML = knowledge.map((k) => {
+        const catLabel = categoryLabels[k.category] || k.category;
+        const tags = (k.tags || []).map((t) => `<span style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-size:10px">${esc(t)}</span>`).join(" ");
+        const ts = new Date(k.created_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+        return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">${catLabel} <span style="font-weight:400;margin-left:4px">${esc(k.source_type)}</span></div>
+            <div style="font-size:13px;color:var(--text)">${esc(k.insight)}</div>
+            <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${tags}</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${ts}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  // ── Industry insights ───────────────────────────────────────────────────
+  const industryEl = document.getElementById("aiIndustryInsights");
+  if (industryEl) {
+    const { data: insights } = await sb
+      .from("industry_insights")
+      .select("industry, insight, sample_size, confidence, updated_at")
+      .eq("is_active", true)
+      .order("confidence", { ascending: false })
+      .limit(10);
+
+    if (!insights || insights.length === 0) {
+      industryEl.innerHTML = `<div class="notice">Industry insights will appear as more companies use the platform.</div>`;
+    } else {
+      industryEl.innerHTML = insights.map((i) => {
+        const confPct = Math.round((i.confidence || 0) * 100);
+        const ts = new Date(i.updated_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+        return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:capitalize">${esc(i.industry.replace(/_/g, " "))}</div>
+            <div style="font-size:13px;color:var(--text)">${esc(i.insight)}</div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted)">${i.sample_size} companies · ${confPct}% confidence</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${ts}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  renderIcons();
 }
 
 // =============================================================================

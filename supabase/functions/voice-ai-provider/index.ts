@@ -70,6 +70,52 @@ async function getCallerUser(
 }
 
 /**
+ * Fetch relevant company knowledge for voice agent prompt enrichment (RAG-lite).
+ * Returns a prompt fragment to append to the system prompt.
+ */
+async function fetchCompanyKnowledgeForVoice(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<string> {
+  try {
+    // Fetch company-specific learnings
+    const { data: knowledge } = await adminClient
+      .from("company_knowledge")
+      .select("category, insight")
+      .eq("company_id", companyId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    // Fetch industry-level baseline insights
+    const { data: industryInsights } = await adminClient
+      .from("industry_insights")
+      .select("insight")
+      .eq("is_active", true)
+      .gte("confidence", 0.3)
+      .order("confidence", { ascending: false })
+      .limit(2);
+
+    const parts: string[] = [];
+
+    if (knowledge && knowledge.length > 0) {
+      const insights = knowledge.map((k: { insight: string }) => `- ${k.insight}`).join("\n");
+      parts.push(`Based on past successful interactions with this company's customers, keep these learnings in mind:\n${insights}`);
+    }
+
+    if (industryInsights && industryInsights.length > 0) {
+      const industry = industryInsights.map((i: { insight: string }) => `- ${i.insight}`).join("\n");
+      parts.push(`Industry benchmarks:\n${industry}`);
+    }
+
+    if (parts.length === 0) return "";
+    return `\n\n${parts.join("\n\n")}\nApply these insights naturally without mentioning them explicitly.`;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Resolve VAPI API key: tries DB first (resolve_api_key RPC), then falls back
  * to the AGENCY_VAPI_KEY env secret for internal (agency) accounts.
  */
@@ -338,6 +384,14 @@ Deno.serve(async (req) => {
             voiceId: resolvedVoiceId,
           };
         }
+        // Inject company knowledge as an additional system message
+        // (appended to any existing assistant messages, not replacing them)
+        const namedKnowledge = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
+        if (namedKnowledge) {
+          overrides.model = {
+            messages: [{ role: "system", content: `Additional context for this call: ${namedKnowledge.trim()}` }],
+          };
+        }
         callPayload.assistantOverrides = overrides;
       } else {
         // ── Transient assistant mode ──
@@ -355,13 +409,17 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Enrich system prompt with company knowledge (RAG-lite)
+        const knowledgeFragment = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
+        const enrichedPrompt = systemPrompt + knowledgeFragment;
+
         const transientAssistant: Record<string, unknown> = {
           name: config?.name || "Voice Agent",
           serverUrl: webhookUrl,
           model: {
             provider: "openai",
             model: config?.model || "gpt-4o",
-            messages: [{ role: "system", content: systemPrompt }],
+            messages: [{ role: "system", content: enrichedPrompt }],
           },
         };
         if (webhookSecret) {

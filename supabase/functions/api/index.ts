@@ -194,6 +194,7 @@ async function handleCreateLead(
   const allowed = [
     "name", "first_name", "last_name", "email", "phone",
     "pipeline_stage", "source", "custom_data", "metadata",
+    "postcode", "address", "assigned_to",
   ];
   const row: Record<string, unknown> = { company_id: companyId };
   for (const key of allowed) {
@@ -203,6 +204,15 @@ async function handleCreateLead(
   // Require at least a name or phone
   if (!row.name && !row.phone) {
     return json({ error: "At least 'name' or 'phone' is required" }, 400);
+  }
+
+  // Auto-assign based on lead routing config
+  if (!row.assigned_to) {
+    const { data: routedRep } = await db.rpc("route_lead", {
+      p_company_id: companyId,
+      p_postcode: (row.postcode as string) || null,
+    });
+    if (routedRep) row.assigned_to = routedRep;
   }
 
   const { data, error } = await db

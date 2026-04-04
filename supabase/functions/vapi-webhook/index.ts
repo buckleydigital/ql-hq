@@ -6,6 +6,30 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Fire-and-forget call to ai-learner for knowledge extraction ──────────────
+function triggerAILearner(
+  event: string,
+  companyId: string,
+  leadId: string,
+  metadata?: Record<string, unknown>,
+): void {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  fetch(`${supabaseUrl}/functions/v1/ai-learner`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify({
+      event,
+      company_id: companyId,
+      lead_id: leadId,
+      metadata,
+    }),
+  }).catch((err) => console.error("ai-learner trigger failed:", err));
+}
+
 // ── Outbound webhook helper ───────────────────────────────────────────────────
 async function fireWebhooks(
   adminClient: ReturnType<typeof createClient>,
@@ -460,6 +484,12 @@ Respond ONLY with the JSON object, no markdown fences.`;
                         console.log(
                           `Auto-created ${apptType} appointment for lead ${callRecord.lead_id} from voice call transcript`,
                         );
+
+                        // Trigger AI learner for appointment booking insights
+                        triggerAILearner("appointment.booked", callRecord.company_id, callRecord.lead_id, {
+                          appointment_type: apptType,
+                          source: "ai_voice",
+                        });
                       } else {
                         console.warn(
                           `Appointment time detected but invalid or too far in past: ${parsed.appointment_time}`,
