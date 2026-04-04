@@ -25,6 +25,9 @@ const MAX_STYLE_LEARNINGS = 5;
 // Minimum interval between stats recomputations per company (in minutes)
 const STATS_THROTTLE_MINUTES = 60;
 
+// Milliseconds in one hour — used for time-window calculations
+const MS_PER_HOUR = 60 * 60 * 1000;
+
 // Use the cheaper mini model for structured extraction tasks
 const EXTRACTION_MODEL = "gpt-4o-mini";
 
@@ -478,7 +481,7 @@ async function updateIndustryInsights(
     ? ((stats.callbacks_booked / stats.total_leads) * 100).toFixed(1)
     : "0.0";
 
-  const insight = `In the ${industry.replace("_", " ")} industry, companies that offer callbacks early in the conversation see a ${callbackRate}% callback booking rate. Average AI lead score: ${Math.round(stats.avg_ai_score)}/100.`;
+  const insight = `In the ${industry.replace("_", " ")} industry, AI-assisted leads achieve a ${callbackRate}% callback booking rate. Average AI lead score: ${Math.round(stats.avg_ai_score)}/100.`;
 
   // Upsert (one insight per industry, updated over time)
   const { data: existing } = await db
@@ -552,7 +555,7 @@ Deno.serve(async (req) => {
     if (leadId) {
       // ── Dedup guard: skip if this lead was already analyzed recently ─────
       const dedupCutoff = new Date(
-        Date.now() - DEDUP_WINDOW_HOURS * 60 * 60 * 1000,
+        Date.now() - DEDUP_WINDOW_HOURS * MS_PER_HOUR,
       ).toISOString();
 
       const { count: recentAnalysisCount } = await db

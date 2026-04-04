@@ -389,7 +389,7 @@ Deno.serve(async (req) => {
         const namedKnowledge = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
         if (namedKnowledge) {
           overrides.model = {
-            messages: [{ role: "system", content: `Additional context for this call:${namedKnowledge.trim()}` }],
+            messages: [{ role: "system", content: `Additional context for this call: ${namedKnowledge.trim()}` }],
           };
         }
         callPayload.assistantOverrides = overrides;
