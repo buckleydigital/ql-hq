@@ -366,6 +366,13 @@ Deno.serve(async (req) => {
           sales_visibility: visibility?.sales || defaultVisibility,
           conversations_visibility:
             visibility?.conversations || defaultVisibility,
+          // Default permissions for new members (false = read-only)
+          can_edit_leads: false,
+          can_edit_quotes: false,
+          can_edit_appointments: false,
+          can_manage_pipeline: false,
+          can_send_sms: false,
+          can_initiate_calls: false,
         },
         { onConflict: "company_id, user_id" }
       )
