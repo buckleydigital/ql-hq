@@ -22,6 +22,8 @@ drop function if exists public.sync_lead_pipeline_stage();
 alter table public.quotes drop column if exists opportunity_id;
 alter table public.appointments drop column if exists opportunity_id;
 alter table public.sales drop column if exists opportunity_id;
+-- quote_drafts may exist in some environments with an opportunity_id FK
+alter table if exists public.quote_drafts drop column if exists opportunity_id;
 
 -- ─── Drop opportunities_visibility from sales_reps ───────────────────────────
 alter table public.sales_reps drop column if exists opportunities_visibility;
