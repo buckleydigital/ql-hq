@@ -80,6 +80,59 @@ function onsiteBookedEmail(leadName: string, scheduledTime: string, companyName:
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// ---------------------------------------------------------------------------
+// Fetch relevant company knowledge for prompt enrichment (RAG-lite)
+// ---------------------------------------------------------------------------
+async function fetchCompanyKnowledge(
+  db: SupabaseClient,
+  companyId: string,
+  _context?: { action?: string; tags?: string[] },
+): Promise<string> {
+  try {
+    const { data: knowledge } = await db
+      .from("company_knowledge")
+      .select("category, insight")
+      .eq("company_id", companyId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!knowledge || knowledge.length === 0) return "";
+
+    const insights = knowledge
+      .map((k) => `- ${k.insight}`)
+      .join("\n");
+
+    return `\n\nBased on past successful interactions with this company's customers, keep these learnings in mind:\n${insights}\nApply these insights naturally without mentioning them explicitly.`;
+  } catch {
+    return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fire-and-forget call to ai-learner for knowledge extraction
+// ---------------------------------------------------------------------------
+function triggerAILearner(
+  event: string,
+  companyId: string,
+  leadId: string,
+  metadata?: Record<string, unknown>,
+): void {
+  fetch(`${SUPABASE_URL}/functions/v1/ai-learner`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({
+      event,
+      company_id: companyId,
+      lead_id: leadId,
+      metadata,
+    }),
+  }).catch((err) => console.error("ai-learner trigger failed:", err));
+}
+
 // ── Outbound webhook helper ───────────────────────────────────────────────────
 async function fireWebhooks(
   db: SupabaseClient,
@@ -297,7 +350,8 @@ async function sendTwilioSMS(
 function buildSystemPrompt(
   config: Record<string, unknown>,
   lead: Record<string, unknown>,
-  quoteStatus: string | null
+  quoteStatus: string | null,
+  companyKnowledge?: string,
 ): string {
   // If company has a custom prompt (external users can fully edit this), use it
   // but inject dynamic context variables
@@ -305,10 +359,12 @@ function buildSystemPrompt(
 
   if (customPrompt) {
     // Replace template variables in the custom prompt
-    return customPrompt
+    let prompt = customPrompt
       .replace(/\(company name\)/gi, (config.company_name as string) || "our company")
       .replace(/\(area\)/gi, (config.company_area as string) || "your area")
       .replace(/\(service\)/gi, (config.service_description as string) || "our services");
+    if (companyKnowledge) prompt += companyKnowledge;
+    return prompt;
   }
 
   // Default prompt (matches the original Bubble.io prompt structure)
@@ -368,7 +424,7 @@ The score reflects lead quality: 0-20 cold/unresponsive, 21-40 mildly interested
 Set action to "callback" if a callback was confirmed in this message, "onsite" if a site visit was confirmed, "quote" if you indicated a quote may be coming and enough detail has been gathered. Otherwise "none".
 For appointment_time: convert the agreed time to a full ISO8601 datetime (e.g. "2026-04-02T14:00:00+10:00") based on today's date. If the lead said "Tuesday at 2pm" and today is Monday, use tomorrow's date. Always include timezone offset.
 For quote_context: if action is "quote", summarise what the lead wants quoted (service type, scope, any details mentioned). This will be passed to the quoting system.
-${quoteStatus ? `\nCurrent quote status for this lead: ${quoteStatus}. Do not trigger another quote if one is already in progress.` : ""}`;
+${quoteStatus ? `\nCurrent quote status for this lead: ${quoteStatus}. Do not trigger another quote if one is already in progress.` : ""}${companyKnowledge || ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -701,8 +757,9 @@ Deno.serve(async (req) => {
       return twimlResponse("");
     }
 
-    // 10. Build prompt + call OpenAI
-    const systemPrompt = buildSystemPrompt(smsConfig, lead, quoteStatus);
+    // 10. Build prompt + call OpenAI (with company knowledge enrichment)
+    const companyKnowledge = await fetchCompanyKnowledge(db, companyId);
+    const systemPrompt = buildSystemPrompt(smsConfig, lead, quoteStatus, companyKnowledge);
     const model = smsConfig.model || "gpt-4o";
 
     const aiRaw = await callOpenAI(openaiKey, model, systemPrompt, conversationMessages);
@@ -812,6 +869,12 @@ Deno.serve(async (req) => {
         : onsiteBookedEmail(leadName, scheduledTimeStr, companyName);
       sendNotificationEmail(db, companyId, emailContent)
         .catch((err) => console.error("Notification email failed:", err));
+
+      // Trigger AI learner to extract scheduling insights
+      triggerAILearner("appointment.booked", companyId, lead.id, {
+        appointment_type: appointmentType,
+        source: "ai_sms",
+      });
     }
 
     // 14. Trigger quote-draft edge function if conditions met

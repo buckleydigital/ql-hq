@@ -70,6 +70,35 @@ async function getCallerUser(
 }
 
 /**
+ * Fetch relevant company knowledge for voice agent prompt enrichment (RAG-lite).
+ * Returns a prompt fragment to append to the system prompt.
+ */
+async function fetchCompanyKnowledgeForVoice(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<string> {
+  try {
+    const { data: knowledge } = await adminClient
+      .from("company_knowledge")
+      .select("category, insight")
+      .eq("company_id", companyId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!knowledge || knowledge.length === 0) return "";
+
+    const insights = knowledge
+      .map((k: { insight: string }) => `- ${k.insight}`)
+      .join("\n");
+
+    return `\n\nBased on past successful interactions with this company's customers, keep these learnings in mind:\n${insights}\nApply these insights naturally without mentioning them explicitly.`;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Resolve VAPI API key: tries DB first (resolve_api_key RPC), then falls back
  * to the AGENCY_VAPI_KEY env secret for internal (agency) accounts.
  */
@@ -338,6 +367,13 @@ Deno.serve(async (req) => {
             voiceId: resolvedVoiceId,
           };
         }
+        // Inject company knowledge as a system message override
+        const namedKnowledge = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
+        if (namedKnowledge) {
+          overrides.model = {
+            messages: [{ role: "system", content: namedKnowledge.trim() }],
+          };
+        }
         callPayload.assistantOverrides = overrides;
       } else {
         // ── Transient assistant mode ──
@@ -355,13 +391,17 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Enrich system prompt with company knowledge (RAG-lite)
+        const knowledgeFragment = await fetchCompanyKnowledgeForVoice(adminClient, profile.company_id);
+        const enrichedPrompt = systemPrompt + knowledgeFragment;
+
         const transientAssistant: Record<string, unknown> = {
           name: config?.name || "Voice Agent",
           serverUrl: webhookUrl,
           model: {
             provider: "openai",
             model: config?.model || "gpt-4o",
-            messages: [{ role: "system", content: systemPrompt }],
+            messages: [{ role: "system", content: enrichedPrompt }],
           },
         };
         if (webhookSecret) {
