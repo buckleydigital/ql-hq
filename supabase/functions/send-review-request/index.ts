@@ -33,7 +33,15 @@ Deno.serve(async (req) => {
     // ── Auth: only the cron scheduler (service role) may invoke this ─────
     const authHeader = req.headers.get("authorization") || "";
     const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!callerToken || callerToken !== serviceKey) {
+    // Constant-time comparison to prevent timing attacks
+    const keyBytes = new TextEncoder().encode(callerToken);
+    const expectedBytes = new TextEncoder().encode(serviceKey);
+    let isMatch = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
+    const len = Math.max(keyBytes.length, expectedBytes.length);
+    for (let i = 0; i < len; i++) {
+      if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
+    }
+    if (!isMatch) {
       return json({ error: "Unauthorized" }, 401);
     }
 

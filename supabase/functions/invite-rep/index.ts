@@ -320,6 +320,9 @@ Deno.serve(async (req) => {
     // Create or update the sales rep record (upsert avoids duplicate-key
     // errors when re-inviting an existing team member to the same company).
     const defaultVisibility = "assigned_only";
+    const ALLOWED_VISIBILITY = ["assigned_only", "team_only", "all"];
+    const safeVis = (v: unknown) =>
+      typeof v === "string" && ALLOWED_VISIBILITY.includes(v) ? v : defaultVisibility;
     const { data: rep, error: repError } = await adminClient
       .from("sales_reps")
       .upsert(
@@ -330,12 +333,11 @@ Deno.serve(async (req) => {
           email,
           phone: phone || null,
           is_active: true,
-          leads_visibility: visibility?.leads || defaultVisibility,
-          quotes_visibility: visibility?.quotes || defaultVisibility,
-          appointments_visibility: visibility?.appointments || defaultVisibility,
-          sales_visibility: visibility?.sales || defaultVisibility,
-          conversations_visibility:
-            visibility?.conversations || defaultVisibility,
+          leads_visibility: safeVis(visibility?.leads),
+          quotes_visibility: safeVis(visibility?.quotes),
+          appointments_visibility: safeVis(visibility?.appointments),
+          sales_visibility: safeVis(visibility?.sales),
+          conversations_visibility: safeVis(visibility?.conversations),
           // Default permissions for new members (false = read-only)
           can_edit_leads: false,
           can_edit_quotes: false,

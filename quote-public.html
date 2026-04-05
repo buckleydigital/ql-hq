@@ -64,7 +64,11 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
   const card = document.getElementById("quoteCard");
 
   if (!token) {
-    card.innerHTML = `<div class="error">Invalid quote link. No token provided.</div>`;
+    const errDiv = document.createElement("div");
+    errDiv.className = "error";
+    errDiv.textContent = "Invalid quote link. No token provided.";
+    card.innerHTML = "";
+    card.appendChild(errDiv);
     return;
   }
 
@@ -96,14 +100,22 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
       const res = await fetch(`${SUPABASE_URL}/functions/v1/quote-public?token=${encodeURIComponent(token)}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        card.innerHTML = `<div class="error">${err.error || "Quote not found or link expired."}</div>`;
+        const errDiv = document.createElement("div");
+        errDiv.className = "error";
+        errDiv.textContent = err.error || "Quote not found or link expired.";
+        card.innerHTML = "";
+        card.appendChild(errDiv);
         return;
       }
 
       const { quote, company, lead } = await res.json();
       renderQuote(quote, company, lead);
     } catch (err) {
-      card.innerHTML = `<div class="error">Failed to load quote. Please try again.</div>`;
+      const errDiv = document.createElement("div");
+      errDiv.className = "error";
+      errDiv.textContent = "Failed to load quote. Please try again.";
+      card.innerHTML = "";
+      card.appendChild(errDiv);
     }
   }
 
