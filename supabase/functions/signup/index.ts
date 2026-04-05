@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
         user_metadata: {
           full_name: full_name.trim(),
           company_name: company_name.trim(),
-          user_type: "external",
+          user_type: "internal",
         },
       });
 
