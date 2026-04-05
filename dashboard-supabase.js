@@ -1334,7 +1334,7 @@ async function renderCustomFieldInputs(values = {}) {
         <label>${esc(f.label)}</label>
         ${f.type === "textarea"
           ? `<textarea name="cf_${esc(f.key)}">${esc(values[f.key] || "")}</textarea>`
-          : `<input type="${esc(f.type || "text")}" name="cf_${esc(f.key)}" value="${esc(values[f.key] || "")}">`}
+          : `<input type="${["text","email","number","tel","date","url"].includes(f.type) ? f.type : "text"}" name="cf_${esc(f.key)}" value="${esc(values[f.key] || "")}">`}
       </div>
     </div>`).join("");
 }
@@ -4793,7 +4793,7 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${esc(a.title) || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(esc(a.appointment_type))}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
+        <h3>${esc(a.title) || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${esc(cap(a.appointment_type))}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
         <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
         ${a.location ? `<p><strong>Where:</strong> ${esc(a.location)}</p>` : ""}
         ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${esc(a.notes)}</p>` : ""}
@@ -4823,7 +4823,7 @@ async function loadOppCalls(leadId) {
 
     el.innerHTML = calls.map((c) => `
       <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${cap(esc(c.sentiment))}</span>` : ""}</h3>
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${esc(cap(c.sentiment))}</span>` : ""}</h3>
         <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
         ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(c.transcript.substring(0, 150))}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
         ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(c.summary)}</p>` : ""}
