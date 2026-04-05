@@ -10,7 +10,7 @@
 -- Store review request settings alongside existing SMS agent config.
 alter table public.sms_agent_config
   add column if not exists review_enabled          boolean default false,
-  add column if not exists review_delay_days       int default 3,
+  add column if not exists review_delay_days       int default 7,
   add column if not exists review_auto_send        boolean default false,
   add column if not exists review_message          text default 'Hi {{first_name}}, thank you for choosing us! We''d love your feedback — please leave us a Google review: {{review_link}}',
   add column if not exists google_review_link      text;

@@ -5409,13 +5409,13 @@ async function loadReviews() {
 
     if (smsConfig) {
       setCheckboxValue("reviewEnabled", smsConfig.review_enabled);
-      setInputValue("reviewDelayDays", smsConfig.review_delay_days ?? 3);
+      setInputValue("reviewDelayDays", smsConfig.review_delay_days ?? 7);
       setCheckboxValue("reviewAutoSend", smsConfig.review_auto_send);
       setInputValue("reviewMessage", smsConfig.review_message || DEFAULT_REVIEW_MESSAGE);
       setInputValue("googleReviewLink", smsConfig.google_review_link);
     } else {
       setInputValue("reviewMessage", DEFAULT_REVIEW_MESSAGE);
-      setInputValue("reviewDelayDays", 3);
+      setInputValue("reviewDelayDays", 7);
     }
 
     // Load review requests
@@ -5495,7 +5495,7 @@ async function handleReviewSettingsSave(e) {
   const payload = {
     company_id:         currentCompanyId,
     review_enabled:     document.getElementById("reviewEnabled")?.checked ?? false,
-    review_delay_days:  Number(document.getElementById("reviewDelayDays")?.value) || 3,
+    review_delay_days:  Number(document.getElementById("reviewDelayDays")?.value) || 7,
     review_auto_send:   document.getElementById("reviewAutoSend")?.checked ?? false,
     review_message:     document.getElementById("reviewMessage")?.value || DEFAULT_REVIEW_MESSAGE,
     google_review_link: document.getElementById("googleReviewLink")?.value || null,
@@ -5544,7 +5544,7 @@ async function scheduleReviewRequest(leadId) {
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{review_link\}\}/gi, smsConfig.google_review_link);
 
-    const delayDays = smsConfig.review_delay_days ?? 3;
+    const delayDays = smsConfig.review_delay_days ?? 7;
     const scheduledAt = new Date();
     scheduledAt.setDate(scheduledAt.getDate() + delayDays);
 
