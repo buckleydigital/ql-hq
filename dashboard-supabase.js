@@ -254,6 +254,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    // Always handle explicit sign-in / sign-out events so the UI
+    // updates immediately without requiring a page refresh.
+    if (event === "SIGNED_IN" && session?.user) {
+      currentUser = session.user;
+      authInitialized = true;
+      showApp();
+      return;
+    }
+
+    if (event === "SIGNED_OUT") {
+      currentUser = null;
+      authInitialized = true;
+      showAuth();
+      return;
+    }
+
+    // Fallback for initial session check (runs only once on page load)
     if (authInitialized) return;
     authInitialized = true;
     
@@ -579,8 +596,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     
     try {
-      await sb.auth.signOut();
       authInitialized = false;
+      await sb.auth.signOut();
+      // Fallback: if onAuthStateChange didn't fire, update UI explicitly
+      if (!authInitialized) {
+        currentUser = null;
+        showAuth();
+      }
     } catch (err) {
       toast("Logout failed. Please try again.", true);
       if (btn) {
