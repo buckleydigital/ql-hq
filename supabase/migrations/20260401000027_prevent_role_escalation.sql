@@ -31,7 +31,7 @@ create policy "Admins can change member roles"
     and exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.company_id = company_id
+        and p.company_id = profiles.company_id
         and p.role in ('owner', 'admin')
     )
   )
@@ -40,7 +40,7 @@ create policy "Admins can change member roles"
     and exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.company_id = company_id
+        and p.company_id = profiles.company_id
         and p.role in ('owner', 'admin')
     )
   );
