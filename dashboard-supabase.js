@@ -2710,10 +2710,6 @@ async function loadSales() {
     const totalDeals = (wonCount || 0) + (lostCount || 0);
     const winRate = totalDeals ? Math.round(((wonCount || 0) / totalDeals) * 100) : 0;
 
-    // Calculate values from current page for display; summary cards show counts
-    const wonVal  = leads.filter((l) => l.pipeline_stage === "closed_won").reduce((a, l) => a + (Number(l.value) || 0), 0);
-    const lostVal = leads.filter((l) => l.pipeline_stage === "closed_lost").reduce((a, l) => a + (Number(l.value) || 0), 0);
-
     el.innerHTML = `
       <div class="mini-grid" style="margin-bottom:20px">
         <div class="mini-card"><h3>Closed Won</h3><b>${wonCount || 0}</b></div>
