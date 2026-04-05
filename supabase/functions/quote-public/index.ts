@@ -37,6 +37,7 @@ async function fireWebhooks(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
+      if (!ep.secret) { console.warn("fireWebhooks: skipping endpoint with no secret", ep.id); continue; }
       const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);

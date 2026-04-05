@@ -167,6 +167,7 @@ async function fireWebhooks(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
+      if (!ep.secret) { console.warn("fireWebhooks: skipping endpoint with no secret", ep.id); continue; }
       const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -537,13 +538,17 @@ function parseAIResponse(raw: string): AIActions {
 async function validateTwilioSignature(
   req: Request,
   rawBody: string,
-  authToken: string
+  authToken: string,
+  canonicalUrl?: string
 ): Promise<boolean> {
   const signature = req.headers.get("X-Twilio-Signature");
   if (!signature) return false;
 
-  // Twilio signs: URL + sorted params
-  const url = req.url;
+  // Use the configured canonical URL (what Twilio signed against) if provided,
+  // otherwise fall back to req.url. Supabase edge function URLs may differ from
+  // the public webhook URL Twilio signed against, so TWILIO_WEBHOOK_URL should
+  // be set to the exact URL configured in the Twilio console.
+  const url = canonicalUrl || req.url;
   const params = parseTwilioBody(rawBody);
   const sortedKeys = Object.keys(params).sort();
   const dataToSign = url + sortedKeys.map((k) => k + params[k]).join("");
@@ -610,17 +615,24 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const userType: string = companyProfile?.user_type ?? "external";
 
-    // 2b. Validate Twilio signature (log-only — never block)
-    // NOTE: Supabase Edge Functions may expose a different req.url than the
-    // public webhook URL Twilio signed against (gateway URL rewriting, load
-    // balancer headers, etc.).  A mismatch silently produces a different HMAC
-    // and would reject every legitimate request.  Until we have a way to
-    // inject the canonical webhook URL, we log failures but never block.
+    // 2b. Validate Twilio webhook signature.
+    // Set TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console
+    // (e.g. https://<project>.supabase.co/functions/v1/twilio-inbound-sms).
+    // When set, signature mismatches are rejected. When not set, the request is
+    // allowed through but a warning is logged — configure TWILIO_WEBHOOK_URL to
+    // enable enforcement.
+    const canonicalWebhookUrl = Deno.env.get("TWILIO_WEBHOOK_URL");
     try {
       const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth", userType);
-      const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation);
+      const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation, canonicalWebhookUrl ?? undefined);
       if (!isValid) {
-        console.warn("Twilio signature mismatch (req.url may differ from signed URL) — allowing anyway");
+        if (canonicalWebhookUrl) {
+          // Canonical URL is configured — enforce the signature check.
+          console.error("Twilio signature validation failed — request rejected");
+          return twimlResponse("");
+        } else {
+          console.warn("Twilio signature mismatch — set TWILIO_WEBHOOK_URL to enforce validation");
+        }
       }
     } catch (err) {
       console.warn("Twilio signature validation skipped — key resolution failed:", (err as Error).message);

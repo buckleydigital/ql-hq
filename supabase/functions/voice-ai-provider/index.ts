@@ -17,20 +17,15 @@ const corsHeaders = {
  */
 
 /**
- * Resilient user lookup: tries auth.getUser() first (proper JWT verification),
- * then falls back to decoding the JWT payload and looking up the user by ID.
- * This avoids "Invalid JWT" errors caused by token refresh timing issues.
+ * Verify the caller's JWT by passing the bearer token to auth.getUser().
+ * If the token is invalid or expired the caller must refresh it and retry.
  */
 async function getCallerUser(
   authHeader: string,
   userClient: ReturnType<typeof createClient>,
-  adminClient: ReturnType<typeof createClient>,
 ) {
   const token = (authHeader || "").replace(/^Bearer\s+/i, "");
-
-  // 1. Try the standard auth.getUser() path first.
-  //    Pass the token explicitly — Deno edge functions have no persistent
-  //    session storage, so the zero-arg overload can't resolve the JWT.
+  if (!token) return null;
   try {
     const { data: { user }, error } = await userClient.auth.getUser(token);
     if (user) return user;
@@ -38,35 +33,7 @@ async function getCallerUser(
   } catch (e) {
     console.warn("auth.getUser() threw:", (e as Error).message);
   }
-
-  // 2. Fallback: decode JWT payload and verify user exists via admin API
-  try {
-    if (!token) return null;
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    b64 += "=".repeat((4 - (b64.length % 4)) % 4);
-    const payload = JSON.parse(atob(b64));
-    if (!payload.sub) return null;
-    // Reject tokens expired by more than 5 minutes to limit attack window
-    if (payload.exp) {
-      const now = Math.floor(Date.now() / 1000);
-      if (now - payload.exp > 300) {
-        console.warn("JWT expired beyond 5-min grace period, rejecting");
-        return null;
-      }
-    }
-    console.warn("JWT verify failed — falling back to admin.getUserById for:", payload.sub);
-    const { data, error } = await adminClient.auth.admin.getUserById(payload.sub);
-    if (error) {
-      console.warn("admin.getUserById failed:", error.message);
-      return null;
-    }
-    return data?.user || null;
-  } catch (e) {
-    console.warn("JWT decode fallback failed:", (e as Error).message);
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -169,8 +136,8 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Authenticate user (with fallback if JWT verification fails)
-    const user = await getCallerUser(authHeader, userClient, adminClient);
+    // Authenticate user via proper JWT validation
+    const user = await getCallerUser(authHeader, userClient);
 
     if (!user) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
@@ -179,7 +146,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get user profile and company (use admin client so it works even when JWT is stale)
+    // Get user profile and company
     const { data: profile } = await adminClient
       .from("profiles")
       .select("company_id, user_type, role")

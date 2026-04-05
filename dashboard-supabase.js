@@ -1331,10 +1331,10 @@ async function renderCustomFieldInputs(values = {}) {
   el.innerHTML = customFields.map((f) => `
     <div class="custom-row" style="grid-template-columns:1fr 1fr">
       <div class="field">
-        <label>${f.label}</label>
+        <label>${esc(f.label)}</label>
         ${f.type === "textarea"
-          ? `<textarea name="cf_${f.key}">${values[f.key] || ""}</textarea>`
-          : `<input type="${f.type || "text"}" name="cf_${f.key}" value="${values[f.key] || ""}">`}
+          ? `<textarea name="cf_${esc(f.key)}">${esc(values[f.key] || "")}</textarea>`
+          : `<input type="${esc(f.type || "text")}" name="cf_${esc(f.key)}" value="${esc(values[f.key] || "")}">`}
       </div>
     </div>`).join("");
 }
@@ -1348,8 +1348,8 @@ function renderSettingsCustomFields() {
   }
   el.innerHTML = `<div class="table-lite">${customFields.map((f) => `
     <div class="row">
-      <div><strong style="font-size:13px">${f.label}</strong><span class="muted" style="margin-left:6px">${f.type}</span></div>
-      <div><code style="font-size:11px;color:var(--muted)">${f.key}</code></div>
+      <div><strong style="font-size:13px">${esc(f.label)}</strong><span class="muted" style="margin-left:6px">${esc(f.type)}</span></div>
+      <div><code style="font-size:11px;color:var(--muted)">${esc(f.key)}</code></div>
       <button class="iconbtn btn-danger" onclick="deleteCustomField('${f.id}')" type="button">
         <span class="icon" data-icon="trash"></span>
       </button>
@@ -1429,14 +1429,14 @@ function renderLeadsTable(leads) {
   empty?.classList.add("hidden");
   tbody.innerHTML = leads.map((l) => `
     <tr>
-      <td><strong>${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
-      <td><strong>${l.email || "—"}</strong>${l.phone ? `<span class="muted">${l.phone}</span>` : ""}</td>
-      <td><strong>${l.address || "—"}</strong>${l.postcode ? `<span class="muted">${l.postcode}</span>` : ""}</td>
-      <td>${l.source ? `<span class="chip">${l.source}</span>` : "—"}</td>
+      <td><strong>${esc(l.name) || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
+      <td><strong>${esc(l.email) || "—"}</strong>${l.phone ? `<span class="muted">${esc(l.phone)}</span>` : ""}</td>
+      <td><strong>${esc(l.address) || "—"}</strong>${l.postcode ? `<span class="muted">${esc(l.postcode)}</span>` : ""}</td>
+      <td>${l.source ? `<span class="chip">${esc(l.source)}</span>` : "—"}</td>
       <td><span class="chip">${stageLabel(l.pipeline_stage)}</span></td>
       <td><span class="chip ${aiStatusChipClass(l)}">${aiScoreDisplay(l)}</span></td>
       <td><span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span></td>
-      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.ai_summary || '').replace(/"/g, '&quot;')}">${l.ai_summary || "—"}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.ai_summary || '')}">${esc(l.ai_summary) || "—"}</td>
       <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
       <td>
         <div style="display:flex;gap:6px">
@@ -1472,7 +1472,7 @@ async function callLeadDirect(leadId) {
 
 function renderCustomDataSummary(data) {
   if (!data || !Object.keys(data).length) return "—";
-  return Object.entries(data).slice(0, 2).map(([k, v]) => `<div>${k}: ${v || "—"}</div>`).join("");
+  return Object.entries(data).slice(0, 2).map(([k, v]) => `<div>${esc(k)}: ${esc(String(v ?? "")) || "—"}</div>`).join("");
 }
 
 function resetLeadForm() {
@@ -3395,10 +3395,10 @@ async function loadWorkflowRuns() {
     
     el.innerHTML = runs.map((run) => `
       <div class="run">
-        <h3>${run.workflow_type} <span class="chip">${cap(run.status)}</span></h3>
-        <p>Model: ${run.model || "—"} · Key Source: ${run.key_source || "—"}</p>
+        <h3>${esc(run.workflow_type)} <span class="chip">${cap(run.status)}</span></h3>
+        <p>Model: ${esc(run.model) || "—"} · Key Source: ${esc(run.key_source) || "—"}</p>
         <p style="margin-top:4px;"><span class="muted">${fmtDate(run.created_at)}</span></p>
-        ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${run.error_text}</p>` : ''}
+        ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${esc(run.error_text)}</p>` : ''}
       </div>
     `).join("");
   } catch (err) {
@@ -3483,8 +3483,8 @@ function renderTeamMembersList(profiles, invites, reps) {
 
     return `
     <div class="team-row" style="flex-wrap:wrap">
-      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${p.full_name || "—"}</strong><span class="muted">${p.phone || "—"}</span></div>
-      <div><span class="chip">${p.role || "member"}</span></div>
+      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "—"}</strong><span class="muted">${esc(p.phone) || "—"}</span></div>
+      <div><span class="chip">${esc(p.role) || "member"}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div>
         ${(rep || isOwnerAdmin) ? `<button class="btn" type="button" onclick="toggleTeamPerms(this)" style="font-size:11px;padding:4px 10px"><span class="icon" data-icon="settings" style="width:12px;height:12px"></span> Permissions</button>` : ""}
@@ -3495,7 +3495,7 @@ function renderTeamMembersList(profiles, invites, reps) {
 
   const inviteRows = invites.map((inv) => `
     <div class="team-row">
-      <div><strong style="font-size:13px">${inv.full_name || inv.email}</strong><span class="muted">${inv.email}</span></div>
+      <div><strong style="font-size:13px">${esc(inv.full_name) || esc(inv.email)}</strong><span class="muted">${esc(inv.email)}</span></div>
       <div><span class="chip chip-pending">Pending</span></div>
       <div><span class="muted" style="font-size:11px">Invited ${fmtDate(inv.invited_at)}</span></div>
       <div>
@@ -3712,12 +3712,13 @@ async function loadConversations() {
     empty?.classList.add("hidden");
 
     list.innerHTML = conversations.map((c) => {
-      const name = c.leads?.name || "Unknown";
+      const name = esc(c.leads?.name || "Unknown");
+      const phone = esc(c.leads?.phone || "");
       const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
       return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
-                   data-lead-name="${name}" data-lead-phone="${c.leads?.phone || ""}">
+                   data-lead-name="${name}" data-lead-phone="${phone}">
         <h3>${name}<span class="conv-time">${time}</span></h3>
-        <p>${c.last_message || "No messages yet"}</p>
+        <p>${esc(c.last_message) || "No messages yet"}</p>
       </div>`;
     }).join("");
 
@@ -3900,7 +3901,7 @@ async function loadMessages(convId) {
       return;
     }
     el.innerHTML = msgs.map((m) => {
-      const content = m.body || m.content || "";
+      const content = esc(m.body || m.content || "");
       // Determine badge: for outbound messages, show 'AI' or 'Human'
       // agent_type "sms" is a legacy value from before migration to "ai"
       let badge = "";
@@ -4470,10 +4471,10 @@ async function loadVoiceCalls() {
 
     el.innerHTML = calls.map((call) => `
       <div class="run">
-        <h3>${call.leads?.name || "Unknown"} <span class="chip">${cap(call.status)}</span></h3>
-        <p>${call.leads?.phone || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
-        ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${call.transcript.substring(0, 100)}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
-        ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${call.summary}</p>` : ''}
+        <h3>${esc(call.leads?.name) || "Unknown"} <span class="chip">${cap(call.status)}</span></h3>
+        <p>${esc(call.leads?.phone) || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
+        ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(call.transcript.substring(0, 100))}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
+        ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(call.summary)}</p>` : ''}
       </div>
     `).join("");
 
@@ -4726,7 +4727,7 @@ async function loadOppConversations(leadId) {
     el.innerHTML = conversations.map((c) => `
       <div class="run" style="cursor:pointer" onclick="openConversationFromOpp('${c.id}', '${leadId}')">
         <h3>${c.channel?.toUpperCase() || "SMS"} Conversation <span class="chip">${c.is_open ? "Open" : "Closed"}</span></h3>
-        <p>${c.last_message || "No messages"}</p>
+        <p>${esc(c.last_message) || "No messages"}</p>
         <p style="margin-top:4px;"><span class="muted">Last activity: ${fmtDate(c.last_message_at)}</span></p>
       </div>
     `).join("");
@@ -4792,10 +4793,10 @@ async function loadOppAppointments(leadId) {
 
     el.innerHTML = appointments.map((a) => `
       <div class="run">
-        <h3>${a.title || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(a.appointment_type)}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
+        <h3>${esc(a.title) || "Appointment"} <span class="chip">${cap(a.status || "scheduled")}</span>${a.appointment_type ? ` <span class="chip">${cap(esc(a.appointment_type))}</span>` : ''}${a.booked_by === "ai" ? ` <span class="chip" style="background:#8b5cf6;color:#fff">Booked by AI</span>` : ''}</h3>
         <p><strong>When:</strong> ${fmtDate(a.start_time)}${a.end_time ? ` - ${fmtTime(a.end_time)}` : ""}</p>
-        ${a.location ? `<p><strong>Where:</strong> ${a.location}</p>` : ""}
-        ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${a.notes}</p>` : ""}
+        ${a.location ? `<p><strong>Where:</strong> ${esc(a.location)}</p>` : ""}
+        ${a.notes ? `<p style="margin-top:4px;font-style:italic;">${esc(a.notes)}</p>` : ""}
       </div>
     `).join("");
   } catch (err) {
@@ -4822,11 +4823,11 @@ async function loadOppCalls(leadId) {
 
     el.innerHTML = calls.map((c) => `
       <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${cap(c.sentiment)}</span>` : ""}</h3>
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${cap(esc(c.sentiment))}</span>` : ""}</h3>
         <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
-        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${c.transcript.substring(0, 150)}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
-        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${c.summary}</p>` : ""}
-        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${c.recording_url}" target="_blank">Listen to recording</a>` : ""}</p>
+        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(c.transcript.substring(0, 150))}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
+        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(c.summary)}</p>` : ""}
+        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${esc(c.recording_url)}" target="_blank" rel="noopener noreferrer">Listen to recording</a>` : ""}</p>
       </div>
     `).join("");
   } catch (err) {
