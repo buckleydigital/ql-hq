@@ -530,6 +530,17 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── Verify internal caller — must supply the service role key as Bearer token ──
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const authHeader = req.headers.get("Authorization") || "";
+  const callerToken = authHeader.replace(/^Bearer\s+/i, "");
+  if (!callerToken || callerToken !== serviceRoleKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const body = await req.json();
     const { event, company_id: companyId, lead_id: leadId, metadata } = body;

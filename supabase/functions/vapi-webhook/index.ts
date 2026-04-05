@@ -47,6 +47,7 @@ async function fireWebhooks(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
+      if (!ep.secret) { console.warn("fireWebhooks: skipping endpoint with no secret", ep.id); continue; }
       const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -92,15 +93,20 @@ Deno.serve(async (req) => {
 
   // ── Verify VAPI webhook secret ──────────────────────────────────────────
   const webhookSecret = Deno.env.get("VAPI_WEBHOOK_SECRET");
-  if (webhookSecret) {
-    const incomingSecret = req.headers.get("x-vapi-secret");
-    if (incomingSecret !== webhookSecret) {
-      console.warn("VAPI webhook: invalid or missing x-vapi-secret header");
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+  if (!webhookSecret) {
+    console.error("VAPI webhook: VAPI_WEBHOOK_SECRET is not configured — rejecting request");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const incomingSecret = req.headers.get("x-vapi-secret");
+  if (incomingSecret !== webhookSecret) {
+    console.warn("VAPI webhook: invalid or missing x-vapi-secret header");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
