@@ -2,8 +2,9 @@
 // QuoteLeadsHQ — Resend Email Sender
 // =============================================================================
 // Centralised email sending via Resend (https://resend.com).
-// Called by other edge functions (twilio-inbound-sms, quote-draft, invite-rep)
-// or directly from the dashboard for transactional emails.
+// Called internally by other edge functions (twilio-inbound-sms, quote-draft,
+// invite-rep). Callers must authenticate with the SUPABASE_SERVICE_ROLE_KEY
+// as a Bearer token.
 //
 // Environment variable: RESEND_API_KEY (set in Supabase Edge Function secrets)
 //
@@ -13,12 +14,9 @@
 //   subject:  string,              — email subject
 //   html:     string,              — email body (HTML)
 //   text?:    string,              — plain-text fallback (optional)
-//   from?:    string,              — sender (defaults to noreply@quoteleadshq.com)
 //   reply_to?: string,             — reply-to address (optional)
 // }
 // =============================================================================
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,6 +32,17 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ── Auth: only internal callers (service role) may use this function ──
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const authHeader = req.headers.get("authorization") || "";
+    const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!serviceRoleKey || !callerToken || callerToken !== serviceRoleKey) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
       console.error("RESEND_API_KEY not configured");
@@ -44,7 +53,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { to, subject, html, text, from, reply_to } = body;
+    const { to, subject, html, text, reply_to } = body;
 
     if (!to || !subject || !html) {
       return new Response(
@@ -53,9 +62,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send email via Resend API
+    // Send email via Resend API — sender is always the platform default
     const resendPayload: Record<string, unknown> = {
-      from: from || DEFAULT_FROM,
+      from: DEFAULT_FROM,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
@@ -78,8 +87,8 @@ Deno.serve(async (req) => {
     if (!resendRes.ok) {
       console.error("Resend API error:", resendData);
       return new Response(
-        JSON.stringify({ error: "Failed to send email", details: resendData }),
-        { status: resendRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ error: "Failed to send email" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
