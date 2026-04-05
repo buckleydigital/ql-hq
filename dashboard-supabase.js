@@ -258,8 +258,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     // updates immediately without requiring a page refresh.
     if (event === "SIGNED_IN" && session?.user) {
       currentUser = session.user;
-      authInitialized = true;
-      showApp();
+      // Only run full showApp (which navigates to dashboard) on the
+      // first sign-in.  Subsequent SIGNED_IN events (e.g. token
+      // refresh when the browser tab regains focus) should NOT reset
+      // the user back to the dashboard page.
+      if (!authInitialized) {
+        authInitialized = true;
+        showApp();
+      }
       return;
     }
 

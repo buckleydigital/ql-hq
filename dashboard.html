@@ -735,9 +735,9 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <div class="section-card-title"><span class="icon" data-icon="phone"></span> Call-back Settings (AI schedules human rep call)</div>
                   <div class="settings-grid">
                     <div class="field">
-                      <label for="aiAgentName">Agent Name</label>
+                      <label for="aiAgentName">SMS Agent Name</label>
                       <input id="aiAgentName" type="text" placeholder="e.g., Sarah from Sales">
-                      <span class="field-hint">Name the AI uses when scheduling callbacks</span>
+                      <span class="field-hint">Name the SMS AI uses when scheduling callbacks</span>
                     </div>
                     <div class="field">
                       <label for="aiCallbackStartTime">Available From</label>
@@ -752,7 +752,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                       <textarea id="aiSpecialOffers" rows="2" placeholder="Any current promotions the AI should mention..."></textarea>
                     </div>
                     <div class="field settings-full">
-                      <label class="toggle-label"><input id="aiAutoSendWelcome" type="checkbox"> Auto-send welcome message to new leads</label>
+                      <label class="toggle-item">
+                        <input id="aiAutoSendWelcome" type="checkbox">
+                        <span class="toggle-label">Auto-send welcome message to new leads</span>
+                      </label>
                       <span class="field-hint">When enabled, this message is automatically sent via SMS as soon as a new lead with a phone number is created (via dashboard, API, or integrations).</span>
                     </div>
                     <div class="field settings-full">
