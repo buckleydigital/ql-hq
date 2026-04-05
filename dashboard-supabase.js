@@ -51,6 +51,7 @@ const ICONS = {
   refresh:           `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`,
   bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
   "arrow-left":      `<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>`,
+  star:              `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
 };
 
 function renderIcons() {
@@ -738,6 +739,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("teamInviteForm")?.addEventListener("submit", handleTeamInvite);
   document.getElementById("leadRoutingForm")?.addEventListener("submit", handleLeadRoutingSave);
 
+  // ── Reviews ──────────────────────────────────────────────────────────────
+  document.getElementById("reviewSettingsForm")?.addEventListener("submit", handleReviewSettingsSave);
+
   // ── Conversations ─────────────────────────────────────────────────────────
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
   document.getElementById("convAiToggle")?.addEventListener("change", handleAiToggle);
@@ -1046,6 +1050,7 @@ const PAGE_META = {
   "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
+  "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
 };
 
 function isAdmin() {
@@ -1105,6 +1110,7 @@ function navigateTo(page) {
     "ai-insights":      loadAiInsights,
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
+    "reviews":          loadReviews,
   };
   loaders[page]?.();
 }
@@ -2284,6 +2290,10 @@ async function handleSaleSave(e) {
     if (error) { toast(error.message, true); return; }
     toast(editId ? "Sale updated." : "Sale recorded.");
     closeModal("saleModal");
+    // Schedule a review request when recording a sale as closed_won
+    if (outcome === "closed_won") {
+      scheduleReviewRequest(leadId);
+    }
     loadSales();
   } catch (err) {
     toast("Failed to save sale.", true);
@@ -2397,7 +2407,10 @@ async function kanbanDrop(event, newStage) {
       loadPipeline();
     } else {
       toast(`Moved to "${stageLabel(newStage)}"`);
-
+      // Schedule a review request when moving to closed_won
+      if (newStage === "closed_won") {
+        scheduleReviewRequest(leadId);
+      }
     }
   } catch (err) {
     toast("Failed to update status.", true);
@@ -5379,4 +5392,287 @@ async function loadWebhookDeliveries() {
   }).join("");
 
   container.innerHTML = rows;
+}
+
+// ─── Reviews ──────────────────────────────────────────────────────────────────
+const DEFAULT_REVIEW_MESSAGE = "Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}";
+
+async function loadReviews() {
+  if (!currentCompanyId) return;
+  try {
+    // Load review settings from sms_agent_config
+    const { data: smsConfig } = await sb
+      .from("sms_agent_config")
+      .select("review_enabled, review_delay_days, review_auto_send, review_message, google_review_link")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+
+    if (smsConfig) {
+      setCheckboxValue("reviewEnabled", smsConfig.review_enabled);
+      setInputValue("reviewDelayDays", smsConfig.review_delay_days ?? 7);
+      setCheckboxValue("reviewAutoSend", smsConfig.review_auto_send);
+      setInputValue("reviewMessage", smsConfig.review_message || DEFAULT_REVIEW_MESSAGE);
+      setInputValue("googleReviewLink", smsConfig.google_review_link);
+    } else {
+      setInputValue("reviewMessage", DEFAULT_REVIEW_MESSAGE);
+      setInputValue("reviewDelayDays", 7);
+    }
+
+    // Load review requests
+    const { data: requests } = await sb
+      .from("review_requests")
+      .select("*, leads!inner(first_name, last_name, phone, email)")
+      .eq("company_id", currentCompanyId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    const all = requests || [];
+    const pending  = all.filter((r) => r.status === "pending");
+    const sent     = all.filter((r) => r.status === "sent");
+    const skipped  = all.filter((r) => r.status === "skipped");
+
+    const pendingEl  = document.getElementById("reviewPendingCount");
+    const sentEl     = document.getElementById("reviewSentCount");
+    const skippedEl  = document.getElementById("reviewSkippedCount");
+    if (pendingEl)  pendingEl.textContent = pending.length;
+    if (sentEl)     sentEl.textContent = sent.length;
+    if (skippedEl)  skippedEl.textContent = skipped.length;
+
+    renderReviewRequestsTable(all);
+
+  } catch (err) {
+    console.error("Load reviews error:", err);
+    toast("Failed to load reviews.", true);
+  }
+}
+
+function renderReviewRequestsTable(requests) {
+  const container = document.getElementById("reviewRequestsTable");
+  if (!container) return;
+
+  if (!requests?.length) {
+    container.innerHTML = '<div class="notice">No review requests yet. When a lead is moved to Closed Won, a review request will be scheduled.</div>';
+    return;
+  }
+
+  const header = `<div style="display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr .8fr auto;padding:8px 14px;border-bottom:2px solid var(--border);font-weight:600;font-size:12px">
+    <span>Customer</span><span>Phone</span><span>Status</span><span>Scheduled</span><span>Sent</span><span></span>
+  </div>`;
+
+  const rows = requests.map((r) => {
+    const name = `${r.leads?.first_name || ""} ${r.leads?.last_name || ""}`.trim() || "Unknown";
+    const phone = r.leads?.phone || "—";
+    const statusColors = { pending: "var(--yellow)", sent: "var(--green)", skipped: "var(--text-3)", failed: "var(--red)" };
+    const statusColor = statusColors[r.status] || "var(--text-2)";
+    const scheduled = r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString() : "—";
+    const sentAt = r.sent_at ? new Date(r.sent_at).toLocaleDateString() : "—";
+
+    let actions = "";
+    if (r.status === "pending") {
+      actions = `<div style="display:flex;gap:6px">
+        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="sendReviewRequest('${r.id}')">Send Now</button>
+        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="skipReviewRequest('${r.id}')">Skip</button>
+      </div>`;
+    }
+
+    return `<div style="display:grid;grid-template-columns:1.2fr 1fr .8fr .8fr .8fr auto;padding:8px 14px;border-bottom:1px solid var(--border);font-size:13px;align-items:center">
+      <span>${esc(name)}</span>
+      <span class="muted">${esc(phone)}</span>
+      <span style="color:${statusColor};font-weight:600;text-transform:capitalize">${r.status}</span>
+      <span class="muted">${scheduled}</span>
+      <span class="muted">${sentAt}</span>
+      ${actions}
+    </div>`;
+  }).join("");
+
+  container.innerHTML = header + rows;
+}
+
+async function handleReviewSettingsSave(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+
+  const payload = {
+    company_id:         currentCompanyId,
+    review_enabled:     document.getElementById("reviewEnabled")?.checked ?? false,
+    review_delay_days:  Number(document.getElementById("reviewDelayDays")?.value) || 7,
+    review_auto_send:   document.getElementById("reviewAutoSend")?.checked ?? false,
+    review_message:     document.getElementById("reviewMessage")?.value || DEFAULT_REVIEW_MESSAGE,
+    google_review_link: document.getElementById("googleReviewLink")?.value || null,
+  };
+
+  try {
+    const { error } = await sb
+      .from("sms_agent_config")
+      .upsert(payload, { onConflict: "company_id" });
+
+    if (error) {
+      toast(error.message, true);
+      return;
+    }
+    toast("Review settings saved.");
+  } catch (err) {
+    toast("Failed to save review settings.", true);
+    console.error("Save review settings error:", err);
+  }
+}
+
+async function scheduleReviewRequest(leadId) {
+  if (!currentCompanyId) return;
+  try {
+    // Check if reviews are enabled and configured
+    const { data: smsConfig } = await sb
+      .from("sms_agent_config")
+      .select("review_enabled, review_delay_days, review_auto_send, review_message, google_review_link, twilio_number, is_active")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+
+    if (!smsConfig?.review_enabled || !smsConfig.google_review_link) return;
+
+    // Get lead details for message interpolation
+    const { data: lead } = await sb
+      .from("leads")
+      .select("id, first_name, phone")
+      .eq("id", leadId)
+      .single();
+
+    if (!lead?.phone) return;
+
+    // Build the message body
+    const firstName = lead.first_name || "there";
+    const messageBody = (smsConfig.review_message || DEFAULT_REVIEW_MESSAGE)
+      .replace(/\{\{first_name\}\}/gi, firstName)
+      .replace(/\{\{review_link\}\}/gi, smsConfig.google_review_link);
+
+    const delayDays = smsConfig.review_delay_days ?? 7;
+    const scheduledAt = new Date();
+    scheduledAt.setDate(scheduledAt.getDate() + delayDays);
+
+    // Check if there's already a pending or sent review request for this lead
+    const { data: existing } = await sb
+      .from("review_requests")
+      .select("id")
+      .eq("lead_id", leadId)
+      .in("status", ["pending", "sent"])
+      .maybeSingle();
+
+    if (existing) return; // Already has a review request
+
+    // Create review request
+    const { data: created, error } = await sb
+      .from("review_requests")
+      .insert({
+        company_id:   currentCompanyId,
+        lead_id:      leadId,
+        status:       "pending",
+        scheduled_at: scheduledAt.toISOString(),
+        message_body: messageBody,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.warn("Failed to schedule review request:", error.message);
+      return;
+    }
+
+    // If auto-send is enabled and delay is 0, send immediately
+    if (smsConfig.review_auto_send && delayDays === 0 && created) {
+      await sendReviewRequestSms(created.id, messageBody, lead.phone);
+    }
+  } catch (err) {
+    console.warn("scheduleReviewRequest error:", err);
+  }
+}
+
+async function sendReviewRequest(requestId) {
+  try {
+    // Get the review request with lead details
+    const { data: request } = await sb
+      .from("review_requests")
+      .select("*, leads!inner(phone, first_name)")
+      .eq("id", requestId)
+      .single();
+
+    if (!request || request.status !== "pending") {
+      toast("Review request not found or already processed.", true);
+      return;
+    }
+
+    // Get SMS config for Twilio
+    const { data: smsConfig } = await sb
+      .from("sms_agent_config")
+      .select("twilio_number, is_active, google_review_link")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+
+    if (!smsConfig?.twilio_number || !smsConfig.is_active) {
+      toast("SMS agent not configured or inactive. Enable SMS in AI Settings first.", true);
+      return;
+    }
+
+    await sendReviewRequestSms(requestId, request.message_body, request.leads.phone);
+    toast("Review request sent!");
+    loadReviews();
+  } catch (err) {
+    toast("Failed to send review request.", true);
+    console.error("sendReviewRequest error:", err);
+  }
+}
+
+async function sendReviewRequestSms(requestId, body, phone) {
+  // Send the SMS via the existing send-sms edge function
+  const { data: session } = await sb.auth.getSession();
+  const token = session?.session?.access_token;
+  if (!token) throw new Error("Not authenticated");
+
+  // Get the lead_id for send-sms
+  const { data: request } = await sb
+    .from("review_requests")
+    .select("lead_id")
+    .eq("id", requestId)
+    .single();
+
+  const res = await fetch(`${sb.supabaseUrl}/functions/v1/send-sms`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      lead_id: request.lead_id,
+      body: body,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    // Mark as failed
+    await sb.from("review_requests").update({ status: "failed" }).eq("id", requestId);
+    throw new Error(err.error || "Failed to send SMS");
+  }
+
+  // Mark as sent
+  await sb.from("review_requests").update({
+    status: "sent",
+    sent_at: new Date().toISOString(),
+  }).eq("id", requestId);
+}
+
+async function skipReviewRequest(requestId) {
+  try {
+    const { error } = await sb
+      .from("review_requests")
+      .update({ status: "skipped" })
+      .eq("id", requestId);
+
+    if (error) {
+      toast(error.message, true);
+      return;
+    }
+    toast("Review request skipped.");
+    loadReviews();
+  } catch (err) {
+    toast("Failed to skip review request.", true);
+  }
 }

@@ -433,6 +433,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="voice-ai" type="button"><span class="icon" data-icon="phone"></span><span class="nav-text">Voice AI</span></button>
         <button class="nav-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">AI Insights</span></button>
+        <button class="nav-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
         <button class="nav-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
       </div>
@@ -1383,6 +1384,71 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- ── Reviews Page ───────────────────────────────────────────────────── -->
+      <div id="page-reviews" class="page hidden">
+        <div class="stack">
+
+          <!-- Review Settings -->
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Review Settings</h2><p>Configure automated Google review requests sent to customers after a deal is won.</p></div>
+            </div>
+            <div class="panel-b">
+              <form id="reviewSettingsForm" class="stack">
+                <div class="settings-grid">
+                  <div class="field settings-full">
+                    <label class="toggle-item">
+                      <input id="reviewEnabled" type="checkbox">
+                      <span class="toggle-label">Enable Review Requests</span>
+                    </label>
+                    <span class="field-hint">When enabled, review request SMS messages will be scheduled when a lead moves to Closed Won.</span>
+                  </div>
+                  <div class="field settings-full">
+                    <label for="googleReviewLink">Google Review Link</label>
+                    <input id="googleReviewLink" type="url" placeholder="https://g.page/r/YOUR_PLACE_ID/review">
+                    <span class="field-hint">Paste your Google review URL here. Find it in Google Business Profile → Ask for reviews.</span>
+                  </div>
+                  <div class="field">
+                    <label for="reviewDelayDays">Days After Close</label>
+                    <input id="reviewDelayDays" type="number" min="0" max="30" value="7">
+                    <span class="field-hint">Wait this many days after closing a deal before sending the review request.</span>
+                  </div>
+                  <div class="field">
+                    <label class="toggle-item">
+                      <input id="reviewAutoSend" type="checkbox">
+                      <span class="toggle-label">Auto-send</span>
+                    </label>
+                    <span class="field-hint">Send review requests automatically. When off, requests are created as pending for manual approval.</span>
+                  </div>
+                  <div class="field settings-full">
+                    <label for="reviewMessage">Review Request Message</label>
+                    <textarea id="reviewMessage" rows="3" placeholder="Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}"></textarea>
+                    <span class="field-hint">Use {{first_name}} for the customer's name and {{review_link}} for your Google review URL.</span>
+                  </div>
+                </div>
+                <div class="actions"><button class="btn2" type="submit">Save Review Settings</button></div>
+              </form>
+            </div>
+          </section>
+
+          <!-- Pending Review Requests -->
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Review Requests</h2><p>Manage pending and sent review requests.</p></div>
+            </div>
+            <div class="panel-b">
+              <div class="mini-grid" style="margin-bottom:16px">
+                <article class="mini-card"><h3>Pending</h3><b id="reviewPendingCount">0</b></article>
+                <article class="mini-card"><h3>Sent</h3><b id="reviewSentCount">0</b></article>
+                <article class="mini-card"><h3>Skipped</h3><b id="reviewSkippedCount">0</b></article>
+              </div>
+              <div id="reviewRequestsTable" class="table-lite"><div class="notice">Loading…</div></div>
             </div>
           </section>
 
