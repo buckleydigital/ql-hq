@@ -226,6 +226,14 @@ let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
 
+// ─── Pagination State ─────────────────────────────────────────────────────────
+const PER_PAGE = 20;
+let conversationsPage  = 0;
+let leadsPage          = 0;
+let quotesPage         = 0;
+let appointmentsPage   = 0;
+let salesPage          = 0;
+
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   renderIcons();
@@ -886,6 +894,21 @@ function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
+// ─── Pagination Helper ────────────────────────────────────────────────────────
+function renderPagination(containerId, currentPage, totalCount, perPage, onPageChange) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const totalPages = Math.ceil((totalCount || 0) / perPage);
+  if (totalPages <= 1) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <button class="btn" ${currentPage === 0 ? "disabled" : ""} style="font-size:12px;padding:4px 12px" data-dir="prev">← Prev</button>
+    <span style="font-size:13px;color:var(--muted);padding:4px 8px">Page ${currentPage + 1} of ${totalPages}</span>
+    <button class="btn" ${currentPage >= totalPages - 1 ? "disabled" : ""} style="font-size:12px;padding:4px 12px" data-dir="next">Next →</button>
+  `;
+  el.querySelector('[data-dir="prev"]')?.addEventListener("click", () => onPageChange(currentPage - 1));
+  el.querySelector('[data-dir="next"]')?.addEventListener("click", () => onPageChange(currentPage + 1));
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function showAuth() {
   const authView = document.getElementById("authView");
@@ -1087,6 +1110,13 @@ function navigateTo(page) {
 
   // Reset conversation mobile view when navigating away
   document.querySelector(".conv-layout")?.classList.remove("conv-open");
+
+  // Reset pagination to first page when navigating to a page
+  conversationsPage = 0;
+  leadsPage = 0;
+  quotesPage = 0;
+  appointmentsPage = 0;
+  salesPage = 0;
 
   const [title, sub] = PAGE_META[page] || [page, ""];
   const pageTitle = document.getElementById("pageTitle");
@@ -1367,14 +1397,21 @@ async function loadLeads() {
   if (!currentCompanyId) return;
   await loadCustomFields();
   try {
-    const { data, error } = await sb
+    const from = leadsPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+    const { data, count, error } = await sb
       .from("leads")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("company_id", currentCompanyId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
     if (error) { toast(error.message, true); return; }
     allLeads = data || [];
     renderLeadsTable(allLeads);
+    renderPagination("leadsPagination", leadsPage, count, PER_PAGE, (page) => {
+      leadsPage = page;
+      loadLeads();
+    });
   } catch (err) {
     toast("Failed to load leads.", true);
   }
@@ -1600,6 +1637,9 @@ function handleSearch(e) {
       .some((v) => v?.toLowerCase().includes(q))
   );
   renderLeadsTable(filtered);
+  // Hide pagination while search is active
+  const pagEl = document.getElementById("leadsPagination");
+  if (pagEl) pagEl.innerHTML = "";
 }
 
 // ─── Phone Number Auto-Format (E.164 / Twilio) ───────────────────────────────
@@ -2420,16 +2460,20 @@ function buildQuoteLink(token) {
 async function loadQuotes() {
   if (!currentCompanyId) return;
   try {
-    const { data } = await sb
+    const from = quotesPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+    const { data, count } = await sb
       .from("quotes")
-      .select("id, quote_number, status, total, subtotal, tax, notes, created_at, sent_at, viewed_at, accepted_at, quote_token, valid_until, line_items, metadata, lead_id, leads(name, email, phone)")
+      .select("id, quote_number, status, total, subtotal, tax, notes, created_at, sent_at, viewed_at, accepted_at, quote_token, valid_until, line_items, metadata, lead_id, leads(name, email, phone)", { count: "exact" })
       .eq("company_id", currentCompanyId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
     const quotes = data || [];
     const el = document.getElementById("quotesPanel");
     if (!el) return;
     if (!quotes.length) {
       el.innerHTML = `<div class="empty"><h3>No quotes yet</h3><p>Create a quote from the button above or via AI SMS workflow.</p></div>`;
+      renderPagination("quotesPagination", quotesPage, 0, PER_PAGE, () => {});
       return;
     }
     el.innerHTML = `<div class="table-lite">${quotes.map((q) => {
@@ -2450,6 +2494,10 @@ async function loadQuotes() {
       </div>`;
     }).join("")}</div>`;
     renderIcons();
+    renderPagination("quotesPagination", quotesPage, count, PER_PAGE, (page) => {
+      quotesPage = page;
+      loadQuotes();
+    });
   } catch (err) {
     toast("Failed to load quotes.", true);
   }
@@ -2637,26 +2685,35 @@ async function downloadQuotePDF(quoteId) {
 async function loadSales() {
   if (!currentCompanyId) return;
   try {
-    const { data } = await sb
+    // Fetch summary stats from all closed deals (unpaginated counts + sums)
+    const [{ count: wonCount }, { count: lostCount }] = await Promise.all([
+      sb.from("leads").select("id", { count: "exact", head: true })
+        .eq("company_id", currentCompanyId).eq("pipeline_stage", "closed_won"),
+      sb.from("leads").select("id", { count: "exact", head: true })
+        .eq("company_id", currentCompanyId).eq("pipeline_stage", "closed_lost"),
+    ]);
+
+    // Fetch paginated list of closed deals
+    const from = salesPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+    const { data, count } = await sb
       .from("leads")
-      .select("id, name, pipeline_stage, value, created_at")
+      .select("id, name, pipeline_stage, value, created_at", { count: "exact" })
       .eq("company_id", currentCompanyId)
       .in("pipeline_stage", ["closed_won","closed_lost"])
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
     const leads = data || [];
     const el = document.getElementById("salesPanel");
     if (!el) return;
 
-    const won     = leads.filter((l) => l.pipeline_stage === "closed_won");
-    const lost    = leads.filter((l) => l.pipeline_stage === "closed_lost");
-    const wonVal  = won.reduce((a, l) => a + (Number(l.value) || 0), 0);
-    const lostVal = lost.reduce((a, l) => a + (Number(l.value) || 0), 0);
-    const winRate = leads.length ? Math.round((won.length / leads.length) * 100) : 0;
+    const totalDeals = (wonCount || 0) + (lostCount || 0);
+    const winRate = totalDeals ? Math.round(((wonCount || 0) / totalDeals) * 100) : 0;
 
     el.innerHTML = `
       <div class="mini-grid" style="margin-bottom:20px">
-        <div class="mini-card"><h3>Closed Won</h3><b>${won.length}</b><span class="muted">${fmt(wonVal)} total</span></div>
-        <div class="mini-card"><h3>Closed Lost</h3><b>${lost.length}</b><span class="muted">${fmt(lostVal)} lost</span></div>
+        <div class="mini-card"><h3>Closed Won</h3><b>${wonCount || 0}</b></div>
+        <div class="mini-card"><h3>Closed Lost</h3><b>${lostCount || 0}</b></div>
         <div class="mini-card"><h3>Win Rate</h3><b>${winRate}%</b><span class="muted">of closed deals</span></div>
       </div>
       ${leads.length ? `<div class="table-lite">${leads.map((l) => `
@@ -2666,6 +2723,11 @@ async function loadSales() {
           <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
         </div>`).join("")}</div>`
         : `<div class="empty"><p>No closed deals yet.</p></div>`}`;
+
+    renderPagination("salesPagination", salesPage, count, PER_PAGE, (page) => {
+      salesPage = page;
+      loadSales();
+    });
   } catch (err) {
     toast("Failed to load sales data.", true);
   }
@@ -2675,17 +2737,21 @@ async function loadSales() {
 async function loadAppointments() {
   if (!currentCompanyId) return;
   try {
-    const { data } = await sb
+    const from = appointmentsPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+    const { data, count } = await sb
       .from("appointments")
-      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by, lead_id, leads(name, phone)")
+      .select("id, title, status, start_time, end_time, location, notes, appointment_type, booked_by, lead_id, leads(name, phone)", { count: "exact" })
       .eq("company_id", currentCompanyId)
-      .order("start_time", { ascending: false });
+      .order("start_time", { ascending: false })
+      .range(from, to);
     const appointments = data || [];
     const el = document.getElementById("appointmentsPanel");
     if (!el) return;
 
     if (!appointments.length) {
       el.innerHTML = `<div class="empty"><h3>No appointments yet</h3><p>Appointments booked via AI or manually will appear here.</p></div>`;
+      renderPagination("appointmentsPagination", appointmentsPage, 0, PER_PAGE, () => {});
       return;
     }
 
@@ -2706,6 +2772,11 @@ async function loadAppointments() {
         </div>
         <div><span class="muted">${esc(a.location || "—")}</span></div>
       </div>`).join("")}</div>`;
+
+    renderPagination("appointmentsPagination", appointmentsPage, count, PER_PAGE, (page) => {
+      appointmentsPage = page;
+      loadAppointments();
+    });
   } catch (err) {
     toast("Failed to load appointments.", true);
   }
@@ -3619,11 +3690,14 @@ async function loadNotificationBadge() {
 async function loadConversations() {
   if (!currentCompanyId) return;
   try {
-    const { data: conversations } = await sb
+    const from = conversationsPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+    const { data: conversations, count } = await sb
       .from("conversations")
-      .select("id, lead_id, last_message, last_message_at, leads(name, phone)")
+      .select("id, lead_id, last_message, last_message_at, leads(name, phone)", { count: "exact" })
       .eq("company_id", currentCompanyId)
-      .order("last_message_at", { ascending: false });
+      .order("last_message_at", { ascending: false })
+      .range(from, to);
 
     const list  = document.getElementById("conversationList");
     const empty = document.getElementById("convEmptyState");
@@ -3632,6 +3706,7 @@ async function loadConversations() {
     if (!conversations?.length) {
       list.innerHTML = "";
       empty?.classList.remove("hidden");
+      renderPagination("convPagination", conversationsPage, 0, PER_PAGE, () => {});
       return;
     }
     empty?.classList.add("hidden");
@@ -3655,6 +3730,11 @@ async function loadConversations() {
         item
       ))
     );
+
+    renderPagination("convPagination", conversationsPage, count, PER_PAGE, (page) => {
+      conversationsPage = page;
+      loadConversations();
+    });
   } catch (err) {
     toast("Failed to load conversations.", true);
   }
@@ -4411,7 +4491,6 @@ function fmtDuration(seconds) {
 
 // ─── Voice AI Logs ────────────────────────────────────────────────────────────
 let voiceLogsPage = 0;
-const VOICE_LOGS_PER_PAGE = 20;
 
 async function loadVoiceLogs() {
   if (!currentCompanyId) return;
@@ -4419,16 +4498,17 @@ async function loadVoiceLogs() {
   const statusFilter = document.getElementById("voiceLogsStatus")?.value || "";
   const dirFilter    = document.getElementById("voiceLogsDirection")?.value || "";
   const tableEl      = document.getElementById("voiceLogsTable");
-  const pagEl        = document.getElementById("voiceLogsPagination");
   if (!tableEl) return;
 
   try {
+    const from = voiceLogsPage * PER_PAGE;
+    const to = from + PER_PAGE - 1;
     let query = sb
       .from("voice_calls")
       .select("*, leads(name, phone)", { count: "exact" })
       .eq("company_id", currentCompanyId)
       .order("created_at", { ascending: false })
-      .range(voiceLogsPage * VOICE_LOGS_PER_PAGE, (voiceLogsPage + 1) * VOICE_LOGS_PER_PAGE - 1);
+      .range(from, to);
 
     if (statusFilter) query = query.eq("status", statusFilter);
     if (dirFilter) query = query.eq("direction", dirFilter);
@@ -4439,7 +4519,7 @@ async function loadVoiceLogs() {
 
     if (!calls?.length) {
       tableEl.innerHTML = `<div class="notice">No call logs found.</div>`;
-      if (pagEl) pagEl.innerHTML = "";
+      renderPagination("voiceLogsPagination", voiceLogsPage, 0, PER_PAGE, () => {});
       return;
     }
 
@@ -4484,21 +4564,10 @@ async function loadVoiceLogs() {
       row.addEventListener("click", () => openCallDetail(row.dataset.callId));
     });
 
-    // Pagination
-    if (pagEl) {
-      const totalPages = Math.ceil((count || 0) / VOICE_LOGS_PER_PAGE);
-      if (totalPages <= 1) {
-        pagEl.innerHTML = "";
-      } else {
-        pagEl.innerHTML = `
-          <button class="btn" id="voiceLogsPrev" ${voiceLogsPage === 0 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">← Prev</button>
-          <span style="font-size:13px;color:var(--muted);padding:4px 8px">Page ${voiceLogsPage + 1} of ${totalPages}</span>
-          <button class="btn" id="voiceLogsNext" ${voiceLogsPage >= totalPages - 1 ? "disabled" : ""} style="font-size:12px;padding:4px 12px">Next →</button>
-        `;
-        document.getElementById("voiceLogsPrev")?.addEventListener("click", () => { voiceLogsPage--; loadVoiceLogs(); });
-        document.getElementById("voiceLogsNext")?.addEventListener("click", () => { voiceLogsPage++; loadVoiceLogs(); });
-      }
-    }
+    renderPagination("voiceLogsPagination", voiceLogsPage, count, PER_PAGE, (page) => {
+      voiceLogsPage = page;
+      loadVoiceLogs();
+    });
   } catch (err) {
     console.error("Load voice logs error:", err);
     tableEl.innerHTML = `<div class="notice">Failed to load call logs.</div>`;

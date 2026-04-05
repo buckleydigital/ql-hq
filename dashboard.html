@@ -495,6 +495,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="panel-b">
             <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
             <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Add your first lead to start filling the CRM with real records.</p><button id="openLeadModalEmpty" class="btn2" type="button">Add First Lead</button></div>
+            <div id="leadsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
           </div>
         </section>
       </div>
@@ -509,17 +510,17 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Quotes -->
       <div id="page-quotes" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>All quotes created for your leads. Download PDFs or share links for one-click accept/decline.</p></div><div class="actions"><button id="openQuoteModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Quote</span></button></div></div><div class="panel-b" id="quotesPanel"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Quotes</h2><p>All quotes created for your leads. Download PDFs or share links for one-click accept/decline.</p></div><div class="actions"><button id="openQuoteModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Quote</span></button></div></div><div class="panel-b" id="quotesPanel"></div><div id="quotesPagination" style="display:flex;justify-content:center;gap:10px;padding:0 16px 16px"></div></section>
       </div>
 
       <!-- Appointments -->
       <div id="page-appointments" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>Scheduled callbacks, on-site visits, and other bookings.</p></div><div class="actions"><button id="openAppointmentModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Appointment</span></button></div></div><div id="appointmentsPanel" class="panel-b"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>Scheduled callbacks, on-site visits, and other bookings.</p></div><div class="actions"><button id="openAppointmentModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Appointment</span></button></div></div><div id="appointmentsPanel" class="panel-b"></div><div id="appointmentsPagination" style="display:flex;justify-content:center;gap:10px;padding:0 16px 16px"></div></section>
       </div>
 
       <!-- Sales -->
       <div id="page-sales" class="page hidden">
-        <section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div><div class="actions"><button id="openSaleModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Sale</span></button></div></div><div id="salesPanel" class="panel-b"></div></section>
+        <section class="panel"><div class="panel-h"><div><h2>Sales</h2><p>Closed won and lost totals are calculated from saved lead status.</p></div><div class="actions"><button id="openSaleModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Sale</span></button></div></div><div id="salesPanel" class="panel-b"></div><div id="salesPagination" style="display:flex;justify-content:center;gap:10px;padding:0 16px 16px"></div></section>
       </div>
 
       <!-- Notifications -->
@@ -544,6 +545,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div class="panel-b" style="padding:0">
               <div id="conversationList" class="conv-list"></div>
               <div id="convEmptyState" class="empty" style="margin:14px"><span class="icon" data-icon="message"></span><h3>No conversations</h3><p>Inbound SMS threads will appear here, or create one manually.</p></div>
+              <div id="convPagination" style="display:flex;justify-content:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"></div>
             </div>
           </aside>
           <section class="conv-main panel">
