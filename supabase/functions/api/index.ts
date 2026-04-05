@@ -52,6 +52,46 @@ function checkRateLimit(companyId: string): boolean {
   return bucket.count <= RATE_LIMIT;
 }
 
+// ── Input validation helpers ──────────────────────────────────────────────────
+const MAX_STR = 500;
+const MAX_TEXT = 5000;
+const VALID_PIPELINE_STAGES = [
+  "new", "contacted", "qualified", "quoted",
+  "closed_won", "closed_lost", "follow_up",
+];
+
+function validateLeadFields(body: Record<string, unknown>): string | null {
+  const strFields: [string, number][] = [
+    ["name", MAX_STR], ["first_name", MAX_STR], ["last_name", MAX_STR],
+    ["email", 320], ["phone", 30], ["source", MAX_STR],
+    ["service_type", MAX_STR], ["address", MAX_STR], ["postcode", 20],
+  ];
+  for (const [key, max] of strFields) {
+    if (body[key] !== undefined && body[key] !== null) {
+      if (typeof body[key] !== "string") return `${key} must be a string`;
+      if ((body[key] as string).length > max) return `${key} must be at most ${max} characters`;
+    }
+  }
+  if (body.notes !== undefined && body.notes !== null) {
+    if (typeof body.notes !== "string") return "notes must be a string";
+    if ((body.notes as string).length > MAX_TEXT) return `notes must be at most ${MAX_TEXT} characters`;
+  }
+  if (body.value !== undefined && body.value !== null) {
+    if (typeof body.value !== "number" || !isFinite(body.value as number))
+      return "value must be a finite number";
+  }
+  if (body.pipeline_stage !== undefined && body.pipeline_stage !== null) {
+    if (!VALID_PIPELINE_STAGES.includes(body.pipeline_stage as string))
+      return `pipeline_stage must be one of: ${VALID_PIPELINE_STAGES.join(", ")}`;
+  }
+  if (body.assigned_to !== undefined && body.assigned_to !== null) {
+    if (typeof body.assigned_to !== "string") return "assigned_to must be a string";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.assigned_to as string))
+      return "assigned_to must be a valid UUID";
+  }
+  return null;
+}
+
 // ── Authenticate via Bearer token → company_api_tokens ────────────────────────
 async function authenticateToken(
   authHeader: string | null,
@@ -211,6 +251,10 @@ async function handleCreateLead(
     if (body[key] !== undefined) row[key] = body[key];
   }
 
+  // Validate field types, lengths, and enum values
+  const validationError = validateLeadFields(body);
+  if (validationError) return json({ error: validationError }, 400);
+
   // Require at least a name or phone
   if (!row.name && !row.phone) {
     return json({ error: "At least 'name' or 'phone' is required" }, 400);
@@ -266,6 +310,10 @@ async function handleUpdateLead(
   if (Object.keys(updates).length === 0) {
     return json({ error: "No valid fields to update" }, 400);
   }
+
+  // Validate field types, lengths, and enum values
+  const validationError = validateLeadFields(body);
+  if (validationError) return json({ error: validationError }, 400);
 
   const { data, error } = await db
     .from("leads")

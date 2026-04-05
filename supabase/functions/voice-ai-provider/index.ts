@@ -243,9 +243,10 @@ Deno.serve(async (req) => {
 
       if (!vapiRes.ok) {
         const errBody = await vapiRes.text();
+        console.error("VAPI connection test failed:", vapiRes.status, errBody);
         return new Response(
           JSON.stringify({
-            error: `VAPI connection failed (${vapiRes.status}): ${errBody}`,
+            error: "VAPI connection failed. Please check your API key and try again.",
           }),
           {
             status: 400,
@@ -428,9 +429,10 @@ Deno.serve(async (req) => {
 
       if (!vapiRes.ok) {
         const errBody = await vapiRes.text();
+        console.error("VAPI call failed:", vapiRes.status, errBody);
         return new Response(
           JSON.stringify({
-            error: `VAPI call failed (${vapiRes.status}): ${errBody}`,
+            error: "Failed to initiate call. Please try again.",
           }),
           {
             status: 500,

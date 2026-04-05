@@ -36,7 +36,15 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const authHeader = req.headers.get("authorization") || "";
     const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!serviceRoleKey || !callerToken || callerToken !== serviceRoleKey) {
+    // Constant-time comparison to prevent timing attacks
+    const keyBytes = new TextEncoder().encode(callerToken);
+    const expectedBytes = new TextEncoder().encode(serviceRoleKey ?? "");
+    let isMatch = keyBytes.length === expectedBytes.length && keyBytes.length > 0 && !!serviceRoleKey;
+    const len = Math.max(keyBytes.length, expectedBytes.length);
+    for (let i = 0; i < len; i++) {
+      if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
+    }
+    if (!isMatch) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
