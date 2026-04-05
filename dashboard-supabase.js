@@ -223,6 +223,7 @@ let currentUserType  = null;  // 'internal' or 'external' — NEW
 let currentUserRole  = null;  // 'owner' | 'admin' | 'member'
 let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
+let currentPageId    = null;  // Track which page is currently displayed
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -1019,7 +1020,7 @@ async function showApp() {
     // Load notification badge count
     loadNotificationBadge();
 
-    navigateTo("dashboard");
+    navigateTo(currentPageId || "dashboard");
   } catch (err) {
     console.error("Error loading app:", err);
     toast("Error loading dashboard. Please refresh.", true);
@@ -1068,6 +1069,7 @@ function applyPermissionRestrictions() {
 }
 
 function navigateTo(page) {
+  currentPageId = page;
   document.querySelectorAll("[data-page]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.page === page)
   );

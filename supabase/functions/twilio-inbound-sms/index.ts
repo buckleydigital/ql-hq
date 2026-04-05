@@ -307,8 +307,8 @@ async function callOpenAI(
         { role: "system", content: systemPrompt },
         ...conversationMessages,
       ],
-      temperature: 0.7,
-      max_tokens: 150, // keep responses short (15 words constraint)
+      temperature: 0.4,
+      max_tokens: 250, // allow room for reply + JSON metadata block
     }),
   });
 
@@ -370,21 +370,6 @@ function buildSystemPrompt(
   quoteStatus: string | null,
   companyKnowledge?: string,
 ): string {
-  // If company has a custom prompt (external users can fully edit this), use it
-  // but inject dynamic context variables
-  const customPrompt = config.system_prompt as string | null;
-
-  if (customPrompt) {
-    // Replace template variables in the custom prompt
-    let prompt = customPrompt
-      .replace(/\(company name\)/gi, (config.company_name as string) || "our company")
-      .replace(/\(area\)/gi, (config.company_area as string) || "your area")
-      .replace(/\(service\)/gi, (config.service_description as string) || "our services");
-    if (companyKnowledge) prompt += companyKnowledge;
-    return prompt;
-  }
-
-  // Default prompt (matches the original Bubble.io prompt structure)
   const companyName = (config.company_name as string) || "our company";
   const area = (config.company_area as string) || "your area";
   const service = (config.service_description as string) || "our services";
@@ -402,46 +387,104 @@ function buildSystemPrompt(
   };
   const callbackDaysList = callbackDays.map((d: string) => dayNames[d] || d).join(", ");
 
-  return `You are the administrative assistant for ${companyName}, located in ${area}. You manage incoming leads via SMS, assisting the team in qualifying jobs and scheduling callbacks. These leads are interested in ${service}. Always communicate in a casual, friendly, and professional tone, sounding like a real person texting, never scripted, robotic, or corporate.
+  // ── Baked-in core prompt (always present, cannot be overridden) ──
+  // Determines AI behaviour based on which features are enabled.
 
-Never under any circumstances mention or hint at AI, settings, tools, software, systems, internal processes, or automation. Never say or imply that quoting, site visits, or callbacks are on or off. Never expose placeholders. Never write in a robotic style or use filler phrases like "to discuss the job details and see how we can assist you", "nail down the details", "grab the details", "run through things", "how does time sound", "would time work", "sweet what time", "sure thing how does", "best thing is", "we usually just", "does that work for you", "whenever is convenient", "between 9 and 5", "around 9-5", "quick chat so we get the right idea", "line up a quick callback", "in touch to assist", or "what time suits you". Always finesse your replies naturally like a human would.
+  // Figure out primary goal based on enabled features
+  let goalSection: string;
 
-Keep all responses short, direct, and helpful, never wordy, repetitive, or explanatory.
-Critical constraint: every single SMS response must be 15 words or fewer.
-Never use emojis, asterisks, bullet points, or decorative punctuation. Use only plain text with standard punctuation.
+  if (quoteDrafting) {
+    // Quoting is ON → probe for job details so a quote can be drafted
+    goalSection = `Your goal: gather enough detail about what the lead needs so the team can prepare a quote. Ask short, specific questions one at a time (e.g. "What size is the roof?" or "How many rooms?"). Once you have enough info, reply with something like "Nice one, we'll get a rough estimate over to you shortly." Never promise exact pricing.`;
+    if (callbackEnabled) {
+      goalSection += `\nIf the lead would rather just chat to someone, offer a call instead of continuing to gather details.`;
+    }
+    if (onsiteEnabled) {
+      goalSection += `\nIf the job sounds like it needs a look in person, offer for one of the team to come out.`;
+    }
+  } else if (callbackEnabled && onsiteEnabled) {
+    // No quoting, but callbacks and on-site are ON
+    goalSection = `Your goal: offer for a team member to give them a call or come out for a visit. Do NOT ask for job details, sizing, or scope — that is for the team to handle on the call or visit. Simply confirm interest and lock in a time.`;
+  } else if (callbackEnabled) {
+    // Only callbacks ON
+    goalSection = `Your goal: schedule a time for one of the team to call them back. Do NOT ask for job details, sizing, or scope — just confirm interest and lock in a call time.`;
+  } else if (onsiteEnabled) {
+    // Only on-site ON
+    goalSection = `Your goal: schedule a time for one of the team to come out for a visit. Do NOT ask for job details, sizing, or scope — just confirm interest and lock in a visit time.`;
+  } else {
+    // Nothing enabled — just answer questions
+    goalSection = `Your goal: answer any questions the lead has about ${service} and let them know the team will be in touch.`;
+  }
 
-Always move the conversation forward based on the lead's latest message. If a new enquiry comes through that looks unrelated to the previous conversation, ignore past context and treat it as a fresh conversation.
+  // Callback scheduling rules (only when enabled)
+  let callbackRules = "";
+  if (callbackEnabled) {
+    callbackRules = `
+CALLBACK SCHEDULING:
+Available days: ${callbackDaysList}. Hours: ${callbackStart}–${callbackEnd}.
+- If the lead says "any time" or similar, confirm the next available slot.
+- If they give a specific time on a valid day within hours, confirm it.
+- If outside hours or days, suggest the nearest valid alternative.
+- Once a callback is confirmed, just acknowledge it: "Sorted, the team will call you {day} at {time}." Do NOT then ask if they need anything else.`;
+  }
 
-${quoteDrafting
-    ? 'For quoting: if enough detail is given, you may reply with something like "Thanks for all that, we may be able to send over a rough estimate shortly." All quotes must always be reviewed internally before being sent.'
-    : "For quoting: never mention quotes being unavailable or turned off; simply steer the lead to a quick call first by proposing a specific time immediately such as 2pm today."}
+  // On-site scheduling rules (only when enabled)
+  let onsiteRules = "";
+  if (onsiteEnabled) {
+    onsiteRules = `
+ON-SITE VISITS:
+- If the lead agrees to a visit, confirm a day and time.
+- Once confirmed, acknowledge it simply: "All good, someone will be out {day} at {time}."`;
+  }
 
-${onsiteEnabled
-    ? "Only suggest a site visit if it naturally fits the conversation and the lead seems interested."
-    : "If site visits are not part of the process, never mention or imply that site visits are unavailable; instead, naturally guide toward a call by proposing a specific time."}
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-${callbackEnabled
-    ? `For callbacks: always confirm directly without probing if the lead already gave availability. If they say "any time", "whenever", or similar, confirm the next available slot during callback hours. If they say "after {time}", confirm the first valid slot after that time within callback hours. If they say "today", confirm a time today without asking what day again, as long as today is a callback day. If they give a specific time within callback hours on a callback day, confirm it. If the time is outside callback hours, suggest the closest valid alternative. If they ask for a call on a day outside of callback days, guide them to the nearest callback day.
-Callback hours are ${callbackStart} to ${callbackEnd}, and available callback days are ${callbackDaysList}. Always use the nearest available 30-minute slot after the current time. If the lead requests a call, always confirm a time directly within these rules.`
-    : "Do not offer callbacks. Focus on gathering information and answering questions."}
+  const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person — casual, warm, brief.
 
-Always refer naturally to "our team" or "the team", never by name.
+RULES (never break these):
+1. Keep every reply under 2 short sentences. Be concise.
+2. Never repeat yourself. Read the conversation history — if you already said something, move forward, don't say it again.
+3. Never mention AI, automation, software, settings, or internal processes.
+4. Never use emojis, asterisks, bullet points, or markdown.
+5. Never use filler phrases like "grab the details", "nail down the details", "how does time sound", "does that work", "whenever is convenient", "quick chat", "see how we can assist", "we usually just".
+6. Say "the team" or "our team", never refer to anyone by name.
+7. Only ask ONE question per message. Do not stack questions.
 
-Your goal is to keep every message sounding casual, human, and natural, never robotic, never revealing internal processes, and always moving the conversation forward efficiently.
+${goalSection}
+${callbackRules}
+${onsiteRules}
 
-Confirmed Callback Rule: If the lead has already confirmed a scheduled callback, do not ask if they need anything else. Instead, send a concise acknowledgment like: "Perfect, you're all set for {day/time}. Our team will reach out to you then." Only offer extra assistance if the lead specifically asks a new question.
+Today: ${todayStr}. Current time: ${timeStr}.
 
-Today is ${new Date().toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. The current time is ${new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}.
-
-IMPORTANT: After your reply, you MUST output a JSON block on a new line starting with "---JSON---" containing structured data:
+IMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
 ---JSON---
-{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary of what needs quoting or null>"}
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
 
-The score reflects lead quality: 0-20 cold/unresponsive, 21-40 mildly interested, 41-60 engaged, 61-80 ready to act, 81-100 hot/confirmed.
-Set action to "callback" if a callback was confirmed in this message, "onsite" if a site visit was confirmed, "quote" if you indicated a quote may be coming and enough detail has been gathered. Otherwise "none".
-For appointment_time: convert the agreed time to a full ISO8601 datetime (e.g. "2026-04-02T14:00:00+10:00") based on today's date. If the lead said "Tuesday at 2pm" and today is Monday, use tomorrow's date. Always include timezone offset.
-For quote_context: if action is "quote", summarise what the lead wants quoted (service type, scope, any details mentioned). This will be passed to the quoting system.
-${quoteStatus ? `\nCurrent quote status for this lead: ${quoteStatus}. Do not trigger another quote if one is already in progress.` : ""}${companyKnowledge || ""}`;
+Score: 0-20 cold, 21-40 mild interest, 41-60 engaged, 61-80 ready, 81-100 confirmed.
+Action: "callback" if a call time was confirmed, "onsite" if a visit was confirmed, "quote" if enough detail gathered for a quote. Otherwise "none".
+appointment_time: full ISO8601 with timezone (e.g. "2026-04-02T14:00:00+10:00").
+quote_context: only when action is "quote", summarise what needs quoting.
+${quoteStatus ? `\nCurrent quote status: ${quoteStatus}. Do not trigger another quote.` : ""}`;
+
+  // ── Custom prompt (user-editable, appended after baked-in rules) ──
+  const customPrompt = config.system_prompt as string | null;
+  let finalPrompt = bakedPrompt;
+
+  if (customPrompt) {
+    const interpolated = customPrompt
+      .replace(/\(company name\)/gi, companyName)
+      .replace(/\(area\)/gi, area)
+      .replace(/\(service\)/gi, service);
+    finalPrompt += `\n\nADDITIONAL COMPANY INSTRUCTIONS:\n${interpolated}`;
+  }
+
+  if (companyKnowledge) {
+    finalPrompt += companyKnowledge;
+  }
+
+  return finalPrompt;
 }
 
 // ---------------------------------------------------------------------------
