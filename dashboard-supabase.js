@@ -5395,6 +5395,7 @@ async function loadWebhookDeliveries() {
 }
 
 // ─── Reviews ──────────────────────────────────────────────────────────────────
+const DEFAULT_REVIEW_MESSAGE = "Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}";
 
 async function loadReviews() {
   if (!currentCompanyId) return;
@@ -5410,8 +5411,11 @@ async function loadReviews() {
       setCheckboxValue("reviewEnabled", smsConfig.review_enabled);
       setInputValue("reviewDelayDays", smsConfig.review_delay_days ?? 3);
       setCheckboxValue("reviewAutoSend", smsConfig.review_auto_send);
-      setInputValue("reviewMessage", smsConfig.review_message);
+      setInputValue("reviewMessage", smsConfig.review_message || DEFAULT_REVIEW_MESSAGE);
       setInputValue("googleReviewLink", smsConfig.google_review_link);
+    } else {
+      setInputValue("reviewMessage", DEFAULT_REVIEW_MESSAGE);
+      setInputValue("reviewDelayDays", 3);
     }
 
     // Load review requests
@@ -5493,7 +5497,7 @@ async function handleReviewSettingsSave(e) {
     review_enabled:     document.getElementById("reviewEnabled")?.checked ?? false,
     review_delay_days:  Number(document.getElementById("reviewDelayDays")?.value) || 3,
     review_auto_send:   document.getElementById("reviewAutoSend")?.checked ?? false,
-    review_message:     document.getElementById("reviewMessage")?.value || "Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}",
+    review_message:     document.getElementById("reviewMessage")?.value || DEFAULT_REVIEW_MESSAGE,
     google_review_link: document.getElementById("googleReviewLink")?.value || null,
   };
 
@@ -5536,7 +5540,7 @@ async function scheduleReviewRequest(leadId) {
 
     // Build the message body
     const firstName = lead.first_name || "there";
-    const messageBody = (smsConfig.review_message || "Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}")
+    const messageBody = (smsConfig.review_message || DEFAULT_REVIEW_MESSAGE)
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{review_link\}\}/gi, smsConfig.google_review_link);
 
@@ -5555,7 +5559,7 @@ async function scheduleReviewRequest(leadId) {
     if (existing) return; // Already has a review request
 
     // Create review request
-    const { error } = await sb
+    const { data: created, error } = await sb
       .from("review_requests")
       .insert({
         company_id:   currentCompanyId,
@@ -5563,7 +5567,9 @@ async function scheduleReviewRequest(leadId) {
         status:       "pending",
         scheduled_at: scheduledAt.toISOString(),
         message_body: messageBody,
-      });
+      })
+      .select("id")
+      .single();
 
     if (error) {
       console.warn("Failed to schedule review request:", error.message);
@@ -5571,16 +5577,8 @@ async function scheduleReviewRequest(leadId) {
     }
 
     // If auto-send is enabled and delay is 0, send immediately
-    if (smsConfig.review_auto_send && delayDays === 0) {
-      const { data: created } = await sb
-        .from("review_requests")
-        .select("id")
-        .eq("lead_id", leadId)
-        .eq("status", "pending")
-        .maybeSingle();
-      if (created) {
-        await sendReviewRequestSms(created.id, messageBody, lead.phone);
-      }
+    if (smsConfig.review_auto_send && delayDays === 0 && created) {
+      await sendReviewRequestSms(created.id, messageBody, lead.phone);
     }
   } catch (err) {
     console.warn("scheduleReviewRequest error:", err);

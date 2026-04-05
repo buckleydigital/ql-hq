@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
 
           // Refund SMS credit
           await db.rpc("refund_sms_credit", { p_company_id: request.company_id })
-            .catch((e: unknown) => console.warn("Refund error:", (e as Error).message));
+            .catch((e: unknown) => console.warn("Refund error:", e instanceof Error ? e.message : String(e)));
 
           await db.from("review_requests")
             .update({ status: "failed" })
@@ -172,7 +172,8 @@ Deno.serve(async (req) => {
 
         sent++;
       } catch (err) {
-        console.error(`Error processing review request ${request.id}:`, (err as Error).message);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`Error processing review request ${request.id}:`, errMsg);
         await db.from("review_requests")
           .update({ status: "failed" })
           .eq("id", request.id);
@@ -182,7 +183,8 @@ Deno.serve(async (req) => {
 
     return json({ processed: dueRequests.length, sent, failed });
   } catch (err) {
-    console.error("send-review-request error:", (err as Error).message);
-    return json({ error: (err as Error).message }, 500);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("send-review-request error:", errMsg);
+    return json({ error: errMsg }, 500);
   }
 });
