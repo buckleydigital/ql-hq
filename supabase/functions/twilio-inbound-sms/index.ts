@@ -616,26 +616,24 @@ Deno.serve(async (req) => {
     const userType: string = companyProfile?.user_type ?? "external";
 
     // 2b. Validate Twilio webhook signature.
-    // Set TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console
-    // (e.g. https://<project>.supabase.co/functions/v1/twilio-inbound-sms).
-    // When set, signature mismatches are rejected. When not set, the request is
-    // allowed through but a warning is logged — configure TWILIO_WEBHOOK_URL to
-    // enable enforcement.
+    // TWILIO_WEBHOOK_URL must be set to the exact public URL configured in the
+    // Twilio console (e.g. https://<project>.supabase.co/functions/v1/twilio-inbound-sms).
+    // Requests that fail signature validation are always rejected.
     const canonicalWebhookUrl = Deno.env.get("TWILIO_WEBHOOK_URL");
+    if (!canonicalWebhookUrl) {
+      console.error("TWILIO_WEBHOOK_URL is not set — rejecting request. Set this secret to enable the inbound SMS webhook.");
+      return twimlResponse("");
+    }
     try {
       const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth", userType);
-      const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation, canonicalWebhookUrl ?? undefined);
+      const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation, canonicalWebhookUrl);
       if (!isValid) {
-        if (canonicalWebhookUrl) {
-          // Canonical URL is configured — enforce the signature check.
-          console.error("Twilio signature validation failed — request rejected");
-          return twimlResponse("");
-        } else {
-          console.warn("Twilio signature mismatch — set TWILIO_WEBHOOK_URL to enforce validation");
-        }
+        console.error("Twilio signature validation failed — request rejected");
+        return twimlResponse("");
       }
     } catch (err) {
-      console.warn("Twilio signature validation skipped — key resolution failed:", (err as Error).message);
+      console.error("Twilio signature validation error — request rejected:", (err as Error).message);
+      return twimlResponse("");
     }
 
     // 3. Check SMS credits

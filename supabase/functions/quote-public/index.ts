@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
 
       const { data: quote, error: fetchErr } = await db
         .from("quotes")
-        .select("id, status, company_id, quote_number, lead_id")
+        .select("id, status, company_id, quote_number, lead_id, valid_until")
         .eq("quote_token", token)
         .single();
 
@@ -191,6 +191,14 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Reject actions on expired quotes
+      if (quote.valid_until && new Date(quote.valid_until) < new Date()) {
+        return new Response(JSON.stringify({ error: "This quote has expired and can no longer be actioned" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const update: { status: string; accepted_at?: string } = {
         status: action === "accept" ? "accepted" : "declined",
       };
@@ -204,7 +212,8 @@ Deno.serve(async (req) => {
         .eq("id", quote.id);
 
       if (updateErr) {
-        return new Response(JSON.stringify({ error: updateErr.message }), {
+        console.error("quote-public update error:", updateErr.message);
+        return new Response(JSON.stringify({ error: "Failed to process action. Please try again." }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

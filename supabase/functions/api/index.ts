@@ -31,6 +31,11 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function dbErr(context: string, error: { message: string }): Response {
+  console.error(`${context}:`, error.message);
+  return json({ error: "An internal error occurred. Please try again." }, 500);
+}
+
 // ── Rate-limiter (in-memory, per company, resets on cold start) ───────────────
 const rateBuckets = new Map<string, { count: number; reset: number }>();
 const RATE_LIMIT = 100; // requests per window
@@ -155,13 +160,18 @@ async function handleListLeads(
   if (stage) query = query.eq("pipeline_stage", stage);
   if (aiStatus) query = query.eq("ai_status", aiStatus);
   if (search) {
-    // Escape special PostgREST characters in the search term
-    const safe = search.replace(/[%_\\]/g, (c) => "\\" + c);
-    query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,email.ilike.%${safe}%`);
+    // Strip characters that are special in PostgREST filter strings to prevent
+    // filter injection via the .or() clause (parentheses, commas, dots, colons).
+    // LIKE wildcards are also escaped. Length-limited to 100 chars.
+    const sanitized = search.trim().slice(0, 100).replace(/[(),.:]/g, "");
+    if (sanitized) {
+      const safe = sanitized.replace(/[%_\\]/g, (c) => "\\" + c);
+      query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,email.ilike.%${safe}%`);
+    }
   }
 
   const { data, error, count } = await query;
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
 
   return json({
     data,
@@ -181,7 +191,7 @@ async function handleGetLead(
     .eq("company_id", companyId)
     .maybeSingle();
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
   if (!data) return json({ error: "Lead not found" }, 404);
   return json({ data });
 }
@@ -221,7 +231,7 @@ async function handleCreateLead(
     .select()
     .single();
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
 
   // Fire webhook
   await fireWebhooks(db, companyId, "lead.created", data);
@@ -265,7 +275,7 @@ async function handleUpdateLead(
     .select()
     .single();
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
   if (!data) return json({ error: "Lead not found" }, 404);
 
   await fireWebhooks(db, companyId, "lead.updated", data);
@@ -293,7 +303,7 @@ async function handleListQuotes(
   if (status) query = query.eq("status", status);
 
   const { data, error, count } = await query;
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
 
   return json({
     data,
@@ -313,7 +323,7 @@ async function handleGetQuote(
     .eq("company_id", companyId)
     .maybeSingle();
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
   if (!data) return json({ error: "Quote not found" }, 404);
   return json({ data });
 }
@@ -452,7 +462,7 @@ async function handleListAppointments(
   if (type) query = query.eq("appointment_type", type);
 
   const { data, error, count } = await query;
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
 
   return json({
     data,
@@ -475,7 +485,7 @@ async function handleListVoiceCalls(
     .order("created_at", { ascending: false })
     .range(offset, offset + perPage - 1);
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) return dbErr("db query", error);
 
   return json({
     data,

@@ -65,6 +65,16 @@ async function fireWebhooks(
   } catch (err) { console.error("fireWebhooks error:", err); }
 }
 
+// ── Constant-time string comparison to prevent timing side-channel attacks ────
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let result = 0;
+  for (let i = 0; i < aBytes.length; i++) result |= aBytes[i] ^ bBytes[i];
+  return result === 0;
+}
+
 /**
  * VAPI Webhook — Edge Function
  *
@@ -101,7 +111,7 @@ Deno.serve(async (req) => {
     });
   }
   const incomingSecret = req.headers.get("x-vapi-secret");
-  if (incomingSecret !== webhookSecret) {
+  if (!constantTimeEqual(incomingSecret ?? "", webhookSecret)) {
     console.warn("VAPI webhook: invalid or missing x-vapi-secret header");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,

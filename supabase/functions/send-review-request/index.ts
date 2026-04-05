@@ -29,6 +29,14 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // ── Auth: only the cron scheduler (service role) may invoke this ─────
+    const authHeader = req.headers.get("authorization") || "";
+    const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!callerToken || callerToken !== serviceKey) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
     const db = createClient(supabaseUrl, serviceKey);
 
     // Find all pending review requests that are due
@@ -45,11 +53,25 @@ Deno.serve(async (req) => {
 
     if (fetchErr) {
       console.error("Failed to fetch due review requests:", fetchErr.message);
-      return json({ error: fetchErr.message }, 500);
+      return json({ error: "An internal error occurred. Please try again." }, 500);
     }
 
     if (!dueRequests?.length) {
       return json({ processed: 0, message: "No review requests due." });
+    }
+
+    // ── Idempotency: claim this batch atomically before processing ────────
+    // Any concurrent invocation will see these rows as non-pending and skip them.
+    const batchIds = dueRequests.map((r) => r.id);
+    const { error: claimErr } = await db
+      .from("review_requests")
+      .update({ status: "processing" })
+      .in("id", batchIds)
+      .eq("status", "pending"); // guard: only update rows still pending
+
+    if (claimErr) {
+      console.error("Failed to claim review request batch:", claimErr.message);
+      return json({ error: "An internal error occurred. Please try again." }, 500);
     }
 
     let sent = 0;
@@ -185,6 +207,6 @@ Deno.serve(async (req) => {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("send-review-request error:", errMsg);
-    return json({ error: errMsg }, 500);
+    return json({ error: "Internal server error" }, 500);
   }
 });

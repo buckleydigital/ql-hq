@@ -181,14 +181,18 @@ Deno.serve(async (req) => {
       createError &&
       /already|exists|duplicate|unique/i.test(createError.message || "")
     ) {
-      // User already exists — look them up.
-      // NOTE: Supabase auth admin API does not support filtering listUsers by
-      // email, so we must list and search.  This is only reached when creation
-      // fails (existing user), not the common case.
-      const { data: allList } = await adminClient.auth.admin.listUsers();
-      const found = allList?.users?.find(
-        (u: { email?: string }) => u.email === email
-      );
+      // User already exists — look them up by paginating through auth users.
+      // The Supabase JS admin API does not support server-side email filtering,
+      // so we page through 1000 at a time and stop as soon as we find a match.
+      let found: { id: string; email?: string } | undefined;
+      let page = 1;
+      while (!found) {
+        const { data: pageData } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+        if (!pageData?.users?.length) break;
+        found = pageData.users.find((u: { id: string; email?: string }) => u.email === email);
+        if (pageData.users.length < 1000) break; // last page
+        page++;
+      }
       if (!found) {
         return new Response(
           JSON.stringify({ error: "User appears to exist but could not be found" }),

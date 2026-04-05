@@ -2934,7 +2934,12 @@ function updateLogoPreview(url) {
   const removeBtn = document.getElementById("removeLogoBtn");
   if (!preview) return;
   if (url) {
-    preview.innerHTML = `<img src="${url}" style="width:48px;height:48px;object-fit:contain" alt="Logo">`;
+    const img = document.createElement("img");
+    img.src = url;
+    img.style.cssText = "width:48px;height:48px;object-fit:contain";
+    img.alt = "Logo";
+    preview.innerHTML = "";
+    preview.appendChild(img);
     if (removeBtn) removeBtn.style.display = "inline-flex";
   } else {
     preview.innerHTML = `<span class="muted" style="font-size:10px">No logo</span>`;
