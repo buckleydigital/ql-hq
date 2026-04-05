@@ -193,8 +193,8 @@ async function handleCreateLead(
 ) {
   const allowed = [
     "name", "first_name", "last_name", "email", "phone",
-    "pipeline_stage", "source", "custom_data", "metadata",
-    "postcode", "address", "assigned_to",
+    "pipeline_stage", "source", "service_type", "value", "notes",
+    "custom_data", "metadata", "postcode", "address", "assigned_to",
   ];
   const row: Record<string, unknown> = { company_id: companyId };
   for (const key of allowed) {
@@ -244,7 +244,9 @@ async function handleUpdateLead(
 ) {
   const allowed = [
     "name", "first_name", "last_name", "email", "phone",
-    "pipeline_stage", "source", "ai_enabled", "custom_data", "metadata",
+    "pipeline_stage", "source", "service_type", "value", "notes",
+    "address", "postcode", "assigned_to",
+    "ai_enabled", "custom_data", "metadata",
   ];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {
@@ -283,7 +285,7 @@ async function handleListQuotes(
 
   let query = db
     .from("quotes")
-    .select("id, quote_number, status, total, tax, subtotal, lead_id, created_at, sent_at, viewed_at", { count: "exact" })
+    .select("id, company_id, quote_number, status, total, tax, subtotal, lead_id, created_by, valid_until, notes, line_items, metadata, created_at, updated_at, sent_at, viewed_at, accepted_at", { count: "exact" })
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })
     .range(offset, offset + perPage - 1);
@@ -306,7 +308,7 @@ async function handleGetQuote(
 ) {
   const { data, error } = await db
     .from("quotes")
-    .select("id, quote_number, status, total, tax, subtotal, line_items, lead_id, metadata, created_at, sent_at, viewed_at")
+    .select("id, company_id, quote_number, status, total, tax, subtotal, line_items, lead_id, created_by, valid_until, notes, metadata, created_at, updated_at, sent_at, viewed_at, accepted_at")
     .eq("id", id)
     .eq("company_id", companyId)
     .maybeSingle();
@@ -443,7 +445,7 @@ async function handleListAppointments(
     .from("appointments")
     .select("*, leads(name, phone, email)", { count: "exact" })
     .eq("company_id", companyId)
-    .order("scheduled_at", { ascending: false })
+    .order("start_time", { ascending: false })
     .range(offset, offset + perPage - 1);
 
   const type = url.searchParams.get("type");
@@ -468,7 +470,7 @@ async function handleListVoiceCalls(
 
   const { data, error, count } = await db
     .from("voice_calls")
-    .select("id, lead_id, direction, status, duration, summary, sentiment, outcome, created_at", { count: "exact" })
+    .select("id, company_id, lead_id, conversation_id, assigned_to, vapi_call_id, direction, status, from_number, to_number, duration, recording_url, transcript, summary, sentiment, outcome, cost, metadata, started_at, ended_at, created_at", { count: "exact" })
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })
     .range(offset, offset + perPage - 1);

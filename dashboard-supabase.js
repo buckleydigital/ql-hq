@@ -2799,6 +2799,8 @@ async function loadSettings() {
     const settingsOwnerPhone = document.getElementById("settingsOwnerPhone");
     
     if (company) {
+      const settingsCompanyId = document.getElementById("settingsCompanyId");
+      if (settingsCompanyId) settingsCompanyId.value = company.id || "";
       if (settingsCompanyName) settingsCompanyName.value = company.name || "";
       if (settingsCompanyEmail) settingsCompanyEmail.value = company.email || "";
       if (settingsCompanyPhone) settingsCompanyPhone.value = company.phone || "";
@@ -5143,6 +5145,11 @@ async function loadAiInsights() {
 
 async function loadIntegrations() {
   if (!currentCompanyId) return;
+  // Populate account IDs
+  const companyIdEl = document.getElementById("integrationCompanyId");
+  if (companyIdEl) companyIdEl.textContent = currentCompanyId;
+  const userIdEl = document.getElementById("integrationUserId");
+  if (userIdEl && currentUser) userIdEl.textContent = currentUser.id;
   await Promise.all([loadApiKeys(), loadWebhooks(), loadWebhookDeliveries()]);
   wireIntegrationsUI();
   renderIcons();
