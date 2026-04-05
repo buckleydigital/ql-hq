@@ -63,11 +63,16 @@ Deno.serve(async (req) => {
     // ── Idempotency: claim this batch atomically before processing ────────
     // Any concurrent invocation will see these rows as non-pending and skip them.
     const batchIds = dueRequests.map((r) => r.id);
-    await db
+    const { error: claimErr } = await db
       .from("review_requests")
       .update({ status: "processing" })
       .in("id", batchIds)
       .eq("status", "pending"); // guard: only update rows still pending
+
+    if (claimErr) {
+      console.error("Failed to claim review request batch:", claimErr.message);
+      return json({ error: "An internal error occurred. Please try again." }, 500);
+    }
 
     let sent = 0;
     let failed = 0;

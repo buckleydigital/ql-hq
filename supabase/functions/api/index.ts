@@ -160,9 +160,10 @@ async function handleListLeads(
   if (stage) query = query.eq("pipeline_stage", stage);
   if (aiStatus) query = query.eq("ai_status", aiStatus);
   if (search) {
-    // Restrict to safe characters and escape LIKE wildcards to prevent
-    // PostgREST filter-string injection via special chars like ), (, comma.
-    const sanitized = search.trim().slice(0, 100).replace(/[^a-zA-Z0-9 @.\-+_']/g, "");
+    // Strip characters that are special in PostgREST filter strings to prevent
+    // filter injection via the .or() clause (parentheses, commas, dots, colons).
+    // LIKE wildcards are also escaped. Length-limited to 100 chars.
+    const sanitized = search.trim().slice(0, 100).replace(/[(),.:]/g, "");
     if (sanitized) {
       const safe = sanitized.replace(/[%_\\]/g, (c) => "\\" + c);
       query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,email.ilike.%${safe}%`);
