@@ -2340,28 +2340,18 @@ function buildKanban(leads) {
                    data-lead-id="${l.id}"
                    ondragstart="kanbanDragStart(event,'${l.id}')"
                    ondragend="kanbanDragEnd(event)"
-                   onclick="if(!event.target.closest('.kcard-actions')) openOpportunityModal('${l.id}')"
+                   onclick="openOpportunityModal('${l.id}')"
                    style="position:relative;cursor:pointer">
                 <h3>${l.name || "—"}</h3>
                 <p>${l.email || l.phone || "—"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
                 ${l.ai_score != null ? `<div style="margin-top:6px"><span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span></div>` : ""}
-                <div class="kcard-actions" style="position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:0;transition:opacity .15s">
-                  <button class="iconbtn" style="width:28px;height:28px;min-height:28px" onclick="event.stopPropagation();callLeadDirect('${l.id}')" type="button" title="Call with AI"><span class="icon" data-icon="phone" style="width:12px;height:12px"></span></button>
-                </div>
-              </div>`).join("")
+                </div>`).join("")
             : `<div class="kanban-drop-hint">Drop leads here</div>`}
         </div>
       </div>`;
   }).join("");
 
-  // Add hover effect for card actions
-  const style = document.createElement('style');
-  style.textContent = '.kcard:hover .kcard-actions{opacity:1!important}';
-  if (!document.getElementById('kanban-card-styles')) {
-    style.id = 'kanban-card-styles';
-    document.head.appendChild(style);
-  }
 }
 
 function kanbanDragStart(event, leadId) {
