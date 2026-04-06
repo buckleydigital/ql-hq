@@ -218,7 +218,7 @@ async function sendNotificationEmail(
 
     if (emails.length === 0) return;
 
-    await fetch("https://api.resend.com/emails", {
+    const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -230,7 +230,15 @@ async function sendNotificationEmail(
         subject: emailContent.subject,
         html: emailContent.html,
       }),
-    }).catch((err) => console.error("Resend API call failed:", err));
+    });
+
+    if (!resendRes.ok) {
+      const errText = await resendRes.text();
+      console.error(`Resend notification email error (HTTP ${resendRes.status}):`, errText);
+    } else {
+      const resendData = await resendRes.json();
+      console.log("Notification email sent via Resend, id:", resendData?.id);
+    }
   } catch (err) {
     console.error("sendNotificationEmail failed:", err);
   }
@@ -937,15 +945,14 @@ Deno.serve(async (req) => {
         },
       }).catch((err: unknown) => console.error("Failed to create notification:", err));
 
-      // Send email notification via Resend (non-blocking)
+      // Send email notification via Resend
       const companyData = smsConfig.companies || {};
       const companyName = String(companyData.name || "Your company");
       const scheduledTimeStr = startTime.toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
       const emailContent = appointmentType === "callback"
         ? callbackBookedEmail(leadName, scheduledTimeStr, companyName)
         : onsiteBookedEmail(leadName, scheduledTimeStr, companyName);
-      sendNotificationEmail(db, companyId, emailContent)
-        .catch((err) => console.error("Notification email failed:", err));
+      await sendNotificationEmail(db, companyId, emailContent);
 
       // Trigger AI learner to extract scheduling insights
       triggerAILearner("appointment.booked", companyId, lead.id, {

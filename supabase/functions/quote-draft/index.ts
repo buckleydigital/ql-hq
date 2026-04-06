@@ -344,7 +344,7 @@ Return ONLY a valid JSON array, no other text.`;
               company?.name || "Your company",
             );
 
-            fetch("https://api.resend.com/emails", {
+            const resendRes = await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -356,7 +356,15 @@ Return ONLY a valid JSON array, no other text.`;
                 subject: emailContent.subject,
                 html: emailContent.html,
               }),
-            }).catch((err) => console.error("Resend API call failed:", err));
+            });
+
+            if (!resendRes.ok) {
+              const errText = await resendRes.text();
+              console.error(`Resend API error (HTTP ${resendRes.status}):`, errText);
+            } else {
+              const resendData = await resendRes.json();
+              console.log("Quote notification email sent via Resend, id:", resendData?.id);
+            }
           }
         }
       }
