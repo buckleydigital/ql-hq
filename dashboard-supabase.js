@@ -510,13 +510,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         if (res.ok) {
           edgeFnOk = true;
-        } else if (data.error) {
-          // Edge function returned a meaningful error — show it directly
-          toast(data.error, true);
+        } else {
+          // Edge function returned an error — show it directly.
+          // Check both "error" (our functions) and "message" (Supabase platform errors).
+          const errMsg = data.error || data.message || `Unable to send reset email (HTTP ${res.status}). Please try again.`;
+          console.error("send-password-reset edge function error:", res.status, errMsg);
+          toast(errMsg, true);
           resetTurnstile();
           return;
         }
-        // If !res.ok and no data.error, fall through to Supabase fallback
       } catch (fetchErr) {
         console.warn("send-password-reset edge function unreachable:", fetchErr);
         // Fall through to Supabase built-in fallback
@@ -536,7 +538,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       if (sbError) {
         console.error("Supabase resetPasswordForEmail error:", sbError.message);
-        toast("Failed to send reset link. Please try again.", true);
+        toast(sbError.message || "Failed to send reset link. Please try again.", true);
         resetTurnstile();
         return;
       }
