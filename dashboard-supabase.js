@@ -516,40 +516,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // Try our Resend-powered edge function first (branded emails).
-      // Skip if we don't have a Turnstile token — go straight to fallback.
+      // Call our Resend-powered edge function.
+      // Always send the request even if the Turnstile token is absent — the
+      // server skips CAPTCHA verification when CF_TURNSTILE_SECRET is not
+      // configured, so environments without Turnstile still work.
       let edgeFnOk = false;
-      if (cfToken) {
-        try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "apikey": SUPABASE_ANON_KEY,
-              "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
-          });
+      let edgeFnError = null;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
+        });
 
-          // Resilient JSON parsing — the response might not be JSON if
-          // the edge function is unavailable or there is a gateway error.
-          let data = {};
-          try { data = await res.json(); } catch (_) { /* non-JSON response */ }
+        // Resilient JSON parsing — the response might not be JSON if
+        // the edge function is unavailable or there is a gateway error.
+        let data = {};
+        try { data = await res.json(); } catch (_) { /* non-JSON response */ }
 
-          if (res.ok) {
-            edgeFnOk = true;
-          } else {
-            // Log the edge function error for debugging, then fall through
-            // to Supabase built-in reset so the user can still recover.
-            const errMsg = data.error || data.message || `HTTP ${res.status}`;
-            console.warn("send-password-reset edge function error:", res.status, errMsg);
-          }
-        } catch (fetchErr) {
-          console.warn("send-password-reset edge function unreachable:", fetchErr);
-          // Fall through to Supabase built-in fallback
+        if (res.ok) {
+          edgeFnOk = true;
+        } else {
+          // Capture the actual error for display to the user
+          edgeFnError = (typeof data.error === "string" && data.error)
+            || data.message || `HTTP ${res.status}`;
+          console.warn("send-password-reset edge function error:", res.status, edgeFnError);
         }
-      } else {
-        console.info("Turnstile token not available — skipping edge function");
+      } catch (fetchErr) {
+        console.warn("send-password-reset edge function unreachable:", fetchErr);
       }
 
       if (edgeFnOk) {
@@ -557,10 +555,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Edge function failed — show error instead of falling back to
-      // Supabase's built-in email which sends from a generic Supabase
-      // address rather than Resend.
-      toast("Failed to send reset link. Please try again.", true);
+      // Show the specific error from the edge function so the user knows
+      // whether this is a config problem vs a transient failure.
+      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
       resetTurnstile();
       return;
     } catch (err) {
