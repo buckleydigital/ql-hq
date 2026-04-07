@@ -118,7 +118,7 @@ export async function sendResendEmail(
 
   // ── 5. Classify the result ────────────────────────────────────────────
   if (resendRes.ok) {
-    const emailId = (resendData as Record<string, unknown>)?.id as string ?? null;
+    const emailId = (resendData?.id as string | undefined) ?? null;
     console.log(
       `[${caller}] Resend email sent successfully — id: ${emailId}, to: ${toArr.join(", ")}, subject: "${payload.subject}"`,
     );
@@ -127,7 +127,7 @@ export async function sendResendEmail(
 
   // — Failure path — extract Resend's error message
   const resendMsg =
-    (resendData as Record<string, unknown>)?.message as string ??
+    (resendData?.message as string | undefined) ??
     rawBody.slice(0, 500);
   const status = resendRes.status;
 
