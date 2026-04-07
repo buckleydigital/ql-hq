@@ -96,8 +96,11 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
     height: 68px;
 }
 .logo-product { display: flex; align-items: center; gap: 7px; text-decoration: none; }
-.logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; filter: brightness(0) invert(1); transition: filter 0.3s; }
-[data-theme="light"] .logo-product img { filter: brightness(0); }
+.logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
+.logo-dark  { display: inline; }
+.logo-light { display: none;   }
+[data-theme="light"] .logo-dark  { display: none !important;   }
+[data-theme="light"] .logo-light { display: inline !important; }
 .logo-product-name {
     font-family: var(--serif); font-size: 16px; color: var(--ink);
     letter-spacing: -0.2px; white-space: nowrap;
@@ -173,9 +176,11 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
     width: 108px; height: 108px; object-fit: contain;
     margin-bottom: 28px; position: relative; z-index: 1;
     animation: heroLogoIn .8s cubic-bezier(.16,1,.3,1) both;
-    filter: brightness(0) invert(1); transition: filter 0.3s;
 }
-[data-theme="light"] .hero-logo { filter: brightness(0); }
+.hero-logo.logo-dark  { display: block; }
+.hero-logo.logo-light { display: none;  }
+[data-theme="light"] .hero-logo.logo-dark  { display: none !important;  }
+[data-theme="light"] .hero-logo.logo-light { display: block !important; }
 @keyframes heroLogoIn { from{opacity:0;transform:scale(.7) translateY(16px)} to{opacity:1;transform:none} }
 .badge {
     display: inline-flex; align-items: center; gap: 8px;
@@ -339,8 +344,11 @@ section, .section { padding: 96px 40px; }
 .chat-msg.right { flex-direction: row-reverse; }
 .chat-av { width: 27px; height: 27px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; overflow: hidden; }
 .chat-av.ai { background: var(--accent); color: #fff; }
-.chat-av.ai img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; filter: brightness(0) invert(1); transition: filter 0.3s; }
-[data-theme="light"] .chat-av.ai img { filter: brightness(0); }
+.chat-av.ai img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+.chat-av.ai .logo-dark  { display: inline; }
+.chat-av.ai .logo-light { display: none;   }
+[data-theme="light"] .chat-av.ai .logo-dark  { display: none !important;   }
+[data-theme="light"] .chat-av.ai .logo-light { display: inline !important; }
 .chat-av.lead { background: var(--bg-lift); color: var(--ink-muted); border: 1px solid var(--border-mid); font-size: 10px; }
 .chat-bubble { max-width: 82%; padding: 9px 13px; border-radius: 11px; font-size: 13px; line-height: 1.5; }
 .chat-bubble.ai { background: var(--accent-dim); border: 1px solid var(--border-mid); color: var(--ink); }
@@ -564,7 +572,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 <header class="site-header" id="mainNav">
     <div class="header-inner">
         <div class="logo-product">
-            <img id="productLogoImg" src="product-logo.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
+            <img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
             <span class="logo-product-name">QuoteLeadsHQ</span>
         </div>
         <nav class="nav-links">
@@ -598,7 +606,8 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="hero-glow"></div>
     <div class="hero-orb hero-orb-1"></div>
     <div class="hero-orb hero-orb-2"></div>
-    <img class="hero-logo" src="product-logo.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
+    <img class="hero-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
+    <img class="hero-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
     <div class="badge"><span class="badge-dot"></span><strong>Live</strong> - now onboarding trade businesses</div>
     <h1>Turn every lead into a<br/><em>signed quote.</em></h1>
     <p class="hero-sub">Your AI-powered sales engine that responds in seconds, qualifies leads, drafts quotes, follows up, and closes deals — 24/7, with zero admin.</p>
@@ -724,7 +733,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
                         <div><div class="chat-bubble lead">Hi, I need a quote for a roof restoration.</div><div class="chat-time">9:47 PM</div></div>
                     </div>
                     <div class="chat-msg right">
-                        <div class="chat-av ai"><img src="product-logo.png" alt="Q"/></div>
+                        <div class="chat-av ai"><img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="Q"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="Q"/></div>
                         <div style="text-align:right"><div class="chat-bubble ai">Hey Marcus! Happy to help. Is this a full re-roof or a restoration of the existing tiles?</div><div class="chat-time">9:47 PM · 34s <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div></div>
                     </div>
                     <div class="chat-msg">
@@ -732,7 +741,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
                         <div><div class="chat-bubble lead">Restoration - the tiles are cracked and fading.</div></div>
                     </div>
                     <div class="chat-msg right">
-                        <div class="chat-av ai"><img src="product-logo.png" alt="Q"/></div>
+                        <div class="chat-av ai"><img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="Q"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="Q"/></div>
                         <div style="text-align:right"><div class="chat-bubble ai">Got it. How many storeys is the property, and do you know the roof area roughly?</div></div>
                     </div>
                 </div>
@@ -897,9 +906,9 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
                 </div>
                 <div class="ai-agent-demo">
                     <div class="chat-msg"><div class="chat-av lead">MW</div><div><div class="chat-bubble lead">Hi, I need a quote for a roof restoration.</div><div class="chat-time">9:47 PM</div></div></div>
-                    <div class="chat-msg right"><div class="chat-av ai"><img src="product-logo.png" alt="Q"/></div><div style="text-align:right"><div class="chat-bubble ai">Hey Marcus! Happy to help 👋 Is this a full re-roof or a restoration of the existing tiles?</div><div class="chat-time">9:47 PM · 34s <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div></div></div>
+                    <div class="chat-msg right"><div class="chat-av ai"><img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="Q"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="Q"/></div><div style="text-align:right"><div class="chat-bubble ai">Hey Marcus! Happy to help 👋 Is this a full re-roof or a restoration of the existing tiles?</div><div class="chat-time">9:47 PM · 34s <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div></div></div>
                     <div class="chat-msg"><div class="chat-av lead">MW</div><div><div class="chat-bubble lead">Restoration - tiles are cracked and fading</div></div></div>
-                    <div class="chat-msg right"><div class="chat-av ai"><img src="product-logo.png" alt="Q"/></div><div style="text-align:right"><div class="chat-bubble ai">Got it. How many storeys is the property, and do you know the roof area roughly?</div></div></div>
+                    <div class="chat-msg right"><div class="chat-av ai"><img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="Q"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="Q"/></div><div style="text-align:right"><div class="chat-bubble ai">Got it. How many storeys is the property, and do you know the roof area roughly?</div></div></div>
                 </div>
             </div>
             <div class="ai-agent-card fade-up d1">
