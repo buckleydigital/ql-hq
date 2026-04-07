@@ -158,6 +158,9 @@ Deno.serve(async (req) => {
 
     // ── Send via Resend ────────────────────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
+    const fromEmail =
+      Deno.env.get("RESEND_FROM_EMAIL") ||
+      "QuoteLeadsHQ <noreply@quoteleadshq.com>";
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -166,7 +169,7 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "QuoteLeadsHQ <noreply@quoteleadshq.com>",
+        from: fromEmail,
         to: [email],
         subject: emailContent.subject,
         html: emailContent.html,
@@ -181,6 +184,10 @@ Deno.serve(async (req) => {
       // affect ALL users and don't reveal whether this specific email exists.
       // Surface them so the user knows the email service is broken.
       if (resendRes.status === 401 || resendRes.status === 403) {
+        const hint = resendRes.status === 403
+          ? "Sending domain is not verified in Resend. Check that RESEND_API_KEY belongs to the same Resend team where the domain is verified, or set RESEND_FROM_EMAIL to a verified sender."
+          : "Invalid Resend API key.";
+        console.error("Resend auth/config error:", hint);
         return new Response(
           JSON.stringify({
             error: "Email service configuration error. Please contact support.",

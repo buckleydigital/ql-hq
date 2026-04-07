@@ -24,7 +24,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_FROM = "QuoteLeadsHQ <noreply@quoteleadshq.com>";
+const DEFAULT_FROM =
+  Deno.env.get("RESEND_FROM_EMAIL") ||
+  "QuoteLeadsHQ <noreply@quoteleadshq.com>";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
