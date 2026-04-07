@@ -402,7 +402,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       
       if (error) {
-        toast(error.message, true);
+        // Map cryptic Supabase errors to user-friendly messages
+        let msg = error.message;
+        if (/rate.?limit/i.test(msg)) {
+          msg = "Too many attempts. Please wait a few minutes and try again.";
+        }
+        toast(msg, true);
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = submitBtn.dataset.originalText || "Sign In";

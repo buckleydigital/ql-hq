@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
           company_id: profile.company_id,
           user_type: "external",
         },
-        email_confirm: false, // invite link will confirm
+        email_confirm: true, // Pre-confirm so signInWithPassword never triggers Supabase's internal email rate limit
       });
 
     if (newUser?.user) {
@@ -226,10 +226,8 @@ Deno.serve(async (req) => {
     }
 
     // Generate an invite link to send via Resend.
-    // For NEW (unconfirmed) users use type "invite" — magiclink fails for
-    // unconfirmed users and returns no action_link, which silently prevents
-    // the Resend API from ever being called.
-    // For EXISTING users use "magiclink"; fall back to "recovery" if that fails.
+    // For NEW users use type "invite"; for EXISTING users use "magiclink".
+    // Falls back to "recovery" if the primary type fails.
     let emailSent = false;
     let emailError: string | null = null;
     let actionLink: string | null = null;
