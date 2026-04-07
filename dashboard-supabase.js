@@ -430,6 +430,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
     if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
+    // Re-render Turnstile widget so the token is fresh (hidden forms may
+    // have stale or unrendered widgets from page load).
+    const fpTurnstile = forgotPasswordForm?.querySelector('.cf-turnstile');
+    if (fpTurnstile && window.turnstile) {
+      turnstile.reset(fpTurnstile);
+    }
   });
 
   backToLogin?.addEventListener("click", () => {
@@ -467,34 +473,79 @@ document.addEventListener("DOMContentLoaded", async () => {
       submitBtn.textContent = "Sending...";
     }
 
-    try {
-      // Use our Resend-powered edge function for password reset
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast(data.error || "Failed to send reset link. Please try again.", true);
-        if (window.turnstile) turnstile.reset(forgotPasswordForm.querySelector('.cf-turnstile'));
-      } else {
-        toast("Password reset link sent! Check your email.");
-        // Switch back to login form after a short delay
-        setTimeout(() => {
-          forgotPasswordForm?.classList.add("hidden");
-          loginForm?.classList.remove("hidden");
-        }, 2000);
-      }
-    } catch (err) {
-      toast("Failed to send reset link. Please try again.", true);
+    const resetTurnstile = () => {
       if (window.turnstile) turnstile.reset(forgotPasswordForm.querySelector('.cf-turnstile'));
+    };
+
+    const onSuccess = () => {
+      toast("Password reset link sent! Check your email.");
+      setTimeout(() => {
+        forgotPasswordForm?.classList.add("hidden");
+        loginForm?.classList.remove("hidden");
+        authTabs?.classList.remove("hidden");
+        authTabs?.querySelectorAll("button").forEach((b) => {
+          b.classList.toggle("active", b.dataset.tab === "login");
+        });
+      }, 2000);
+    };
+
+    try {
+      // Try our Resend-powered edge function first (branded emails)
+      let edgeFnOk = false;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
+        });
+
+        // Resilient JSON parsing — the response might not be JSON if
+        // the edge function is unavailable or there is a gateway error.
+        let data = {};
+        try { data = await res.json(); } catch (_) { /* non-JSON response */ }
+
+        if (res.ok) {
+          edgeFnOk = true;
+        } else if (data.error) {
+          // Edge function returned a meaningful error — show it directly
+          toast(data.error, true);
+          resetTurnstile();
+          return;
+        }
+        // If !res.ok and no data.error, fall through to Supabase fallback
+      } catch (fetchErr) {
+        console.warn("send-password-reset edge function unreachable:", fetchErr);
+        // Fall through to Supabase built-in fallback
+      }
+
+      if (edgeFnOk) {
+        onSuccess();
+        return;
+      }
+
+      // ── Fallback: use Supabase built-in password reset ──────────────
+      // This uses Supabase's default email template instead of Resend,
+      // but ensures the user can always reset their password.
+      console.info("Falling back to Supabase built-in resetPasswordForEmail");
+      const { error: sbError } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/dashboard`,
+      });
+      if (sbError) {
+        console.error("Supabase resetPasswordForEmail error:", sbError.message);
+        toast("Failed to send reset link. Please try again.", true);
+        resetTurnstile();
+        return;
+      }
+
+      onSuccess();
+    } catch (err) {
+      console.error("Password reset error:", err);
+      toast("Failed to send reset link. Please try again.", true);
+      resetTurnstile();
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
