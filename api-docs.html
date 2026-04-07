@@ -99,6 +99,10 @@ a:hover { opacity: 0.85; }
 }
 .logo-product { display: flex; align-items: center; gap: 7px; text-decoration: none; }
 .logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
+.logo-dark  { display: inline; }
+.logo-light { display: none;   }
+[data-theme="light"] .logo-dark  { display: none !important;   }
+[data-theme="light"] .logo-light { display: inline !important; }
 .logo-product-name {
     font-family: var(--serif); font-size: 16px; color: var(--ink);
     letter-spacing: -0.2px; white-space: nowrap;
@@ -355,7 +359,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 <header class="site-header" id="mainNav">
     <div class="header-inner">
         <a href="/" class="logo-product">
-            <img src="product-logo.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
+            <img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
             <span class="logo-product-name">QuoteLeadsHQ</span>
         </a>
         <nav class="nav-links">
