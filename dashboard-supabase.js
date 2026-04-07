@@ -226,6 +226,31 @@ let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
 
+// ─── Turnstile Widget Management (explicit render mode) ───────────────────────
+const turnstileWidgetIds = {};
+
+/**
+ * Render a Turnstile widget inside the .cf-turnstile element of the given
+ * form, removing any previous widget first to prevent duplication.
+ */
+function renderTurnstileFor(formId) {
+  const form = document.getElementById(formId);
+  const container = form?.querySelector('.cf-turnstile');
+  if (!container || !window.turnstile) return;
+
+  // Remove previous widget if one exists
+  if (turnstileWidgetIds[formId] !== undefined) {
+    try { turnstile.remove(turnstileWidgetIds[formId]); } catch (_) { /* already gone */ }
+    delete turnstileWidgetIds[formId];
+  }
+
+  const widgetId = turnstile.render(container, {
+    sitekey: container.dataset.sitekey,
+    theme: container.dataset.theme || 'auto',
+  });
+  turnstileWidgetIds[formId] = widgetId;
+}
+
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
 let conversationsPage  = 0;
@@ -326,6 +351,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }, 100);
 
+  // ── Turnstile (explicit rendering) ─────────────────────────────────────
+  // Widget management is at module scope (turnstileWidgetIds, renderTurnstileFor,
+  // onTurnstileLoad) so that showAuth() can also re-render widgets.
+
+  // Called by the Turnstile script once loaded (?onload=onTurnstileLoad).
+  // Render only for the currently visible auth form.
+  window.onTurnstileLoad = function () {
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+
+    if (loginForm && !loginForm.classList.contains('hidden')) {
+      renderTurnstileFor('loginForm');
+    } else if (signupForm && !signupForm.classList.contains('hidden')) {
+      renderTurnstileFor('signupForm');
+    } else if (forgotPasswordForm && !forgotPasswordForm.classList.contains('hidden')) {
+      renderTurnstileFor('forgotPasswordForm');
+    }
+  };
+
   // ── Auth ──────────────────────────────────────────────────────────────────
   const loginForm = document.getElementById("loginForm");
   loginForm?.addEventListener("submit", async (e) => {
@@ -367,7 +412,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         emailInput && (emailInput.disabled = false);
         passwordInput && (passwordInput.disabled = false);
-        if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
+        if (window.turnstile) renderTurnstileFor('loginForm');
         return;
       }
 
@@ -384,7 +429,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         emailInput && (emailInput.disabled = false);
         passwordInput && (passwordInput.disabled = false);
-        if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
+        if (window.turnstile) renderTurnstileFor('loginForm');
       }
     } catch (err) {
       toast("Login failed. Please try again.", true);
@@ -394,7 +439,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       emailInput && (emailInput.disabled = false);
       passwordInput && (passwordInput.disabled = false);
-      if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
+      if (window.turnstile) renderTurnstileFor('loginForm');
     }
   });
 
@@ -419,6 +464,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     loginForm?.classList.toggle("hidden", tab !== "login");
     signupForm?.classList.toggle("hidden", tab !== "signup");
     forgotPasswordForm?.classList.add("hidden");
+
+    // Render Turnstile widget for the newly-visible form
+    renderTurnstileFor(tab === "login" ? "loginForm" : "signupForm");
   });
 
   forgotPasswordLink?.addEventListener("click", () => {
@@ -430,20 +478,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
     if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
-    // Render or reset the Turnstile widget. Hidden forms may have been
-    // skipped by implicit rendering, so check whether an iframe exists
-    // (indicating the widget was already rendered) before deciding.
-    const fpTurnstile = forgotPasswordForm?.querySelector('.cf-turnstile');
-    if (fpTurnstile && window.turnstile) {
-      if (fpTurnstile.querySelector('iframe')) {
-        turnstile.reset(fpTurnstile);
-      } else {
-        turnstile.render(fpTurnstile, {
-          sitekey: fpTurnstile.dataset.sitekey,
-          theme: fpTurnstile.dataset.theme || 'auto',
-        });
-      }
-    }
+    // Render Turnstile widget for the forgot-password form
+    renderTurnstileFor('forgotPasswordForm');
   });
 
   backToLogin?.addEventListener("click", () => {
@@ -454,6 +490,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     authTabs?.querySelectorAll("button").forEach((b) => {
       b.classList.toggle("active", b.dataset.tab === "login");
     });
+    // Render Turnstile widget for the login form
+    renderTurnstileFor('loginForm');
   });
 
   forgotPasswordForm?.addEventListener("submit", async (e) => {
@@ -479,7 +517,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const resetTurnstile = () => {
-      if (window.turnstile) turnstile.reset(forgotPasswordForm.querySelector('.cf-turnstile'));
+      if (window.turnstile) renderTurnstileFor('forgotPasswordForm');
     };
 
     const onSuccess = () => {
@@ -632,7 +670,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           submitBtn.textContent = "Create Account";
         }
         inputs.forEach((i) => (i.disabled = false));
-        if (window.turnstile) turnstile.reset(signupForm.querySelector('.cf-turnstile'));
+        if (window.turnstile) renderTurnstileFor('signupForm');
         return;
       }
 
@@ -1015,6 +1053,9 @@ function showAuth() {
       b.classList.toggle("active", b.dataset.tab === "login");
     });
   }
+
+  // Re-render Turnstile for the visible login form (removes old widgets)
+  if (window.turnstile) renderTurnstileFor('loginForm');
 }
 
 async function showApp() {
