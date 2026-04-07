@@ -340,10 +340,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const container = form.querySelector('.cf-turnstile');
     if (!container) return;
     if (_tsWidgets[formId] != null) {
-      try { turnstile.reset(_tsWidgets[formId]); } catch (_) { /* widget may have been removed */ }
+      try { turnstile.reset(_tsWidgets[formId]); } catch (e) { console.warn('Turnstile reset failed, re-rendering:', e); delete _tsWidgets[formId]; renderTurnstileFor(formId); return; }
     } else {
       _tsWidgets[formId] = turnstile.render(container, {
-        sitekey: container.dataset.sitekey || '0x4AAAAAAC0NesB-x2tZ3YhC',
+        sitekey: container.dataset.sitekey,
         theme: container.dataset.theme || 'auto',
       });
     }
