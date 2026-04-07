@@ -435,12 +435,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const fpTurnstile = forgotPasswordForm?.querySelector('.cf-turnstile');
     if (fpTurnstile && window.turnstile) {
       turnstile.reset(fpTurnstile);
-    } else if (fpTurnstile && window.turnstile === undefined) {
-      // Turnstile script may not have loaded yet — render explicitly
-      const siteKey = fpTurnstile.getAttribute('data-sitekey');
-      if (siteKey && typeof turnstile !== 'undefined') {
-        turnstile.render(fpTurnstile, { sitekey: siteKey, theme: 'auto' });
-      }
     }
   });
 
