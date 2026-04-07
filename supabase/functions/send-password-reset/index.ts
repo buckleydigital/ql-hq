@@ -87,18 +87,24 @@ Deno.serve(async (req) => {
     const { email, cf_turnstile_response } = await req.json();
 
     // ── Verify Turnstile CAPTCHA ──────────────────────────────────────────
-    if (!cf_turnstile_response || typeof cf_turnstile_response !== "string") {
-      return new Response(
-        JSON.stringify({ error: "CAPTCHA verification is required." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    const turnstileOk = await verifyTurnstile(cf_turnstile_response);
-    if (!turnstileOk) {
-      return new Response(
-        JSON.stringify({ error: "CAPTCHA verification failed. Please try again." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    // Only require a token when CF_TURNSTILE_SECRET is configured.
+    // When the secret is absent the server is in bypass mode and we skip
+    // verification entirely so that environments without Turnstile still work.
+    const captchaSecretConfigured = !!Deno.env.get("CF_TURNSTILE_SECRET");
+    if (captchaSecretConfigured) {
+      if (!cf_turnstile_response || typeof cf_turnstile_response !== "string") {
+        return new Response(
+          JSON.stringify({ error: "CAPTCHA verification is required." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const turnstileOk = await verifyTurnstile(cf_turnstile_response);
+      if (!turnstileOk) {
+        return new Response(
+          JSON.stringify({ error: "CAPTCHA verification failed. Please try again." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     if (!email || typeof email !== "string") {
