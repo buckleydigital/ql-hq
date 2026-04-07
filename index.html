@@ -95,16 +95,12 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
     display: flex; align-items: center; justify-content: space-between;
     height: 68px;
 }
-.logo-product { display: flex; align-items: center; gap: 7px; text-decoration: none; }
-.logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
+.logo-product { display: flex; align-items: center; text-decoration: none; }
+.logo-product img { height: 28px; width: auto; object-fit: contain; flex-shrink: 0; }
 .logo-dark  { display: inline; }
 .logo-light { display: none;   }
 [data-theme="light"] .logo-dark  { display: none !important;   }
 [data-theme="light"] .logo-light { display: inline !important; }
-.logo-product-name {
-    font-family: var(--serif); font-size: 16px; color: var(--ink);
-    letter-spacing: -0.2px; white-space: nowrap;
-}
 .nav-links { display: flex; align-items: center; gap: 28px; }
 .nav-links > a {
     font-size: 14px; font-weight: 400; color: var(--ink-muted);
@@ -573,7 +569,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="header-inner">
         <div class="logo-product">
             <img class="logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/><img class="logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
-            <span class="logo-product-name">QuoteLeadsHQ</span>
         </div>
         <nav class="nav-links">
             <a href="#how">How It Works</a>
