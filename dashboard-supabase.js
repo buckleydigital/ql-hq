@@ -327,6 +327,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   }, 100);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
+
+  // ── Turnstile (explicit rendering) ─────────────────────────────────────
+  // We use ?render=explicit so Turnstile does NOT auto-render into every
+  // .cf-turnstile div on load. Instead we render one widget at a time for
+  // whichever auth form is visible, avoiding duplicate iframes and ensuring
+  // the token is ready when the user submits.
+  const _tsWidgets = {}; // formId → widgetId
+  function renderTurnstileFor(formId) {
+    const form = document.getElementById(formId);
+    if (!form || !window.turnstile) return;
+    const container = form.querySelector('.cf-turnstile');
+    if (!container) return;
+    if (_tsWidgets[formId] != null) {
+      try { turnstile.reset(_tsWidgets[formId]); } catch (_) { /* widget may have been removed */ }
+    } else {
+      _tsWidgets[formId] = turnstile.render(container, {
+        sitekey: container.dataset.sitekey || '0x4AAAAAAC0NesB-x2tZ3YhC',
+        theme: container.dataset.theme || 'auto',
+      });
+    }
+  }
+  // Render login widget as soon as Turnstile SDK is ready
+  window._initTurnstile = () => renderTurnstileFor('loginForm');
+  if (window._turnstileReady) window._initTurnstile();
+
   const loginForm = document.getElementById("loginForm");
   loginForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -419,6 +444,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     loginForm?.classList.toggle("hidden", tab !== "login");
     signupForm?.classList.toggle("hidden", tab !== "signup");
     forgotPasswordForm?.classList.add("hidden");
+    // Render / reset Turnstile for the newly-visible form
+    renderTurnstileFor(tab === "login" ? "loginForm" : "signupForm");
   });
 
   forgotPasswordLink?.addEventListener("click", () => {
@@ -430,20 +457,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
     if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
-    // Render or reset the Turnstile widget. Hidden forms may have been
-    // skipped by implicit rendering, so check whether an iframe exists
-    // (indicating the widget was already rendered) before deciding.
-    const fpTurnstile = forgotPasswordForm?.querySelector('.cf-turnstile');
-    if (fpTurnstile && window.turnstile) {
-      if (fpTurnstile.querySelector('iframe')) {
-        turnstile.reset(fpTurnstile);
-      } else {
-        turnstile.render(fpTurnstile, {
-          sitekey: fpTurnstile.dataset.sitekey,
-          theme: fpTurnstile.dataset.theme || 'auto',
-        });
-      }
-    }
+    // Render / reset the Turnstile widget for this form
+    renderTurnstileFor('forgotPasswordForm');
   });
 
   backToLogin?.addEventListener("click", () => {
@@ -454,6 +469,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     authTabs?.querySelectorAll("button").forEach((b) => {
       b.classList.toggle("active", b.dataset.tab === "login");
     });
+    renderTurnstileFor('loginForm');
   });
 
   forgotPasswordForm?.addEventListener("submit", async (e) => {
