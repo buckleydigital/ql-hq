@@ -98,7 +98,8 @@ a:hover { opacity: 0.85; }
     height: 68px;
 }
 .logo-product { display: flex; align-items: center; gap: 7px; text-decoration: none; }
-.logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
+.logo-product img { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; flex-shrink: 0; filter: brightness(0) invert(1); transition: filter 0.3s; }
+[data-theme="light"] .logo-product img { filter: brightness(0); }
 .logo-product-name {
     font-family: var(--serif); font-size: 16px; color: var(--ink);
     letter-spacing: -0.2px; white-space: nowrap;
