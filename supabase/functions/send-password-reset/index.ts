@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend.ts";
 
 async function verifyTurnstile(token: string): Promise<boolean> {
   const secret = Deno.env.get("CF_TURNSTILE_SECRET");
@@ -164,36 +165,16 @@ Deno.serve(async (req) => {
 
     // ── Send via Resend ────────────────────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
-    const fromEmail =
-      Deno.env.get("RESEND_FROM_EMAIL") ||
-      "QuoteLeadsHQ <noreply@quoteleadshq.com>";
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [email],
-        subject: emailContent.subject,
-        html: emailContent.html,
-      }),
-    });
+    const resendResult = await sendResendEmail(
+      { to: [email], subject: emailContent.subject, html: emailContent.html },
+      "send-password-reset",
+    );
 
-    if (!resendRes.ok) {
-      const errText = await resendRes.text();
-      console.error(`Resend API error (HTTP ${resendRes.status}):`, errText);
-
-      // Auth/config errors (401 = bad API key, 403 = domain not verified)
-      // affect ALL users and don't reveal whether this specific email exists.
-      // Surface them so the user knows the email service is broken.
-      if (resendRes.status === 401 || resendRes.status === 403) {
-        const hint = resendRes.status === 403
-          ? "Sending domain is not verified in Resend. Check that RESEND_API_KEY belongs to the same Resend team where the domain is verified, or set RESEND_FROM_EMAIL to a verified sender."
-          : "Invalid Resend API key.";
-        console.error("Resend auth/config error:", hint);
+    if (!resendResult.ok) {
+      // Auth/config errors (bad API key, domain not verified) affect ALL
+      // users and don't reveal whether this specific email exists.
+      if (resendResult.category === "config") {
         return new Response(
           JSON.stringify({
             error: "Email service configuration error. Please contact support.",
@@ -202,8 +183,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      // For other Resend errors (422 validation, 429 rate-limit, 5xx),
-      // return a transient error so the user can retry.
+      // For other Resend errors (validation, rate-limit, transient),
+      // return a retriable error.
       return new Response(
         JSON.stringify({
           error: "Unable to send reset email right now. Please try again shortly.",
@@ -211,9 +192,6 @@ Deno.serve(async (req) => {
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const resendData = await resendRes.json();
-    console.log("Password reset email sent via Resend, id:", resendData?.id);
 
     return new Response(
       JSON.stringify({ success: true }),

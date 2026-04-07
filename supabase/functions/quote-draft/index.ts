@@ -17,6 +17,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend.ts";
 
 // ── Inline email template (avoids local-file import that breaks deployment) ──
 const _BRAND_COLOR = "#1f6fff";
@@ -306,8 +307,7 @@ Return ONLY a valid JSON array, no other text.`;
 
     // Send email notification via Resend (non-blocking)
     try {
-      const resendApiKey = Deno.env.get("RESEND_API_KEY");
-      if (resendApiKey) {
+      if (Deno.env.get("RESEND_API_KEY")) {
         // Look up company name
         const { data: company } = await db
           .from("companies")
@@ -344,23 +344,10 @@ Return ONLY a valid JSON array, no other text.`;
               company?.name || "Your company",
             );
 
-            const resendRes = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${resendApiKey}`,
-              },
-              body: JSON.stringify({
-                from: Deno.env.get("RESEND_FROM_EMAIL") || "QuoteLeadsHQ <noreply@quoteleadshq.com>",
-                to: emails,
-                subject: emailContent.subject,
-                html: emailContent.html,
-              }),
-            });
-            if (!resendRes.ok) {
-              const errText = await resendRes.text();
-              console.error(`Resend notification email failed (HTTP ${resendRes.status}):`, errText);
-            }
+            await sendResendEmail(
+              { to: emails, subject: emailContent.subject, html: emailContent.html },
+              "quote-draft",
+            );
           }
         }
       }

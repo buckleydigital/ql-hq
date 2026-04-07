@@ -24,6 +24,7 @@
 // =============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend.ts";
 
 // ── Inline email templates (avoids local-file import that breaks deployment) ──
 const _BRAND_COLOR = "#1f6fff";
@@ -195,8 +196,7 @@ async function sendNotificationEmail(
   emailContent: { subject: string; html: string },
 ): Promise<void> {
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) return; // Resend not configured — skip silently
+    if (!Deno.env.get("RESEND_API_KEY")) return; // Resend not configured — skip silently
 
     // Look up owners and admins for this company via auth.users join
     const { data: ownerProfiles } = await db
@@ -218,24 +218,10 @@ async function sendNotificationEmail(
 
     if (emails.length === 0) return;
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "QuoteLeadsHQ <noreply@quoteleadshq.com>",
-        to: emails,
-        subject: emailContent.subject,
-        html: emailContent.html,
-      }),
-    });
-
-    if (!resendRes.ok) {
-      const errText = await resendRes.text();
-      console.error(`Resend notification email failed (HTTP ${resendRes.status}):`, errText);
-    }
+    await sendResendEmail(
+      { to: emails, subject: emailContent.subject, html: emailContent.html },
+      "twilio-inbound-sms",
+    );
   } catch (err) {
     console.error("sendNotificationEmail failed:", err);
   }

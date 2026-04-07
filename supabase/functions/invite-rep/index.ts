@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend.ts";
 
 // ── Inline email template (avoids local-file import that breaks deployment) ──
 const _BRAND_COLOR = "#1f6fff";
@@ -266,11 +267,7 @@ Deno.serve(async (req) => {
     }
 
     // Send branded invite email via Resend
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY is not configured — invite email will not be sent");
-      emailError = emailError || "Unable to send invitation email — please contact support";
-    } else if (!actionLink) {
+    if (!actionLink) {
       console.error("No invite link available — Resend API will not be called");
       emailError = emailError || "Failed to generate invitation link";
     } else {
@@ -288,26 +285,15 @@ Deno.serve(async (req) => {
           actionLink,
         );
 
-        const resendRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${resendApiKey}`,
-          },
-          body: JSON.stringify({
-            from: Deno.env.get("RESEND_FROM_EMAIL") || "QuoteLeadsHQ <noreply@quoteleadshq.com>",
-            to: [email],
-            subject: emailContent.subject,
-            html: emailContent.html,
-          }),
-        });
+        const result = await sendResendEmail(
+          { to: [email], subject: emailContent.subject, html: emailContent.html },
+          "invite-rep",
+        );
 
-        if (resendRes.ok) {
+        if (result.ok) {
           emailSent = true;
         } else {
-          const errData = await resendRes.text();
-          console.error("Resend API error:", resendRes.status, errData);
-          emailError = "Email service failed to deliver the invitation";
+          emailError = result.error || "Email service failed to deliver the invitation";
         }
       } catch (emailErr) {
         console.error("Resend invite email error:", emailErr);
