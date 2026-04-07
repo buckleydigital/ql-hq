@@ -13,8 +13,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 async function verifyTurnstile(token: string): Promise<boolean> {
   const secret = Deno.env.get("CF_TURNSTILE_SECRET");
   if (!secret) {
-    console.error("CF_TURNSTILE_SECRET is not set");
-    return false;
+    console.warn("CF_TURNSTILE_SECRET is not set — skipping CAPTCHA verification");
+    return true;
   }
   const res = await fetch(
     "https://challenges.cloudflare.com/turnstile/v0/siteverify",

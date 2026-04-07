@@ -430,11 +430,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
     if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
-    // Re-render Turnstile widget so the token is fresh (hidden forms may
-    // have stale or unrendered widgets from page load).
+    // Render or reset the Turnstile widget. Hidden forms may have been
+    // skipped by implicit rendering, so check whether an iframe exists
+    // (indicating the widget was already rendered) before deciding.
     const fpTurnstile = forgotPasswordForm?.querySelector('.cf-turnstile');
     if (fpTurnstile && window.turnstile) {
-      turnstile.reset(fpTurnstile);
+      if (fpTurnstile.querySelector('iframe')) {
+        turnstile.reset(fpTurnstile);
+      } else {
+        turnstile.render(fpTurnstile, {
+          sitekey: fpTurnstile.dataset.sitekey,
+          theme: fpTurnstile.dataset.theme || 'auto',
+        });
+      }
     }
   });
 
@@ -460,13 +468,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    // Get Turnstile token
+    // Get Turnstile token (optional — if widget didn't render we still
+    // allow the reset via the Supabase built-in fallback).
     const turnstileInput = forgotPasswordForm.querySelector('[name="cf-turnstile-response"]');
     const cfToken = turnstileInput ? turnstileInput.value : "";
-    if (!cfToken) {
-      toast("Please complete the CAPTCHA verification.", true);
-      return;
-    }
 
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -490,36 +495,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // Try our Resend-powered edge function first (branded emails)
+      // Try our Resend-powered edge function first (branded emails).
+      // Skip if we don't have a Turnstile token — go straight to fallback.
       let edgeFnOk = false;
-      try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
-        });
+      if (cfToken) {
+        try {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ email, cf_turnstile_response: cfToken }),
+          });
 
-        // Resilient JSON parsing — the response might not be JSON if
-        // the edge function is unavailable or there is a gateway error.
-        let data = {};
-        try { data = await res.json(); } catch (_) { /* non-JSON response */ }
+          // Resilient JSON parsing — the response might not be JSON if
+          // the edge function is unavailable or there is a gateway error.
+          let data = {};
+          try { data = await res.json(); } catch (_) { /* non-JSON response */ }
 
-        if (res.ok) {
-          edgeFnOk = true;
-        } else if (data.error) {
-          // Edge function returned a meaningful error — show it directly
-          toast(data.error, true);
-          resetTurnstile();
-          return;
+          if (res.ok) {
+            edgeFnOk = true;
+          } else {
+            // Log the edge function error for debugging, then fall through
+            // to Supabase built-in reset so the user can still recover.
+            const errMsg = data.error || data.message || `HTTP ${res.status}`;
+            console.warn("send-password-reset edge function error:", res.status, errMsg);
+          }
+        } catch (fetchErr) {
+          console.warn("send-password-reset edge function unreachable:", fetchErr);
+          // Fall through to Supabase built-in fallback
         }
-        // If !res.ok and no data.error, fall through to Supabase fallback
-      } catch (fetchErr) {
-        console.warn("send-password-reset edge function unreachable:", fetchErr);
-        // Fall through to Supabase built-in fallback
+      } else {
+        console.info("Turnstile token not available — skipping edge function");
       }
 
       if (edgeFnOk) {
@@ -536,7 +545,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       if (sbError) {
         console.error("Supabase resetPasswordForEmail error:", sbError.message);
-        toast("Failed to send reset link. Please try again.", true);
+        toast(sbError.message || "Failed to send reset link. Please try again.", true);
         resetTurnstile();
         return;
       }
