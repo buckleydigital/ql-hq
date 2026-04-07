@@ -552,21 +552,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // ── Fallback: use Supabase built-in password reset ──────────────
-      // This uses Supabase's default email template instead of Resend,
-      // but ensures the user can always reset their password.
-      console.info("Falling back to Supabase built-in resetPasswordForEmail");
-      const { error: sbError } = await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/dashboard`,
-      });
-      if (sbError) {
-        console.error("Supabase resetPasswordForEmail error:", sbError.message);
-        toast(sbError.message || "Failed to send reset link. Please try again.", true);
-        resetTurnstile();
-        return;
-      }
-
-      onSuccess();
+      // Edge function failed — show error instead of falling back to
+      // Supabase's built-in email which sends from a generic Supabase
+      // address rather than Resend.
+      toast("Failed to send reset link. Please try again.", true);
+      resetTurnstile();
+      return;
     } catch (err) {
       console.error("Password reset error:", err);
       toast("Failed to send reset link. Please try again.", true);
