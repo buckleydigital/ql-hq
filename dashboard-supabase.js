@@ -298,40 +298,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // ── Direct recovery-token verification ──────────────────────────────────
-  // When the password-reset email links directly to our domain with
-  // #token_hash=xxx&type=recovery, we verify the token client-side via
-  // verifyOtp.  This fires PASSWORD_RECOVERY in onAuthStateChange above,
-  // which shows the reset-password modal.  No GoTrue server-side redirect
-  // is involved, so this works regardless of Supabase Dashboard redirect
-  // URL configuration.
-  (function checkRecoveryToken() {
-    const hash = window.location.hash;
-    if (!hash) return;
-    const params = new URLSearchParams(hash.substring(1));
-    const tokenHash = params.get("token_hash");
-    const type = params.get("type");
-    if (tokenHash && type === "recovery") {
-      // Clean the hash immediately so the token isn't visible / bookmarked
-      history.replaceState(null, "", window.location.pathname + window.location.search);
-      console.log("Recovery token detected in URL — verifying via verifyOtp");
-      sb.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" })
-        .then(({ error }) => {
-          if (error) {
-            console.error("verifyOtp recovery error:", error.message);
-            toast("This reset link is invalid or has expired. Please request a new one.", true);
-            showAuth();
-          }
-          // On success, onAuthStateChange fires PASSWORD_RECOVERY automatically
-        })
-        .catch((err) => {
-          console.error("verifyOtp threw:", err);
-          toast("Failed to verify reset link. Please try again.", true);
-          showAuth();
-        });
-    }
-  })();
-
   // Then check existing session
   setTimeout(async () => {
     if (authInitialized) return;

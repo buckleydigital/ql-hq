@@ -58,7 +58,7 @@ verify_jwt = false
 [functions.resend-email]
 verify_jwt = false
 
-[functions.send-password-reset]
+[functions.send-password-rest]
 verify_jwt = false
 
 [functions.complete-password-reset]
