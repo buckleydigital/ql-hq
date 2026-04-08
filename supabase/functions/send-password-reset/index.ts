@@ -1,15 +1,15 @@
 // =============================================================================
 // QuoteLeadsHQ — Send Password Reset via Resend
 // =============================================================================
-// Flow:
-//   1. admin.generateLink({ type: "recovery" })  → gets a hashed_token
-//   2. Builds a link directly to our domain with the token in the hash fragment
-//   3. Sends that link in a branded email via Resend
+// Flow (mirrors the working invite-rep edge function):
+//   1. admin.generateLink({ type: "recovery", options: { redirectTo } })
+//      → returns action_link (a Supabase verification URL)
+//   2. Sends that action_link in a branded email via Resend
 //
-// When the user clicks the link, the dashboard's JS calls verifyOtp() with the
-// token_hash, which fires PASSWORD_RECOVERY in onAuthStateChange and shows the
-// reset-password modal.  This bypasses GoTrue's server-side redirect entirely,
-// so it works regardless of Supabase Dashboard redirect URL configuration.
+// When the user clicks the link, Supabase validates the token server-side and
+// redirects to dashboard.html with #access_token=...&type=recovery in the URL.
+// The Supabase JS client detects this automatically and fires PASSWORD_RECOVERY
+// in onAuthStateChange, which shows the reset-password modal.
 //
 // Payload: { email: string, cf_turnstile_response?: string }
 // No auth required — this is a public endpoint for unauthenticated users.
@@ -145,21 +145,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── Generate recovery token via admin API ────────────────────────────
-    // admin.generateLink() does NOT send any email — it only returns the
-    // token data.  We extract the hashed_token and build a link directly
-    // to our domain, bypassing GoTrue's server-side redirect entirely.
-    // This avoids dependence on Supabase Dashboard "Redirect URLs" config.
+    // ── Generate recovery action_link via admin API ──────────────────────
+    // admin.generateLink() does NOT send any email — it only returns the link.
+    // Supabase validates the token server-side when clicked and redirects.
 
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
+        options: {
+          redirectTo: `${siteUrl.replace(/\/$/, "")}/dashboard.html`,
+        },
       });
 
-    if (!linkData?.properties?.hashed_token) {
-      // If generateLink fails because the user doesn't exist, GoTrue
-      // returns an error.  Return 200 anyway to prevent email enumeration.
+    if (!linkData?.properties?.action_link) {
+      // If generateLink fails (e.g. user doesn't exist), return 200 to
+      // prevent email enumeration.
       if (linkError) {
         console.log("send-password-reset: generateLink failed (may be unknown email):", linkError.message);
       }
@@ -169,12 +170,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const hashedToken = linkData.properties.hashed_token;
-    // Build link directly to our domain — user's browser will call
-    // sb.auth.verifyOtp({ token_hash, type: "recovery" }) which fires
-    // PASSWORD_RECOVERY in onAuthStateChange, showing the reset modal.
-    const resetLink = `${siteUrl.replace(/\/$/, "")}/dashboard.html#token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
-    console.log("send-password-reset: generated direct recovery link for", email);
+    // Use the action_link directly — same pattern as invite-rep which works.
+    // Supabase validates the token server-side and redirects to dashboard.html
+    // with #access_token=...&type=recovery, which the Supabase JS client
+    // processes automatically to fire PASSWORD_RECOVERY in onAuthStateChange.
+    const resetLink = linkData.properties.action_link;
+    console.log("send-password-reset: generated recovery action_link for", email);
 
     // ── Send branded email via Resend ──────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
