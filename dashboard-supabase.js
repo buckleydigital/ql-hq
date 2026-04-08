@@ -482,7 +482,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const submitBtn = forgotPasswordForm.querySelector('button[type="submit"]');
     const emailInput = document.getElementById("forgotEmail");
-    const email = emailInput?.value || "";
+    const email = (emailInput?.value || "").trim();
 
     if (!email) {
       toast("Please enter your email address.", true);
@@ -520,6 +520,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Always send the request even if the Turnstile token is absent — the
       // server skips CAPTCHA verification when CF_TURNSTILE_SECRET is not
       // configured, so environments without Turnstile still work.
+      // NOTE: Do NOT send an Authorization header — this is a public endpoint.
+      // Sending Bearer <anon_key> can trigger gateway JWT verification which
+      // blocks the request when verify_jwt is enabled in the Supabase Dashboard.
       let edgeFnOk = false;
       let edgeFnError = null;
       try {
@@ -528,7 +531,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           headers: {
             "Content-Type": "application/json",
             "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
         });
@@ -555,9 +557,29 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Show the specific error from the edge function so the user knows
-      // whether this is a config problem vs a transient failure.
-      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
+      // ── Fallback: use Supabase built-in password reset ────────────────
+      // If the Resend-powered edge function is unreachable (network/CORS/
+      // gateway error) or returned an error, fall back to Supabase Auth's
+      // built-in resetPasswordForEmail. The email template will be the
+      // default Supabase one instead of our branded Resend template, but
+      // a working reset is better than no reset.
+      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail. Original error:", edgeFnError);
+      try {
+        const { error: sbError } = await sb.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/dashboard`,
+        });
+        if (!sbError) {
+          resetTurnstile();
+          onSuccess();
+          return;
+        }
+        console.warn("Supabase resetPasswordForEmail error:", sbError.message);
+        // Show the edge function error if we have one, otherwise the Supabase error
+        toast(edgeFnError || sbError.message || "Failed to send reset link. Please try again.", true);
+      } catch (fallbackErr) {
+        console.error("Supabase resetPasswordForEmail exception:", fallbackErr);
+        toast(edgeFnError || "Failed to send reset link. Please try again.", true);
+      }
       resetTurnstile();
       return;
     } catch (err) {
