@@ -516,7 +516,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       // Call our Resend-powered edge function (branded email).
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-rest`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
