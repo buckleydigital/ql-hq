@@ -547,7 +547,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           console.warn("send-password-reset edge function error:", res.status, edgeFnError);
         }
       } catch (fetchErr) {
-        edgeFnError = fetchErr?.message || "network error";
+        edgeFnError = "Edge function unreachable: " + (fetchErr?.message || "network error");
         console.warn("send-password-reset edge function unreachable:", fetchErr);
       }
 
