@@ -515,35 +515,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // Call our Resend-powered edge function (branded email).
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-rest`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/dashboard.html",
       });
 
-      // Resilient JSON parsing — the response might not be JSON if
-      // the edge function is unavailable or there is a gateway error.
-      let data = {};
-      try { data = await res.json(); } catch (_) { /* non-JSON response */ }
-
-      if (res.ok) {
-        onSuccess();
+      if (error) {
+        console.error("Password reset error:", error);
+        toast(error.message || "Failed to send reset link. Please try again.", true);
+        resetTurnstile();
         return;
       }
 
-      // Surface the actual error so the user (or admin) can diagnose.
-      // Gateway errors use "msg" (e.g. {"msg":"..."}), while edge
-      // function errors use "error" or "message".
-      const edgeFnError = (typeof data.error === "string" && data.error)
-        || data.message || data.msg || `HTTP ${res.status}`;
-      console.error("send-password-reset error:", res.status, data);
-      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
-      resetTurnstile();
+      onSuccess();
     } catch (err) {
       console.error("Password reset error:", err);
       toast("Failed to send reset link. Please try again.", true);
