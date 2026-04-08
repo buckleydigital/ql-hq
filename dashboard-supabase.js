@@ -379,11 +379,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Verify Turnstile token server-side before authenticating
       const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/verify-turnstile`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
         body: JSON.stringify({ cf_turnstile_response: cfToken }),
       });
       if (!verifyRes.ok) {
@@ -523,9 +519,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Always send the request even if the Turnstile token is absent — the
       // server skips CAPTCHA verification when CF_TURNSTILE_SECRET is not
       // configured, so environments without Turnstile still work.
-      // NOTE: Always send Authorization: Bearer <anon_key> — the anon key is
-      // a valid JWT that satisfies gateway JWT verification.  Without it, the
-      // gateway returns 401 when verify_jwt is enabled (the Dashboard default).
+      // NOTE: Do NOT send an Authorization header — this is a public endpoint.
+      // Sending Bearer <anon_key> can trigger gateway JWT verification which
+      // blocks the request when verify_jwt is enabled in the Supabase Dashboard.
       let edgeFnOk = false;
       let edgeFnError = null;
       try {
@@ -534,7 +530,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           headers: {
             "Content-Type": "application/json",
             "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
         });
@@ -547,11 +542,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (res.ok) {
           edgeFnOk = true;
         } else {
-          // Capture the actual error for display to the user.
-          // Gateway errors use "msg" (e.g. {"msg":"Invalid JWT"}),
-          // while edge function errors use "error" or "message".
+          // Capture the actual error for display to the user
           edgeFnError = (typeof data.error === "string" && data.error)
-            || data.message || data.msg || `HTTP ${res.status}`;
+            || data.message || `HTTP ${res.status}`;
           console.warn("send-password-reset edge function error:", res.status, edgeFnError);
         }
       } catch (fetchErr) {
