@@ -37,7 +37,7 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = auth, public
 AS $$
-    SELECT id FROM auth.users WHERE email = lower(user_email) LIMIT 1;
+    SELECT id FROM auth.users WHERE lower(email) = lower(user_email) LIMIT 1;
 $$;
 
 -- Cleanup: delete tokens older than 24 hours (called periodically or on insert)

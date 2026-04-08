@@ -265,10 +265,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     history.replaceState(null, "", window.location.pathname + window.location.search);
     // Show the password reset modal (will wait for DOM to be ready)
     setTimeout(() => {
-      // Show auth container (in case user isn't logged in)
-      document.getElementById("authPanel")?.classList.remove("hidden");
-      document.getElementById("appPanel")?.classList.add("hidden");
-      // Hide login/signup forms, show a minimal wrapper for the modal
+      // Show auth view (in case user isn't logged in)
+      showAuth();
+      // Then show the password reset modal on top
       showPasswordResetModal();
     }, 300);
   }
@@ -946,7 +945,7 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
         body: JSON.stringify({ token: _customResetToken, new_password: newPassword }),
       });
       let data = {};
-      try { data = await res.json(); } catch (_) { /* non-JSON */ }
+      try { data = await res.json(); } catch (parseErr) { console.warn("Non-JSON response from complete-password-reset:", parseErr); }
       if (!res.ok) {
         toast(data.error || "Failed to update password. Please try again.", true);
         return;
