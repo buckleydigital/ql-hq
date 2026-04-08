@@ -1010,6 +1010,17 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="foot-by">by <a href="https://quoteleads.com.au" target="_blank" rel="noopener">QuoteLeads</a></div>
 </footer>
 <script>
+// ── Auth redirect: if a Supabase recovery / invite link lands here (the
+// landing page), forward it to the dashboard where the Supabase client can
+// process the hash-fragment tokens and show the password-reset modal.
+(function(){
+    var h = window.location.hash;
+    if (h && /[#?&]type=(recovery|invite|signup|magiclink)/.test(h)) {
+        window.location.replace('dashboard.html' + h);
+        return; // stop further script execution on this page
+    }
+})();
+
 // Theme: default dark, persist choice
 (function(){
     var saved = localStorage.getItem('ql-theme');
