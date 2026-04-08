@@ -226,6 +226,7 @@ let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
 let _customResetToken = null; // Custom password reset token (from Resend link)
+let _customResetUid   = null; // User ID from the reset link
 
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
@@ -261,6 +262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const _hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   if (_hashParams.get("type") === "custom_recovery" && _hashParams.get("token")) {
     _customResetToken = _hashParams.get("token");
+    _customResetUid   = _hashParams.get("uid") || null;
     // Clean the hash so it doesn't interfere with Supabase's auth handling
     history.replaceState(null, "", window.location.pathname + window.location.search);
     // Show the password reset modal (will wait for DOM to be ready)
@@ -942,7 +944,7 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
           "Content-Type": "application/json",
           "apikey": SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ token: _customResetToken, new_password: newPassword }),
+        body: JSON.stringify({ token: _customResetToken, new_password: newPassword, uid: _customResetUid }),
       });
       let data = {};
       try { data = await res.json(); } catch (parseErr) { console.warn("Non-JSON response from complete-password-reset:", parseErr); }
@@ -953,6 +955,7 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
       toast("Password updated successfully! You can now log in.");
       closeModal("passwordResetModal");
       _customResetToken = null; // Clear the token
+      _customResetUid   = null;
       const pwEl = document.getElementById("resetNewPassword");
       const cfEl = document.getElementById("resetConfirmNewPassword");
       if (pwEl) pwEl.value = "";
