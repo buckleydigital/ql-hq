@@ -515,13 +515,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // Call our Resend-powered edge function.
-      // Always send the request even if the Turnstile token is absent — the
-      // server skips CAPTCHA verification when CF_TURNSTILE_SECRET is not
-      // configured, so environments without Turnstile still work.
-      // NOTE: Do NOT send an Authorization header — this is a public endpoint.
-      // Sending Bearer <anon_key> can trigger gateway JWT verification which
-      // blocks the request when verify_jwt is enabled in the Supabase Dashboard.
+      // ── Strategy ────────────────────────────────────────────────────────
+      // 1. Try the Resend-powered edge function (branded email).
+      // 2. If the edge function fails for ANY reason, fall back to
+      //    Supabase's built-in resetPasswordForEmail (plain email, but
+      //    reliable — works directly from the client with no edge function,
+      //    no Resend key, no deployment needed).
+      // 3. Only show an error if both methods fail.
+
       let edgeFnOk = false;
       let edgeFnError = null;
       try {
@@ -534,20 +535,19 @@ document.addEventListener("DOMContentLoaded", async () => {
           body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
         });
 
-        // Resilient JSON parsing — the response might not be JSON if
-        // the edge function is unavailable or there is a gateway error.
         let data = {};
         try { data = await res.json(); } catch (_) { /* non-JSON response */ }
 
         if (res.ok) {
           edgeFnOk = true;
         } else {
-          // Capture the actual error for display to the user
+          // Gateway errors use "msg", edge function errors use "error"/"message"
           edgeFnError = (typeof data.error === "string" && data.error)
-            || data.message || `HTTP ${res.status}`;
+            || data.message || data.msg || `HTTP ${res.status}`;
           console.warn("send-password-reset edge function error:", res.status, edgeFnError);
         }
       } catch (fetchErr) {
+        edgeFnError = fetchErr?.message || "network error";
         console.warn("send-password-reset edge function unreachable:", fetchErr);
       }
 
@@ -556,13 +556,31 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // No fallback to Supabase's built-in resetPasswordForEmail — that
-      // sends a generic, unbranded email whose redirect URL may point to
-      // localhost:3000 if the Supabase Site URL isn't configured correctly.
-      // Instead, surface the actual error so the user (or admin) can act.
-      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
-      resetTurnstile();
-      return;
+      // ── Fallback: Supabase built-in password reset ────────────────────
+      // Uses GoTrue's mailer (SMTP / built-in). Sends a plain email but
+      // always works as long as the Supabase project is live. The recovery
+      // link redirects to our dashboard where onAuthStateChange fires
+      // PASSWORD_RECOVERY and shows the reset modal.
+      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail. Edge error:", edgeFnError);
+      try {
+        const redirectTo = `${window.location.origin}/dashboard.html`;
+        const { error: sbError } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+
+        if (sbError) {
+          console.error("Supabase resetPasswordForEmail error:", sbError.message);
+          toast(sbError.message || "Failed to send reset link. Please try again.", true);
+          resetTurnstile();
+          return;
+        }
+
+        // Fallback succeeded
+        onSuccess();
+        return;
+      } catch (sbErr) {
+        console.error("Supabase resetPasswordForEmail threw:", sbErr);
+        toast("Failed to send reset link. Please try again.", true);
+        resetTurnstile();
+      }
     } catch (err) {
       console.error("Password reset error:", err);
       toast("Failed to send reset link. Please try again.", true);
