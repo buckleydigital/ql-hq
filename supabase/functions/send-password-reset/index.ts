@@ -1,15 +1,19 @@
 // =============================================================================
 // QuoteLeadsHQ — Send Password Reset via Resend
 // =============================================================================
-// Flow (mirrors the working invite-rep edge function):
-//   1. admin.generateLink({ type: "recovery", options: { redirectTo } })
-//      → returns action_link (a Supabase verification URL)
-//   2. Sends that action_link in a branded email via Resend
+// Flow:
+//   1. admin.generateLink({ type: "recovery" })
+//      → returns hashed_token (does NOT send any email)
+//   2. Builds a direct link to our domain:
+//        SITE_URL/dashboard.html#token_hash=xxx&type=recovery
+//   3. Sends that link in a branded email via Resend
 //
-// When the user clicks the link, Supabase validates the token server-side and
-// redirects to dashboard.html with #access_token=...&type=recovery in the URL.
-// The Supabase JS client detects this automatically and fires PASSWORD_RECOVERY
-// in onAuthStateChange, which shows the reset-password modal.
+// When the user clicks the link, dashboard.html's checkRecoveryToken IIFE
+// detects #token_hash=xxx&type=recovery and calls sb.auth.verifyOtp(), which
+// fires PASSWORD_RECOVERY in onAuthStateChange and shows the reset modal.
+//
+// This approach bypasses Supabase's server-side redirect entirely, so it
+// works regardless of the Redirect URLs allowlist in the Supabase Dashboard.
 //
 // Payload: { email: string, cf_turnstile_response?: string }
 // No auth required — this is a public endpoint for unauthenticated users.
@@ -145,20 +149,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── Generate recovery action_link via admin API ──────────────────────
-    // admin.generateLink() does NOT send any email — it only returns the link.
-    // Supabase validates the token server-side when clicked and redirects.
+    // ── Generate recovery token via admin API ────────────────────────────
+    // generateLink() does NOT send any email — it only returns the token.
+    // We use hashed_token to build a direct link to our domain, bypassing
+    // Supabase's server-side redirect (no Redirect URLs allowlist needed).
 
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: {
-          redirectTo: `${siteUrl.replace(/\/$/, "")}/dashboard.html`,
-        },
       });
 
-    if (!linkData?.properties?.action_link) {
+    if (!linkData?.properties?.hashed_token) {
       // If generateLink fails (e.g. user doesn't exist), return 200 to
       // prevent email enumeration.
       if (linkError) {
@@ -170,12 +172,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use the action_link directly — same pattern as invite-rep which works.
-    // Supabase validates the token server-side and redirects to dashboard.html
-    // with #access_token=...&type=recovery, which the Supabase JS client
-    // processes automatically to fire PASSWORD_RECOVERY in onAuthStateChange.
-    const resetLink = linkData.properties.action_link;
-    console.log("send-password-reset: generated recovery action_link for", email);
+    // Build a direct link to our domain with the token in the hash fragment.
+    // dashboard.html's checkRecoveryToken IIFE detects #token_hash=xxx&type=recovery
+    // and calls sb.auth.verifyOtp() which fires PASSWORD_RECOVERY.
+    const hashedToken = linkData.properties.hashed_token;
+    const base = siteUrl.replace(/\/$/, "");
+    const resetLink = `${base}/dashboard.html#token_hash=${hashedToken}&type=recovery`;
+    console.log("send-password-reset: generated recovery token for", email);
 
     // ── Send branded email via Resend ──────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
