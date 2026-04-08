@@ -298,6 +298,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // ── Direct recovery-token verification ──────────────────────────────────
+  // When the password-reset email links directly to our domain with
+  // #token_hash=xxx&type=recovery, we verify the token client-side via
+  // verifyOtp.  This fires PASSWORD_RECOVERY in onAuthStateChange above,
+  // which shows the reset-password modal.  No GoTrue server-side redirect
+  // is involved, so this works regardless of Supabase Dashboard redirect
+  // URL configuration.
+  (function checkRecoveryToken() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const params = new URLSearchParams(hash.substring(1));
+    const tokenHash = params.get("token_hash");
+    const type = params.get("type");
+    if (tokenHash && type === "recovery") {
+      // Clean the hash immediately so the token isn't visible / bookmarked
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+      console.log("Recovery token detected in URL — verifying via verifyOtp");
+      sb.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" })
+        .then(({ error }) => {
+          if (error) {
+            console.error("verifyOtp recovery error:", error.message);
+            toast("This reset link is invalid or has expired. Please request a new one.", true);
+            showAuth();
+          }
+          // On success, onAuthStateChange fires PASSWORD_RECOVERY automatically
+        })
+        .catch((err) => {
+          console.error("verifyOtp threw:", err);
+          toast("Failed to verify reset link. Please try again.", true);
+          showAuth();
+        });
+    }
+  })();
+
   // Then check existing session
   setTimeout(async () => {
     if (authInitialized) return;
@@ -379,7 +413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Verify Turnstile token server-side before authenticating
       const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/verify-turnstile`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({ cf_turnstile_response: cfToken }),
       });
       if (!verifyRes.ok) {
@@ -515,19 +549,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // Use Supabase's built-in password reset — sends recovery email
-      // via GoTrue's mailer.  No edge function or Resend needed.
-      const redirectTo = window.location.origin + "/dashboard.html";
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+      // Call our Resend-powered edge function (branded email).
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
+      });
 
-      if (error) {
-        console.error("resetPasswordForEmail error:", error.message);
-        toast(error.message || "Failed to send reset link. Please try again.", true);
-        resetTurnstile();
+      // Resilient JSON parsing — the response might not be JSON if
+      // the edge function is unavailable or there is a gateway error.
+      let data = {};
+      try { data = await res.json(); } catch (_) { /* non-JSON response */ }
+
+      if (res.ok) {
+        onSuccess();
         return;
       }
 
-      onSuccess();
+      // Surface the actual error so the user (or admin) can diagnose.
+      // Gateway errors use "msg" (e.g. {"msg":"..."}), while edge
+      // function errors use "error" or "message".
+      const edgeFnError = (typeof data.error === "string" && data.error)
+        || data.message || data.msg || `HTTP ${res.status}`;
+      console.error("send-password-reset error:", res.status, data);
+      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
+      resetTurnstile();
     } catch (err) {
       console.error("Password reset error:", err);
       toast("Failed to send reset link. Please try again.", true);
