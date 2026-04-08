@@ -1,13 +1,15 @@
 // =============================================================================
 // QuoteLeadsHQ — Send Password Reset via Resend
 // =============================================================================
-// Uses the exact same pattern as invite-rep (which works):
-//   1. admin.generateLink({ type: "recovery" })  → gets a Supabase action link
-//   2. Sends that link in a branded email via Resend
+// Flow:
+//   1. admin.generateLink({ type: "recovery" })  → gets a hashed_token
+//   2. Builds a link directly to our domain with the token in the hash fragment
+//   3. Sends that link in a branded email via Resend
 //
-// When the user clicks the link, Supabase verifies the token and redirects to
-// the dashboard with a valid session.  The dashboard's onAuthStateChange fires
-// PASSWORD_RECOVERY and shows the reset-password modal automatically.
+// When the user clicks the link, the dashboard's JS calls verifyOtp() with the
+// token_hash, which fires PASSWORD_RECOVERY in onAuthStateChange and shows the
+// reset-password modal.  This bypasses GoTrue's server-side redirect entirely,
+// so it works regardless of Supabase Dashboard redirect URL configuration.
 //
 // Payload: { email: string, cf_turnstile_response?: string }
 // No auth required — this is a public endpoint for unauthenticated users.
@@ -143,21 +145,19 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── Generate recovery link via admin API (same as invite-rep) ──────
+    // ── Generate recovery token via admin API ────────────────────────────
     // admin.generateLink() does NOT send any email — it only returns the
-    // action_link.  We send the email ourselves via Resend.
-    const redirectTo = `${siteUrl.replace(/\/$/, "")}/dashboard`;
+    // token data.  We extract the hashed_token and build a link directly
+    // to our domain, bypassing GoTrue's server-side redirect entirely.
+    // This avoids dependence on Supabase Dashboard "Redirect URLs" config.
 
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: {
-          redirectTo,
-        },
       });
 
-    if (!linkData?.properties?.action_link) {
+    if (!linkData?.properties?.hashed_token) {
       // If generateLink fails because the user doesn't exist, GoTrue
       // returns an error.  Return 200 anyway to prevent email enumeration.
       if (linkError) {
@@ -169,11 +169,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    const actionLink = linkData.properties.action_link;
-    console.log("send-password-reset: generated recovery link for", email);
+    const hashedToken = linkData.properties.hashed_token;
+    // Build link directly to our domain — user's browser will call
+    // sb.auth.verifyOtp({ token_hash, type: "recovery" }) which fires
+    // PASSWORD_RECOVERY in onAuthStateChange, showing the reset modal.
+    const resetLink = `${siteUrl.replace(/\/$/, "")}/dashboard.html#token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
+    console.log("send-password-reset: generated direct recovery link for", email);
 
-    // ── Send branded email via Resend (same as invite-rep) ─────────────
-    const emailContent = passwordResetEmail(actionLink);
+    // ── Send branded email via Resend ──────────────────────────────────
+    const emailContent = passwordResetEmail(resetLink);
     const fromEmail =
       Deno.env.get("RESEND_FROM_EMAIL") ||
       "QuoteLeadsHQ <noreply@quoteleadshq.com>";
