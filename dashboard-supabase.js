@@ -888,8 +888,8 @@ function showPasswordResetModal() {
 document.getElementById("passwordResetForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const newPassword = document.getElementById("newPassword")?.value || "";
-  const confirmPassword = document.getElementById("confirmNewPassword")?.value || "";
+  const newPassword = document.getElementById("resetNewPassword")?.value || "";
+  const confirmPassword = document.getElementById("resetConfirmNewPassword")?.value || "";
 
   if (newPassword.length < 6) {
     toast("Password must be at least 6 characters.", true);
@@ -914,8 +914,8 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
     } else {
       toast("Password updated successfully!");
       closeModal("passwordResetModal");
-      const pwEl = document.getElementById("newPassword");
-      const cfEl = document.getElementById("confirmNewPassword");
+      const pwEl = document.getElementById("resetNewPassword");
+      const cfEl = document.getElementById("resetConfirmNewPassword");
       if (pwEl) pwEl.value = "";
       if (cfEl) cfEl.value = "";
     }
