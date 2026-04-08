@@ -515,72 +515,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      // ── Strategy ────────────────────────────────────────────────────────
-      // 1. Try the Resend-powered edge function (branded email).
-      // 2. If the edge function fails for ANY reason, fall back to
-      //    Supabase's built-in resetPasswordForEmail (plain email, but
-      //    reliable — works directly from the client with no edge function,
-      //    no Resend key, no deployment needed).
-      // 3. Only show an error if both methods fail.
+      // Call our Resend-powered edge function (branded email).
+      // No Authorization header — JWT verification is disabled for this
+      // public endpoint.  Only the apikey header is needed.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
+      });
 
-      let edgeFnOk = false;
-      let edgeFnError = null;
-      try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ email, cf_turnstile_response: cfToken || "" }),
-        });
+      // Resilient JSON parsing — the response might not be JSON if
+      // the edge function is unavailable or there is a gateway error.
+      let data = {};
+      try { data = await res.json(); } catch (_) { /* non-JSON response */ }
 
-        let data = {};
-        try { data = await res.json(); } catch (_) { /* non-JSON response */ }
-
-        if (res.ok) {
-          edgeFnOk = true;
-        } else {
-          // Gateway errors use "msg", edge function errors use "error"/"message"
-          edgeFnError = (typeof data.error === "string" && data.error)
-            || data.message || data.msg || `HTTP ${res.status}`;
-          console.warn("send-password-reset edge function error:", res.status, edgeFnError);
-        }
-      } catch (fetchErr) {
-        edgeFnError = "Edge function unreachable: " + (fetchErr?.message || "network error");
-        console.warn("send-password-reset edge function unreachable:", fetchErr);
-      }
-
-      if (edgeFnOk) {
+      if (res.ok) {
         onSuccess();
         return;
       }
 
-      // ── Fallback: Supabase built-in password reset ────────────────────
-      // Uses GoTrue's mailer (SMTP / built-in). Sends a plain email but
-      // always works as long as the Supabase project is live. The recovery
-      // link redirects to our dashboard where onAuthStateChange fires
-      // PASSWORD_RECOVERY and shows the reset modal.
-      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail. Edge error:", edgeFnError);
-      try {
-        const redirectTo = `${window.location.origin}/dashboard.html`;
-        const { error: sbError } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
-
-        if (sbError) {
-          console.error("Supabase resetPasswordForEmail error:", sbError.message);
-          toast(sbError.message || "Failed to send reset link. Please try again.", true);
-          resetTurnstile();
-          return;
-        }
-
-        // Fallback succeeded
-        onSuccess();
-        return;
-      } catch (sbErr) {
-        console.error("Supabase resetPasswordForEmail threw:", sbErr);
-        toast("Failed to send reset link. Please try again.", true);
-        resetTurnstile();
-      }
+      // Surface the actual error so the user (or admin) can diagnose.
+      // Gateway errors use "msg" (e.g. {"msg":"..."}), while edge
+      // function errors use "error" or "message".
+      const edgeFnError = (typeof data.error === "string" && data.error)
+        || data.message || data.msg || `HTTP ${res.status}`;
+      console.error("send-password-reset error:", res.status, data);
+      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
+      resetTurnstile();
     } catch (err) {
       console.error("Password reset error:", err);
       toast("Failed to send reset link. Please try again.", true);
