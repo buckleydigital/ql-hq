@@ -557,29 +557,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // ── Fallback: use Supabase built-in password reset ────────────────
-      // If the Resend-powered edge function is unreachable (network/CORS/
-      // gateway error) or returned an error, fall back to Supabase Auth's
-      // built-in resetPasswordForEmail. The email template will be the
-      // default Supabase one instead of our branded Resend template, but
-      // a working reset is better than no reset.
-      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail. Original error:", edgeFnError);
-      try {
-        const { error: sbError } = await sb.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/dashboard`,
-        });
-        if (!sbError) {
-          resetTurnstile();
-          onSuccess();
-          return;
-        }
-        console.warn("Supabase resetPasswordForEmail error:", sbError.message);
-        // Show the edge function error if we have one, otherwise the Supabase error
-        toast(edgeFnError || sbError.message || "Failed to send reset link. Please try again.", true);
-      } catch (fallbackErr) {
-        console.error("Supabase resetPasswordForEmail exception:", fallbackErr);
-        toast(edgeFnError || "Failed to send reset link. Please try again.", true);
-      }
+      // No fallback to Supabase's built-in resetPasswordForEmail — that
+      // sends a generic, unbranded email whose redirect URL may point to
+      // localhost:3000 if the Supabase Site URL isn't configured correctly.
+      // Instead, surface the actual error so the user (or admin) can act.
+      toast(edgeFnError || "Failed to send reset link. Please try again.", true);
       resetTurnstile();
       return;
     } catch (err) {
