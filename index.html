@@ -1015,7 +1015,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 // process the hash-fragment tokens and show the password-reset modal.
 (function(){
     var h = window.location.hash;
-    if (h && /[#?&]type=(recovery|invite|signup|magiclink|custom_recovery)/.test(h)) {
+    if (h && /[#?&]type=(recovery|invite|signup|magiclink)/.test(h)) {
         window.location.replace('dashboard.html' + h);
     }
 })();
