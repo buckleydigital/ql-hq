@@ -1,14 +1,16 @@
 // =============================================================================
-// QuoteLeadsHQ — Send Password Reset via Resend (Custom Token)
+// QuoteLeadsHQ — Send Password Reset via Resend
 // =============================================================================
-// Generates a secure random token, stores its hash in password_reset_tokens,
-// builds a branded reset link, and sends it via Resend.
+// Uses admin.generateLink({ type: "recovery" }) to get a Supabase recovery
+// link, then sends a branded email via Resend.  This mirrors the invite-rep
+// pattern that already works.
 //
-// IMPORTANT: This function does NOT call admin.generateLink({ type: "recovery" })
-// because that Supabase Admin API method triggers GoTrue's built-in mailer,
-// resulting in a duplicate (unbranded) email from Supabase.  Instead we
-// generate our own token and the companion "complete-password-reset" function
-// verifies it and updates the password via admin.updateUser().
+// admin.generateLink() generates the link server-side WITHOUT sending any
+// email — it's designed for custom email providers like Resend.
+//
+// When the user clicks the link, Supabase verifies the token and redirects
+// to the dashboard with a recovery session.  The frontend's existing
+// PASSWORD_RECOVERY auth-state handler then shows the reset modal.
 //
 // Payload: { email: string, cf_turnstile_response: string }
 // No auth required — this is a public endpoint for unauthenticated users.
@@ -34,26 +36,6 @@ async function verifyTurnstile(token: string): Promise<boolean> {
   );
   const data = await res.json();
   return data.success === true;
-}
-
-/** Generate a cryptographically random token and return it as a URL-safe base64 string. */
-function generateToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  // URL-safe base64 (no padding)
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-/** SHA-256 hash of a string, returned as hex. */
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(hashBuffer)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 // ── Inline email template ──────────────────────────────────────────────────
@@ -107,8 +89,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const TOKEN_LIFETIME_MS = 60 * 60 * 1000; // 1 hour
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -157,52 +137,38 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── Look up user by email ──────────────────────────────────────────
-    // Uses a SECURITY DEFINER function so we don't expose auth.users via
-    // PostgREST.  If the user doesn't exist we still return 200 (don't
-    // reveal account existence).
-    const { data: userId, error: lookupErr } = await adminClient.rpc(
-      "get_auth_user_id_by_email",
-      { user_email: email },
-    );
+    // ── Generate recovery link via Supabase Admin API ──────────────────
+    // This is the same approach that invite-rep uses (and works).
+    // admin.generateLink() generates the link server-side and returns it
+    // WITHOUT sending any email — we send it ourselves via Resend.
+    const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:3000";
 
-    if (lookupErr) {
-      console.error("User lookup error:", lookupErr.message);
-    }
+    const { data: linkData, error: linkError } =
+      await adminClient.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: {
+          redirectTo: `${siteUrl}/dashboard`,
+        },
+      });
 
-    if (!userId) {
-      // User doesn't exist — return success to avoid email enumeration
-      console.log("send-password-reset: no user found for email (returning success)");
+    if (linkError || !linkData?.properties?.action_link) {
+      // If the user doesn't exist, generateLink returns an error.
+      // Return success anyway to prevent email enumeration.
+      console.log(
+        "send-password-reset: generateLink failed (user may not exist):",
+        linkError?.message || "no action_link",
+      );
       return new Response(
         JSON.stringify({ success: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // ── Generate token & store hash ────────────────────────────────────
-    const rawToken = generateToken();
-    const tokenHash = await sha256Hex(rawToken);
-    const expiresAt = new Date(Date.now() + TOKEN_LIFETIME_MS).toISOString();
+    const resetLink = linkData.properties.action_link;
+    console.log("send-password-reset: generated recovery link for", email);
 
-    const { error: insertErr } = await adminClient
-      .from("password_reset_tokens")
-      .insert({ user_id: userId, token_hash: tokenHash, expires_at: expiresAt });
-
-    if (insertErr) {
-      console.error("Failed to store reset token:", insertErr.message);
-      return new Response(
-        JSON.stringify({ error: "Unable to process request. Please try again." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // ── Build reset link ───────────────────────────────────────────────
-    const requestOrigin = req.headers.get("Origin");
-    const siteUrl = requestOrigin?.replace(/\/$/, "") || Deno.env.get("SITE_URL") || "";
-    const resetLink = `${siteUrl}/dashboard#type=custom_recovery&token=${encodeURIComponent(rawToken)}`;
-    console.log("send-password-reset: built custom reset link (token hash:", tokenHash.slice(0, 8), "…)");
-
-    // ── Send via Resend ────────────────────────────────────────────────
+    // ── Send branded email via Resend ──────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
     const fromEmail =
       Deno.env.get("RESEND_FROM_EMAIL") ||
