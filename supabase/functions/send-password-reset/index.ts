@@ -131,17 +131,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Generate password recovery link via Supabase Admin API
-    const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:3000";
-    console.log("send-password-reset: using SITE_URL =", siteUrl);
+    // Generate password recovery link via Supabase Admin API.
+    // Derive the redirect URL from the request Origin header (always the actual
+    // dashboard domain), falling back to the SITE_URL secret, then omitting it
+    // entirely so Supabase uses its configured Site URL from the dashboard.
+    // This avoids the silent failure that occurs when SITE_URL is not set and
+    // Supabase rejects "http://localhost:3000" as an invalid redirect URL.
+    const requestOrigin = req.headers.get("Origin");
+    const siteUrl = requestOrigin?.replace(/\/$/, "") || Deno.env.get("SITE_URL");
+    const redirectTo = siteUrl ? `${siteUrl}/dashboard` : undefined;
+    console.log("send-password-reset: redirectTo =", redirectTo ?? "(using Supabase Site URL)");
 
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: {
-          redirectTo: `${siteUrl}/dashboard`,
-        },
+        options: { ...(redirectTo ? { redirectTo } : {}) },
       });
 
     if (linkError) {
