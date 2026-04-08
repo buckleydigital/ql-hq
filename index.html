@@ -1017,7 +1017,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     var h = window.location.hash;
     if (h && /[#?&]type=(recovery|invite|signup|magiclink)/.test(h)) {
         window.location.replace('dashboard.html' + h);
-        return; // stop further script execution on this page
     }
 })();
 
