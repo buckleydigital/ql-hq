@@ -563,12 +563,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       // built-in resetPasswordForEmail. The email template will be the
       // default Supabase one instead of our branded Resend template, but
       // a working reset is better than no reset.
-      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail");
+      console.warn("Edge function failed, falling back to Supabase resetPasswordForEmail. Original error:", edgeFnError);
       try {
         const { error: sbError } = await sb.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/dashboard`,
         });
         if (!sbError) {
+          resetTurnstile();
           onSuccess();
           return;
         }
