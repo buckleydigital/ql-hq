@@ -1,14 +1,22 @@
 // =============================================================================
-// QuoteLeadsHQ — Send Password Reset via Resend
+// QuoteLeadsHQ — Send Password Reset via Resend (Custom Token)
 // =============================================================================
-// Generates a password recovery link via Supabase Admin API and sends it
-// using Resend for branded, reliable email delivery.
+// Generates a secure random token, stores its hash in password_reset_tokens,
+// builds a branded reset link, and sends it via Resend.
+//
+// IMPORTANT: This function does NOT call admin.generateLink({ type: "recovery" })
+// because that Supabase Admin API method triggers GoTrue's built-in mailer,
+// resulting in a duplicate (unbranded) email from Supabase.  Instead we
+// generate our own token and the companion "complete-password-reset" function
+// verifies it and updates the password via admin.updateUser().
 //
 // Payload: { email: string, cf_turnstile_response: string }
 // No auth required — this is a public endpoint for unauthenticated users.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 async function verifyTurnstile(token: string): Promise<boolean> {
   const secret = Deno.env.get("CF_TURNSTILE_SECRET");
@@ -28,7 +36,27 @@ async function verifyTurnstile(token: string): Promise<boolean> {
   return data.success === true;
 }
 
-// ── Inline email template (avoids local-file import that breaks deployment) ──
+/** Generate a cryptographically random token and return it as a URL-safe base64 string. */
+function generateToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  // URL-safe base64 (no padding)
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** SHA-256 hash of a string, returned as hex. */
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(hashBuffer)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// ── Inline email template ──────────────────────────────────────────────────
 const _BRAND_COLOR = "#1f6fff";
 const _BRAND_NAME = "QuoteLeadsHQ";
 function _baseLayout(content: string): string {
@@ -72,11 +100,14 @@ function passwordResetEmail(resetLink: string): { subject: string; html: string 
   };
 }
 
+// ── CORS ────────────────────────────────────────────────────────────────────
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const TOKEN_LIFETIME_MS = 60 * 60 * 1000; // 1 hour
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -87,9 +118,6 @@ Deno.serve(async (req) => {
     const { email, cf_turnstile_response } = await req.json();
 
     // ── Verify Turnstile CAPTCHA ──────────────────────────────────────────
-    // Only require a token when CF_TURNSTILE_SECRET is configured.
-    // When the secret is absent the server is in bypass mode and we skip
-    // verification entirely so that environments without Turnstile still work.
     const captchaSecretConfigured = !!Deno.env.get("CF_TURNSTILE_SECRET");
     if (captchaSecretConfigured) {
       if (!cf_turnstile_response || typeof cf_turnstile_response !== "string") {
@@ -114,9 +142,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Pre-flight: check Resend API key is configured ─────────────────
-    // This is an infrastructure issue affecting ALL users, so it's safe to
-    // surface without leaking whether a specific email exists.
+    // ── Pre-flight: check Resend API key ───────────────────────────────
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
       console.error("RESEND_API_KEY is not set in edge function secrets");
@@ -131,41 +157,50 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Generate password recovery link via Supabase Admin API.
-    // Derive the redirect URL from the request Origin header (always the actual
-    // dashboard domain), falling back to the SITE_URL secret, then omitting it
-    // entirely so Supabase uses its configured Site URL from the dashboard.
-    // This avoids the silent failure that occurs when SITE_URL is not set and
-    // Supabase rejects "http://localhost:3000" as an invalid redirect URL.
+    // ── Look up user by email ──────────────────────────────────────────
+    // Uses a SECURITY DEFINER function so we don't expose auth.users via
+    // PostgREST.  If the user doesn't exist we still return 200 (don't
+    // reveal account existence).
+    const { data: userId, error: lookupErr } = await adminClient.rpc(
+      "get_auth_user_id_by_email",
+      { user_email: email },
+    );
+
+    if (lookupErr) {
+      console.error("User lookup error:", lookupErr.message);
+    }
+
+    if (!userId) {
+      // User doesn't exist — return success to avoid email enumeration
+      console.log("send-password-reset: no user found for email (returning success)");
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Generate token & store hash ────────────────────────────────────
+    const rawToken = generateToken();
+    const tokenHash = await sha256Hex(rawToken);
+    const expiresAt = new Date(Date.now() + TOKEN_LIFETIME_MS).toISOString();
+
+    const { error: insertErr } = await adminClient
+      .from("password_reset_tokens")
+      .insert({ user_id: userId, token_hash: tokenHash, expires_at: expiresAt });
+
+    if (insertErr) {
+      console.error("Failed to store reset token:", insertErr.message);
+      return new Response(
+        JSON.stringify({ error: "Unable to process request. Please try again." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Build reset link ───────────────────────────────────────────────
     const requestOrigin = req.headers.get("Origin");
-    const siteUrl = requestOrigin?.replace(/\/$/, "") || Deno.env.get("SITE_URL");
-    const redirectTo = siteUrl ? `${siteUrl}/dashboard` : undefined;
-    console.log("send-password-reset: redirectTo =", redirectTo ?? "(using Supabase Site URL)");
-
-    const { data: linkData, error: linkError } =
-      await adminClient.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: { ...(redirectTo ? { redirectTo } : {}) },
-      });
-
-    if (linkError) {
-      // Don't reveal whether the email exists — always return success
-      console.error("generateLink error:", linkError.message);
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const resetLink = linkData?.properties?.action_link;
-    if (!resetLink) {
-      console.error("No action_link returned from generateLink");
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const siteUrl = requestOrigin?.replace(/\/$/, "") || Deno.env.get("SITE_URL") || "";
+    const resetLink = `${siteUrl}/dashboard#type=custom_recovery&token=${encodeURIComponent(rawToken)}`;
+    console.log("send-password-reset: built custom reset link (token hash:", tokenHash.slice(0, 8), "…)");
 
     // ── Send via Resend ────────────────────────────────────────────────
     const emailContent = passwordResetEmail(resetLink);
@@ -191,12 +226,9 @@ Deno.serve(async (req) => {
       const errText = await resendRes.text();
       console.error(`Resend API error (HTTP ${resendRes.status}):`, errText);
 
-      // Auth/config errors (401 = bad API key, 403 = domain not verified)
-      // affect ALL users and don't reveal whether this specific email exists.
-      // Surface them so the user knows the email service is broken.
       if (resendRes.status === 401 || resendRes.status === 403) {
         const hint = resendRes.status === 403
-          ? "Sending domain is not verified in Resend. Check that RESEND_API_KEY belongs to the same Resend team where the domain is verified, or set RESEND_FROM_EMAIL to a verified sender."
+          ? "Sending domain is not verified in Resend."
           : "Invalid Resend API key.";
         console.error("Resend auth/config error:", hint);
         return new Response(
@@ -207,8 +239,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // For other Resend errors (422 validation, 429 rate-limit, 5xx),
-      // return a transient error so the user can retry.
       return new Response(
         JSON.stringify({
           error: "Unable to send reset email right now. Please try again shortly.",

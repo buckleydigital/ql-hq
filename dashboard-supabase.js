@@ -225,6 +225,7 @@ let currentUserRole  = null;  // 'owner' | 'admin' | 'member'
 let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
+let _customResetToken = null; // Custom password reset token (from Resend link)
 
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
@@ -251,6 +252,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.documentElement.dataset.theme = "dark";
   }
   updateThemeIcon();
+
+  // ── Custom password-reset token ────────────────────────────────────────
+  // Our send-password-reset edge function generates custom tokens and links
+  // of the form: /dashboard#type=custom_recovery&token=<token>
+  // Detect this BEFORE the Supabase auth listener fires so we can handle
+  // it independently (no Supabase session required).
+  const _hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (_hashParams.get("type") === "custom_recovery" && _hashParams.get("token")) {
+    _customResetToken = _hashParams.get("token");
+    // Clean the hash so it doesn't interfere with Supabase's auth handling
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    // Show the password reset modal (will wait for DOM to be ready)
+    setTimeout(() => {
+      // Show auth container (in case user isn't logged in)
+      document.getElementById("authPanel")?.classList.remove("hidden");
+      document.getElementById("appPanel")?.classList.add("hidden");
+      // Hide login/signup forms, show a minimal wrapper for the modal
+      showPasswordResetModal();
+    }, 300);
+  }
 
   // Set up auth state listener FIRST (before checking session)
   sb.auth.onAuthStateChange((event, session) => {
@@ -912,16 +933,46 @@ document.getElementById("passwordResetForm")?.addEventListener("submit", async (
   }
 
   try {
-    const { error } = await sb.auth.updateUser({ password: newPassword });
-    if (error) {
-      toast(error.message, true);
-    } else {
-      toast("Password updated successfully!");
+    if (_customResetToken) {
+      // ── Custom token flow (Resend link) ──────────────────────────────
+      // Call our complete-password-reset edge function which validates the
+      // token and updates the password via the admin API.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/complete-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ token: _customResetToken, new_password: newPassword }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) { /* non-JSON */ }
+      if (!res.ok) {
+        toast(data.error || "Failed to update password. Please try again.", true);
+        return;
+      }
+      toast("Password updated successfully! You can now log in.");
       closeModal("passwordResetModal");
+      _customResetToken = null; // Clear the token
       const pwEl = document.getElementById("resetNewPassword");
       const cfEl = document.getElementById("resetConfirmNewPassword");
       if (pwEl) pwEl.value = "";
       if (cfEl) cfEl.value = "";
+      // Show login form so user can log in with their new password
+      showAuth();
+    } else {
+      // ── Supabase session flow (legacy PASSWORD_RECOVERY event) ───────
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) {
+        toast(error.message, true);
+      } else {
+        toast("Password updated successfully!");
+        closeModal("passwordResetModal");
+        const pwEl = document.getElementById("resetNewPassword");
+        const cfEl = document.getElementById("resetConfirmNewPassword");
+        if (pwEl) pwEl.value = "";
+        if (cfEl) cfEl.value = "";
+      }
     }
   } catch (err) {
     toast("Failed to update password. Please try again.", true);
