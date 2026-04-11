@@ -266,12 +266,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Always handle explicit sign-in / sign-out events so the UI
     // updates immediately without requiring a page refresh.
     if (event === "SIGNED_IN" && session?.user) {
-      currentUser = session.user;
-      // Only run full showApp (which navigates to dashboard) on the
-      // first sign-in.  Subsequent SIGNED_IN events (e.g. token
-      // refresh when the browser tab regains focus) should NOT reset
+      // Detect a real sign-in (user was previously signed out) vs a
+      // token refresh (user was already signed in).  Only navigate to
+      // the dashboard on a real sign-in so token refreshes don't yank
       // the user back to the dashboard page.
-      if (!authInitialized) {
+      const wasSignedOut = !currentUser;
+      currentUser = session.user;
+      if (wasSignedOut) {
         authInitialized = true;
         showApp();
       }
@@ -414,6 +415,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         emailInput && (emailInput.disabled = false);
         passwordInput && (passwordInput.disabled = false);
         if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
+      } else if (data?.session?.user) {
+        // Navigate immediately — don't wait for onAuthStateChange
+        currentUser = data.session.user;
+        authInitialized = true;
+        showApp();
       }
     } catch (err) {
       toast("Login failed. Please try again.", true);
@@ -614,7 +620,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Account created — auto sign in
       toast("Account created! Signing you in...");
-      const { error: signInError } = await sb.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await sb.auth.signInWithPassword({
         email,
         password,
       });
@@ -629,6 +635,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         loginForm?.classList.remove("hidden");
         const loginEmail = document.getElementById("loginEmail");
         if (loginEmail) loginEmail.value = email;
+      } else if (signInData?.session?.user) {
+        // Navigate immediately — don't wait for onAuthStateChange
+        currentUser = signInData.session.user;
+        authInitialized = true;
+        showApp();
       }
     } catch (err) {
       toast("Sign up failed. Please try again.", true);
@@ -652,11 +663,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       authInitialized = false;
       await sb.auth.signOut();
-      // Fallback: if onAuthStateChange didn't fire, update UI explicitly
-      if (!authInitialized) {
-        currentUser = null;
-        showAuth();
-      }
+      // Always navigate to auth screen after signOut resolves,
+      // regardless of whether onAuthStateChange already fired.
+      currentUser = null;
+      authInitialized = true;
+      showAuth();
     } catch (err) {
       toast("Logout failed. Please try again.", true);
       if (btn) {
@@ -1001,6 +1012,14 @@ async function showApp() {
   
   if (authView) authView.classList.add("hidden");
   if (appView) appView.classList.remove("hidden");
+
+  // Reset logout button in case it was left disabled from a previous sign-out
+  const logoutBtn = document.getElementById("logoutButton");
+  if (logoutBtn) {
+    logoutBtn.disabled = false;
+    logoutBtn.innerHTML = `<span class="icon" data-icon="logout"></span><span>Log Out</span>`;
+    renderIcons();
+  }
 
   if (!currentUser) {
     toast("Authentication error. Please log in again.", true);
