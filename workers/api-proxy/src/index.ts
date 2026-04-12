@@ -3,8 +3,8 @@
 // =============================================================================
 // Reverse-proxy that maps clean URLs to the Supabase Edge Function backend.
 //
-//   api.quoteleadshq.com/v1/leads  →  <supabase>/functions/v1/api/leads
-//   api.quoteleadshq.com/v1/quotes →  <supabase>/functions/v1/api/quotes
+//   api.quoteleads.com.au/v1/leads  →  <supabase>/functions/v1/api/leads
+//   api.quoteleads.com.au/v1/quotes →  <supabase>/functions/v1/api/quotes
 //   ...etc
 //
 // All headers (Authorization, Content-Type, etc.) are passed through as-is.
@@ -46,7 +46,7 @@ export default {
       return new Response(
         JSON.stringify({
           error: "Not Found",
-          message: "API routes are available under /v1/. See https://quoteleadshq.com/api-docs for documentation.",
+          message: "API routes are available under /v1/. See https://app.quoteleads.com.au/api-docs for documentation.",
         }),
         {
           status: 404,

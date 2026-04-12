@@ -3,8 +3,8 @@
 Reverse-proxy that gives the REST API a clean, branded URL:
 
 ```
-api.quoteleadshq.com/v1/leads   →   <supabase>/functions/v1/api/leads
-api.quoteleadshq.com/v1/quotes  →   <supabase>/functions/v1/api/quotes
+api.quoteleads.com.au/v1/leads   →   <supabase>/functions/v1/api/leads
+api.quoteleads.com.au/v1/quotes  →   <supabase>/functions/v1/api/quotes
 ```
 
 All authentication headers are passed through as-is. The Supabase URL is never exposed.
@@ -41,20 +41,20 @@ npm run deploy
 After deploying, go to **Cloudflare Dashboard → Workers & Pages → qlhq-api-proxy → Settings → Domains & Routes** and add:
 
 ```
-api.quoteleadshq.com
+api.quoteleads.com.au
 ```
 
 Cloudflare will automatically provision the SSL certificate.
 
-> **DNS requirement:** Your `quoteleadshq.com` domain must already be on Cloudflare DNS (orange-clouded). If it's on another DNS provider, use a Workers Route + CNAME instead.
+> **DNS requirement:** Your `quoteleads.com.au` domain must already be on Cloudflare DNS (orange-clouded). If it's on another DNS provider, use a Workers Route + CNAME instead.
 
 ### 5. Verify
 
 ```bash
-curl https://api.quoteleadshq.com/health
-# → {"status":"ok","service":"quoteleadshq-api"}
+curl https://api.quoteleads.com.au/health
+# → {"status":"ok","service":"quoteleads-api"}
 
-curl https://api.quoteleadshq.com/v1/leads \
+curl https://api.quoteleads.com.au/v1/leads \
   -H "Authorization: Bearer qlhq_your_token"
 # → {"data":[...],"meta":{"page":1,...}}
 ```

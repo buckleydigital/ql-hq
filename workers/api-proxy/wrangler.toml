@@ -4,7 +4,7 @@ compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Custom domain — configure in Cloudflare Dashboard → Workers → Triggers → Custom Domains
-# after deploying. Point api.quoteleadshq.com to this worker.
+# after deploying. Point api.quoteleads.com.au to this worker.
 
 [vars]
 SUPABASE_FUNCTION_URL = "https://wjadekgptkstfdootuol.supabase.co/functions/v1/api"
