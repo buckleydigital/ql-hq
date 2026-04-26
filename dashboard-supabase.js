@@ -1030,7 +1030,7 @@ async function showApp() {
   try {
     const { data: profile, error: profileError } = await sb
       .from("profiles")
-      .select("company_id, full_name, phone, role, user_type")
+      .select("company_id, full_name, phone, role, user_type, is_admin")
       .eq("id", currentUser.id)
       .maybeSingle();
 
@@ -3029,6 +3029,10 @@ function handleRemoveLogo() {
 
 async function handleCompanyProfileSave(e) {
   e.preventDefault();
+  if (!currentCompanyId) {
+    toast("No company found for your account. Please contact support.", true);
+    return;
+  }
   const companyName = document.getElementById("settingsCompanyName")?.value;
   const ownerName   = document.getElementById("settingsOwnerName")?.value;
   
