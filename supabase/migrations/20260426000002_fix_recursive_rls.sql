@@ -23,10 +23,13 @@ stable
 security definer
 set search_path = 'public'
 as $$
-  select coalesce(
-    (select is_admin from public.profiles where id = auth.uid()),
-    false
-  );
+  select case
+    when auth.uid() is null then false
+    else coalesce(
+      (select is_admin from public.profiles where id = auth.uid()),
+      false
+    )
+  end;
 $$;
 
 -- ─── 2. Replace the recursive SELECT policy ───────────────────────────────────

@@ -3030,7 +3030,7 @@ function handleRemoveLogo() {
 async function handleCompanyProfileSave(e) {
   e.preventDefault();
   if (!currentCompanyId) {
-    toast("No company found for your account. Please contact support.", true);
+    toast("Unable to save: no company is associated with your account. Please contact support.", true);
     return;
   }
   const companyName = document.getElementById("settingsCompanyName")?.value;
