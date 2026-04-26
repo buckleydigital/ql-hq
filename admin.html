@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self';">
+<title>Admin Panel — QuoteLeadsHQ</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--accent:#1f6fff;--bg:#f3f5f9;--surface:#fff;--surface-2:#f7f9fc;--border:#d8e0ec;--text:#121826;--muted:#667284;--radius:18px;--shadow:0 12px 30px rgba(17,24,39,.08)}
+[data-theme=dark]{--bg:#050505;--surface:#101010;--surface-2:#161616;--border:#252525;--text:#f5f5f5;--muted:#9a9a9a;--shadow:0 16px 38px rgba(0,0,0,.45)}
+body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(circle at top,rgba(31,111,255,.08),transparent 24%),var(--bg);color:var(--text);min-height:100vh}
+button,input{font:inherit;color:inherit}
+button{background:none;border:none;cursor:pointer}
+.hidden{display:none!important}
+
+/* ── Layout ──────────────────────────────────────────────────────── */
+.page-wrap{max-width:900px;margin:0 auto;padding:32px 20px}
+
+/* ── Top bar ─────────────────────────────────────────────────────── */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap}
+.topbar-brand{display:flex;align-items:center;gap:10px}
+.topbar-brand .badge{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#b91c1c;border-radius:8px;font-size:11px;font-weight:700;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase}
+[data-theme=dark] .topbar-brand .badge{color:#f87171}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+h1{font-size:18px;font-weight:500}
+
+/* ── Cards ───────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.panel-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.panel-h h2{font-size:14px;font-weight:500}
+.panel-h p{font-size:12px;color:var(--muted);margin-top:3px}
+.panel-b{padding:16px}
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.btn,.btn2,.btn-danger{min-height:38px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px;font-weight:500}
+.btn2{background:var(--text);color:var(--bg);border-color:var(--text)}
+[data-theme=dark] .btn2{background:#f5f5f5;color:#050505;border-color:#f5f5f5}
+.btn-danger{color:#b91c1c;border-color:rgba(185,28,28,.28)}
+.btn-sm{min-height:32px;padding:0 10px;font-size:11px;border-radius:9px}
+.btn:disabled,.btn2:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── Search ──────────────────────────────────────────────────────── */
+.search-wrap{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);width:100%;max-width:340px}
+.search-wrap input{flex:1;border:none;background:transparent;outline:none;font-size:13px}
+.search-wrap svg{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* ── User list ───────────────────────────────────────────────────── */
+.user-list{display:flex;flex-direction:column;gap:8px}
+.user-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid var(--border);border-radius:13px;background:var(--surface-2)}
+.user-info{}
+.user-name{font-size:13px;font-weight:500;margin-bottom:2px}
+.user-meta{font-size:11px;color:var(--muted)}
+.user-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;border:1px solid var(--border);background:var(--surface)}
+.tag-admin{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#b91c1c}
+[data-theme=dark] .tag-admin{color:#f87171}
+.tag-owner{background:rgba(31,111,255,.1);border-color:rgba(31,111,255,.3);color:#1d4ed8}
+[data-theme=dark] .tag-owner{color:#60a5fa}
+
+/* ── Toasts ──────────────────────────────────────────────────────── */
+.toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
+.toast{min-width:260px;max-width:340px;padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px}
+.toast.err{border-color:rgba(197,53,53,.3)}
+
+/* ── Notice ──────────────────────────────────────────────────────── */
+.notice{padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font-size:12px;color:var(--muted);line-height:1.6}
+.notice.warn{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06);color:#92400e}
+[data-theme=dark] .notice.warn{color:#fbbf24}
+
+/* ── Gate ────────────────────────────────────────────────────────── */
+#gate{min-height:100vh;display:flex;align-items:center;justify-content:center}
+#gate .gate-inner{text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
+#gate p{font-size:13px;color:var(--muted)}
+
+/* ── Loading spinner ─────────────────────────────────────────────── */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media(max-width:600px){
+  .user-row{grid-template-columns:1fr;gap:8px}
+  .panel-h{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Gate (shown while checking auth/admin) ─────────────────────────────── -->
+<div id="gate">
+  <div class="gate-inner">
+    <div class="spinner"></div>
+    <p id="gateMsg">Checking access…</p>
+  </div>
+</div>
+
+<!-- ── Admin Panel (hidden until access confirmed) ──────────────────────── -->
+<div id="adminPanel" class="hidden">
+  <div class="page-wrap">
+
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-brand">
+        <h1>Admin Panel</h1>
+        <span class="badge">Internal only</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="themeToggleBtn" class="btn btn-sm" type="button">Theme</button>
+        <a href="dashboard.html" class="btn btn-sm" target="_self">← Dashboard</a>
+        <button id="logoutBtn" class="btn btn-sm btn-danger" type="button">Log out</button>
+      </div>
+    </div>
+
+    <!-- Warning notice -->
+    <div class="notice warn" style="margin-bottom:20px">
+      ⚠️ <strong>Impersonation is immediate and permanent until you sign out.</strong>
+      Clicking "Login as" will replace your current session with the selected user's session and redirect to the dashboard.
+      The target user will <em>not</em> receive any email or notification.
+    </div>
+
+    <!-- User list panel -->
+    <div class="card">
+      <div class="panel-h">
+        <div>
+          <h2>All Users</h2>
+          <p id="userCountLabel">Loading…</p>
+        </div>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="searchInput" type="search" placeholder="Search by name or email…" autocomplete="off">
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="loadingState" class="notice">Loading users…</div>
+        <div id="userList" class="user-list hidden"></div>
+        <div id="emptyState" class="notice hidden">No users match your search.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script>
+(function () {
+  'use strict';
+
+  const SUPABASE_URL     = 'https://wjadekgptkstfdootuol.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYWRla2dwdGtzdGZkb290dW9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTc3NzQsImV4cCI6MjA5MDU3Mzc3NH0.g45wqe_F9KHh3TVzkq8LimxxT4UiuTZpJZcWkzzD7IM';
+
+  let sb;
+  let allUsers = [];
+
+  // ── Utilities ────────────────────────────────────────────────────────────────
+  function toast(msg, isError) {
+    var wrap = document.getElementById('toastWrap');
+    if (!wrap) return;
+    var t = document.createElement('div');
+    t.className = 'toast' + (isError ? ' err' : '');
+    t.textContent = msg;
+    wrap.appendChild(t);
+    setTimeout(function () { t.remove(); }, 5000);
+  }
+
+  function setGateMsg(msg) {
+    var el = document.getElementById('gateMsg');
+    if (el) el.textContent = msg;
+  }
+
+  function showGate() {
+    document.getElementById('gate').classList.remove('hidden');
+    document.getElementById('adminPanel').classList.add('hidden');
+  }
+
+  function showPanel() {
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+  }
+
+  function waitFor(fn, timeout) {
+    return new Promise(function (resolve, reject) {
+      if (fn()) { resolve(); return; }
+      var start = Date.now();
+      var iv = setInterval(function () {
+        if (fn()) { clearInterval(iv); resolve(); return; }
+        if (Date.now() - start > (timeout || 10000)) {
+          clearInterval(iv);
+          reject(new Error('Timeout waiting for Supabase SDK'));
+        }
+      }, 50);
+    });
+  }
+
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  if (localStorage.getItem('theme') === 'dark') {
+    document.documentElement.dataset.theme = 'dark';
+  }
+  document.getElementById('themeToggleBtn').addEventListener('click', function () {
+    var dark = document.documentElement.dataset.theme === 'dark';
+    document.documentElement.dataset.theme = dark ? '' : 'dark';
+    localStorage.setItem('theme', dark ? 'light' : 'dark');
+  });
+
+  // ── Access token helper (mirrors dashboard-supabase.js pattern) ───────────
+  async function getAccessToken() {
+    var s = await sb.auth.getSession();
+    return s.data && s.data.session && s.data.session.access_token || null;
+  }
+
+  // ── Call edge function ────────────────────────────────────────────────────
+  async function callEdge(body) {
+    var token = await getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+
+    var res = await fetch(SUPABASE_URL + '/functions/v1/impersonate-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer ' + token,
+        'apikey':        SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+
+    var text = await res.text();
+    var data;
+    try { data = JSON.parse(text); } catch (e) {
+      throw new Error('Server returned non-JSON (HTTP ' + res.status + ')');
+    }
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Request failed (HTTP ' + res.status + ')');
+    }
+    return data;
+  }
+
+  // ── Render user list ──────────────────────────────────────────────────────
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderUserRow(u) {
+    var tags = '';
+    if (u.is_admin) tags += '<span class="tag tag-admin">super-admin</span>';
+    if (u.role === 'owner') tags += '<span class="tag tag-owner">owner</span>';
+    if (u.role && u.role !== 'owner') tags += '<span class="tag">' + escapeHtml(u.role) + '</span>';
+
+    var row = document.createElement('div');
+    row.className = 'user-row';
+    row.dataset.userId = u.id;
+    row.innerHTML =
+      '<div class="user-info">' +
+        '<div class="user-name">' + escapeHtml(u.full_name || '(no name)') + '</div>' +
+        '<div class="user-meta">' + escapeHtml(u.email) + '</div>' +
+        (tags ? '<div class="user-tags">' + tags + '</div>' : '') +
+      '</div>' +
+      '<div>' +
+        '<button class="btn2 btn-sm login-as-btn" data-email="' + escapeHtml(u.email) + '" data-name="' + escapeHtml(u.full_name || u.email) + '" type="button">' +
+          'Login as' +
+        '</button>' +
+      '</div>';
+
+    row.querySelector('.login-as-btn').addEventListener('click', function () {
+      handleLoginAs(u.email, u.full_name || u.email, this);
+    });
+    return row;
+  }
+
+  function applyFilter(query) {
+    var q = (query || '').trim().toLowerCase();
+    var listEl = document.getElementById('userList');
+    var emptyEl = document.getElementById('emptyState');
+    var filtered = q
+      ? allUsers.filter(function (u) {
+          return (u.email || '').toLowerCase().includes(q) ||
+                 (u.full_name || '').toLowerCase().includes(q);
+        })
+      : allUsers;
+
+    listEl.innerHTML = '';
+    if (filtered.length === 0) {
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      filtered.forEach(function (u) {
+        listEl.appendChild(renderUserRow(u));
+      });
+    }
+  }
+
+  // ── Impersonation handler ─────────────────────────────────────────────────
+  async function handleLoginAs(email, displayName, btn) {
+    if (!confirm('Login as ' + displayName + ' (' + email + ')?\n\nThis will replace your current session and redirect to the dashboard.')) {
+      return;
+    }
+
+    // Disable all login buttons to prevent double-click
+    document.querySelectorAll('.login-as-btn').forEach(function (b) {
+      b.disabled = true;
+    });
+    if (btn) {
+      btn.textContent = 'Logging in…';
+    }
+
+    try {
+      var result = await callEdge({ action: 'login', email: email });
+
+      if (!result.session || !result.session.access_token || !result.session.refresh_token) {
+        throw new Error('Invalid session data returned from server');
+      }
+
+      // Apply the impersonated session to the local Supabase client.
+      // This replaces the current admin session in storage.
+      var setErr = (await sb.auth.setSession({
+        access_token:  result.session.access_token,
+        refresh_token: result.session.refresh_token,
+      })).error;
+
+      if (setErr) {
+        throw new Error('Failed to apply session: ' + setErr.message);
+      }
+
+      // Redirect to dashboard — session is now the impersonated user's.
+      toast('Logged in as ' + displayName + '. Redirecting…');
+      setTimeout(function () {
+        window.location.href = 'dashboard.html';
+      }, 800);
+    } catch (err) {
+      toast(err.message || 'Impersonation failed.', true);
+      document.querySelectorAll('.login-as-btn').forEach(function (b) {
+        b.disabled = false;
+        b.textContent = 'Login as';
+      });
+    }
+  }
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  document.getElementById('logoutBtn').addEventListener('click', async function () {
+    await sb.auth.signOut();
+    window.location.href = 'dashboard.html';
+  });
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  document.getElementById('searchInput').addEventListener('input', function () {
+    applyFilter(this.value);
+  });
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  async function boot() {
+    // 1. Wait for Supabase SDK
+    try {
+      await waitFor(function () { return window.supabase; }, 10000);
+    } catch (e) {
+      setGateMsg('Failed to load authentication library. Please refresh.');
+      return;
+    }
+
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // 2. Check session
+    var sessionResult = await sb.auth.getSession();
+    var session = sessionResult.data && sessionResult.data.session;
+    if (!session) {
+      setGateMsg('Not logged in. Redirecting…');
+      setTimeout(function () { window.location.href = 'dashboard.html'; }, 1200);
+      return;
+    }
+
+    // 3. Check is_admin via profiles table
+    // We use the anon client with the user's JWT — the RLS "super-admins can
+    // read all profiles" policy grants the read only if is_admin = true.
+    // As an extra server-side guard the edge function re-checks is_admin too.
+    var profileResult = await sb
+      .from('profiles')
+      .select('is_admin, full_name')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    var profile = profileResult.data;
+
+    if (!profile || !profile.is_admin) {
+      setGateMsg('Access denied. You are not a super-admin.');
+      setTimeout(function () { window.location.href = 'dashboard.html'; }, 2000);
+      return;
+    }
+
+    // 4. Access confirmed — show the panel
+    showPanel();
+
+    // 5. Load user list via edge function
+    try {
+      var result = await callEdge({ action: 'list' });
+      allUsers = (result.users || []).slice().sort(function (a, b) {
+        return (a.email || '').localeCompare(b.email || '');
+      });
+
+      var countLabel = document.getElementById('userCountLabel');
+      if (countLabel) {
+        countLabel.textContent = allUsers.length + ' user' + (allUsers.length === 1 ? '' : 's') + ' registered';
+      }
+
+      document.getElementById('loadingState').classList.add('hidden');
+      applyFilter('');
+    } catch (err) {
+      document.getElementById('loadingState').textContent = 'Failed to load users: ' + err.message;
+      toast('Failed to load users: ' + err.message, true);
+    }
+  }
+
+  // Run after scripts are ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>
