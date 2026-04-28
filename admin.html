@@ -78,10 +78,22 @@ h1{font-size:18px;font-weight:500}
 .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ── Create account form ─────────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row{display:flex;flex-direction:column;gap:4px}
+.form-label{font-size:11px;font-weight:500;color:var(--muted)}
+.form-input{height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text);outline:none;width:100%}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,111,255,.1)}
+.pw-wrap{position:relative;display:flex;align-items:center}
+.pw-wrap .form-input{padding-right:38px}
+.pw-toggle{position:absolute;right:10px;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;color:var(--muted)}
+.pw-toggle:hover{color:var(--text)}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media(max-width:600px){
   .user-row{grid-template-columns:1fr;gap:8px}
   .panel-h{flex-direction:column;align-items:flex-start}
+  .form-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -117,6 +129,40 @@ h1{font-size:18px;font-weight:500}
       ⚠️ <strong>Impersonation is immediate and permanent until you sign out.</strong>
       Clicking "Login as" will replace your current session with the selected user's session and redirect to the dashboard.
       The target user will <em>not</em> receive any email or notification.
+    </div>
+
+    <!-- Create Account (No Email) panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Create Account (No Email)</h2>
+          <p>Account is created immediately with a pre-set password. No notification is sent to the user.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <form id="createAccountForm" autocomplete="off" novalidate>
+          <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row">
+              <label class="form-label" for="newUserName">Full Name</label>
+              <input class="form-input" id="newUserName" type="text" placeholder="Jane Smith" required>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newUserEmail">Email</label>
+              <input class="form-input" id="newUserEmail" type="email" placeholder="jane@example.com" required>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:16px">
+            <label class="form-label" for="newUserPassword">Password <span style="font-weight:400">(min 8 characters)</span></label>
+            <div class="pw-wrap">
+              <input class="form-input" id="newUserPassword" type="password" placeholder="Set their password" required minlength="8">
+              <button class="pw-toggle" type="button" id="pwToggleBtn" aria-label="Toggle password visibility">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn2 btn-sm" type="submit" id="createAccountBtn">Create Account</button>
+        </form>
+      </div>
     </div>
 
     <!-- User list panel -->
@@ -343,6 +389,80 @@ h1{font-size:18px;font-weight:500}
       });
     }
   }
+
+  // ── Create Account (No Email) ─────────────────────────────────────────────
+  async function callCreateUserSilent(name, email, password) {
+    var token = await getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+
+    var res = await fetch(SUPABASE_URL + '/functions/v1/create-user-silent', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer ' + token,
+        'apikey':        SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ name: name, email: email, password: password }),
+    });
+
+    var text = await res.text();
+    var data;
+    try { data = JSON.parse(text); } catch (e) {
+      throw new Error('Server returned non-JSON (HTTP ' + res.status + ')');
+    }
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || data.msg || data.message || 'Request failed (HTTP ' + res.status + ')');
+    }
+    return data;
+  }
+
+  document.getElementById('createAccountForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var btn = document.getElementById('createAccountBtn');
+    var name     = document.getElementById('newUserName').value.trim();
+    var email    = document.getElementById('newUserEmail').value.trim();
+    var password = document.getElementById('newUserPassword').value;
+
+    if (!name || !email || !password) {
+      toast('Please fill in all fields.', true);
+      return;
+    }
+    if (password.length < 8) {
+      toast('Password must be at least 8 characters.', true);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+
+    try {
+      var result = await callCreateUserSilent(name, email, password);
+      toast('Account created for ' + result.user.email);
+      document.getElementById('createAccountForm').reset();
+
+      // Refresh user list so the new account appears immediately
+      var listResult = await callEdge({ action: 'list' });
+      allUsers = (listResult.users || []).slice().sort(function (a, b) {
+        return (a.email || '').localeCompare(b.email || '');
+      });
+      var countLabel = document.getElementById('userCountLabel');
+      if (countLabel) {
+        countLabel.textContent = allUsers.length + ' user' + (allUsers.length === 1 ? '' : 's') + ' registered';
+      }
+      applyFilter(document.getElementById('searchInput').value);
+    } catch (err) {
+      toast(err.message || 'Failed to create account.', true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    }
+  });
+
+  document.getElementById('pwToggleBtn').addEventListener('click', function () {
+    var input = document.getElementById('newUserPassword');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
 
   // ── Logout ────────────────────────────────────────────────────────────────
   document.getElementById('logoutBtn').addEventListener('click', async function () {
