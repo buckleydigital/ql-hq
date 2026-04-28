@@ -3156,9 +3156,11 @@ async function loadAiSettings() {
         : "External workspaces can fully customize AI prompts.";
     }
     
-    // Update key source display
+    // Update key source display — hide entirely for internal users
+    const keySourceCard = document.getElementById("keySourceCard");
     const keySourceValue = document.getElementById("keySourceValue");
     const keySourceHelp = document.getElementById("keySourceHelp");
+    if (keySourceCard) keySourceCard.style.display = isInternal ? "none" : "";
     if (keySourceValue) keySourceValue.textContent = isInternal ? "Agency Keys" : "Customer Keys";
     if (keySourceHelp) {
       keySourceHelp.textContent = isInternal 
@@ -4261,10 +4263,12 @@ async function loadVoiceAi() {
 
     const isInternal = profile?.user_type === "internal";
 
-    // Update UI based on user type
+    // Update UI based on user type — hide Key Source card entirely for internal users
+    const voiceKeySourceCard = document.getElementById("voiceKeySourceCard");
     const voiceKeySource = document.getElementById("voiceKeySource");
     const voiceKeySourceHelp = document.getElementById("voiceKeySourceHelp");
 
+    if (voiceKeySourceCard) voiceKeySourceCard.style.display = isInternal ? "none" : "";
     if (voiceKeySource) {
       voiceKeySource.textContent = isInternal ? "Agency Key" : "Customer Key";
     }
@@ -4274,8 +4278,12 @@ async function loadVoiceAi() {
         : "You must provide your own VAPI API key and Assistant ID.";
     }
 
+    // Hide VAPI Phone Number ID field entirely for internal users
+    const vapiPhoneNumberIdField = document.getElementById("vapiPhoneNumberIdField");
+    if (vapiPhoneNumberIdField) vapiPhoneNumberIdField.style.display = isInternal ? "none" : "";
+
     // Lock config fields for internal users (only prompt, greeting, transfer phone & voice select editable)
-    const lockedFields = ["vapiPhoneNumberId", "voiceAgentName", "voiceModel", "maxDuration"];
+    const lockedFields = ["voiceAgentName", "voiceModel", "maxDuration"];
     lockedFields.forEach((fid) => {
       const el = document.getElementById(fid);
       if (!el) return;

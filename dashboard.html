@@ -647,7 +647,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <b id="accountTypeValue">External</b>
                   <span id="accountTypeHelp" class="muted">External workspaces can fully customize AI prompts.</span>
                 </article>
-                <article class="mini-card">
+                <article class="mini-card" id="keySourceCard">
                   <h3>Key Source</h3>
                   <b id="keySourceValue">Customer Keys</b>
                   <span id="keySourceHelp" class="muted">Using your own API keys from settings.</span>
@@ -927,7 +927,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <b id="voiceAgentStatus">Inactive</b>
                   <span id="voiceAgentStatusHelp" class="muted">Voice agent is not configured</span>
                 </article>
-                <article class="mini-card">
+                <article class="mini-card" id="voiceKeySourceCard">
                   <h3>Key Source</h3>
                   <b id="voiceKeySource">—</b>
                   <span id="voiceKeySourceHelp" class="muted">External users must provide their own VAPI key</span>
@@ -940,7 +940,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               </div>
               <form id="voiceAgentForm" class="stack">
                 <div class="form2">
-                  <div class="field">
+                  <div class="field" id="vapiPhoneNumberIdField">
                     <label for="vapiPhoneNumberId">VAPI Phone Number ID</label>
                     <input id="vapiPhoneNumberId" name="vapiPhoneNumberId" type="text" placeholder="Enter your VAPI phone number ID">
                     <span class="field-hint">The ID of a phone number registered in your VAPI account. Required for outbound calls. Find it in the <a href="https://dashboard.vapi.ai/phone-numbers" target="_blank" rel="noopener">VAPI Dashboard → Phone Numbers</a>.</span>
