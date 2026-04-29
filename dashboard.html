@@ -1597,7 +1597,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="opp-tab" data-tab="conversations" type="button">Conversations</button>
         <button class="opp-tab" data-tab="quotes" type="button">Quotes</button>
         <button class="opp-tab" data-tab="appointments" type="button">Appointments</button>
-        <button class="opp-tab" data-tab="calls" type="button">AI Calls</button>
+
       </div>
 
       <!-- Overview Tab -->
@@ -1616,7 +1616,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3" readonly></textarea></div>
         </div>
         <div class="actions" style="margin-top:16px">
-          <button id="oppCallLeadBtn" class="btn2" type="button"><span class="icon" data-icon="phone"></span> Call Lead with AI</button>
           <button id="oppEditLeadBtn" class="btn" type="button"><span class="icon" data-icon="edit"></span> Edit Lead</button>
         </div>
       </div>
@@ -1642,52 +1641,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         </div>
       </div>
 
-      <!-- AI Calls Tab -->
-      <div id="oppTabCalls" class="opp-tab-content hidden">
-        <div id="oppCallsList" class="run-list">
-          <div class="notice">Loading call history...</div>
-        </div>
-      </div>
     </div>
     <div class="mf">
       <div class="helper">Click any tab to view related records for this lead.</div>
       <div class="actions">
         <button id="closeOpportunityModal" class="btn" type="button">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Call Lead with AI Modal ──────────────────────────────────────────────── -->
-<div id="callLeadModal" class="modal">
-  <div class="modal-card small">
-    <div class="mh">
-      <h2>Call Lead with AI</h2>
-      <p>Initiate an AI-powered voice call to this lead using VAPI.</p>
-    </div>
-    <div class="mb">
-      <input id="callLeadId" type="hidden">
-      <div class="form2">
-        <div class="field">
-          <label for="callLeadPhone">Phone Number</label>
-          <input id="callLeadPhone" type="tel" placeholder="+61 400 000 000">
-        </div>
-        <div class="field">
-          <label for="callLeadAssistant">VAPI Assistant <span style="color:var(--muted)">(optional)</span></label>
-          <select id="callLeadAssistant">
-            <option value="">— Use default assistant —</option>
-          </select>
-        </div>
-      </div>
-      <div class="notice" style="margin-top:14px">
-        <strong>Note:</strong> This will initiate an outbound call using your configured VAPI voice agent. 
-        The call will be logged automatically.
-      </div>
-    </div>
-    <div class="mf">
-      <div class="actions">
-        <button id="cancelCallLeadModal" class="btn" type="button">Cancel</button>
-        <button id="confirmCallLead" class="btn2" type="button"><span class="icon" data-icon="phone"></span> Start Call</button>
       </div>
     </div>
   </div>

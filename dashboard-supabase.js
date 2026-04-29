@@ -766,8 +766,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       openEditLead(leadId);
     }
   });
-  document.getElementById("oppCallLeadBtn")?.addEventListener("click", openCallLeadModal);
-
   // Opportunity tabs
   document.querySelectorAll(".opp-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -783,14 +781,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (tabName === "conversations") loadOppConversations(leadId);
         if (tabName === "quotes") loadOppQuotes(leadId);
         if (tabName === "appointments") loadOppAppointments(leadId);
-        if (tabName === "calls") loadOppCalls(leadId);
       }
     });
   });
-
-  // ── Call Lead Modal ───────────────────────────────────────────────────────
-  document.getElementById("cancelCallLeadModal")?.addEventListener("click", () => closeModal("callLeadModal"));
-  document.getElementById("confirmCallLead")?.addEventListener("click", handleCallLead);
 
   // ── Team Members ──────────────────────────────────────────────────────────
   document.getElementById("teamInviteForm")?.addEventListener("submit", handleTeamInvite);
@@ -1500,33 +1493,12 @@ function renderLeadsTable(leads) {
       <td>
         <div style="display:flex;gap:6px">
           <button class="iconbtn" onclick="openOpportunityModal('${l.id}')" type="button" title="View Details"><span class="icon" data-icon="eye"></span></button>
-          <button class="iconbtn" onclick="callLeadDirect('${l.id}')" type="button" title="Call with AI"><span class="icon" data-icon="phone"></span></button>
           <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button" title="Edit"><span class="icon" data-icon="edit"></span></button>
           <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>
         </div>
       </td>
     </tr>`).join("");
   renderIcons();
-}
-
-// Quick call function from leads table
-async function callLeadDirect(leadId) {
-  const lead = allLeads.find((l) => l.id === leadId);
-  if (!lead) {
-    toast("Lead not found.", true);
-    return;
-  }
-
-  if (!lead.phone) {
-    toast("Lead has no phone number.", true);
-    return;
-  }
-
-  document.getElementById("callLeadId").value = leadId;
-  document.getElementById("callLeadPhone").value = lead.phone;
-
-  await loadVapiAssistants();
-  openModal("callLeadModal");
 }
 
 function renderCustomDataSummary(data) {
@@ -4769,9 +4741,6 @@ async function openOpportunityModal(leadId) {
   document.querySelectorAll(".opp-tab-content").forEach((c) => c.classList.add("hidden"));
   document.getElementById("oppTabOverview")?.classList.remove("hidden");
 
-  // Load assistants for call dropdown
-  await loadVapiAssistants();
-
   openModal("opportunityModal");
 }
 
@@ -4872,37 +4841,6 @@ async function loadOppAppointments(leadId) {
   }
 }
 
-async function loadOppCalls(leadId) {
-  const el = document.getElementById("oppCallsList");
-  if (!el) return;
-
-  try {
-    const { data: calls } = await sb
-      .from("voice_calls")
-      .select("id, vapi_call_id, direction, status, duration, transcript, summary, sentiment, cost, created_at, recording_url")
-      .eq("company_id", currentCompanyId)
-      .eq("lead_id", leadId)
-      .order("created_at", { ascending: false });
-
-    if (!calls?.length) {
-      el.innerHTML = `<div class="notice">No AI calls found for this lead. Use "Call Lead with AI" to make your first call.</div>`;
-      return;
-    }
-
-    el.innerHTML = calls.map((c) => `
-      <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${esc(cap(c.sentiment))}</span>` : ""}</h3>
-        <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
-        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(c.transcript.substring(0, 150))}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
-        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(c.summary)}</p>` : ""}
-        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${esc(c.recording_url)}" target="_blank" rel="noopener noreferrer">Listen to recording</a>` : ""}</p>
-      </div>
-    `).join("");
-  } catch (err) {
-    el.innerHTML = `<div class="notice">Failed to load call history.</div>`;
-  }
-}
-
 function openConversationFromOpp(convId, leadId) {
   closeModal("opportunityModal");
   navigateTo("conversations");
@@ -4911,88 +4849,6 @@ function openConversationFromOpp(convId, leadId) {
     const item = document.querySelector(`.conv-item[data-conv-id="${convId}"]`);
     if (item) item.click();
   }, 300);
-}
-
-// ─── Call Lead with AI ────────────────────────────────────────────────────────
-async function openCallLeadModal() {
-  const leadId = document.getElementById("oppModalLeadId")?.value;
-  const lead = allLeads.find((l) => l.id === leadId);
-
-  if (!lead) {
-    toast("Lead not found.", true);
-    return;
-  }
-
-  document.getElementById("callLeadId").value = leadId;
-  document.getElementById("callLeadPhone").value = lead.phone || "";
-
-  closeModal("opportunityModal");
-  openModal("callLeadModal");
-}
-
-async function loadVapiAssistants() {
-  try {
-    const json = await edgeFn("voice-ai-provider", { action: "get_config" });
-
-    // Populate assistant dropdown if we have config
-    const select = document.getElementById("callLeadAssistant");
-    if (select && json.config?.vapi_assistant_id) {
-      select.innerHTML = `
-        <option value="">— Use default assistant —</option>
-        <option value="${json.config.vapi_assistant_id}">${json.config.name || "Custom Assistant"}</option>
-      `;
-    }
-  } catch (err) {
-    console.error("Load VAPI assistants error:", err);
-  }
-}
-
-async function handleCallLead() {
-  const leadId = document.getElementById("callLeadId")?.value;
-  const phone = document.getElementById("callLeadPhone")?.value?.trim();
-  const assistantId = document.getElementById("callLeadAssistant")?.value;
-
-  if (!phone) {
-    toast("Please enter a phone number.", true);
-    return;
-  }
-
-  const btn = document.getElementById("confirmCallLead");
-  if (btn) {
-    btn.disabled = true;
-    btn.dataset.originalText = btn.innerHTML;
-    btn.innerHTML = `<span>Calling...</span>`;
-  }
-
-  try {
-    const json = await edgeFn("voice-ai-provider", {
-      action: "create_call",
-      leadId: leadId,
-      phoneNumber: phone,
-      assistantId: assistantId || undefined,
-      metadata: {
-        source: "dashboard",
-        initiated_by: currentUser?.id,
-      }
-    });
-
-    toast(`Call initiated! Call ID: ${json.callId?.slice(0, 8) || "N/A"}`);
-    closeModal("callLeadModal");
-
-    // Refresh call list if we're viewing the opportunity
-    const currentLeadId = document.getElementById("oppModalLeadId")?.value;
-    if (currentLeadId === leadId) {
-      loadOppCalls(leadId);
-    }
-
-  } catch (err) {
-    toast(err.message, true);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = btn.dataset.originalText || `<span class="icon" data-icon="phone"></span> Start Call`;
-    }
-  }
 }
 
 // ─── Approve & Send Quote ─────────────────────────────────────────────────────
