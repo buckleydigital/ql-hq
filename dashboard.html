@@ -1597,7 +1597,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="opp-tab" data-tab="conversations" type="button">Conversations</button>
         <button class="opp-tab" data-tab="quotes" type="button">Quotes</button>
         <button class="opp-tab" data-tab="appointments" type="button">Appointments</button>
-
+        <button class="opp-tab" data-tab="calls" type="button">AI Calls</button>
       </div>
 
       <!-- Overview Tab -->
@@ -1638,6 +1638,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div id="oppTabAppointments" class="opp-tab-content hidden">
         <div id="oppAppointmentsList" class="run-list">
           <div class="notice">Loading appointments...</div>
+        </div>
+      </div>
+
+      <!-- AI Calls Tab -->
+      <div id="oppTabCalls" class="opp-tab-content hidden">
+        <div id="oppCallsList" class="run-list">
+          <div class="notice">Loading call history...</div>
         </div>
       </div>
 

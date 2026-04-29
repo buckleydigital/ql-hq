@@ -781,6 +781,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (tabName === "conversations") loadOppConversations(leadId);
         if (tabName === "quotes") loadOppQuotes(leadId);
         if (tabName === "appointments") loadOppAppointments(leadId);
+        if (tabName === "calls") loadOppCalls(leadId);
       }
     });
   });
@@ -4850,6 +4851,39 @@ function openConversationFromOpp(convId, leadId) {
     if (item) item.click();
   }, 300);
 }
+
+async function loadOppCalls(leadId) {
+  const el = document.getElementById("oppCallsList");
+  if (!el) return;
+
+  try {
+    const { data: calls } = await sb
+      .from("voice_calls")
+      .select("id, vapi_call_id, direction, status, duration, transcript, summary, sentiment, cost, created_at, recording_url")
+      .eq("company_id", currentCompanyId)
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+
+    if (!calls?.length) {
+      el.innerHTML = `<div class="notice">No AI calls found for this lead.</div>`;
+      return;
+    }
+
+    el.innerHTML = calls.map((c) => `
+      <div class="run">
+        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${esc(cap(c.sentiment))}</span>` : ""}</h3>
+        <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
+        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(c.transcript.substring(0, 150))}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
+        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(c.summary)}</p>` : ""}
+        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${esc(c.recording_url)}" target="_blank" rel="noopener noreferrer">Listen to recording</a>` : ""}</p>
+      </div>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load call history.</div>`;
+  }
+}
+
+
 
 // ─── Approve & Send Quote ─────────────────────────────────────────────────────
 // Updates quote status to "sent", sends the public link via SMS to the lead,
