@@ -456,10 +456,10 @@ Today: ${todayStr}. Current time: ${timeStr}.
 
 IMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
 ---JSON---
-{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<${[`none`, callbackEnabled ? `callback` : null, onsiteEnabled ? `onsite` : null, quoteDrafting ? `quote` : null].filter(Boolean).join(`|`)}>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
 
 Score: 0-20 cold, 21-40 mild interest, 41-60 engaged, 61-80 ready, 81-100 confirmed.
-Action: "callback" if a call time was confirmed, "onsite" if a visit was confirmed, "quote" if enough detail gathered for a quote. Otherwise "none".
+Action: ${[callbackEnabled ? `"callback" if a call time was confirmed` : null, onsiteEnabled ? `"onsite" if an on-site visit was confirmed` : null, quoteDrafting ? `"quote" if enough detail gathered for a quote` : null].filter(Boolean).join(`, `) || `always "none"`}. Otherwise "none".${!onsiteEnabled ? ` Never use "onsite" — on-site visits are not available.` : ""}
 appointment_time: full ISO8601 with timezone (e.g. "2026-04-02T14:00:00+10:00").
 quote_context: only when action is "quote", summarise what needs quoting.
 ${quoteStatus ? `\nCurrent quote status: ${quoteStatus}. Do not trigger another quote.` : ""}`;
