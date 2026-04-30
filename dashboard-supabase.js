@@ -1136,19 +1136,8 @@ function isAdmin() {
 }
 
 function applyPermissionRestrictions() {
-  // Non-admin users: hide admin-only nav items
-  const adminOnlyPages = ['team-members', 'ai-settings', 'voice-ai', 'integrations'];
-  adminOnlyPages.forEach((page) => {
-    const navBtn = document.querySelector(`[data-page="${page}"]`);
-    if (navBtn) navBtn.style.display = isAdmin() ? '' : 'none';
-  });
-
-  // Hide edit buttons based on permissions
-  document.querySelectorAll('[data-perm]').forEach((el) => {
-    const perm = el.dataset.perm;
-    const allowed = isAdmin() || currentUserPerms[perm];
-    el.style.display = allowed ? '' : 'none';
-  });
+  // Sidebar nav items are always visible to all users.
+  // The only access restriction is the /admin page, which is guarded separately.
 }
 
 function navigateTo(page) {
