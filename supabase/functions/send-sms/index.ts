@@ -66,13 +66,12 @@ Deno.serve(async (req) => {
     // Get user's company
     const { data: profile } = await db
       .from("profiles")
-      .select("company_id, user_type")
+      .select("company_id")
       .eq("id", user.id)
       .single();
 
     if (!profile) return json({ error: "No profile found" }, 403);
     const companyId = profile.company_id;
-    const userType: string = profile.user_type ?? "external";
 
     // Parse request
     const { conversation_id, lead_id, body } = await req.json();
@@ -118,33 +117,11 @@ Deno.serve(async (req) => {
       return json({ error: "No Twilio number configured" }, 400);
     }
 
-    // Resolve Twilio keys (try DB first, fall back to edge-function secrets for internal only)
-    let twilioSid: string, twilioAuth: string;
-    try {
-      const { data: sid, error: e1 } = await db.rpc("resolve_api_key", {
-        p_company_id: companyId,
-        p_provider: "twilio",
-      });
-      const { data: auth, error: e2 } = await db.rpc("resolve_api_key", {
-        p_company_id: companyId,
-        p_provider: "twilio_auth",
-      });
-      if (e1 || e2 || !sid || !auth) throw new Error("Key resolution failed");
-      twilioSid = sid;
-      twilioAuth = auth;
-    } catch (err) {
-      // Only internal (agency) accounts fall back to platform env secrets
-      if (userType === "external") {
-        return json({ error: "No Twilio API keys configured. Please add your Twilio keys in Settings → Provider Keys." }, 400);
-      }
-      console.warn("Twilio key resolution from DB failed, trying env secrets:", (err as Error).message);
-      const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-      const envAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
-      if (!envSid || !envAuth) {
-        return json({ error: "Failed to resolve Twilio API keys" }, 500);
-      }
-      twilioSid = envSid;
-      twilioAuth = envAuth;
+    // Resolve Twilio keys from edge-function secrets
+    const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+    if (!twilioSid || !twilioAuth) {
+      return json({ error: "Twilio credentials not configured" }, 500);
     }
 
     // Check SMS credits

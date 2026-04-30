@@ -643,16 +643,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div class="panel-b">
               <div class="mini-grid">
                 <article class="mini-card">
-                  <h3>Account Type</h3>
-                  <b id="accountTypeValue">External</b>
-                  <span id="accountTypeHelp" class="muted">External workspaces can fully customize AI prompts.</span>
-                </article>
-                <article class="mini-card">
-                  <h3>Key Source</h3>
-                  <b id="keySourceValue">Customer Keys</b>
-                  <span id="keySourceHelp" class="muted">Using your own API keys from settings.</span>
-                </article>
-                <article class="mini-card">
                   <h3>Twilio Numbers</h3>
                   <b id="twilioCountValue">0</b>
                   <span id="twilioCountHelp" class="muted">Assign receiving numbers before enabling live SMS.</span>
@@ -928,11 +918,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <span id="voiceAgentStatusHelp" class="muted">Voice agent is not configured</span>
                 </article>
                 <article class="mini-card">
-                  <h3>Key Source</h3>
-                  <b id="voiceKeySource">—</b>
-                  <span id="voiceKeySourceHelp" class="muted">External users must provide their own VAPI key</span>
-                </article>
-                <article class="mini-card">
                   <h3>Total Calls</h3>
                   <b id="voiceCallCount">0</b>
                   <span class="muted">Calls processed through voice agent</span>
@@ -948,7 +933,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <div class="field" id="vapiAssistantIdField">
                     <label for="vapiAssistantId">VAPI Assistant ID</label>
                     <input id="vapiAssistantId" name="vapiAssistantId" type="text" placeholder="Enter your VAPI assistant ID">
-                    <span id="vapiAssistantIdHint" class="field-hint">Required for external users. Internal users have this pre-configured.</span>
+                    <span id="vapiAssistantIdHint" class="field-hint">Enter your VAPI Assistant ID.</span>
                   </div>
                   <div class="field">
                     <label for="voiceAgentName">Agent Name</label>
@@ -1025,30 +1010,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               </div>
             </section>
 
-            <section class="panel">
-              <div class="panel-h">
-                <div>
-                  <h2>Provider Settings</h2>
-                  <p>Configure your VAPI provider credentials.</p>
-                </div>
-              </div>
-              <div class="panel-b">
-                <div id="voiceProviderInfo" class="notice">
-                  <p><strong>Internal Users:</strong> Your voice agent uses the agency's VAPI key automatically.</p>
-                  <p style="margin-top:10px"><strong>External Users:</strong> You must provide your own VAPI Assistant ID above.</p>
-                </div>
-                <form id="voiceProviderForm" class="stack" style="margin-top:16px">
-                  <div class="field">
-                    <label for="externalVapiKey">Your VAPI API Key <span style="color:var(--muted);font-weight:400;text-transform:none">(external users only)</span></label>
-                    <input id="externalVapiKey" name="externalVapiKey" type="password" placeholder="sk-...">
-                    <span class="field-hint">Only required if you're an external user bringing your own provider.</span>
-                  </div>
-                  <div class="actions">
-                    <button class="btn" type="submit">Save Provider Key</button>
-                  </div>
-                </form>
-              </div>
-            </section>
           </div>
 
           <section class="panel">
