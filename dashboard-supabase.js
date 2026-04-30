@@ -220,8 +220,9 @@ let customFields     = [];
 let allLeads         = [];
 let dragLeadId       = null;
 let authInitialized  = false;
-let currentUserType  = null;  // 'internal' or 'external' — NEW
-let currentUserRole  = null;  // 'owner' | 'admin' | 'member'
+let currentUserType      = null;   // 'internal' or 'external' — NEW
+let currentUserRole      = null;   // 'owner' | 'admin' | 'member'
+let currentUserIsSuperAdmin = false; // platform-level super-admin (is_admin column)
 let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
@@ -1037,6 +1038,7 @@ async function showApp() {
       currentUserType = profile.user_type;
     }
     currentUserRole = profile?.role || 'member';
+    currentUserIsSuperAdmin = profile?.is_admin === true;
 
     if (profile) {
       currentCompanyId = profile.company_id;
@@ -1082,7 +1084,7 @@ async function showApp() {
 
       if (repData) {
         currentUserPerms = repData;
-      } else if (currentUserRole === 'owner' || currentUserRole === 'admin') {
+      } else if (currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserIsSuperAdmin) {
         // Owners/admins get full permissions even without a sales_reps record
         currentUserPerms = {
           can_edit_leads: true, can_edit_quotes: true, can_edit_appointments: true,
@@ -1130,7 +1132,7 @@ const PAGE_META = {
 };
 
 function isAdmin() {
-  return currentUserRole === 'owner' || currentUserRole === 'admin';
+  return currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserIsSuperAdmin;
 }
 
 function applyPermissionRestrictions() {
