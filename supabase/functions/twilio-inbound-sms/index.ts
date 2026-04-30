@@ -437,6 +437,18 @@ ON-SITE VISITS:
   const todayStr = now.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
 
+  // Build the JSON action enum and description based on which features are enabled,
+  // so the AI is never told it can use "onsite" when on-site visits are turned off.
+  const actionEnum = ["none", callbackEnabled && "callback", onsiteEnabled && "onsite", quoteDrafting && "quote"]
+    .filter(Boolean).join("|");
+  const actionDescParts = [
+    callbackEnabled && `"callback" if a call time was confirmed`,
+    onsiteEnabled && `"onsite" if an on-site visit was confirmed`,
+    quoteDrafting && `"quote" if enough detail gathered for a quote`,
+  ].filter(Boolean) as string[];
+  const actionDesc = actionDescParts.length > 0 ? actionDescParts.join(", ") + `. Otherwise "none".` : `"none".`;
+  const onsiteProhibition = !onsiteEnabled ? ` Never use "onsite" — on-site visits are not available.` : "";
+
   const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person — casual, warm, brief.
 
 RULES (never break these):
@@ -456,10 +468,10 @@ Today: ${todayStr}. Current time: ${timeStr}.
 
 IMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
 ---JSON---
-{"score": <0-100>, "score_reason": "<brief reason>", "action": "<${[`none`, callbackEnabled ? `callback` : null, onsiteEnabled ? `onsite` : null, quoteDrafting ? `quote` : null].filter(Boolean).join(`|`)}>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<${actionEnum}>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
 
 Score: 0-20 cold, 21-40 mild interest, 41-60 engaged, 61-80 ready, 81-100 confirmed.
-Action: ${[callbackEnabled ? `"callback" if a call time was confirmed` : null, onsiteEnabled ? `"onsite" if an on-site visit was confirmed` : null, quoteDrafting ? `"quote" if enough detail gathered for a quote` : null].filter(Boolean).join(`, `) || `always "none"`}. Otherwise "none".${!onsiteEnabled ? ` Never use "onsite" — on-site visits are not available.` : ""}
+Action: ${actionDesc}${onsiteProhibition}
 appointment_time: full ISO8601 with timezone (e.g. "2026-04-02T14:00:00+10:00").
 quote_context: only when action is "quote", summarise what needs quoting.
 ${quoteStatus ? `\nCurrent quote status: ${quoteStatus}. Do not trigger another quote.` : ""}`;
