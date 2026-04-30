@@ -279,7 +279,7 @@ async function resolveKey(
     if (envVal) return envVal;
   }
 
-  throw new Error(`Key not configured for ${provider}: set the ${ENV_FALLBACKS[provider] ?? provider} secret`);
+  throw new Error(`Key not configured for ${provider}: set the ${ENV_FALLBACKS[provider] ?? provider.toUpperCase()} secret`);
 }
 
 // ---------------------------------------------------------------------------
