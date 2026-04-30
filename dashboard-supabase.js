@@ -3112,7 +3112,6 @@ async function loadAiSettings() {
       // Toggle switches
       setCheckboxValue("aiEnabled", data.is_active);
       setCheckboxValue("aiAutoReply", data.auto_reply);
-      setCheckboxValue("aiNurtureEnabled", data.ai_nurture_enabled);
       setCheckboxValue("aiCallbackEnabled", data.callback_enabled);
       setCheckboxValue("aiOnsiteEnabled", data.onsite_enabled);
       setCheckboxValue("aiQuoteDraftingEnabled", data.quote_drafting_enabled);
@@ -3213,7 +3212,6 @@ async function handleAiSettingsSave(e) {
     max_sms_words:          Number(document.getElementById("aiMaxWords")?.value) || 160,
     is_active:              isActive,
     auto_reply:             document.getElementById("aiAutoReply")?.checked ?? true,
-    ai_nurture_enabled:     document.getElementById("aiNurtureEnabled")?.checked ?? true,
     callback_enabled:       callbackEnabled,
     onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked ?? false,
     quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
