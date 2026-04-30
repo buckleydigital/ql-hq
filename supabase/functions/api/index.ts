@@ -407,29 +407,11 @@ async function handleSendSms(
   const fromNumber = smsConfig?.twilio_number;
   if (!fromNumber) return json({ error: "No Twilio number configured" }, 500);
 
-  // Resolve Twilio keys (resolve_api_key returns a single string per call)
-  let twilioSid: string, twilioAuth: string;
-  try {
-    const { data: sid, error: e1 } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio",
-    });
-    const { data: auth, error: e2 } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio_auth",
-    });
-    if (e1 || e2 || !sid || !auth) throw new Error("Key resolution failed");
-    twilioSid = sid;
-    twilioAuth = auth;
-  } catch {
-    // Fallback to env secrets
-    const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const envAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
-    if (!envSid || !envAuth) {
-      return json({ error: "Twilio not configured" }, 500);
-    }
-    twilioSid = envSid;
-    twilioAuth = envAuth;
+  // Resolve Twilio keys from edge-function secrets
+  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!twilioSid || !twilioAuth) {
+    return json({ error: "Twilio not configured" }, 500);
   }
 
   // Deduct SMS credit
@@ -593,37 +575,9 @@ async function sendWelcomeSmsIfEnabled(
     return;
   }
 
-  // Resolve Twilio keys
-  const { data: companyProfile } = await db
-    .from("profiles")
-    .select("user_type")
-    .eq("company_id", companyId)
-    .limit(1)
-    .maybeSingle();
-  const userType: string = (companyProfile?.user_type as string) ?? "external";
-
-  let twilioSid: string | null = null;
-  let twilioAuth: string | null = null;
-  try {
-    const { data: sid } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio",
-    });
-    const { data: auth } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio_auth",
-    });
-    twilioSid = sid;
-    twilioAuth = auth;
-  } catch {
-    // fall through
-  }
-
-  if (!twilioSid || !twilioAuth) {
-    if (userType === "external") return;
-    twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID") || null;
-    twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN") || null;
-  }
+  // Resolve Twilio keys from edge-function secrets
+  const twilioSid: string | null = Deno.env.get("TWILIO_ACCOUNT_SID") || null;
+  const twilioAuth: string | null = Deno.env.get("TWILIO_AUTH_TOKEN") || null;
   if (!twilioSid || !twilioAuth) return;
 
   // Send via Twilio

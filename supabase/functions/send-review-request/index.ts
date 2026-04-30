@@ -108,34 +108,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Resolve Twilio credentials
-        let twilioSid: string, twilioAuth: string;
-        try {
-          const { data: sid } = await db.rpc("resolve_api_key", {
-            p_company_id: request.company_id,
-            p_provider: "twilio",
-          });
-          const { data: auth } = await db.rpc("resolve_api_key", {
-            p_company_id: request.company_id,
-            p_provider: "twilio_auth",
-          });
-          if (!sid || !auth) throw new Error("Key resolution failed");
-          twilioSid = sid;
-          twilioAuth = auth;
-        } catch {
-          // Fallback to env secrets
-          const envSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-          const envAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
-          if (!envSid || !envAuth) {
-            console.warn(`No Twilio keys for company ${request.company_id}`);
-            await db.from("review_requests")
-              .update({ status: "failed" })
-              .eq("id", request.id);
-            failed++;
-            continue;
-          }
-          twilioSid = envSid;
-          twilioAuth = envAuth;
+        // Resolve Twilio credentials from edge-function secrets
+        const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+        if (!twilioSid || !twilioAuth) {
+          console.warn(`Twilio credentials not configured for company ${request.company_id}`);
+          await db.from("review_requests")
+            .update({ status: "failed" })
+            .eq("id", request.id);
+          failed++;
+          continue;
         }
 
         // Check SMS credits

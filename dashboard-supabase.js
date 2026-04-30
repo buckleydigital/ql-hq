@@ -220,7 +220,6 @@ let customFields     = [];
 let allLeads         = [];
 let dragLeadId       = null;
 let authInitialized  = false;
-let currentUserType      = null;   // 'internal' or 'external' — NEW
 let currentUserRole      = null;   // 'owner' | 'admin' | 'member'
 let currentUserIsSuperAdmin = false; // platform-level super-admin (is_admin column)
 let currentUserPerms = {};    // permissions from sales_reps
@@ -1025,7 +1024,7 @@ async function showApp() {
   try {
     const { data: profile, error: profileError } = await sb
       .from("profiles")
-      .select("company_id, full_name, phone, role, user_type, is_admin")
+      .select("company_id, full_name, phone, role, is_admin")
       .eq("id", currentUser.id)
       .maybeSingle();
 
@@ -1034,10 +1033,7 @@ async function showApp() {
       toast("Error loading your profile — please refresh the page.", true);
     }
 
-    // Store user type for prompt editing permissions
-    if (profile?.user_type) {
-      currentUserType = profile.user_type;
-    }
+    // Store user role and admin status
     currentUserRole = profile?.role || 'member';
     currentUserIsSuperAdmin = profile?.is_admin === true;
 
@@ -3105,36 +3101,6 @@ async function loadAiSettings() {
       .eq("company_id", currentCompanyId)
       .maybeSingle();
     
-    // Get user profile to check if they can edit prompts
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("user_type")
-      .eq("id", currentUser.id)
-      .maybeSingle();
-    
-    const isInternal = profile?.user_type === "internal";
-    currentUserType = profile?.user_type || "external";
-    
-    // Update account type display
-    const accountTypeValue = document.getElementById("accountTypeValue");
-    const accountTypeHelp = document.getElementById("accountTypeHelp");
-    if (accountTypeValue) accountTypeValue.textContent = isInternal ? "Internal (Agency)" : "External";
-    if (accountTypeHelp) {
-      accountTypeHelp.textContent = isInternal 
-        ? "Using agency defaults." 
-        : "External workspaces can fully customize AI prompts.";
-    }
-    
-    // Update key source display
-    const keySourceValue = document.getElementById("keySourceValue");
-    const keySourceHelp = document.getElementById("keySourceHelp");
-    if (keySourceValue) keySourceValue.textContent = isInternal ? "Agency Keys" : "Customer Keys";
-    if (keySourceHelp) {
-      keySourceHelp.textContent = isInternal 
-        ? "Using agency-managed API keys." 
-        : "Using your own API keys from settings.";
-    }
-    
     // Populate form fields
     if (data) {
       // General settings
@@ -3175,12 +3141,10 @@ async function loadAiSettings() {
       // Quote pricing config
       loadPricingConfigUI(data.quote_pricing_config);
       
-      // System prompt (only editable for external users)
+      // System prompt
       const systemPromptEl = document.getElementById("aiSystemPrompt");
       if (systemPromptEl) {
         systemPromptEl.value = data.system_prompt || "";
-        systemPromptEl.readOnly = isInternal;
-        systemPromptEl.style.opacity = isInternal ? "0.6" : "1";
       }
       
       // Update prompt help text
@@ -3222,15 +3186,6 @@ function setCheckboxValue(id, value) {
 async function handleAiSettingsSave(e) {
   e.preventDefault();
   
-  // Get user type to check if they can edit prompts
-  const { data: profile } = await sb
-    .from("profiles")
-    .select("user_type")
-    .eq("id", currentUser.id)
-    .maybeSingle();
-  
-  const isInternal = profile?.user_type === "internal";
-  
   // Build payload
   const payload = {
     company_id:             currentCompanyId,
@@ -3268,12 +3223,8 @@ async function handleAiSettingsSave(e) {
     
     // Quote pricing config
     quote_pricing_config:   collectPricingConfig(),
+    system_prompt:          document.getElementById("aiSystemPrompt")?.value || null,
   };
-  
-  // Only include system_prompt for external users
-  if (!isInternal) {
-    payload.system_prompt = document.getElementById("aiSystemPrompt")?.value || null;
-  }
   
   try {
     const { error } = await sb
@@ -4221,103 +4172,6 @@ async function loadVoiceAi() {
       .eq("company_id", currentCompanyId)
       .maybeSingle();
 
-    // Load profile to check user type
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("user_type")
-      .eq("id", currentUser.id)
-      .maybeSingle();
-
-    const isInternal = profile?.user_type === "internal";
-
-    // Update UI based on user type
-    const voiceKeySource = document.getElementById("voiceKeySource");
-    const voiceKeySourceHelp = document.getElementById("voiceKeySourceHelp");
-
-    if (voiceKeySource) {
-      voiceKeySource.textContent = isInternal ? "Agency Key" : "Customer Key";
-    }
-    if (voiceKeySourceHelp) {
-      voiceKeySourceHelp.textContent = isInternal 
-        ? "Using agency VAPI key for voice calls." 
-        : "You must provide your own VAPI API key and Assistant ID.";
-    }
-
-    // Lock config fields for internal users (only prompt, greeting, transfer phone & voice select editable)
-    const lockedFields = ["vapiPhoneNumberId", "voiceAgentName", "voiceModel", "maxDuration"];
-    lockedFields.forEach((fid) => {
-      const el = document.getElementById(fid);
-      if (!el) return;
-      if (isInternal) {
-        el.disabled = true;
-        el.style.opacity = "0.6";
-        el.style.cursor = "not-allowed";
-      } else {
-        el.disabled = false;
-        el.style.opacity = "1";
-        el.style.cursor = "";
-      }
-    });
-
-    // Hide VAPI Assistant ID field entirely for internal users
-    const assistantField = document.getElementById("vapiAssistantIdField");
-    if (assistantField) assistantField.style.display = isInternal ? "none" : "";
-
-    // For internal users: hide raw Voice ID input, show voice dropdown
-    // For external users: show raw Voice ID input, hide dropdown
-    const voiceIdField = document.getElementById("voiceIdField");
-    const voiceSelectField = document.getElementById("voiceSelectField");
-    const customVoiceIdField = document.getElementById("customVoiceIdField");
-    if (voiceIdField) voiceIdField.style.display = isInternal ? "none" : "";
-    if (voiceSelectField) voiceSelectField.style.display = isInternal ? "" : "none";
-    if (customVoiceIdField) customVoiceIdField.style.display = "none";
-
-    // Populate voice dropdown for internal users
-    if (isInternal) {
-      const voiceSelect = document.getElementById("voiceSelect");
-      if (voiceSelect) {
-        const { data: voices, error: voicesErr } = await sb.from("elevenlabs_voices").select("name, voice_id").order("name");
-        if (voicesErr) console.warn("Failed to load voices:", voicesErr.message);
-        voiceSelect.innerHTML = '<option value="">Select a voice…</option>';
-        (voices || []).forEach((v) => {
-          const opt = document.createElement("option");
-          opt.value = v.voice_id;
-          opt.textContent = v.name;
-          voiceSelect.appendChild(opt);
-        });
-        // Add "Custom Voice ID" option at the end
-        const customOpt = document.createElement("option");
-        customOpt.value = "__custom__";
-        customOpt.textContent = "Custom Voice ID…";
-        voiceSelect.appendChild(customOpt);
-
-        // Toggle custom voice ID input when "Custom" is selected
-        voiceSelect.addEventListener("change", () => {
-          if (customVoiceIdField) {
-            customVoiceIdField.style.display = voiceSelect.value === "__custom__" ? "" : "none";
-          }
-        });
-      }
-    }
-
-    // Update field hints for internal users
-    const assistantHint = document.getElementById("vapiAssistantIdHint");
-    if (assistantHint) {
-      assistantHint.textContent = isInternal
-        ? "Managed by your agency. Contact them to change."
-        : "Required — enter your VAPI Assistant ID.";
-    }
-
-    // Show/hide provider key form based on user type
-    const providerForm = document.getElementById("voiceProviderForm");
-    const providerInfo = document.getElementById("voiceProviderInfo");
-    if (providerForm) providerForm.style.display = isInternal ? "none" : "";
-    if (providerInfo) {
-      providerInfo.innerHTML = isInternal
-        ? `<p><strong>Agency-Managed:</strong> Your voice agent is pre-configured by your agency. You can edit the system prompt, greeting, transfer number, and voice selection.</p>`
-        : `<p><strong>External Users:</strong> You must provide your own VAPI API key and Assistant ID to use voice AI.</p>`;
-    }
-
     // Populate form if config exists
     if (config) {
       const vapiAssistantId = document.getElementById("vapiAssistantId");
@@ -4338,18 +4192,6 @@ async function loadVoiceAi() {
       if (voiceAgentName) voiceAgentName.value = config.name || "";
       if (voiceModel) voiceModel.value = config.model || "gpt-4o";
       if (voiceId) voiceId.value = config.voice_id || "";
-      const voiceSelect = document.getElementById("voiceSelect");
-      if (voiceSelect && config.voice_id) {
-        voiceSelect.value = config.voice_id;
-        // If the saved voice_id isn't in the preset options, select "Custom" and populate the custom input
-        if (voiceSelect.value !== config.voice_id) {
-          voiceSelect.value = "__custom__";
-          const customInput = document.getElementById("customVoiceId");
-          if (customInput) customInput.value = config.voice_id;
-          const customField = document.getElementById("customVoiceIdField");
-          if (customField) customField.style.display = "";
-        }
-      }
       if (maxDuration) maxDuration.value = config.max_duration || 300;
       if (transferPhone) transferPhone.value = config.transfer_phone || "";
       if (voiceSystemPrompt) voiceSystemPrompt.value = config.system_prompt || "";
@@ -4392,46 +4234,19 @@ async function handleVoiceAgentSave(e) {
   e.preventDefault();
 
   try {
-    // Check user type to restrict what internal users can save
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("user_type")
-      .eq("id", currentUser.id)
-      .maybeSingle();
-
-    const isInternal = profile?.user_type === "internal";
-
-    let payload;
-    if (isInternal) {
-      // Internal users can update system prompt, greeting, transfer phone, and voice selection
-      const selectedVoice = document.getElementById("voiceSelect")?.value;
-      const resolvedVoiceId = selectedVoice === "__custom__"
-        ? (document.getElementById("customVoiceId")?.value || null)
-        : (selectedVoice || null);
-      payload = {
-        company_id:    currentCompanyId,
-        system_prompt: document.getElementById("voiceSystemPrompt")?.value || null,
-        greeting:      document.getElementById("voiceGreeting")?.value || null,
-        transfer_phone: document.getElementById("transferPhone")?.value || null,
-        voice_id:      resolvedVoiceId,
-        is_active:     document.getElementById("voiceAgentActive")?.checked || false,
-      };
-    } else {
-      // External users can configure everything
-      payload = {
-        company_id:            currentCompanyId,
-        vapi_phone_number_id:  document.getElementById("vapiPhoneNumberId")?.value || null,
-        vapi_assistant_id:     document.getElementById("vapiAssistantId")?.value || null,
-        name:                  document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
-        model:                 document.getElementById("voiceModel")?.value || "gpt-4o",
-        voice_id:              document.getElementById("voiceId")?.value || null,
-        max_duration:          Number(document.getElementById("maxDuration")?.value) || 300,
-        transfer_phone:        document.getElementById("transferPhone")?.value || null,
-        system_prompt:         document.getElementById("voiceSystemPrompt")?.value || null,
-        greeting:              document.getElementById("voiceGreeting")?.value || null,
-        is_active:             document.getElementById("voiceAgentActive")?.checked || false,
-      };
-    }
+    const payload = {
+      company_id:            currentCompanyId,
+      vapi_phone_number_id:  document.getElementById("vapiPhoneNumberId")?.value || null,
+      vapi_assistant_id:     document.getElementById("vapiAssistantId")?.value || null,
+      name:                  document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
+      model:                 document.getElementById("voiceModel")?.value || "gpt-4o",
+      voice_id:              document.getElementById("voiceId")?.value || null,
+      max_duration:          Number(document.getElementById("maxDuration")?.value) || 300,
+      transfer_phone:        document.getElementById("transferPhone")?.value || null,
+      system_prompt:         document.getElementById("voiceSystemPrompt")?.value || null,
+      greeting:              document.getElementById("voiceGreeting")?.value || null,
+      is_active:             document.getElementById("voiceAgentActive")?.checked || false,
+    };
 
     const { error } = await sb
       .from("voice_agent_config")
@@ -4453,26 +4268,6 @@ async function handleVoiceAgentSave(e) {
 
   } catch (err) {
     toast("Failed to save voice agent configuration.", true);
-  }
-}
-
-async function handleVoiceProviderSave(e) {
-  e.preventDefault();
-
-  const externalKey = document.getElementById("externalVapiKey")?.value?.trim();
-  if (!externalKey) {
-    toast("Please enter your VAPI API key.", true);
-    return;
-  }
-
-  try {
-    await edgeFn("voice-ai-provider", { action: "save_key", vapiKey: externalKey });
-
-    toast("Provider key saved securely.");
-    document.getElementById("voiceProviderForm")?.reset();
-
-  } catch (err) {
-    toast(err.message, true);
   }
 }
 
