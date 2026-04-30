@@ -437,6 +437,27 @@ ON-SITE VISITS:
   const todayStr = now.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
 
+  // Build the JSON action enum and description based on which features are enabled,
+  // so the AI is never told it can use "onsite" when on-site visits are turned off.
+  const actionEnum = ["none", callbackEnabled && "callback", onsiteEnabled && "onsite", quoteDrafting && "quote"]
+    .filter(Boolean).join("|");
+  const actionDescParts = [
+    callbackEnabled && `"callback" if a call time was confirmed`,
+    onsiteEnabled && `"onsite" if an on-site visit was confirmed`,
+    quoteDrafting && `"quote" if enough detail gathered for a quote`,
+  ].filter(Boolean) as string[];
+  const actionDesc = actionDescParts.length > 0 ? actionDescParts.join(", ") + `. Otherwise "none".` : `"none".`;
+
+  // Hard prohibitions injected into the numbered RULES so the AI doesn't offer
+  // disabled booking types in conversation (not just in the JSON action field).
+  const disabledTypeRules: string[] = [];
+  if (!onsiteEnabled) {
+    disabledTypeRules.push(`Never offer, suggest, or mention an on-site visit or someone coming out. On-site visits are not available.`);
+  }
+  if (!callbackEnabled) {
+    disabledTypeRules.push(`Never offer, suggest, or mention scheduling a phone call or callback. Callbacks are not available.`);
+  }
+
   const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person — casual, warm, brief.
 
 RULES (never break these):
@@ -446,7 +467,7 @@ RULES (never break these):
 4. Never use emojis, asterisks, bullet points, or markdown.
 5. Never use filler phrases like "grab the details", "nail down the details", "how does time sound", "does that work", "whenever is convenient", "quick chat", "see how we can assist", "we usually just".
 6. Say "the team" or "our team", never refer to anyone by name.
-7. Only ask ONE question per message. Do not stack questions.
+7. Only ask ONE question per message. Do not stack questions.${disabledTypeRules.length > 0 ? "\n" + disabledTypeRules.map((r, i) => `${i + 8}. ${r}`).join("\n") : ""}
 
 ${goalSection}
 ${callbackRules}
@@ -456,10 +477,10 @@ Today: ${todayStr}. Current time: ${timeStr}.
 
 IMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
 ---JSON---
-{"score": <0-100>, "score_reason": "<brief reason>", "action": "<none|callback|onsite|quote>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<${actionEnum}>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>", "quote_context": "<summary or null>"}
 
 Score: 0-20 cold, 21-40 mild interest, 41-60 engaged, 61-80 ready, 81-100 confirmed.
-Action: "callback" if a call time was confirmed, "onsite" if a visit was confirmed, "quote" if enough detail gathered for a quote. Otherwise "none".
+Action: ${actionDesc}
 appointment_time: full ISO8601 with timezone (e.g. "2026-04-02T14:00:00+10:00").
 quote_context: only when action is "quote", summarise what needs quoting.
 ${quoteStatus ? `\nCurrent quote status: ${quoteStatus}. Do not trigger another quote.` : ""}`;

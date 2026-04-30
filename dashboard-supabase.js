@@ -3165,6 +3165,18 @@ async function loadAiSettings() {
     
     loadTwilioNumbers();
     loadWorkflowRuns();
+
+    // When AI is enabled, callbacks must also be on (minimum requirement).
+    // Wire this up once after the form is populated.
+    const aiEnabledEl = document.getElementById("aiEnabled");
+    const aiCallbackEl = document.getElementById("aiCallbackEnabled");
+    if (aiEnabledEl && aiCallbackEl) {
+      aiEnabledEl.addEventListener("change", function () {
+        if (this.checked && !aiCallbackEl.checked) {
+          aiCallbackEl.checked = true;
+        }
+      });
+    }
     
   } catch (err) {
     console.error("Load AI settings error:", err);
@@ -3186,6 +3198,12 @@ function setCheckboxValue(id, value) {
 async function handleAiSettingsSave(e) {
   e.preventDefault();
   
+  const isActive = document.getElementById("aiEnabled")?.checked ?? true;
+  // Callbacks are the minimum requirement when AI is active — force it on.
+  const callbackEnabled = isActive
+    ? true
+    : (document.getElementById("aiCallbackEnabled")?.checked ?? false);
+
   // Build payload
   const payload = {
     company_id:             currentCompanyId,
@@ -3193,10 +3211,10 @@ async function handleAiSettingsSave(e) {
     twilio_number:          document.getElementById("aiTwilioNumber")?.value || null,
     reply_delay_seconds:    Number(document.getElementById("aiReplyDelay")?.value) || 0,
     max_sms_words:          Number(document.getElementById("aiMaxWords")?.value) || 160,
-    is_active:              document.getElementById("aiEnabled")?.checked ?? true,
+    is_active:              isActive,
     auto_reply:             document.getElementById("aiAutoReply")?.checked ?? true,
     ai_nurture_enabled:     document.getElementById("aiNurtureEnabled")?.checked ?? true,
-    callback_enabled:       document.getElementById("aiCallbackEnabled")?.checked ?? false,
+    callback_enabled:       callbackEnabled,
     onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked ?? false,
     quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
     lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked ?? true,
