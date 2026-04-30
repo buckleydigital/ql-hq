@@ -1031,6 +1031,7 @@ async function showApp() {
 
     if (profileError) {
       console.error("Profile fetch error:", profileError);
+      toast("Error loading your profile — please refresh the page.", true);
     }
 
     // Store user type for prompt editing permissions
@@ -1541,6 +1542,10 @@ async function openEditLead(id) {
 
 async function handleLeadSave(e) {
   e.preventDefault();
+  if (!currentCompanyId) {
+    toast("Session error — please refresh the page and try again.", true);
+    return;
+  }
   const id = document.getElementById("leadId")?.value;
 
   const custom_data = {};
