@@ -108,17 +108,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Resolve per-company Twilio keys from the api_keys table
-        const { data: twilioSid, error: sidErr } = await db.rpc("resolve_api_key", {
-          p_company_id: request.company_id,
-          p_provider: "twilio",
-        });
-        const { data: twilioAuth, error: authErr } = await db.rpc("resolve_api_key", {
-          p_company_id: request.company_id,
-          p_provider: "twilio_auth",
-        });
-        if (sidErr || authErr || !twilioSid || !twilioAuth) {
-          console.warn(`Twilio API keys not configured for company ${request.company_id}`);
+        // Resolve Twilio credentials from edge-function secrets
+        const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+        if (!twilioSid || !twilioAuth) {
+          console.warn(`Twilio credentials not configured for company ${request.company_id}`);
           await db.from("review_requests")
             .update({ status: "failed" })
             .eq("id", request.id);

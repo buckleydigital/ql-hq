@@ -117,17 +117,11 @@ Deno.serve(async (req) => {
       return json({ error: "No Twilio number configured" }, 400);
     }
 
-    // Resolve per-company Twilio keys from the api_keys table
-    const { data: twilioSid, error: sidErr } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio",
-    });
-    const { data: twilioAuth, error: authErr } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: "twilio_auth",
-    });
-    if (sidErr || authErr || !twilioSid || !twilioAuth) {
-      return json({ error: "Twilio API keys not configured. Please add your Twilio keys in Settings → Provider Keys." }, 500);
+    // Resolve Twilio keys from edge-function secrets
+    const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+    if (!twilioSid || !twilioAuth) {
+      return json({ error: "Twilio credentials not configured" }, 500);
     }
 
     // Check SMS credits

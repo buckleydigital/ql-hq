@@ -259,7 +259,7 @@ function normalisePhone(phone: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Key resolution: per-company DB keys first, env-secret fallback
+// Key resolution: always use edge-function secrets
 // ---------------------------------------------------------------------------
 const ENV_FALLBACKS: Record<string, string> = {
   twilio: "TWILIO_ACCOUNT_SID",
@@ -268,30 +268,18 @@ const ENV_FALLBACKS: Record<string, string> = {
 };
 
 async function resolveKey(
-  db: SupabaseClient,
-  companyId: string,
+  _db: SupabaseClient,
+  _companyId: string,
   provider: string,
   _userType: string
 ): Promise<string> {
-  // Try per-company key stored in api_keys / Vault via resolve_api_key
-  try {
-    const { data: key, error } = await db.rpc("resolve_api_key", {
-      p_company_id: companyId,
-      p_provider: provider,
-    });
-    if (!error && key) return key as string;
-  } catch {
-    // fall through to env fallback
-  }
-
-  // Fall back to platform-wide env secrets
   const envName = ENV_FALLBACKS[provider];
   if (envName) {
     const envVal = Deno.env.get(envName);
     if (envVal) return envVal;
   }
 
-  throw new Error(`Key not configured for ${provider}: add per-company key in Settings → Provider Keys or set the ${ENV_FALLBACKS[provider] ?? provider.toUpperCase()} secret`);
+  throw new Error(`Key not configured for ${provider}: set the ${ENV_FALLBACKS[provider] ?? provider.toUpperCase()} secret`);
 }
 
 // ---------------------------------------------------------------------------
