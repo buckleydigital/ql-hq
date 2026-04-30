@@ -104,6 +104,18 @@ Deno.serve(async (req) => {
 
     if (!lead?.phone) return json({ error: "Lead has no phone number" }, 400);
 
+    // Normalise to E.164 so Twilio accepts all AU formats:
+    //   0412345678  →  +61412345678
+    //   61412345678 →  +61412345678
+    //   +61412345678 → +61412345678 (unchanged)
+    const toE164AU = (phone: string): string => {
+      const cleaned = phone.replace(/[\s\-().]/g, "");
+      if (cleaned.startsWith("+")) return cleaned;
+      if (cleaned.startsWith("61")) return "+" + cleaned;
+      if (cleaned.startsWith("0")) return "+61" + cleaned.slice(1);
+      return "+" + cleaned;
+    };
+
     // Get SMS config for the company (need the Twilio number to send from)
     const { data: smsConfig } = await db
       .from("sms_agent_config")
@@ -139,7 +151,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        To: lead.phone,
+        To: toE164AU(lead.phone),
         From: smsConfig.twilio_number,
         Body: body.trim(),
       }).toString(),
