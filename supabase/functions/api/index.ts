@@ -314,6 +314,19 @@ async function handleUpdateLead(
   const validationError = validateLeadFields(body);
   if (validationError) return json({ error: validationError }, 400);
 
+  // Block clearing the postcode on a PPL lead
+  if ("postcode" in updates && !updates.postcode) {
+    const { data: existing } = await db
+      .from("leads")
+      .select("is_ppl")
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .single();
+    if (existing?.is_ppl) {
+      return json({ error: "Postcode cannot be removed from a PPL lead" }, 422);
+    }
+  }
+
   const { data, error } = await db
     .from("leads")
     .update(updates)

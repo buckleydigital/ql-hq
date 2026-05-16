@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
 
     // ── Parse body ────────────────────────────────────────────────────────────
     const body = await req.json() as {
-      action?: string;            // 'dispute' | 'manual_review' | 'snapshot_postcode'
+      action?: string;            // 'dispute' | 'manual_review'
       lead_id?: string;
       dispute_id?: string;
       reason?: string;
@@ -116,11 +116,6 @@ Deno.serve(async (req) => {
     // ── Action: escalate existing dispute to manual review ────────────────────
     if (body.action === "manual_review") {
       return await handleManualReview(db, body.dispute_id!, companyId, user.id);
-    }
-
-    // ── Action: snapshot postcode match status (called when lead modal opens) ─
-    if (body.action === "snapshot_postcode") {
-      return await handlePostcodeSnapshot(db, body.lead_id!, companyId);
     }
 
     // ── Action: create dispute (default) ──────────────────────────────────────
@@ -137,7 +132,7 @@ Deno.serve(async (req) => {
     // ── Fetch lead (verify it exists, is PPL, belongs to company) ─────────────
     const { data: lead, error: leadErr } = await db
       .from("leads")
-      .select("id, company_id, is_ppl, phone, postcode, name, created_at, ppl_postcode_in_territory")
+      .select("id, company_id, is_ppl, phone, postcode, name, created_at")
       .eq("id", lead_id)
       .single();
 
@@ -247,54 +242,26 @@ Deno.serve(async (req) => {
     } else {
       // outside_agreed_criteria
       const leadPostcode = (lead.postcode ?? "").trim().toUpperCase();
-      const normalised   = agreedPostcodes.map((p) => p.trim().toUpperCase());
-      const noConfig     = normalised.length === 0;
-
-      // If the postcode was previously snapshotted as in-territory, honour that
-      // result even if the postcode has since been edited or cleared.
-      const snapshotInTerritory: boolean | null = lead.ppl_postcode_in_territory ?? null;
-
-      let isOutside: boolean;
-      let snapshotUsed = false;
-
-      if (snapshotInTerritory === true) {
-        // Snapshot says postcode was inside territory — reject regardless of
-        // current postcode value (prevents deletion bypass).
-        isOutside   = false;
-        snapshotUsed = true;
-      } else if (!noConfig) {
-        isOutside = !normalised.includes(leadPostcode);
-      } else {
-        isOutside = false; // no config → inconclusive, falls through to auto_approved for manual review
-      }
-
-      // If no snapshot yet, write one now so future checks are protected.
-      if (snapshotInTerritory === null && !noConfig) {
-        await db
-          .from("leads")
-          .update({ ppl_postcode_in_territory: !isOutside })
-          .eq("id", lead_id)
-          .is("ppl_postcode_in_territory", null); // only write if still null (race-safe)
-      }
+      const normalised = agreedPostcodes.map((p) => p.trim().toUpperCase());
+      const noConfig    = normalised.length === 0;
+      const isOutside   = !noConfig && !normalised.includes(leadPostcode);
 
       autoCheckResult = {
-        checked:              !noConfig,
-        lead_postcode:        snapshotUsed ? "(removed — snapshot used)" : leadPostcode,
-        agreed_postcodes:     agreedPostcodes,
-        postcode_outside:     isOutside,
-        no_config:            noConfig,
-        snapshot_in_territory: snapshotInTerritory,
-        snapshot_used:        snapshotUsed,
-        note: snapshotUsed
-          ? "Lead postcode was previously verified as within the company's agreed territory — dispute rejected"
-          : noConfig
-            ? "No agreed postcodes configured for this company — manual review required"
-            : isOutside
-              ? "Lead postcode is outside the company's agreed territory"
-              : "Lead postcode is within the company's agreed territory",
+        checked:            !noConfig,
+        lead_postcode:      leadPostcode,
+        agreed_postcodes:   agreedPostcodes,
+        postcode_outside:   isOutside,
+        no_config:          noConfig,
+        note: noConfig
+          ? "No agreed postcodes configured for this company — manual review required"
+          : isOutside
+            ? "Lead postcode is outside the company's agreed territory"
+            : "Lead postcode is within the company's agreed territory",
       };
 
       // If outside territory or no config → auto approved; if inside → rejected
+      // (edge case: no config means we can't confirm, so it goes to auto_approved
+      //  to allow the manual review path)
       disputeStatus = (isOutside || noConfig) ? "auto_approved" : "auto_rejected";
     }
 
@@ -336,61 +303,6 @@ Deno.serve(async (req) => {
     return json({ error: "Internal server error" }, 500);
   }
 });
-
-// ─── Postcode snapshot ────────────────────────────────────────────────────────
-// Called when the lead modal opens (before the user can edit anything).
-// Checks the current postcode against the company's agreed list and writes
-// the result to leads.ppl_postcode_in_territory — but only if the column is
-// still NULL.  Once written it is never overwritten, making it tamper-proof.
-
-async function handlePostcodeSnapshot(
-  db: ReturnType<typeof createClient>,
-  leadId: string,
-  companyId: string,
-): Promise<Response> {
-  if (!leadId) return json({ error: "lead_id is required" }, 400);
-
-  const { data: lead, error: leadErr } = await db
-    .from("leads")
-    .select("id, company_id, is_ppl, postcode, ppl_postcode_in_territory")
-    .eq("id", leadId)
-    .single();
-
-  if (leadErr || !lead) return json({ error: "Lead not found" }, 404);
-  if (lead.company_id !== companyId) return json({ error: "Forbidden" }, 403);
-  if (!lead.is_ppl) return json({ already_snapshotted: false, skipped: true, reason: "not_ppl" });
-
-  // Already snapshotted — return existing value without touching the DB
-  if (lead.ppl_postcode_in_territory !== null) {
-    return json({ already_snapshotted: true, in_territory: lead.ppl_postcode_in_territory });
-  }
-
-  const { data: company } = await db
-    .from("companies")
-    .select("ppl_agreed_postcodes")
-    .eq("id", companyId)
-    .single();
-
-  const agreedPostcodes: string[] = company?.ppl_agreed_postcodes ?? [];
-
-  if (agreedPostcodes.length === 0) {
-    // No postcode config — nothing useful to snapshot yet
-    return json({ already_snapshotted: false, skipped: true, reason: "no_config" });
-  }
-
-  const leadPostcode  = (lead.postcode ?? "").trim().toUpperCase();
-  const normalised    = agreedPostcodes.map((p) => p.trim().toUpperCase());
-  const inTerritory   = normalised.includes(leadPostcode);
-
-  // Write only if still null — prevents a race between two concurrent opens
-  await db
-    .from("leads")
-    .update({ ppl_postcode_in_territory: inTerritory })
-    .eq("id", leadId)
-    .is("ppl_postcode_in_territory", null);
-
-  return json({ already_snapshotted: false, in_territory: inTerritory, lead_postcode: leadPostcode });
-}
 
 // ─── Manual review escalation ─────────────────────────────────────────────────
 
