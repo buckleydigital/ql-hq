@@ -510,9 +510,14 @@ section, .section { padding: 96px 40px; }
 
 /* Agent showcase - clean side by side */
 .agents-showcase {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    justify-content: center;
     gap: 40px;
+}
+
+.agents-showcase .agent-card {
+    max-width: 600px;
+    width: 100%;
 }
 
 .agent-card {
@@ -662,7 +667,6 @@ section, .section { padding: 96px 40px; }
     }
     
     .agents-showcase {
-        grid-template-columns: 1fr;
         max-width: 560px;
         margin: 0 auto;
     }
@@ -811,7 +815,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <nav class="nav-links">
             <a href="#how">How It Works</a>
             <a href="#features">Features</a>
-            <a href="#ai-agents">AI Agents</a>
+            <a href="#ai-agents">AI Agent</a>
             <a href="#results">Compare</a>
         </nav>
         <div class="nav-right">
@@ -828,7 +832,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <nav class="mob-menu" id="mobMenu">
         <a href="#how">How It Works</a>
         <a href="#features">Features</a>
-        <a href="#ai-agents">AI Agents</a>
+        <a href="#ai-agents">AI Agent</a>
         <a href="#results">Compare</a>
         <a href="#cta" class="mob-cta">Get Access</a>
     </nav>
@@ -1026,8 +1030,8 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 <section class="ai-agents-section" id="ai-agents">
     <div class="ai-agents-inner">
         <div class="ai-agents-header fade-up">
-            <div class="section-label">AI Agents</div>
-            <h2 class="section-title">Two agents working<br/><em>around the clock.</em></h2>
+            <div class="section-label">AI Agent</div>
+            <h2 class="section-title">One agent working<br/><em>around the clock.</em></h2>
             <p class="section-sub">SMS — human-quality responses in seconds, day or night.</p>
         </div>
         
@@ -1119,7 +1123,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="foot-links">
         <a href="#how">How It Works</a>
         <a href="#features">Features</a>
-        <a href="#ai-agents">AI Agents</a>
+        <a href="#ai-agents">AI Agent</a>
         <a href="#results">Compare</a>
         <a href="/api-docs">API Docs</a>
         <a href="mailto:contact@quoteleads.com.au">contact@quoteleads.com.au</a>
