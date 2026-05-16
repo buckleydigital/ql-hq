@@ -711,6 +711,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
+  // ── Dispute / Call Log Modals ─────────────────────────────────────────────
+  initDisputeModal();
+  initLogCallModal();
+
   // ── Import Leads Modal ─────────────────────────────────────────────────────
   document.getElementById("openImportLeadsModal")?.addEventListener("click", openImportLeadsModal);
   document.getElementById("cancelImportModal")?.addEventListener("click", () => { resetImportModal(); closeModal("importLeadsModal"); });
@@ -1489,6 +1493,9 @@ function resetLeadForm() {
   const leadModalTitle = document.getElementById("leadModalTitle");
   if (leadId) leadId.value = "";
   if (leadModalTitle) leadModalTitle.textContent = "New Lead";
+  // Hide dispute button for new leads — PPL flag is only set server-side
+  _currentDisputeLeadId = null;
+  document.getElementById("openDisputeFromLead")?.classList.add("hidden");
   renderCustomFieldInputs();
 }
 
@@ -1521,6 +1528,20 @@ async function openEditLead(id) {
   if (leadNotes) leadNotes.value = l.notes || "";
   
   await renderCustomFieldInputs(l.custom_data || {});
+
+  // PPL features — dispute button + call log (only for PPL leads)
+  _currentDisputeLeadId = l.id;
+  _pplEligibility       = null;
+  const disputeBtn   = document.getElementById("openDisputeFromLead");
+  const callLogSec   = document.getElementById("pplCallLogSection");
+  if (disputeBtn) disputeBtn.classList.toggle("hidden", !l.is_ppl);
+  if (callLogSec)  callLogSec.classList.toggle("hidden", !l.is_ppl);
+
+  if (l.is_ppl) {
+    loadPplCallLog(l.id);
+    loadPplEligibility(l.id);
+  }
+
   openModal("leadModal");
 }
 
@@ -1596,6 +1617,437 @@ async function deleteLead(id) {
     loadDashboard();
   } catch (err) {
     toast("Failed to delete lead.", true);
+  }
+}
+
+// ─── PPL Lead Disputes ────────────────────────────────────────────────────────
+
+let _currentDisputeLeadId   = null;
+let _currentDisputeId       = null;
+let _currentDisputeReason   = null;
+let _currentManualAvailable = false;
+
+function initDisputeModal() {
+  document.getElementById("cancelDisputeModal")?.addEventListener("click", () => closeModal("disputeModal"));
+
+  // Enable the Run Auto-Check button when a reason is selected
+  document.querySelectorAll('input[name="disputeReason"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      const btn = document.getElementById("runDisputeCheckBtn");
+      if (btn) btn.disabled = false;
+    });
+  });
+
+  document.getElementById("runDisputeCheckBtn")?.addEventListener("click", runDisputeCheck);
+  document.getElementById("sendManualReviewBtn")?.addEventListener("click", sendDisputeManualReview);
+  document.getElementById("openDisputeFromLead")?.addEventListener("click", openDisputeModal);
+}
+
+function openDisputeModal() {
+  const lead = allLeads.find((x) => x.id === _currentDisputeLeadId);
+  if (!lead || !lead.is_ppl) return;
+
+  // Reset to step 1
+  _currentDisputeId       = null;
+  _currentDisputeReason   = null;
+  _currentManualAvailable = false;
+
+  document.querySelectorAll('input[name="disputeReason"]').forEach((r) => { r.checked = false; r.disabled = false; });
+  const runBtn = document.getElementById("runDisputeCheckBtn");
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Run Auto-Check"; runBtn.classList.remove("hidden"); }
+
+  // Reset eligibility UI before re-applying
+  const strip = document.getElementById("disputeEligibilityStrip");
+  if (strip) strip.innerHTML = "";
+  const invLabel = document.getElementById("disputeReasonInvalidLabel");
+  if (invLabel) invLabel.style.opacity = "";
+  const invNote = document.getElementById("disputeInvalidNumberNote");
+  if (invNote) invNote.classList.add("hidden");
+
+  showDisputeStep(1);
+
+  const nameEl = document.getElementById("disputeLeadName");
+  if (nameEl) nameEl.textContent = lead.name || "Unknown Lead";
+
+  // Apply eligibility rules to step 1 (use cached value from when lead was opened)
+  applyDisputeEligibilityToModal(_pplEligibility);
+
+  closeModal("leadModal");
+  openModal("disputeModal");
+}
+
+function showDisputeStep(step) {
+  [1, 2, 3].forEach((n) => {
+    const el = document.getElementById(`disputeStep${n}`);
+    if (el) el.classList.toggle("hidden", n !== step);
+  });
+}
+
+async function runDisputeCheck() {
+  const selected = document.querySelector('input[name="disputeReason"]:checked');
+  if (!selected) return;
+  _currentDisputeReason = selected.value;
+
+  const runBtn = document.getElementById("runDisputeCheckBtn");
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Checking…"; }
+
+  showDisputeStep(2);
+  const spinner = document.getElementById("disputeCheckSpinner");
+  const result  = document.getElementById("disputeResult");
+  if (spinner) spinner.style.display = "block";
+  if (result)  result.classList.add("hidden");
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error("Not authenticated");
+
+    const res = await fetch(`${sb.supabaseUrl}/functions/v1/dispute-lead`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify({ lead_id: _currentDisputeLeadId, reason: _currentDisputeReason }),
+    });
+
+    const payload = await res.json();
+
+    if (spinner) spinner.style.display = "none";
+
+    if (!res.ok) {
+      // 409 = already disputed
+      if (res.status === 409) {
+        showDisputeDone("⚠️", "Already Disputed", payload.error || "This lead already has an active dispute.");
+        return;
+      }
+      showDisputeDone("✗", "Check Failed", payload.error || "An error occurred. Please try again.");
+      return;
+    }
+
+    _currentDisputeId       = payload.dispute_id;
+    _currentManualAvailable = payload.manual_review_available && _currentDisputeReason === "outside_agreed_criteria";
+
+    renderDisputeResult(payload);
+    if (result) result.classList.remove("hidden");
+
+  } catch (err) {
+    if (spinner) spinner.style.display = "none";
+    showDisputeDone("✗", "Check Failed", "Network error. Please try again.");
+    console.error("Dispute check error:", err);
+  }
+}
+
+function renderDisputeResult(payload) {
+  const banner = document.getElementById("disputeResultBanner");
+  const detail = document.getElementById("disputeResultDetail");
+  const manualSection = document.getElementById("disputeManualReviewSection");
+  const runBtn = document.getElementById("runDisputeCheckBtn");
+
+  const approved = payload.status === "auto_approved";
+  const chk      = payload.auto_check_result || {};
+
+  // Banner
+  if (banner) {
+    if (approved) {
+      banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20";
+      banner.innerHTML = "<strong>✓ Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
+    } else {
+      banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d";
+      banner.innerHTML = "<strong>✗ Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
+    }
+  }
+
+  // Detail
+  if (detail) {
+    const lines = [];
+    if (_currentDisputeReason === "invalid_number") {
+      if (chk.normalised_phone) lines.push(`Number checked: ${chk.normalised_phone}`);
+      if (chk.phone_type)       lines.push(`Type: ${chk.phone_type}`);
+      if (!approved)            lines.push("Veriphone confirmed this number appears reachable.");
+    } else if (_currentDisputeReason === "duplicate") {
+      if (chk.normalised_phone) lines.push(`Number checked: ${chk.normalised_phone}`);
+      if (chk.duplicate_found && chk.duplicate_leads?.length) {
+        lines.push(`Duplicate found: ${chk.duplicate_leads.map((d) => d.name || d.id).join(", ")}`);
+      } else {
+        lines.push("No duplicate found in your account.");
+      }
+    } else {
+      if (chk.lead_postcode)  lines.push(`Lead postcode: ${chk.lead_postcode}`);
+      if (chk.note)           lines.push(chk.note);
+    }
+    detail.innerHTML = lines.map((l) => `<p style="margin:2px 0">${l}</p>`).join("");
+  }
+
+  // Manual review section
+  if (manualSection) {
+    if (_currentManualAvailable && !approved) {
+      manualSection.classList.remove("hidden");
+      renderScrubBar(payload.scrub_usage);
+    } else if (_currentManualAvailable && approved) {
+      // Auto-approved but still show manual review info as informational only
+      manualSection.classList.add("hidden");
+    } else {
+      manualSection.classList.add("hidden");
+    }
+  }
+
+  // Hide run button once result shown (no re-runs on same dispute)
+  if (runBtn) runBtn.classList.add("hidden");
+}
+
+function renderScrubBar(scrub) {
+  const el = document.getElementById("disputeScrubBar");
+  const capWarn = document.getElementById("disputeCapWarning");
+  if (!el || !scrub) return;
+
+  const used    = scrub.scrub_used_pct ?? 0;
+  const cap     = scrub.scrub_cap_pct  ?? 10;
+  const pct     = Math.min(100, (used / cap) * 100);
+  const colour  = pct >= 90 ? "#d32f2f" : pct >= 70 ? "#f57c00" : "#388e3c";
+  const exceeds = scrub.cap_exceeded;
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+      Scrub cap usage: <strong style="color:${colour}">${used}% of ${cap}%</strong>
+      &nbsp;(${scrub.approved_disputes ?? 0} approved of ${scrub.total_ppl_leads ?? 0} PPL leads)
+    </div>
+    <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden">
+      <div style="width:${pct}%;height:100%;background:${colour};border-radius:4px;transition:width .3s"></div>
+    </div>`;
+
+  if (capWarn) {
+    if (exceeds) {
+      capWarn.classList.remove("hidden");
+      capWarn.textContent = "Your scrub cap has been reached for this order. Manual review cannot be requested until additional PPL leads are delivered or your cap is adjusted.";
+      const sendBtn = document.getElementById("sendManualReviewBtn");
+      if (sendBtn) sendBtn.disabled = true;
+    } else {
+      capWarn.classList.add("hidden");
+    }
+  }
+}
+
+async function sendDisputeManualReview() {
+  if (!_currentDisputeId) return;
+  const btn = document.getElementById("sendManualReviewBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Submitting…"; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error("Not authenticated");
+
+    const res = await fetch(`${sb.supabaseUrl}/functions/v1/dispute-lead`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify({ action: "manual_review", dispute_id: _currentDisputeId }),
+    });
+
+    const payload = await res.json();
+
+    if (!res.ok) {
+      if (payload.cap_exceeded) {
+        toast("Scrub cap exceeded — manual review cannot be submitted.", true);
+        renderScrubBar(payload.scrub_usage);
+      } else {
+        toast(payload.error || "Failed to submit manual review.", true);
+      }
+      if (btn) { btn.disabled = false; btn.textContent = "Confirm — Send for Manual Review"; }
+      return;
+    }
+
+    showDisputeDone(
+      "📋",
+      "Sent for Manual Review",
+      "Our team will assess this lead against the agreed delivery criteria and be in touch. Remember: leads where a prospect said 'not interested' or any outcome outside QuoteLeads' control do not qualify for replacement.",
+    );
+  } catch (err) {
+    toast("Network error. Please try again.", true);
+    if (btn) { btn.disabled = false; btn.textContent = "Confirm — Send for Manual Review"; }
+    console.error("Manual review error:", err);
+  }
+}
+
+function showDisputeDone(icon, title, sub) {
+  showDisputeStep(3);
+  const iconEl = document.getElementById("disputeDoneIcon");
+  const msgEl  = document.getElementById("disputeDoneMsg");
+  const subEl  = document.getElementById("disputeDoneSubMsg");
+  if (iconEl) iconEl.textContent = icon;
+  if (msgEl)  msgEl.textContent  = title;
+  if (subEl)  subEl.textContent  = sub;
+  const runBtn = document.getElementById("runDisputeCheckBtn");
+  if (runBtn) runBtn.classList.add("hidden");
+}
+
+// ─── PPL Call Attempt Logging ─────────────────────────────────────────────────
+
+let _pplEligibility = null; // cached eligibility for current lead
+
+function initLogCallModal() {
+  document.getElementById("cancelLogCallModal")?.addEventListener("click", () => {
+    closeModal("logCallModal");
+    openModal("leadModal");
+  });
+  document.getElementById("openLogCallBtn")?.addEventListener("click", () => {
+    // Default datetime-local to now
+    const el = document.getElementById("callAttemptedAt");
+    if (el) {
+      const now = new Date();
+      now.setSeconds(0, 0);
+      el.value = now.toISOString().slice(0, 16);
+    }
+    document.getElementById("callNotes").value = "";
+    document.getElementById("callOutcome").value = "no_answer";
+    closeModal("leadModal");
+    openModal("logCallModal");
+  });
+  document.getElementById("saveCallAttemptBtn")?.addEventListener("click", saveCallAttempt);
+}
+
+async function loadPplCallLog(leadId) {
+  const listEl = document.getElementById("pplCallLogList");
+  if (!listEl) return;
+  listEl.textContent = "Loading…";
+
+  const { data, error } = await sb
+    .from("ppl_call_attempts")
+    .select("id, outcome, notes, attempted_at, logged_by")
+    .eq("lead_id", leadId)
+    .order("attempted_at", { ascending: false })
+    .limit(20);
+
+  if (error || !data?.length) {
+    listEl.innerHTML = '<span style="color:var(--muted)">No call attempts logged yet.</span>';
+    return;
+  }
+
+  const outcomeLabel = {
+    no_answer:          "No Answer",
+    voicemail:          "Voicemail",
+    connected:          "Connected",
+    wrong_number:       "Wrong Number",
+    callback_requested: "Callback Requested",
+  };
+  const outcomeColour = {
+    no_answer:          "#9e9e9e",
+    voicemail:          "#7986cb",
+    connected:          "#43a047",
+    wrong_number:       "#e53935",
+    callback_requested: "#fb8c00",
+  };
+
+  listEl.innerHTML = data.map((a) => {
+    const ts  = new Date(a.attempted_at).toLocaleString();
+    const col = outcomeColour[a.outcome] || "#9e9e9e";
+    const lbl = outcomeLabel[a.outcome]  || a.outcome;
+    return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border,#eee)">
+      <span style="min-width:120px;font-weight:500;color:${col};font-size:12px">${lbl}</span>
+      <span style="color:var(--muted);font-size:11px;flex:1">${a.notes ? `${a.notes} · ` : ""}${ts}</span>
+    </div>`;
+  }).join("");
+}
+
+async function loadPplEligibility(leadId) {
+  const { data, error } = await sb
+    .rpc("get_ppl_dispute_eligibility", { p_lead_id: leadId });
+  _pplEligibility = (!error && data) ? data : null;
+  renderEligibilityBadge(_pplEligibility);
+}
+
+function renderEligibilityBadge(elig) {
+  const badge = document.getElementById("pplDisputeEligibilityBadge");
+  if (!badge || !elig) return;
+
+  if (!elig.dispute_window_open) {
+    badge.style.cssText = "display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle;background:#fdecea;color:#7f1d1d";
+    badge.textContent   = "Dispute window closed";
+  } else {
+    const days = elig.days_remaining;
+    badge.style.cssText = "display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle;background:#e8f5e9;color:#1b5e20";
+    badge.textContent   = `${days}d remaining to dispute`;
+  }
+}
+
+async function saveCallAttempt() {
+  if (!_currentDisputeLeadId) return;
+  const btn = document.getElementById("saveCallAttemptBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+  const outcome     = document.getElementById("callOutcome")?.value;
+  const notes       = document.getElementById("callNotes")?.value?.trim() || null;
+  const attemptedAt = document.getElementById("callAttemptedAt")?.value;
+
+  const payload = {
+    lead_id:      _currentDisputeLeadId,
+    company_id:   currentCompanyId,
+    outcome,
+    notes,
+    attempted_at: attemptedAt ? new Date(attemptedAt).toISOString() : new Date().toISOString(),
+  };
+
+  const { error } = await sb.from("ppl_call_attempts").insert(payload);
+
+  if (btn) { btn.disabled = false; btn.textContent = "Save Attempt"; }
+
+  if (error) {
+    toast(error.message, true);
+    return;
+  }
+
+  toast("Call attempt logged.");
+  closeModal("logCallModal");
+  openModal("leadModal");
+
+  // Refresh call log and eligibility in background
+  loadPplCallLog(_currentDisputeLeadId);
+  loadPplEligibility(_currentDisputeLeadId);
+}
+
+// Render eligibility into the dispute modal step 1 before the user picks a reason
+function applyDisputeEligibilityToModal(elig) {
+  const strip     = document.getElementById("disputeEligibilityStrip");
+  const invLabel  = document.getElementById("disputeReasonInvalidLabel");
+  const invNote   = document.getElementById("disputeInvalidNumberNote");
+  const runBtn    = document.getElementById("runDisputeCheckBtn");
+
+  if (!elig) return;
+
+  // Window closed — block everything
+  if (!elig.dispute_window_open) {
+    if (strip) {
+      strip.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:6px;padding:10px;font-size:12px;color:#7f1d1d">
+        The 7-day dispute window for this lead has closed. Disputes must be raised within 7 days of delivery.
+      </div>`;
+    }
+    document.querySelectorAll('input[name="disputeReason"]').forEach((r) => { r.disabled = true; });
+    if (runBtn) runBtn.disabled = true;
+    return;
+  }
+
+  // Window open — show days remaining
+  const days    = elig.days_remaining;
+  const urgency = days <= 1 ? "#7f1d1d" : days <= 2 ? "#78350f" : "#1b5e20";
+  const bg      = days <= 1 ? "#fdecea" : days <= 2 ? "#fff8e1" : "#e8f5e9";
+  const border  = days <= 1 ? "#f5c6cb" : days <= 2 ? "#ffe082" : "#a5d6a7";
+  if (strip) {
+    strip.innerHTML = `<div style="background:${bg};border:1px solid ${border};border-radius:6px;padding:8px 12px;font-size:12px;color:${urgency}">
+      <strong>${days} day${days !== 1 ? "s" : ""} remaining</strong> in the dispute window for this lead.
+    </div>`;
+  }
+
+  // 24h call rule — grey out invalid_number if not eligible
+  if (!elig.call_within_24h) {
+    if (invLabel) invLabel.style.opacity = "0.5";
+    const radio = invLabel?.querySelector('input[type="radio"]');
+    if (radio)  radio.disabled = true;
+    if (invNote) {
+      invNote.classList.remove("hidden");
+      invNote.textContent = "Not available — no call attempt was logged within 24 hours of lead delivery. Log a call first, or choose a different reason.";
+    }
+  } else {
+    if (invLabel) invLabel.style.opacity = "";
+    const radio = invLabel?.querySelector('input[type="radio"]');
+    if (radio)  radio.disabled = false;
+    if (invNote) invNote.classList.add("hidden");
   }
 }
 
@@ -3147,9 +3599,13 @@ async function loadAiSettings() {
       .select("id")
       .eq("company_id", currentCompanyId);
     
+    const count = nums?.length || 0;
     const twilioCountValue = document.getElementById("twilioCountValue");
-    if (twilioCountValue) twilioCountValue.textContent = nums?.length || 0;
-    
+    if (twilioCountValue) twilioCountValue.textContent = count;
+
+    const pendingNotice = document.getElementById("smsNumberPendingNotice");
+    if (pendingNotice) pendingNotice.classList.toggle("hidden", count > 0);
+
     loadTwilioNumbers();
     loadWorkflowRuns();
 
