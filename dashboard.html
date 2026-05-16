@@ -284,6 +284,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 .range-btn:hover{background:var(--side-hover)}
 .range-btn.active{background:var(--text);color:var(--bg)}
 [data-theme=dark] .range-btn.active{background:#f5f5f5;color:#050505}
+.sms-pending-notice{background:#fff8e1;border:1px solid #ffe082}
+.sms-pending-title{color:#78350f}
+.sms-pending-body{color:#92400e}
+[data-theme=dark] .sms-pending-notice{background:#1a1500;border-color:#3d2e00}
+[data-theme=dark] .sms-pending-title{color:#4797ff}
+[data-theme=dark] .sms-pending-body{color:#a8b8cc}
 
 /* ── Responsive ─────────────────────────────────── */
 @media(max-width:1180px){
@@ -635,11 +641,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div class="stack">
 
           <!-- SMS number pending notice — shown when no Twilio numbers are configured -->
-          <div id="smsNumberPendingNotice" class="hidden" style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px">
+          <div id="smsNumberPendingNotice" class="hidden sms-pending-notice" style="border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px">
             <span style="font-size:20px">⏳</span>
             <div>
-              <strong style="font-size:13px;color:#78350f">Your SMS number is being configured</strong>
-              <p style="font-size:12px;color:#92400e;margin:2px 0 0">Your dedicated SMS number is being set up by the QuoteLeads team. You'll be able to enable the AI agent once it's ready — usually within 1 business day.</p>
+              <strong class="sms-pending-title" style="font-size:13px">Your SMS number is being configured</strong>
+              <p class="sms-pending-body" style="font-size:12px;margin:2px 0 0">Your dedicated SMS number is being set up by the QuoteLeads team. You'll be able to enable the AI agent once it's ready — usually within 1 business day.</p>
             </div>
           </div>
 
@@ -1751,6 +1757,18 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 </div>
 
 <div id="toastWrap" class="toast-wrap"></div>
+
+<!-- Confirm dialog modal -->
+<div id="confirmModal" class="modal">
+  <div class="modal-card small" style="padding:28px 24px">
+    <h2 id="confirmModalTitle" style="font-size:15px;margin-bottom:8px">Are you sure?</h2>
+    <p id="confirmModalMsg" style="font-size:13px;color:var(--muted);margin-bottom:24px"></p>
+    <div class="actions">
+      <button id="confirmModalCancel" class="btn" type="button">Cancel</button>
+      <button id="confirmModalOk" class="btn-danger btn" type="button">Delete</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function () {
