@@ -510,9 +510,14 @@ section, .section { padding: 96px 40px; }
 
 /* Agent showcase - clean side by side */
 .agents-showcase {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    justify-content: center;
     gap: 40px;
+}
+
+.agents-showcase .agent-card {
+    max-width: 600px;
+    width: 100%;
 }
 
 .agent-card {
@@ -662,7 +667,6 @@ section, .section { padding: 96px 40px; }
     }
     
     .agents-showcase {
-        grid-template-columns: 1fr;
         max-width: 560px;
         margin: 0 auto;
     }
