@@ -989,11 +989,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="panel-h"><div><h2>PPL Service Areas</h2><p>The postcodes your company has contracted to receive leads for. Used to auto-check <em>Outside Agreed Criteria</em> disputes.</p></div></div>
           <div class="panel-b">
             <div id="serviceAreaTagsContainer" class="tags" style="min-height:32px;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-              <input id="serviceAreaInput" type="text" placeholder="e.g. 2000" style="width:120px" maxlength="10">
-              <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcode</button>
+            <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px">
+              <textarea id="serviceAreaInput" placeholder="e.g. 2000, 2010, 2486" style="width:320px;height:64px;resize:vertical" maxlength="100000"></textarea>
+              <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcodes</button>
             </div>
-            <p class="muted" style="font-size:11px;margin-bottom:12px">Enter each postcode individually. The dispute auto-check will flag leads whose postcode is not in this list.</p>
+            <p class="muted" style="font-size:11px;margin-bottom:12px">Paste one postcode or a comma-separated list of postcodes. Duplicates are ignored automatically. The dispute auto-check will flag leads whose postcode is not in this list.</p>
             <div class="actions"><button id="saveServiceAreasBtn" class="btn2" type="button">Save Service Areas</button></div>
           </div>
         </section>

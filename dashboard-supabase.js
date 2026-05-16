@@ -3461,14 +3461,18 @@ function _renderServiceAreaTag(container, postcode) {
 function _addServiceAreaFromInput() {
   const input = document.getElementById("serviceAreaInput");
   if (!input) return;
-  const val = input.value.trim().toUpperCase();
-  if (!val) return;
+  const raw = input.value.trim();
+  if (!raw) return;
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
-  // Prevent duplicates
-  const existing = [...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode);
-  if (existing.includes(val)) { input.value = ""; return; }
-  _renderServiceAreaTag(container, val);
+  const existing = new Set([...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode));
+  const entries = raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  entries.forEach((val) => {
+    if (!existing.has(val)) {
+      _renderServiceAreaTag(container, val);
+      existing.add(val);
+    }
+  });
   input.value = "";
 }
 
