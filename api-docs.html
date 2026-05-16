@@ -399,7 +399,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <a href="#quotes">Quotes</a>
         <a href="#sms">SMS</a>
         <a href="#appointments">Appointments</a>
-        <a href="#voice-calls">Voice Calls</a>
         <a href="#pipeline">Pipeline</a>
         <a href="#webhooks">Webhooks</a>
         <a href="#errors">Errors</a>
@@ -471,7 +470,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
             <div class="scope-item"><div class="scope-item-name">quotes:read</div><div class="scope-item-desc">List and get quotes</div></div>
             <div class="scope-item"><div class="scope-item-name">sms:send</div><div class="scope-item-desc">Send SMS messages</div></div>
             <div class="scope-item"><div class="scope-item-name">appointments:read</div><div class="scope-item-desc">List appointments</div></div>
-            <div class="scope-item"><div class="scope-item-name">voice-calls:read</div><div class="scope-item-desc">List voice calls</div></div>
             <div class="scope-item"><div class="scope-item-name">pipeline:read</div><div class="scope-item-desc">Get pipeline summary</div></div>
         </div>
     </section>
@@ -860,44 +858,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         </div>
     </section>
 
-    <!-- VOICE CALLS -->
-    <section class="docs-section" id="voice-calls">
-        <h2 class="docs-section-title">Voice <em>Calls</em></h2>
-
-        <div class="endpoint" id="list-voice-calls">
-            <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
-                <span class="endpoint-method method-get">GET</span>
-                <span class="endpoint-path">/voice-calls</span>
-                <span class="endpoint-desc">List voice calls</span>
-                <svg class="icon endpoint-toggle" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div class="endpoint-body">
-                <p>Returns a paginated list of AI voice calls with summary, sentiment, and outcome data.</p>
-                <span class="scope-badge">voice-calls:read</span>
-
-                <h4>Example Response</h4>
-                <div class="code-block">
-{
-  <span class="str">"data"</span>: [
-    {
-      <span class="str">"id"</span>: <span class="str">"uuid-here"</span>,
-      <span class="str">"lead_id"</span>: <span class="str">"lead-uuid"</span>,
-      <span class="str">"direction"</span>: <span class="str">"outbound"</span>,
-      <span class="str">"status"</span>: <span class="str">"completed"</span>,
-      <span class="str">"duration"</span>: <span class="num">187</span>,
-      <span class="str">"summary"</span>: <span class="str">"Discussed roof restoration timeline..."</span>,
-      <span class="str">"sentiment"</span>: <span class="str">"positive"</span>,
-      <span class="str">"outcome"</span>: <span class="str">"appointment_booked"</span>,
-      <span class="str">"created_at"</span>: <span class="str">"2026-04-03T11:00:00Z"</span>
-    }
-  ],
-  <span class="str">"meta"</span>: { <span class="str">"page"</span>: <span class="num">1</span>, <span class="str">"per_page"</span>: <span class="num">25</span>, <span class="str">"total"</span>: <span class="num">15</span> }
-}
-                </div>
-            </div>
-        </div>
-    </section>
-
     <!-- PIPELINE -->
     <section class="docs-section" id="pipeline">
         <h2 class="docs-section-title"><em>Pipeline</em></h2>
@@ -946,7 +906,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <div class="event-item"><span class="event-name">quote.accepted</span><span class="event-desc">A quote was accepted by the customer</span></div>
         <div class="event-item"><span class="event-name">quote.declined</span><span class="event-desc">A quote was declined by the customer</span></div>
         <div class="event-item"><span class="event-name">appointment.booked</span><span class="event-desc">An appointment was booked (callback or on-site visit)</span></div>
-        <div class="event-item"><span class="event-name">call.completed</span><span class="event-desc">An AI voice call was completed</span></div>
         <div class="event-item"><span class="event-name">sale.completed</span><span class="event-desc">A deal was marked as closed/won</span></div>
 
         <h4 style="font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--ink-faint);margin:20px 0 10px;font-weight:400">Webhook Payload</h4>

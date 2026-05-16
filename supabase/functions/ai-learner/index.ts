@@ -66,7 +66,7 @@ async function resolveOpenAIKey(
 async function gatherLeadHistory(
   db: ReturnType<typeof createClient>,
   leadId: string,
-): Promise<{ smsHistory: string; voiceTranscripts: string; lead: Record<string, unknown> | null }> {
+): Promise<{ smsHistory: string; lead: Record<string, unknown> | null }> {
   // Get lead data
   const { data: lead } = await db
     .from("leads")
@@ -101,30 +101,7 @@ async function gatherLeadHistory(
     }
   }
 
-  // Get voice call transcripts
-  const { data: calls } = await db
-    .from("voice_calls")
-    .select("transcript, summary, sentiment, outcome, duration, created_at")
-    .eq("lead_id", leadId)
-    .eq("status", "completed")
-    .order("created_at", { ascending: true })
-    .limit(10);
-
-  let voiceTranscripts = "";
-  if (calls && calls.length > 0) {
-    voiceTranscripts = calls
-      .map((c, i) => {
-        const parts = [`--- Voice Call ${i + 1} ---`];
-        if (c.transcript) parts.push(c.transcript);
-        if (c.summary) parts.push(`Summary: ${c.summary}`);
-        if (c.sentiment) parts.push(`Sentiment: ${c.sentiment}`);
-        if (c.outcome) parts.push(`Outcome: ${c.outcome}`);
-        return parts.join("\n");
-      })
-      .join("\n\n");
-  }
-
-  return { smsHistory, voiceTranscripts, lead };
+  return { smsHistory, lead };
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +111,6 @@ async function extractLearnings(
   openaiKey: string,
   event: string,
   smsHistory: string,
-  voiceTranscripts: string,
   lead: Record<string, unknown>,
   metadata?: Record<string, unknown>,
 ): Promise<Array<{
@@ -159,7 +135,6 @@ async function extractLearnings(
 Given the interaction history below, extract 1-4 specific, actionable learnings that can improve future AI conversations with similar leads.
 
 ${smsHistory ? `SMS CONVERSATION:\n${smsHistory}\n` : ""}
-${voiceTranscripts ? `VOICE CALL TRANSCRIPTS:\n${voiceTranscripts}\n` : ""}
 Lead info: Score=${lead.ai_score || "N/A"}, Pipeline=${lead.pipeline_stage || "N/A"}, Source=${lead.source || "N/A"}
 ${metadata ? `Additional context: ${JSON.stringify(metadata)}` : ""}
 
@@ -167,7 +142,7 @@ For each learning, provide:
 - category: one of "winning_pattern", "failed_pattern", "objection_response", "scheduling_approach", "quote_approach", "service_insight", "style_preference"
 - insight: a concise, actionable statement (max 2 sentences) that can be injected into a future AI prompt. Write it as an instruction, e.g., "When leads ask about pricing, provide a range rather than exact numbers to keep the conversation open."
 - tags: 1-3 relevant tags (e.g., "pricing", "scheduling", "objection", "urgency", "tone")
-- source_type: "sms", "voice", or "mixed" based on where the key interaction happened
+- source_type: "sms" or "mixed" based on where the key interaction happened
 
 Respond ONLY with a JSON array of objects. No markdown fences.
 Example: [{"category":"winning_pattern","insight":"...","tags":["pricing","urgency"],"source_type":"sms"}]
@@ -371,20 +346,6 @@ async function computePerformanceStats(
     .select("id", { count: "exact", head: true })
     .eq("company_id", companyId);
 
-  // Voice call stats
-  const { data: voiceCalls } = await db
-    .from("voice_calls")
-    .select("sentiment")
-    .eq("company_id", companyId)
-    .eq("status", "completed");
-
-  const completedCalls = voiceCalls?.length ?? 0;
-  const sentimentMap: Record<string, number> = { positive: 1, neutral: 0, negative: -1 };
-  const sentimentCalls = (voiceCalls || []).filter((c) => c.sentiment in sentimentMap);
-  const avgSentiment = sentimentCalls.length > 0
-    ? sentimentCalls.reduce((sum, c) => sum + sentimentMap[c.sentiment], 0) / sentimentCalls.length
-    : null;
-
   // Knowledge items
   const { count: knowledgeCount } = await db
     .from("company_knowledge")
@@ -409,8 +370,6 @@ async function computePerformanceStats(
       callbacks_booked: callbackCount ?? 0,
       onsites_booked: onsiteCount ?? 0,
       quotes_generated: quoteCount ?? 0,
-      voice_calls_completed: completedCalls,
-      avg_call_sentiment: avgSentiment != null ? Math.round(avgSentiment * 100) / 100 : null,
       knowledge_items_count: knowledgeCount ?? 0,
       computed_at: now.toISOString(),
     },
@@ -592,18 +551,17 @@ Deno.serve(async (req) => {
         const openaiKey = await resolveOpenAIKey(db, companyId);
 
         if (openaiKey) {
-          const { smsHistory, voiceTranscripts, lead } = await gatherLeadHistory(
+          const { smsHistory, lead } = await gatherLeadHistory(
             db,
             leadId,
           );
 
           // Only extract if there's meaningful interaction history
-          if ((smsHistory.length > 20 || voiceTranscripts.length > 20) && lead) {
+          if (smsHistory.length > 20 && lead) {
             const learnings = await extractLearnings(
               openaiKey,
               event,
               smsHistory,
-              voiceTranscripts,
               lead,
               metadata,
             );

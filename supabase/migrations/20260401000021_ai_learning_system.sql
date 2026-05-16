@@ -27,7 +27,7 @@ create table if not exists public.company_knowledge (
   -- Relevance tags for matching (e.g., service type, objection type)
   tags          text[] not null default '{}',
   -- Source tracking
-  source_type   text not null check (source_type in ('sms', 'voice', 'quote', 'mixed')),
+  source_type   text not null check (source_type in ('sms', 'quote', 'mixed')),
   source_lead_id uuid references public.leads(id) on delete set null,
   -- Effectiveness tracking
   times_used    int not null default 0,
@@ -87,9 +87,6 @@ create table if not exists public.ai_performance_stats (
   callbacks_booked      int not null default 0,
   onsites_booked        int not null default 0,
   quotes_generated      int not null default 0,
-  -- Voice metrics
-  voice_calls_completed int not null default 0,
-  avg_call_sentiment    numeric(3,2) default null, -- -1 to 1
   -- Knowledge metrics
   knowledge_items_count int not null default 0,
   -- Timestamps

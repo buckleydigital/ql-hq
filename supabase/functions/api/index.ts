@@ -11,7 +11,6 @@
 //   GET    /functions/v1/api/quotes/:id         – get quote
 //   POST   /functions/v1/api/sms               – send SMS to lead
 //   GET    /functions/v1/api/appointments       – list appointments
-//   GET    /functions/v1/api/voice-calls        – list voice calls
 //   GET    /functions/v1/api/pipeline           – pipeline summary
 // =============================================================================
 
@@ -500,29 +499,6 @@ async function handleListAppointments(
   });
 }
 
-async function handleListVoiceCalls(
-  db: ReturnType<typeof createClient>,
-  companyId: string,
-  url: URL,
-) {
-  const { page, perPage } = parsePagination(url);
-  const offset = (page - 1) * perPage;
-
-  const { data, error, count } = await db
-    .from("voice_calls")
-    .select("id, company_id, lead_id, conversation_id, assigned_to, vapi_call_id, direction, status, from_number, to_number, duration, recording_url, transcript, summary, sentiment, outcome, cost, metadata, started_at, ended_at, created_at", { count: "exact" })
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + perPage - 1);
-
-  if (error) return dbErr("db query", error);
-
-  return json({
-    data,
-    meta: { page, per_page: perPage, total: count || 0 },
-  });
-}
-
 async function handlePipeline(
   db: ReturnType<typeof createClient>,
   companyId: string,
@@ -800,12 +776,6 @@ Deno.serve(async (req) => {
     if (resource === "appointments" && method === "GET") {
       if (!hasScope(scopes, "appointments:read")) return json({ error: "Insufficient scope: appointments:read required" }, 403);
       return await handleListAppointments(db, companyId, url);
-    }
-
-    // ── Voice Calls ───────────────────────────────────────────────────────
-    if (resource === "voice-calls" && method === "GET") {
-      if (!hasScope(scopes, "voice-calls:read")) return json({ error: "Insufficient scope: voice-calls:read required" }, 403);
-      return await handleListVoiceCalls(db, companyId, url);
     }
 
     // ── Pipeline ──────────────────────────────────────────────────────────
