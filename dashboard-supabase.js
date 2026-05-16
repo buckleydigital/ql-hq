@@ -1484,7 +1484,10 @@ function renderLeadsTable(leads) {
 
 function renderCustomDataSummary(data) {
   if (!data || !Object.keys(data).length) return "—";
-  return Object.entries(data).slice(0, 2).map(([k, v]) => `<div>${esc(k)}: ${esc(String(v ?? "")) || "—"}</div>`).join("");
+  return Object.entries(data).slice(0, 2).map(([, v]) => {
+    const display = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v ?? "");
+    return `<div>${esc(display) || "—"}</div>`;
+  }).join("");
 }
 
 function resetLeadForm() {
@@ -1529,15 +1532,16 @@ async function openEditLead(id) {
   
   await renderCustomFieldInputs(l.custom_data || {});
 
-  // PPL features — dispute button + call log (only for PPL leads)
+  // PPL features — dispute button + call log (PPL leads, by flag or source)
   _currentDisputeLeadId = l.id;
   _pplEligibility       = null;
+  const isPpl        = l.is_ppl || l.source?.toLowerCase() === "ppl";
   const disputeBtn   = document.getElementById("openDisputeFromLead");
   const callLogSec   = document.getElementById("pplCallLogSection");
-  if (disputeBtn) disputeBtn.classList.toggle("hidden", !l.is_ppl);
-  if (callLogSec)  callLogSec.classList.toggle("hidden", !l.is_ppl);
+  if (disputeBtn) disputeBtn.classList.toggle("hidden", !isPpl);
+  if (callLogSec)  callLogSec.classList.toggle("hidden", !isPpl);
 
-  if (l.is_ppl) {
+  if (isPpl) {
     loadPplCallLog(l.id);
     loadPplEligibility(l.id);
   }
@@ -1645,7 +1649,8 @@ function initDisputeModal() {
 
 function openDisputeModal() {
   const lead = allLeads.find((x) => x.id === _currentDisputeLeadId);
-  if (!lead || !lead.is_ppl) return;
+  const isPpl = lead?.is_ppl || lead?.source?.toLowerCase() === "ppl";
+  if (!lead || !isPpl) return;
 
   // Reset to step 1
   _currentDisputeId       = null;
@@ -3651,7 +3656,6 @@ async function handleAiSettingsSave(e) {
   const payload = {
     company_id:             currentCompanyId,
     model:                  document.getElementById("aiModel")?.value || "gpt-4o",
-    twilio_number:          document.getElementById("aiTwilioNumber")?.value || null,
     reply_delay_seconds:    Number(document.getElementById("aiReplyDelay")?.value) || 0,
     max_sms_words:          Number(document.getElementById("aiMaxWords")?.value) || 160,
     is_active:              isActive,
@@ -3931,7 +3935,7 @@ function renderTeamMembersList(profiles, invites, reps) {
 
     return `
     <div class="team-row" style="flex-wrap:wrap">
-      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "—"}</strong><span class="muted">${esc(p.phone) || "—"}</span></div>
+      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "—"}</strong>${p.phone ? `<span class="muted" style="display:block;margin-top:2px">${esc(p.phone)}</span>` : ""}</div>
       <div><span class="chip">${esc(p.role) || "member"}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div>

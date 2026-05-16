@@ -22,26 +22,38 @@ CREATE TABLE IF NOT EXISTS public.company_api_tokens (
   revoked_at   TIMESTAMPTZ                             -- non-NULL = revoked
 );
 
-CREATE INDEX idx_api_tokens_hash ON public.company_api_tokens (token_hash);
-CREATE INDEX idx_api_tokens_company ON public.company_api_tokens (company_id);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON public.company_api_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_company ON public.company_api_tokens (company_id);
 
 ALTER TABLE public.company_api_tokens ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own company API tokens"
-  ON public.company_api_tokens FOR SELECT
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can view own company API tokens"
+    ON public.company_api_tokens FOR SELECT
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can create API tokens for own company"
-  ON public.company_api_tokens FOR INSERT
-  WITH CHECK (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can create API tokens for own company"
+    ON public.company_api_tokens FOR INSERT
+    WITH CHECK (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can update own company API tokens"
-  ON public.company_api_tokens FOR UPDATE
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can update own company API tokens"
+    ON public.company_api_tokens FOR UPDATE
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can delete own company API tokens"
-  ON public.company_api_tokens FOR DELETE
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own company API tokens"
+    ON public.company_api_tokens FOR DELETE
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 
 -- ── 2. Webhook Endpoints ──────────────────────────────────────────────────────
@@ -57,28 +69,40 @@ CREATE TABLE IF NOT EXISTS public.webhook_endpoints (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_webhook_endpoints_company ON public.webhook_endpoints (company_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_company ON public.webhook_endpoints (company_id);
 
 ALTER TABLE public.webhook_endpoints ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own company webhooks"
-  ON public.webhook_endpoints FOR SELECT
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can view own company webhooks"
+    ON public.webhook_endpoints FOR SELECT
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can create webhooks for own company"
-  ON public.webhook_endpoints FOR INSERT
-  WITH CHECK (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can create webhooks for own company"
+    ON public.webhook_endpoints FOR INSERT
+    WITH CHECK (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can update own company webhooks"
-  ON public.webhook_endpoints FOR UPDATE
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can update own company webhooks"
+    ON public.webhook_endpoints FOR UPDATE
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can delete own company webhooks"
-  ON public.webhook_endpoints FOR DELETE
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own company webhooks"
+    ON public.webhook_endpoints FOR DELETE
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Auto-update updated_at
-CREATE TRIGGER set_webhook_endpoints_updated_at
+CREATE OR REPLACE TRIGGER set_webhook_endpoints_updated_at
   BEFORE UPDATE ON public.webhook_endpoints
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -98,16 +122,23 @@ CREATE TABLE IF NOT EXISTS public.webhook_deliveries (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_webhook_deliveries_webhook ON public.webhook_deliveries (webhook_id);
-CREATE INDEX idx_webhook_deliveries_company ON public.webhook_deliveries (company_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON public.webhook_deliveries (webhook_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_company ON public.webhook_deliveries (company_id);
 
 ALTER TABLE public.webhook_deliveries ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own company webhook deliveries"
-  ON public.webhook_deliveries FOR SELECT
-  USING (company_id = public.current_company_id());
+DO $$ BEGIN
+  CREATE POLICY "Users can view own company webhook deliveries"
+    ON public.webhook_deliveries FOR SELECT
+    USING (company_id = public.current_company_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 
 -- ── 4. Realtime ───────────────────────────────────────────────────────────────
 -- Enable realtime on webhook_deliveries so the UI can show live delivery status
-ALTER PUBLICATION supabase_realtime ADD TABLE public.webhook_deliveries;
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.webhook_deliveries;
+EXCEPTION WHEN others THEN NULL;
+END $$;

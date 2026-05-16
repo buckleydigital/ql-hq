@@ -13,7 +13,7 @@
 -- ─── Custom Fields ──────────────────────────────────────────────────────────
 -- Allows companies to define custom form fields for lead capture.
 
-create table public.custom_fields (
+create table if not exists public.custom_fields (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid not null references public.companies(id) on delete cascade,
   label       text not null,
@@ -23,23 +23,29 @@ create table public.custom_fields (
   unique(company_id, key)
 );
 
-create index idx_custom_fields_company on public.custom_fields (company_id);
+create index if not exists idx_custom_fields_company on public.custom_fields (company_id);
 
 alter table public.custom_fields enable row level security;
 
-create policy "Company members can view custom fields"
-  on public.custom_fields for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view custom fields"
+    on public.custom_fields for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
-create policy "Company members can manage custom fields"
-  on public.custom_fields for all
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can manage custom fields"
+    on public.custom_fields for all
+    using (company_id = public.current_company_id())
+    with check (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- ─── Twilio Numbers ─────────────────────────────────────────────────────────
 -- Tracks Twilio phone numbers associated with a company workspace.
 
-create table public.twilio_numbers (
+create table if not exists public.twilio_numbers (
   id            uuid primary key default gen_random_uuid(),
   company_id    uuid not null references public.companies(id) on delete cascade,
   phone_number  text not null,
@@ -47,23 +53,29 @@ create table public.twilio_numbers (
   created_at    timestamptz default now()
 );
 
-create index idx_twilio_numbers_company on public.twilio_numbers (company_id);
+create index if not exists idx_twilio_numbers_company on public.twilio_numbers (company_id);
 
 alter table public.twilio_numbers enable row level security;
 
-create policy "Company members can view twilio numbers"
-  on public.twilio_numbers for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view twilio numbers"
+    on public.twilio_numbers for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
-create policy "Company members can manage twilio numbers"
-  on public.twilio_numbers for all
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can manage twilio numbers"
+    on public.twilio_numbers for all
+    using (company_id = public.current_company_id())
+    with check (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- ─── AI Workflow Runs ───────────────────────────────────────────────────────
 -- Logs each AI workflow execution for audit and dashboard display.
 
-create table public.ai_workflow_runs (
+create table if not exists public.ai_workflow_runs (
   id             uuid primary key default gen_random_uuid(),
   company_id     uuid not null references public.companies(id) on delete cascade,
   workflow_type  text not null,         -- e.g. 'sms_reply', 'quote_draft', 'follow_up'
@@ -75,23 +87,29 @@ create table public.ai_workflow_runs (
   created_at     timestamptz default now()
 );
 
-create index idx_ai_workflow_runs_company on public.ai_workflow_runs (company_id, created_at desc);
+create index if not exists idx_ai_workflow_runs_company on public.ai_workflow_runs (company_id, created_at desc);
 
 alter table public.ai_workflow_runs enable row level security;
 
-create policy "Company members can view workflow runs"
-  on public.ai_workflow_runs for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view workflow runs"
+    on public.ai_workflow_runs for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- Allow service-role inserts (edge functions log runs)
-create policy "Service role can insert workflow runs"
-  on public.ai_workflow_runs for insert
-  with check (true);
+do $$ begin
+  create policy "Service role can insert workflow runs"
+    on public.ai_workflow_runs for insert
+    with check (true);
+exception when duplicate_object then null;
+end $$;
 
 -- ─── Sales Rep Invites ──────────────────────────────────────────────────────
 -- Tracks pending team member invitations before they accept.
 
-create table public.sales_rep_invites (
+create table if not exists public.sales_rep_invites (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid not null references public.companies(id) on delete cascade,
   email       text not null,
@@ -103,18 +121,24 @@ create table public.sales_rep_invites (
   revoked_at  timestamptz
 );
 
-create index idx_sales_rep_invites_company on public.sales_rep_invites (company_id, status);
+create index if not exists idx_sales_rep_invites_company on public.sales_rep_invites (company_id, status);
 
 alter table public.sales_rep_invites enable row level security;
 
-create policy "Company members can view invites"
-  on public.sales_rep_invites for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view invites"
+    on public.sales_rep_invites for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
-create policy "Company members can manage invites"
-  on public.sales_rep_invites for all
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can manage invites"
+    on public.sales_rep_invites for all
+    using (company_id = public.current_company_id())
+    with check (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- ─── Companies Table — Additional Columns ───────────────────────────────────
 -- The dashboard settings form expects email and phone on the company.
@@ -155,4 +179,3 @@ alter table public.sms_agent_config
   add column if not exists lead_scoring_enabled     boolean default true,
   add column if not exists max_sms_words            int default 15,
   add column if not exists reply_delay_seconds      int default 0;
-

@@ -6,13 +6,16 @@
 -- Each company can have up to 10 reps. Visibility controls what each rep
 -- can access: leads, quotes, appointments, sales, conversations.
 
-create type public.rep_visibility as enum (
-  'all',           -- sees everything in the company
-  'assigned_only', -- only sees records assigned to them
-  'none'           -- no access to this section
-);
+do $$ begin
+  create type public.rep_visibility as enum (
+    'all',           -- sees everything in the company
+    'assigned_only', -- only sees records assigned to them
+    'none'           -- no access to this section
+  );
+exception when duplicate_object then null;
+end $$;
 
-create table public.sales_reps (
+create table if not exists public.sales_reps (
   id              uuid primary key default gen_random_uuid(),
   company_id      uuid not null references public.companies(id) on delete cascade,
   user_id         uuid not null references auth.users(id) on delete cascade,
@@ -34,8 +37,8 @@ create table public.sales_reps (
   unique (company_id, user_id)
 );
 
-create index idx_sales_reps_company on public.sales_reps (company_id);
-create index idx_sales_reps_user on public.sales_reps (user_id);
+create index if not exists idx_sales_reps_company on public.sales_reps (company_id);
+create index if not exists idx_sales_reps_user on public.sales_reps (user_id);
 
 -- Enforce max 10 reps per company
 create or replace function public.check_rep_limit()
@@ -53,19 +56,19 @@ begin
 end;
 $$;
 
-create trigger enforce_rep_limit
+create or replace trigger enforce_rep_limit
   before insert on public.sales_reps
   for each row
   execute function public.check_rep_limit();
 
 -- updated_at trigger
-create trigger set_updated_at before update on public.sales_reps
+create or replace trigger set_updated_at before update on public.sales_reps
   for each row execute function public.set_updated_at();
 
 -- ─── SMS Agent Config ────────────────────────────────────────────────────────
 -- Stores AI SMS agent configuration per company (uses Twilio + OpenAI).
 
-create table public.sms_agent_config (
+create table if not exists public.sms_agent_config (
   id              uuid primary key default gen_random_uuid(),
   company_id      uuid not null references public.companies(id) on delete cascade,
   name            text not null default 'Default SMS Agent',
@@ -83,9 +86,9 @@ create table public.sms_agent_config (
   updated_at      timestamptz default now()
 );
 
-create index idx_sms_agent_company on public.sms_agent_config (company_id);
+create index if not exists idx_sms_agent_company on public.sms_agent_config (company_id);
 
-create trigger set_updated_at before update on public.sms_agent_config
+create or replace trigger set_updated_at before update on public.sms_agent_config
   for each row execute function public.set_updated_at();
 
 -- ─── Add agent tracking to messages ──────────────────────────────────────────
@@ -105,52 +108,70 @@ alter table public.conversations add column if not exists sms_config_id uuid ref
 -- ── Sales Reps ───────────────────────────────────────────────────────────────
 alter table public.sales_reps enable row level security;
 
-create policy "Company members can view reps"
-  on public.sales_reps for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view reps"
+    on public.sales_reps for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- Only owners/admins can manage reps
-create policy "Admins can create reps"
-  on public.sales_reps for insert
-  with check (
-    company_id = public.current_company_id()
-    and exists (
-      select 1 from public.profiles
-      where id = auth.uid()
-        and role in ('owner', 'admin')
-    )
-  );
+do $$ begin
+  create policy "Admins can create reps"
+    on public.sales_reps for insert
+    with check (
+      company_id = public.current_company_id()
+      and exists (
+        select 1 from public.profiles
+        where id = auth.uid()
+          and role in ('owner', 'admin')
+      )
+    );
+exception when duplicate_object then null;
+end $$;
 
-create policy "Admins can update reps"
-  on public.sales_reps for update
-  using (company_id = public.current_company_id()
-    and exists (
-      select 1 from public.profiles
-      where id = auth.uid()
-        and role in ('owner', 'admin')
-    ))
-  with check (company_id = public.current_company_id());
+do $$ begin
+  create policy "Admins can update reps"
+    on public.sales_reps for update
+    using (company_id = public.current_company_id()
+      and exists (
+        select 1 from public.profiles
+        where id = auth.uid()
+          and role in ('owner', 'admin')
+      ))
+    with check (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
-create policy "Admins can delete reps"
-  on public.sales_reps for delete
-  using (company_id = public.current_company_id()
-    and exists (
-      select 1 from public.profiles
-      where id = auth.uid()
-        and role in ('owner', 'admin')
-    ));
+do $$ begin
+  create policy "Admins can delete reps"
+    on public.sales_reps for delete
+    using (company_id = public.current_company_id()
+      and exists (
+        select 1 from public.profiles
+        where id = auth.uid()
+          and role in ('owner', 'admin')
+      ));
+exception when duplicate_object then null;
+end $$;
 
 -- ── SMS Agent Config ─────────────────────────────────────────────────────────
 alter table public.sms_agent_config enable row level security;
 
-create policy "Company members can view sms config"
-  on public.sms_agent_config for select
-  using (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can view sms config"
+    on public.sms_agent_config for select
+    using (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
-create policy "Company members can manage sms config"
-  on public.sms_agent_config for all
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
+do $$ begin
+  create policy "Company members can manage sms config"
+    on public.sms_agent_config for all
+    using (company_id = public.current_company_id())
+    with check (company_id = public.current_company_id());
+exception when duplicate_object then null;
+end $$;
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- Rep Visibility Helper
