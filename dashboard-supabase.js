@@ -1535,7 +1535,7 @@ async function openEditLead(id) {
   // PPL features — dispute button + call log (source === 'PPL')
   _currentDisputeLeadId = l.id;
   _pplEligibility       = null;
-  const isPpl        = l.source?.toLowerCase() === "ppl";
+  const isPpl        = l.is_ppl === true;
   const disputeBtn   = document.getElementById("openDisputeFromLead");
   const callLogSec   = document.getElementById("pplCallLogSection");
   if (disputeBtn) disputeBtn.classList.toggle("hidden", !isPpl);
@@ -1571,6 +1571,7 @@ async function handleLeadSave(e) {
     postcode:       document.getElementById("leadPostcode")?.value || null,
     address:        document.getElementById("leadAddress")?.value || null,
     source:         document.getElementById("leadSource")?.value || null,
+    is_ppl:         (document.getElementById("leadSource")?.value || "").toLowerCase() === "ppl",
     pipeline_stage: stageKey(document.getElementById("leadStatus")?.value || "New Lead"),
     value:          Number(document.getElementById("leadValue")?.value) || null,
     notes:          document.getElementById("leadNotes")?.value || null,
@@ -1959,7 +1960,7 @@ async function loadPplEligibility(leadId) {
 
 function renderEligibilityBadge(elig) {
   const badge = document.getElementById("pplDisputeEligibilityBadge");
-  if (!badge || !elig) return;
+  if (!badge || !elig || elig.error) return;
 
   if (!elig.dispute_window_open) {
     badge.style.cssText = "display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle;background:#fdecea;color:#7f1d1d";
@@ -2013,7 +2014,7 @@ function applyDisputeEligibilityToModal(elig) {
   const invNote   = document.getElementById("disputeInvalidNumberNote");
   const runBtn    = document.getElementById("runDisputeCheckBtn");
 
-  if (!elig) return;
+  if (!elig || elig.error) return;
 
   // Window closed — block everything
   if (!elig.dispute_window_open) {
@@ -3935,7 +3936,7 @@ function renderTeamMembersList(profiles, invites, reps) {
     return `
     <div class="team-row" style="flex-wrap:wrap">
       <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "—"}</strong>${p.phone ? `<span class="muted" style="display:block;margin-top:2px">${esc(p.phone)}</span>` : ""}</div>
-      <div><span class="chip">${esc(p.role) || "member"}</span></div>
+      <div><span class="chip">${esc(p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "Member")}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div>
         ${(rep || isOwnerAdmin) ? `<button class="btn" type="button" onclick="toggleTeamPerms(this)" style="font-size:11px;padding:4px 10px"><span class="icon" data-icon="settings" style="width:12px;height:12px"></span> Permissions</button>` : ""}

@@ -123,8 +123,8 @@ begin
   on conflict (company_id) do nothing;
 
   -- 2. Create default SMS agent config (inactive until twilio_number is set)
-  insert into public.sms_agent_config (company_id, name, auto_reply, is_active)
-  values (new.id, 'Default SMS Agent', true, false)
+  insert into public.sms_agent_config (company_id, name, auto_reply, is_active, lead_scoring_enabled)
+  values (new.id, 'Default SMS Agent', false, false, false)
   on conflict do nothing;
 
   return new;

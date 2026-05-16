@@ -176,6 +176,6 @@ alter table public.sms_agent_config
   add column if not exists followup_message         text default 'Hi {{first_name}}, just following up on your quote!',
   add column if not exists days_until_followup      int default 3,
   add column if not exists ai_nurture_enabled       boolean default true,
-  add column if not exists lead_scoring_enabled     boolean default true,
+  add column if not exists lead_scoring_enabled     boolean default false,
   add column if not exists max_sms_words            int default 15,
   add column if not exists reply_delay_seconds      int default 0;
