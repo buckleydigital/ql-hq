@@ -651,7 +651,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div class="panel-b">
               <div class="mini-grid">
                 <article class="mini-card">
-                  <h3>Twilio Numbers</h3>
+                  <h3>Numbers</h3>
                   <b id="twilioCountValue">0</b>
                   <span id="twilioCountHelp" class="muted">Assign receiving numbers before enabling live SMS.</span>
                 </article>
@@ -680,8 +680,9 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                       </select>
                     </div>
                     <div class="field">
-                      <label for="aiTwilioNumber">Primary Twilio Number</label>
-                      <input id="aiTwilioNumber" type="text" placeholder="+61400000000">
+                      <label for="aiTwilioNumber">Twilio Number</label>
+                      <input id="aiTwilioNumber" type="text" readonly style="background:var(--surface-2);color:var(--muted);cursor:default">
+                      <span class="field-hint">Assigned by QuoteLeads — contact support to change</span>
                     </div>
                     <div class="field">
                       <label for="aiReplyDelay">Reply Delay (seconds)</label>
