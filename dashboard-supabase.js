@@ -910,6 +910,24 @@ function toast(msg, isError = false) {
   setTimeout(() => t.remove(), 4000);
 }
 
+function confirmAction(message, onConfirm, { okLabel = "Delete", title = "Are you sure?" } = {}) {
+  const modal = document.getElementById("confirmModal");
+  const msgEl = document.getElementById("confirmModalMsg");
+  const okBtn = document.getElementById("confirmModalOk");
+  const cancelBtn = document.getElementById("confirmModalCancel");
+  const titleEl = document.getElementById("confirmModalTitle");
+  if (!modal || !msgEl || !okBtn || !cancelBtn) { if (confirm(message)) onConfirm(); return; }
+  titleEl.textContent = title;
+  msgEl.textContent = message;
+  okBtn.textContent = okLabel;
+  modal.classList.add("open");
+  function cleanup() { modal.classList.remove("open"); okBtn.removeEventListener("click", handleOk); cancelBtn.removeEventListener("click", handleCancel); }
+  function handleOk() { cleanup(); onConfirm(); }
+  function handleCancel() { cleanup(); }
+  okBtn.addEventListener("click", handleOk);
+  cancelBtn.addEventListener("click", handleCancel);
+}
+
 function cap(s) {
   if (!s) return "";
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -1416,16 +1434,17 @@ async function handleCustomFieldSave(e) {
 }
 
 async function deleteCustomField(id) {
-  if (!confirm("Delete this custom field? Values stored in leads will be lost.")) return;
-  try {
-    const { error } = await sb.from("custom_fields").delete().eq("id", id);
-    if (error) { toast(error.message, true); return; }
-    toast("Custom field deleted.");
-    await loadCustomFields();
-    renderSettingsCustomFields();
-  } catch (err) {
-    toast("Failed to delete custom field.", true);
-  }
+  confirmAction("Delete this custom field? Values stored in leads will be lost.", async () => {
+    try {
+      const { error } = await sb.from("custom_fields").delete().eq("id", id);
+      if (error) { toast(error.message, true); return; }
+      toast("Custom field deleted.");
+      await loadCustomFields();
+      renderSettingsCustomFields();
+    } catch (err) {
+      toast("Failed to delete custom field.", true);
+    }
+  });
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
@@ -1616,16 +1635,17 @@ async function handleLeadSave(e) {
 }
 
 async function deleteLead(id) {
-  if (!confirm("Delete this lead? This cannot be undone.")) return;
-  try {
-    const { error } = await sb.from("leads").delete().eq("id", id);
-    if (error) { toast(error.message, true); return; }
-    toast("Lead deleted.");
-    loadLeads();
-    loadDashboard();
-  } catch (err) {
-    toast("Failed to delete lead.", true);
-  }
+  confirmAction("Delete this lead? This cannot be undone.", async () => {
+    try {
+      const { error } = await sb.from("leads").delete().eq("id", id);
+      if (error) { toast(error.message, true); return; }
+      toast("Lead deleted.");
+      loadLeads();
+      loadDashboard();
+    } catch (err) {
+      toast("Failed to delete lead.", true);
+    }
+  });
 }
 
 // ─── PPL Lead Disputes ────────────────────────────────────────────────────────
@@ -2746,15 +2766,16 @@ async function handleAppointmentSave(e) {
 async function deleteAppointment() {
   const editId = document.getElementById("apptEditId")?.value;
   if (!editId) return;
-  if (!confirm("Delete this appointment?")) return;
-  try {
-    await sb.from("appointments").delete().eq("id", editId);
-    toast("Appointment deleted.");
-    closeModal("appointmentModal");
-    loadAppointments();
-  } catch (err) {
-    toast("Failed to delete appointment.", true);
-  }
+  confirmAction("Delete this appointment?", async () => {
+    try {
+      await sb.from("appointments").delete().eq("id", editId);
+      toast("Appointment deleted.");
+      closeModal("appointmentModal");
+      loadAppointments();
+    } catch (err) {
+      toast("Failed to delete appointment.", true);
+    }
+  });
 }
 
 // ─── Sale Modal Handlers ─────────────────────────────────────────────────────
@@ -3461,14 +3482,18 @@ function _renderServiceAreaTag(container, postcode) {
 function _addServiceAreaFromInput() {
   const input = document.getElementById("serviceAreaInput");
   if (!input) return;
-  const val = input.value.trim().toUpperCase();
-  if (!val) return;
+  const raw = input.value.trim();
+  if (!raw) return;
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
-  // Prevent duplicates
-  const existing = [...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode);
-  if (existing.includes(val)) { input.value = ""; return; }
-  _renderServiceAreaTag(container, val);
+  const existing = new Set([...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode));
+  const entries = raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  entries.forEach((val) => {
+    if (!existing.has(val)) {
+      _renderServiceAreaTag(container, val);
+      existing.add(val);
+    }
+  });
   input.value = "";
 }
 
@@ -3868,13 +3893,14 @@ async function handleTwilioNumberSave(e) {
 }
 
 async function deleteTwilioNumber(id) {
-  if (!confirm("Remove this number?")) return;
-  try {
-    await sb.from("twilio_numbers").delete().eq("id", id);
-    loadTwilioNumbers();
-  } catch (err) {
-    toast("Failed to delete number.", true);
-  }
+  confirmAction("Remove this number? This cannot be undone.", async () => {
+    try {
+      await sb.from("twilio_numbers").delete().eq("id", id);
+      loadTwilioNumbers();
+    } catch (err) {
+      toast("Failed to delete number.", true);
+    }
+  }, { okLabel: "Remove", title: "Are you sure?" });
 }
 
 async function loadWorkflowRuns() {
@@ -4080,18 +4106,19 @@ async function handleTeamInvite(e) {
 }
 
 async function revokeInvite(inviteId) {
-  if (!confirm("Revoke this invite?")) return;
-  try {
-    const { error } = await sb
-      .from("sales_rep_invites")
-      .update({ status: "revoked", revoked_at: new Date().toISOString() })
-      .eq("id", inviteId);
-    if (error) { toast(error.message, true); return; }
-    toast("Invite revoked.");
-    loadTeamMembers();
-  } catch (err) {
-    toast("Failed to revoke invite.", true);
-  }
+  confirmAction("Revoke this invite? The recipient will no longer be able to join.", async () => {
+    try {
+      const { error } = await sb
+        .from("sales_rep_invites")
+        .update({ status: "revoked", revoked_at: new Date().toISOString() })
+        .eq("id", inviteId);
+      if (error) { toast(error.message, true); return; }
+      toast("Invite revoked.");
+      loadTeamMembers();
+    } catch (err) {
+      toast("Failed to revoke invite.", true);
+    }
+  }, { okLabel: "Revoke", title: "Revoke invite?" });
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -5307,15 +5334,16 @@ async function toggleWebhook(id, active) {
 }
 
 async function deleteWebhook(id) {
-  if (!confirm("Delete this webhook endpoint? This cannot be undone.")) return;
-  const { error } = await sb
-    .from("webhook_endpoints")
-    .delete()
-    .eq("id", id)
-    .eq("company_id", currentCompanyId);
-  if (error) { toast("Failed to delete webhook: " + error.message, true); return; }
-  toast("Webhook deleted.");
-  loadWebhooks();
+  confirmAction("Delete this webhook endpoint? This cannot be undone.", async () => {
+    const { error } = await sb
+      .from("webhook_endpoints")
+      .delete()
+      .eq("id", id)
+      .eq("company_id", currentCompanyId);
+    if (error) { toast("Failed to delete webhook: " + error.message, true); return; }
+    toast("Webhook deleted.");
+    loadWebhooks();
+  });
 }
 
 async function loadWebhookDeliveries() {
