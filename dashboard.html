@@ -1288,13 +1288,63 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         </div>
         <div id="customFieldInputs" class="customs"></div>
       </form>
+
+      <!-- PPL call log — visible only for PPL leads -->
+      <div id="pplCallLogSection" class="hidden" style="margin-top:20px;border-top:1px solid var(--border,#e0e0e0);padding-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <span style="font-size:13px;font-weight:600">Call Log</span>
+            <span id="pplDisputeEligibilityBadge" style="display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle"></span>
+          </div>
+          <button id="openLogCallBtn" class="btn" type="button" style="font-size:12px;padding:4px 10px">Log Call Attempt</button>
+        </div>
+        <div id="pplCallLogList" style="font-size:12px;color:var(--muted)">No call attempts logged yet.</div>
+      </div>
     </div>
     <div class="mf">
-      <div class="helper">Custom fields saved here are attached directly to each lead record.</div>
+      <div class="helper" id="leadModalHelper">Custom fields saved here are attached directly to each lead record.</div>
       <div class="actions">
         <button id="openDisputeFromLead" class="btn hidden" type="button" style="margin-right:auto;color:var(--danger,#d00)">Dispute Lead</button>
         <button id="cancelLeadModal" class="btn" type="button">Cancel</button>
         <button class="btn2" type="submit" form="leadForm">Save Lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Log Call Attempt Modal ─────────────────────────────────────────────── -->
+<div id="logCallModal" class="modal">
+  <div class="modal-card" style="max-width:400px">
+    <div class="mh">
+      <h2>Log Call Attempt</h2>
+      <p>Record a call attempt on this PPL lead. Logging within 24 hours of delivery keeps all dispute reasons available.</p>
+    </div>
+    <div class="mb">
+      <div class="stack" style="gap:14px">
+        <div class="field">
+          <label for="callOutcome">Outcome</label>
+          <select id="callOutcome">
+            <option value="no_answer">No Answer</option>
+            <option value="voicemail">Voicemail</option>
+            <option value="connected">Connected</option>
+            <option value="wrong_number">Wrong Number</option>
+            <option value="callback_requested">Callback Requested</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="callNotes">Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <textarea id="callNotes" rows="2" placeholder="e.g. Left voicemail at 10:32am"></textarea>
+        </div>
+        <div class="field">
+          <label for="callAttemptedAt">Called at <span style="font-weight:400;color:var(--muted)">(defaults to now)</span></label>
+          <input id="callAttemptedAt" type="datetime-local">
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <div class="actions">
+        <button id="cancelLogCallModal" class="btn" type="button">Cancel</button>
+        <button id="saveCallAttemptBtn" class="btn2" type="button">Save Attempt</button>
       </div>
     </div>
   </div>
@@ -1311,13 +1361,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Step 1: choose reason -->
       <div id="disputeStep1">
+        <!-- Eligibility status strip — populated by JS -->
+        <div id="disputeEligibilityStrip" style="margin-bottom:14px"></div>
         <p style="font-size:13px;margin-bottom:16px;color:var(--muted)">Select the reason for this dispute. Each reason is automatically verified — only submit if you believe the lead does not meet the agreed criteria.</p>
         <div class="stack" style="gap:10px">
-          <label class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">
+          <label id="disputeReasonInvalidLabel" class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">
             <input type="radio" name="disputeReason" value="invalid_number" style="margin-top:2px;accent-color:var(--accent)">
             <div>
               <strong style="font-size:13px">Invalid Number</strong>
               <p style="font-size:12px;color:var(--muted);margin:2px 0 0">Auto-checked against Veriphone in E164 format. Approved if the number is unreachable or invalid.</p>
+              <p id="disputeInvalidNumberNote" class="hidden" style="font-size:11px;color:#b45309;margin:4px 0 0;font-style:italic"></p>
             </div>
           </label>
           <label class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">

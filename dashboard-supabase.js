@@ -711,8 +711,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
-  // ── Dispute Modal ──────────────────────────────────────────────────────────
+  // ── Dispute / Call Log Modals ─────────────────────────────────────────────
   initDisputeModal();
+  initLogCallModal();
 
   // ── Import Leads Modal ─────────────────────────────────────────────────────
   document.getElementById("openImportLeadsModal")?.addEventListener("click", openImportLeadsModal);
@@ -1528,10 +1529,18 @@ async function openEditLead(id) {
   
   await renderCustomFieldInputs(l.custom_data || {});
 
-  // PPL dispute button — only visible for PPL leads
+  // PPL features — dispute button + call log (only for PPL leads)
   _currentDisputeLeadId = l.id;
-  const disputeBtn = document.getElementById("openDisputeFromLead");
+  _pplEligibility       = null;
+  const disputeBtn   = document.getElementById("openDisputeFromLead");
+  const callLogSec   = document.getElementById("pplCallLogSection");
   if (disputeBtn) disputeBtn.classList.toggle("hidden", !l.is_ppl);
+  if (callLogSec)  callLogSec.classList.toggle("hidden", !l.is_ppl);
+
+  if (l.is_ppl) {
+    loadPplCallLog(l.id);
+    loadPplEligibility(l.id);
+  }
 
   openModal("leadModal");
 }
@@ -1643,14 +1652,25 @@ function openDisputeModal() {
   _currentDisputeReason   = null;
   _currentManualAvailable = false;
 
-  document.querySelectorAll('input[name="disputeReason"]').forEach((r) => { r.checked = false; });
+  document.querySelectorAll('input[name="disputeReason"]').forEach((r) => { r.checked = false; r.disabled = false; });
   const runBtn = document.getElementById("runDisputeCheckBtn");
-  if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Run Auto-Check"; }
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Run Auto-Check"; runBtn.classList.remove("hidden"); }
+
+  // Reset eligibility UI before re-applying
+  const strip = document.getElementById("disputeEligibilityStrip");
+  if (strip) strip.innerHTML = "";
+  const invLabel = document.getElementById("disputeReasonInvalidLabel");
+  if (invLabel) invLabel.style.opacity = "";
+  const invNote = document.getElementById("disputeInvalidNumberNote");
+  if (invNote) invNote.classList.add("hidden");
 
   showDisputeStep(1);
 
   const nameEl = document.getElementById("disputeLeadName");
   if (nameEl) nameEl.textContent = lead.name || "Unknown Lead";
+
+  // Apply eligibility rules to step 1 (use cached value from when lead was opened)
+  applyDisputeEligibilityToModal(_pplEligibility);
 
   closeModal("leadModal");
   openModal("disputeModal");
@@ -1856,6 +1876,179 @@ function showDisputeDone(icon, title, sub) {
   if (subEl)  subEl.textContent  = sub;
   const runBtn = document.getElementById("runDisputeCheckBtn");
   if (runBtn) runBtn.classList.add("hidden");
+}
+
+// ─── PPL Call Attempt Logging ─────────────────────────────────────────────────
+
+let _pplEligibility = null; // cached eligibility for current lead
+
+function initLogCallModal() {
+  document.getElementById("cancelLogCallModal")?.addEventListener("click", () => {
+    closeModal("logCallModal");
+    openModal("leadModal");
+  });
+  document.getElementById("openLogCallBtn")?.addEventListener("click", () => {
+    // Default datetime-local to now
+    const el = document.getElementById("callAttemptedAt");
+    if (el) {
+      const now = new Date();
+      now.setSeconds(0, 0);
+      el.value = now.toISOString().slice(0, 16);
+    }
+    document.getElementById("callNotes").value = "";
+    document.getElementById("callOutcome").value = "no_answer";
+    closeModal("leadModal");
+    openModal("logCallModal");
+  });
+  document.getElementById("saveCallAttemptBtn")?.addEventListener("click", saveCallAttempt);
+}
+
+async function loadPplCallLog(leadId) {
+  const listEl = document.getElementById("pplCallLogList");
+  if (!listEl) return;
+  listEl.textContent = "Loading…";
+
+  const { data, error } = await sb
+    .from("ppl_call_attempts")
+    .select("id, outcome, notes, attempted_at, logged_by")
+    .eq("lead_id", leadId)
+    .order("attempted_at", { ascending: false })
+    .limit(20);
+
+  if (error || !data?.length) {
+    listEl.innerHTML = '<span style="color:var(--muted)">No call attempts logged yet.</span>';
+    return;
+  }
+
+  const outcomeLabel = {
+    no_answer:          "No Answer",
+    voicemail:          "Voicemail",
+    connected:          "Connected",
+    wrong_number:       "Wrong Number",
+    callback_requested: "Callback Requested",
+  };
+  const outcomeColour = {
+    no_answer:          "#9e9e9e",
+    voicemail:          "#7986cb",
+    connected:          "#43a047",
+    wrong_number:       "#e53935",
+    callback_requested: "#fb8c00",
+  };
+
+  listEl.innerHTML = data.map((a) => {
+    const ts  = new Date(a.attempted_at).toLocaleString();
+    const col = outcomeColour[a.outcome] || "#9e9e9e";
+    const lbl = outcomeLabel[a.outcome]  || a.outcome;
+    return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border,#eee)">
+      <span style="min-width:120px;font-weight:500;color:${col};font-size:12px">${lbl}</span>
+      <span style="color:var(--muted);font-size:11px;flex:1">${a.notes ? `${a.notes} · ` : ""}${ts}</span>
+    </div>`;
+  }).join("");
+}
+
+async function loadPplEligibility(leadId) {
+  const { data, error } = await sb
+    .rpc("get_ppl_dispute_eligibility", { p_lead_id: leadId });
+  _pplEligibility = (!error && data) ? data : null;
+  renderEligibilityBadge(_pplEligibility);
+}
+
+function renderEligibilityBadge(elig) {
+  const badge = document.getElementById("pplDisputeEligibilityBadge");
+  if (!badge || !elig) return;
+
+  if (!elig.dispute_window_open) {
+    badge.style.cssText = "display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle;background:#fdecea;color:#7f1d1d";
+    badge.textContent   = "Dispute window closed";
+  } else {
+    const days = elig.days_remaining;
+    badge.style.cssText = "display:inline-block;margin-left:8px;font-size:11px;padding:2px 7px;border-radius:10px;vertical-align:middle;background:#e8f5e9;color:#1b5e20";
+    badge.textContent   = `${days}d remaining to dispute`;
+  }
+}
+
+async function saveCallAttempt() {
+  if (!_currentDisputeLeadId) return;
+  const btn = document.getElementById("saveCallAttemptBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+  const outcome     = document.getElementById("callOutcome")?.value;
+  const notes       = document.getElementById("callNotes")?.value?.trim() || null;
+  const attemptedAt = document.getElementById("callAttemptedAt")?.value;
+
+  const payload = {
+    lead_id:      _currentDisputeLeadId,
+    company_id:   currentCompanyId,
+    outcome,
+    notes,
+    attempted_at: attemptedAt ? new Date(attemptedAt).toISOString() : new Date().toISOString(),
+  };
+
+  const { error } = await sb.from("ppl_call_attempts").insert(payload);
+
+  if (btn) { btn.disabled = false; btn.textContent = "Save Attempt"; }
+
+  if (error) {
+    toast(error.message, true);
+    return;
+  }
+
+  toast("Call attempt logged.");
+  closeModal("logCallModal");
+  openModal("leadModal");
+
+  // Refresh call log and eligibility in background
+  loadPplCallLog(_currentDisputeLeadId);
+  loadPplEligibility(_currentDisputeLeadId);
+}
+
+// Render eligibility into the dispute modal step 1 before the user picks a reason
+function applyDisputeEligibilityToModal(elig) {
+  const strip     = document.getElementById("disputeEligibilityStrip");
+  const invLabel  = document.getElementById("disputeReasonInvalidLabel");
+  const invNote   = document.getElementById("disputeInvalidNumberNote");
+  const runBtn    = document.getElementById("runDisputeCheckBtn");
+
+  if (!elig) return;
+
+  // Window closed — block everything
+  if (!elig.dispute_window_open) {
+    if (strip) {
+      strip.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:6px;padding:10px;font-size:12px;color:#7f1d1d">
+        The 7-day dispute window for this lead has closed. Disputes must be raised within 7 days of delivery.
+      </div>`;
+    }
+    document.querySelectorAll('input[name="disputeReason"]').forEach((r) => { r.disabled = true; });
+    if (runBtn) runBtn.disabled = true;
+    return;
+  }
+
+  // Window open — show days remaining
+  const days    = elig.days_remaining;
+  const urgency = days <= 1 ? "#7f1d1d" : days <= 2 ? "#78350f" : "#1b5e20";
+  const bg      = days <= 1 ? "#fdecea" : days <= 2 ? "#fff8e1" : "#e8f5e9";
+  const border  = days <= 1 ? "#f5c6cb" : days <= 2 ? "#ffe082" : "#a5d6a7";
+  if (strip) {
+    strip.innerHTML = `<div style="background:${bg};border:1px solid ${border};border-radius:6px;padding:8px 12px;font-size:12px;color:${urgency}">
+      <strong>${days} day${days !== 1 ? "s" : ""} remaining</strong> in the dispute window for this lead.
+    </div>`;
+  }
+
+  // 24h call rule — grey out invalid_number if not eligible
+  if (!elig.call_within_24h) {
+    if (invLabel) invLabel.style.opacity = "0.5";
+    const radio = invLabel?.querySelector('input[type="radio"]');
+    if (radio)  radio.disabled = true;
+    if (invNote) {
+      invNote.classList.remove("hidden");
+      invNote.textContent = "Not available — no call attempt was logged within 24 hours of lead delivery. Log a call first, or choose a different reason.";
+    }
+  } else {
+    if (invLabel) invLabel.style.opacity = "";
+    const radio = invLabel?.querySelector('input[type="radio"]');
+    if (radio)  radio.disabled = false;
+    if (invNote) invNote.classList.add("hidden");
+  }
 }
 
 // ─── Auto-send Welcome SMS ────────────────────────────────────────────────────

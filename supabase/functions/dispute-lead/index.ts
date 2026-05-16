@@ -132,13 +132,39 @@ Deno.serve(async (req) => {
     // ── Fetch lead (verify it exists, is PPL, belongs to company) ─────────────
     const { data: lead, error: leadErr } = await db
       .from("leads")
-      .select("id, company_id, is_ppl, phone, postcode, name")
+      .select("id, company_id, is_ppl, phone, postcode, name, created_at")
       .eq("id", lead_id)
       .single();
 
-    if (leadErr || !lead)         return json({ error: "Lead not found" }, 404);
+    if (leadErr || !lead)              return json({ error: "Lead not found" }, 404);
     if (lead.company_id !== companyId) return json({ error: "Forbidden" }, 403);
-    if (!lead.is_ppl)             return json({ error: "Only PPL leads can be disputed" }, 422);
+    if (!lead.is_ppl)                  return json({ error: "Only PPL leads can be disputed" }, 422);
+
+    // ── Check dispute eligibility (7-day window + 24h call rule) ─────────────
+    const { data: eligibility } = await db
+      .rpc("get_ppl_dispute_eligibility", { p_lead_id: lead_id });
+
+    if (!eligibility?.dispute_window_open) {
+      return json({
+        error: "Dispute window has closed. Disputes must be raised within 7 days of lead delivery.",
+        eligibility,
+      }, 422);
+    }
+
+    const eligibleReasons: string[] = eligibility?.eligible_reasons ?? [];
+    if (!eligibleReasons.includes(reason)) {
+      // The most common case: invalid_number requested but no 24h call logged
+      if (reason === "invalid_number" && !eligibility?.call_within_24h) {
+        return json({
+          error: "Invalid number disputes require at least one call attempt to be logged within 24 hours of lead delivery.",
+          eligibility,
+        }, 422);
+      }
+      return json({
+        error: `The reason '${reason}' is not currently eligible for this lead.`,
+        eligibility,
+      }, 422);
+    }
 
     // ── Block duplicate dispute attempts ──────────────────────────────────────
     const { data: existing } = await db
@@ -263,12 +289,12 @@ Deno.serve(async (req) => {
       .rpc("get_ppl_scrub_usage", { p_company_id: companyId });
 
     return json({
-      dispute_id:         dispute.id,
-      status:             disputeStatus,
+      dispute_id:              dispute.id,
+      status:                  disputeStatus,
       reason,
-      auto_check_result:  autoCheckResult,
-      scrub_usage:        scrubUsage,
-      // Signal whether manual review is available (only for outside_agreed_criteria)
+      auto_check_result:       autoCheckResult,
+      scrub_usage:             scrubUsage,
+      eligibility,
       manual_review_available: reason === "outside_agreed_criteria",
     });
 
