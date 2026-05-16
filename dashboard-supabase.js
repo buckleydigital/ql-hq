@@ -1566,6 +1566,7 @@ async function openEditLead(id) {
   if (isPpl) {
     loadPplCallLog(l.id);
     loadPplEligibility(l.id);
+    snapshotPplPostcode(l.id);
   }
 
   openModal("leadModal");
@@ -1979,6 +1980,24 @@ async function loadPplEligibility(leadId) {
     .rpc("get_ppl_dispute_eligibility", { p_lead_id: leadId });
   _pplEligibility = (!error && data) ? data : null;
   renderEligibilityBadge(_pplEligibility);
+}
+
+// Fire-and-forget: records the postcode match result at the moment the lead
+// is opened, before the user can edit or clear the postcode field.  The
+// server only writes the column once (if still NULL) so this is idempotent.
+async function snapshotPplPostcode(leadId) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+    await fetch(`${sb.supabaseUrl}/functions/v1/dispute-lead`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify({ action: "snapshot_postcode", lead_id: leadId }),
+    });
+  } catch (_) {
+    // Non-critical — silently ignore network errors
+  }
 }
 
 function renderEligibilityBadge(elig) {
