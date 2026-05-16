@@ -1289,7 +1289,93 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div id="customFieldInputs" class="customs"></div>
       </form>
     </div>
-    <div class="mf"><div class="helper">Custom fields saved here are attached directly to each lead record.</div><div class="actions"><button id="cancelLeadModal" class="btn" type="button">Cancel</button><button class="btn2" type="submit" form="leadForm">Save Lead</button></div></div>
+    <div class="mf">
+      <div class="helper">Custom fields saved here are attached directly to each lead record.</div>
+      <div class="actions">
+        <button id="openDisputeFromLead" class="btn hidden" type="button" style="margin-right:auto;color:var(--danger,#d00)">Dispute Lead</button>
+        <button id="cancelLeadModal" class="btn" type="button">Cancel</button>
+        <button class="btn2" type="submit" form="leadForm">Save Lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Dispute Lead Modal ────────────────────────────────────────────────── -->
+<div id="disputeModal" class="modal">
+  <div class="modal-card" style="max-width:520px">
+    <div class="mh">
+      <h2>Dispute PPL Lead</h2>
+      <p id="disputeLeadName" style="font-weight:500;color:var(--text)"></p>
+    </div>
+    <div class="mb">
+
+      <!-- Step 1: choose reason -->
+      <div id="disputeStep1">
+        <p style="font-size:13px;margin-bottom:16px;color:var(--muted)">Select the reason for this dispute. Each reason is automatically verified — only submit if you believe the lead does not meet the agreed criteria.</p>
+        <div class="stack" style="gap:10px">
+          <label class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">
+            <input type="radio" name="disputeReason" value="invalid_number" style="margin-top:2px;accent-color:var(--accent)">
+            <div>
+              <strong style="font-size:13px">Invalid Number</strong>
+              <p style="font-size:12px;color:var(--muted);margin:2px 0 0">Auto-checked against Veriphone in E164 format. Approved if the number is unreachable or invalid.</p>
+            </div>
+          </label>
+          <label class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">
+            <input type="radio" name="disputeReason" value="duplicate" style="margin-top:2px;accent-color:var(--accent)">
+            <div>
+              <strong style="font-size:13px">Duplicate</strong>
+              <p style="font-size:12px;color:var(--muted);margin:2px 0 0">Auto-checked against your existing lead records. Approved if the same phone number was already in your account.</p>
+            </div>
+          </label>
+          <label class="check-row" style="align-items:flex-start;gap:10px;cursor:pointer">
+            <input type="radio" name="disputeReason" value="outside_agreed_criteria" style="margin-top:2px;accent-color:var(--accent)">
+            <div>
+              <strong style="font-size:13px">Outside Agreed Criteria</strong>
+              <p style="font-size:12px;color:var(--muted);margin:2px 0 0">Auto-checked against your agreed postcode list. If outside territory, approved automatically. If inconclusive, you may request manual review.</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 2: auto-check result -->
+      <div id="disputeStep2" class="hidden">
+        <div id="disputeCheckSpinner" style="text-align:center;padding:24px 0;display:none">
+          <div class="spinner" style="margin:0 auto 12px"></div>
+          <p style="font-size:13px;color:var(--muted)">Running automated checks…</p>
+        </div>
+        <div id="disputeResult" class="hidden">
+          <div id="disputeResultBanner" style="padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px"></div>
+          <div id="disputeResultDetail" style="font-size:12px;color:var(--muted);margin-bottom:16px"></div>
+
+          <!-- Manual review section — only shown for outside_agreed_criteria -->
+          <div id="disputeManualReviewSection" class="hidden">
+            <div style="border:1px solid var(--border,#e0e0e0);border-radius:8px;padding:14px;background:var(--bg-alt,#fafafa);margin-bottom:12px">
+              <p style="font-size:12px;font-weight:600;margin:0 0 8px;color:var(--text)">Send for Manual Review</p>
+              <div id="disputeScrubBar" style="margin-bottom:10px"></div>
+              <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px;font-size:12px;color:#5d4037;margin-bottom:10px">
+                <strong>Important:</strong> Manual review is only for leads that fall outside QuoteLeads' agreed delivery criteria. Leads where a prospect said "not interested", changed their mind, or any outcome outside QuoteLeads' direct control do not qualify for replacement.
+              </div>
+              <div id="disputeCapWarning" class="hidden" style="background:#fdecea;border:1px solid #f5c6cb;border-radius:6px;padding:10px;font-size:12px;color:#7f1d1d;margin-bottom:10px"></div>
+              <button id="sendManualReviewBtn" class="btn2" type="button" style="width:100%;font-size:13px">Confirm — Send for Manual Review</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: done -->
+      <div id="disputeStep3" class="hidden" style="text-align:center;padding:24px 0">
+        <div id="disputeDoneIcon" style="font-size:32px;margin-bottom:12px"></div>
+        <p id="disputeDoneMsg" style="font-size:14px;font-weight:500;margin:0 0 6px"></p>
+        <p id="disputeDoneSubMsg" style="font-size:12px;color:var(--muted);margin:0"></p>
+      </div>
+
+    </div>
+    <div class="mf">
+      <div class="actions">
+        <button id="cancelDisputeModal" class="btn" type="button">Close</button>
+        <button id="runDisputeCheckBtn" class="btn2" type="button" disabled>Run Auto-Check</button>
+      </div>
+    </div>
   </div>
 </div>
 
