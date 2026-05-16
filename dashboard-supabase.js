@@ -3599,9 +3599,13 @@ async function loadAiSettings() {
       .select("id")
       .eq("company_id", currentCompanyId);
     
+    const count = nums?.length || 0;
     const twilioCountValue = document.getElementById("twilioCountValue");
-    if (twilioCountValue) twilioCountValue.textContent = nums?.length || 0;
-    
+    if (twilioCountValue) twilioCountValue.textContent = count;
+
+    const pendingNotice = document.getElementById("smsNumberPendingNotice");
+    if (pendingNotice) pendingNotice.classList.toggle("hidden", count > 0);
+
     loadTwilioNumbers();
     loadWorkflowRuns();
 
