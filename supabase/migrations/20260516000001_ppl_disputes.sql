@@ -37,6 +37,11 @@ create index if not exists idx_leads_is_ppl
   on public.leads (company_id, is_ppl)
   where is_ppl = true;
 
+-- Backfill: leads already tracked as PPL via the source field
+update public.leads
+set is_ppl = true
+where lower(source) = 'ppl' and is_ppl = false;
+
 -- ─── Companies: PPL territory & scrub cap ─────────────────────────────────────
 -- ppl_agreed_postcodes — the postcode list this company has contracted for.
 --   Empty array means no postcodes have been configured; outside_agreed_criteria
