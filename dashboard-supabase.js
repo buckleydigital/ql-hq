@@ -1600,6 +1600,15 @@ async function handleLeadSave(e) {
     custom_data,
   };
 
+  // Block clearing the postcode on an existing PPL lead
+  if (id) {
+    const existingLead = allLeads.find((x) => x.id === id);
+    if (existingLead?.is_ppl && !payload.postcode) {
+      toast("Postcode cannot be removed from a PPL lead.", true);
+      return;
+    }
+  }
+
   try {
     // Auto-route new leads based on company routing config
     if (!id) {
@@ -1980,6 +1989,7 @@ async function loadPplEligibility(leadId) {
   _pplEligibility = (!error && data) ? data : null;
   renderEligibilityBadge(_pplEligibility);
 }
+
 
 function renderEligibilityBadge(elig) {
   const badge = document.getElementById("pplDisputeEligibilityBadge");
