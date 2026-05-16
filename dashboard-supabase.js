@@ -746,6 +746,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("passwordForm")?.addEventListener("submit", handlePasswordChange);
   document.getElementById("settingsCompanyLogo")?.addEventListener("change", handleLogoFileChange);
   document.getElementById("removeLogoBtn")?.addEventListener("click", handleRemoveLogo);
+  document.getElementById("addServiceAreaBtn")?.addEventListener("click", _addServiceAreaFromInput);
+  document.getElementById("serviceAreaInput")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); _addServiceAreaFromInput(); } });
+  document.getElementById("saveServiceAreasBtn")?.addEventListener("click", handleServiceAreasSave);
 
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
@@ -3283,6 +3286,7 @@ async function loadSettings() {
     await loadCustomFields();
     renderSettingsCustomFields();
     loadLeadRoutingUI(company?.settings || {});
+    loadServiceAreasUI(company?.ppl_agreed_postcodes || []);
   } catch (err) {
     toast("Failed to load settings.", true);
   }
@@ -3435,6 +3439,51 @@ function handleRemoveLogo() {
   updateLogoPreview(null);
   const logoInput = document.getElementById("settingsCompanyLogo");
   if (logoInput) logoInput.value = "";
+}
+
+// ─── PPL Service Areas ────────────────────────────────────────────────────────
+function loadServiceAreasUI(postcodes) {
+  const container = document.getElementById("serviceAreaTagsContainer");
+  if (!container) return;
+  container.innerHTML = "";
+  postcodes.forEach((pc) => _renderServiceAreaTag(container, pc));
+}
+
+function _renderServiceAreaTag(container, postcode) {
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.dataset.postcode = postcode.toUpperCase();
+  tag.innerHTML = `${postcode.toUpperCase()} <button type="button" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;font-size:13px;opacity:0.6" aria-label="Remove">&times;</button>`;
+  tag.querySelector("button").addEventListener("click", () => tag.remove());
+  container.appendChild(tag);
+}
+
+function _addServiceAreaFromInput() {
+  const input = document.getElementById("serviceAreaInput");
+  if (!input) return;
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  const container = document.getElementById("serviceAreaTagsContainer");
+  if (!container) return;
+  // Prevent duplicates
+  const existing = [...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode);
+  if (existing.includes(val)) { input.value = ""; return; }
+  _renderServiceAreaTag(container, val);
+  input.value = "";
+}
+
+async function handleServiceAreasSave() {
+  if (!currentCompanyId) return;
+  const container = document.getElementById("serviceAreaTagsContainer");
+  if (!container) return;
+  const postcodes = [...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode).filter(Boolean);
+  try {
+    const { error } = await sb.from("companies").update({ ppl_agreed_postcodes: postcodes }).eq("id", currentCompanyId);
+    if (error) { toast(error.message, true); return; }
+    toast("Service areas saved.");
+  } catch {
+    toast("Failed to save service areas.", true);
+  }
 }
 
 async function handleCompanyProfileSave(e) {

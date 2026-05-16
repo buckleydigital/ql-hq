@@ -984,6 +984,19 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </form>
           </div>
         </section>
+        <!-- PPL Service Areas -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>PPL Service Areas</h2><p>The postcodes your company has contracted to receive leads for. Used to auto-check <em>Outside Agreed Criteria</em> disputes.</p></div></div>
+          <div class="panel-b">
+            <div id="serviceAreaTagsContainer" class="tags" style="min-height:32px;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+              <input id="serviceAreaInput" type="text" placeholder="e.g. 2000" style="width:120px" maxlength="10">
+              <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcode</button>
+            </div>
+            <p class="muted" style="font-size:11px;margin-bottom:12px">Enter each postcode individually. The dispute auto-check will flag leads whose postcode is not in this list.</p>
+            <div class="actions"><button id="saveServiceAreasBtn" class="btn2" type="button">Save Service Areas</button></div>
+          </div>
+        </section>
         <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>
       </div>
 
