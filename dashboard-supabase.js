@@ -1532,10 +1532,10 @@ async function openEditLead(id) {
   
   await renderCustomFieldInputs(l.custom_data || {});
 
-  // PPL features — dispute button + call log (PPL leads, by flag or source)
+  // PPL features — dispute button + call log (source === 'PPL')
   _currentDisputeLeadId = l.id;
   _pplEligibility       = null;
-  const isPpl        = l.is_ppl || l.source?.toLowerCase() === "ppl";
+  const isPpl        = l.source?.toLowerCase() === "ppl";
   const disputeBtn   = document.getElementById("openDisputeFromLead");
   const callLogSec   = document.getElementById("pplCallLogSection");
   if (disputeBtn) disputeBtn.classList.toggle("hidden", !isPpl);
@@ -1649,8 +1649,7 @@ function initDisputeModal() {
 
 function openDisputeModal() {
   const lead = allLeads.find((x) => x.id === _currentDisputeLeadId);
-  const isPpl = lead?.is_ppl || lead?.source?.toLowerCase() === "ppl";
-  if (!lead || !isPpl) return;
+  if (!lead || lead.source?.toLowerCase() !== "ppl") return;
 
   // Reset to step 1
   _currentDisputeId       = null;
