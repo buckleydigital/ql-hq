@@ -1,12 +1,6 @@
 -- =============================================================================
--- QuoteLeadsHQ — Migration 002: VAPI Voice Agent, AI SMS Agent, Sales Reps
+-- QuoteLeadsHQ — Migration 002: AI SMS Agent, Sales Reps
 -- =============================================================================
-
--- ─── Add VAPI to API key providers ───────────────────────────────────────────
-alter type public.api_key_provider add value if not exists 'vapi';
-
--- ─── Add 'voice' channel ────────────────────────────────────────────────────
-alter type public.conversation_channel add value if not exists 'voice';
 
 -- ─── Sales Reps ──────────────────────────────────────────────────────────────
 -- Each company can have up to 10 reps. Visibility controls what each rep
@@ -68,70 +62,6 @@ create trigger enforce_rep_limit
 create trigger set_updated_at before update on public.sales_reps
   for each row execute function public.set_updated_at();
 
--- ─── Voice Agent Config ──────────────────────────────────────────────────────
--- Stores VAPI assistant configuration per company.
-
-create table public.voice_agent_config (
-  id              uuid primary key default gen_random_uuid(),
-  company_id      uuid not null references public.companies(id) on delete cascade,
-  vapi_assistant_id text,                    -- VAPI assistant ID
-  name            text not null default 'Default Voice Agent',
-  system_prompt   text,                      -- AI personality / instructions
-  greeting        text,                      -- opening message on call
-  voice_id        text,                      -- VAPI voice selection
-  model           text default 'gpt-4o',     -- LLM model for the agent
-  max_duration    int default 300,           -- max call duration in seconds
-  transfer_phone  text,                      -- number to transfer to if needed
-  is_active       boolean default true,
-  settings        jsonb default '{}',        -- additional VAPI config
-  created_at      timestamptz default now(),
-  updated_at      timestamptz default now()
-);
-
-create index idx_voice_agent_company on public.voice_agent_config (company_id);
-
-create trigger set_updated_at before update on public.voice_agent_config
-  for each row execute function public.set_updated_at();
-
--- ─── Voice Call Log ──────────────────────────────────────────────────────────
--- Tracks every call made/received through the VAPI voice agent.
-
-create type public.call_direction as enum ('inbound', 'outbound');
-create type public.call_status as enum (
-  'ringing', 'in_progress', 'completed', 'missed', 'failed', 'voicemail'
-);
-
-create table public.voice_calls (
-  id                uuid primary key default gen_random_uuid(),
-  company_id        uuid not null references public.companies(id) on delete cascade,
-  lead_id           uuid references public.leads(id) on delete set null,
-  conversation_id   uuid references public.conversations(id) on delete set null,
-  assigned_to       uuid references auth.users(id) on delete set null,
-  voice_config_id   uuid references public.voice_agent_config(id) on delete set null,
-  vapi_call_id      text,                    -- VAPI's external call ID
-  direction         public.call_direction not null,
-  status            public.call_status default 'ringing',
-  from_number       text,
-  to_number         text,
-  duration          int,                     -- seconds
-  recording_url     text,
-  transcript        text,                    -- full call transcript
-  summary           text,                    -- AI-generated summary
-  sentiment         text,                    -- 'positive' | 'neutral' | 'negative'
-  outcome           text,                    -- 'appointment_booked', 'quote_requested', etc.
-  cost              numeric(8,4),            -- call cost
-  metadata          jsonb default '{}',
-  started_at        timestamptz,
-  ended_at          timestamptz,
-  created_at        timestamptz default now()
-);
-
-create index idx_voice_calls_company on public.voice_calls (company_id);
-create index idx_voice_calls_lead on public.voice_calls (lead_id);
-create index idx_voice_calls_status on public.voice_calls (company_id, status);
-create index idx_voice_calls_created on public.voice_calls (company_id, created_at desc);
-create index idx_voice_calls_conversation on public.voice_calls (conversation_id);
-
 -- ─── SMS Agent Config ────────────────────────────────────────────────────────
 -- Stores AI SMS agent configuration per company (uses Twilio + OpenAI).
 
@@ -162,7 +92,7 @@ create trigger set_updated_at before update on public.sms_agent_config
 -- Track whether a message was sent by AI or a human.
 
 alter table public.messages add column if not exists is_ai_generated boolean default false;
-alter table public.messages add column if not exists agent_type text;  -- 'voice' | 'sms' | null (human)
+alter table public.messages add column if not exists agent_type text;  -- 'sms' | null (human)
 
 -- ─── Add agent tracking to conversations ────────────────────────────────────
 alter table public.conversations add column if not exists assigned_to uuid references auth.users(id) on delete set null;
@@ -209,34 +139,6 @@ create policy "Admins can delete reps"
       where id = auth.uid()
         and role in ('owner', 'admin')
     ));
-
--- ── Voice Agent Config ───────────────────────────────────────────────────────
-alter table public.voice_agent_config enable row level security;
-
-create policy "Company members can view voice config"
-  on public.voice_agent_config for select
-  using (company_id = public.current_company_id());
-
-create policy "Company members can manage voice config"
-  on public.voice_agent_config for all
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
-
--- ── Voice Calls ──────────────────────────────────────────────────────────────
-alter table public.voice_calls enable row level security;
-
-create policy "Company members can view calls"
-  on public.voice_calls for select
-  using (company_id = public.current_company_id());
-
-create policy "Company members can create calls"
-  on public.voice_calls for insert
-  with check (company_id = public.current_company_id());
-
-create policy "Company members can update calls"
-  on public.voice_calls for update
-  using (company_id = public.current_company_id())
-  with check (company_id = public.current_company_id());
 
 -- ── SMS Agent Config ─────────────────────────────────────────────────────────
 alter table public.sms_agent_config enable row level security;

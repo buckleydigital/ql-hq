@@ -549,10 +549,6 @@ section, .section { padding: 96px 40px; }
     flex-shrink: 0;
 }
 
-.agent-icon.voice {
-    background: linear-gradient(135deg, #8b5cf6, #ec4899);
-}
-
 .agent-info {
     flex: 1;
 }
@@ -655,98 +651,6 @@ section, .section { padding: 96px 40px; }
     background: var(--accent);
     color: #fff;
     border-bottom-right-radius: 4px;
-}
-
-/* Voice Demo - minimal */
-.voice-demo {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.voice-wave {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    height: 50px;
-}
-
-.voice-bar {
-    width: 4px;
-    background: linear-gradient(180deg, var(--accent), #8b5cf6);
-    border-radius: 2px;
-    animation: voiceWave 1.2s ease-in-out infinite alternate;
-}
-
-.voice-bar:nth-child(1) { height: 16px; animation-delay: 0s; }
-.voice-bar:nth-child(2) { height: 28px; animation-delay: 0.1s; }
-.voice-bar:nth-child(3) { height: 40px; animation-delay: 0.2s; }
-.voice-bar:nth-child(4) { height: 32px; animation-delay: 0.15s; }
-.voice-bar:nth-child(5) { height: 44px; animation-delay: 0.05s; }
-.voice-bar:nth-child(6) { height: 24px; animation-delay: 0.25s; }
-.voice-bar:nth-child(7) { height: 36px; animation-delay: 0.1s; }
-.voice-bar:nth-child(8) { height: 20px; animation-delay: 0.2s; }
-
-@keyframes voiceWave {
-    0% { transform: scaleY(0.5); opacity: 0.5; }
-    100% { transform: scaleY(1); opacity: 1; }
-}
-
-.voice-transcript {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.voice-line {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-}
-
-.voice-speaker {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-
-.voice-speaker.ai {
-    background: var(--accent-dim);
-    color: var(--accent);
-}
-
-.voice-speaker.lead {
-    background: var(--bg-lift);
-    color: var(--ink-muted);
-    border: 1px solid var(--border);
-}
-
-.voice-text {
-    font-size: 13px;
-    color: var(--ink-soft);
-    line-height: 1.6;
-    font-style: italic;
-    padding-top: 2px;
-}
-
-.voice-meta {
-    display: flex;
-    gap: 20px;
-    margin-top: 8px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--ink-faint);
-}
-
-.voice-meta span:last-child {
-    color: var(--green);
-    margin-left: auto;
 }
 
 /* RESPONSIVE */
@@ -996,7 +900,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 <div class="marquee-strip">
     <div class="marquee-track">
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI SMS AGENT</div>
-        <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI VOICE AGENT</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI QUOTING</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI FOLLOW-UP</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> PIPELINE &amp; CRM</div>
@@ -1006,7 +909,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI LEARNING ENGINE</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> 24/7 CONVERSION</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI SMS AGENT</div>
-        <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI VOICE AGENT</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI QUOTING</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> AI FOLLOW-UP</div>
         <div class="marquee-item"><svg class="icon" style="width:8px;height:8px;color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="icon-filled"/></svg> PIPELINE &amp; CRM</div>
@@ -1126,7 +1028,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
         <div class="ai-agents-header fade-up">
             <div class="section-label">AI Agents</div>
             <h2 class="section-title">Two agents working<br/><em>around the clock.</em></h2>
-            <p class="section-sub">SMS and Voice — human-quality responses in seconds, day or night.</p>
+            <p class="section-sub">SMS — human-quality responses in seconds, day or night.</p>
         </div>
         
         <div class="agents-showcase">
@@ -1159,51 +1061,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
                 </div>
             </div>
             
-            <!-- Voice Agent -->
-            <div class="agent-card fade-up d1">
-                <div class="agent-header">
-                    <div class="agent-icon voice">
-                        <svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.78a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>
-                    </div>
-                    <div class="agent-info">
-                        <h3 class="agent-name">AI Voice Agent</h3>
-                        <div class="agent-status"><span class="agent-status-dot"></span> Active 24/7</div>
-                    </div>
-                </div>
-                <div class="agent-body">
-                    <p class="agent-desc">AI Voice calls new leads within minutes — evenings, weekends, holidays. Natural phone conversation with full transcript and summary.</p>
-                    <div class="agent-features">
-                        <div class="agent-feature"><svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span>Calls within minutes</span></div>
-                        <div class="agent-feature"><svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span>Human-like voice</span></div>
-                        <div class="agent-feature"><svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span>Full call recording</span></div>
-                    </div>
-                </div>
-                <div class="agent-demo">
-                    <div class="demo-label">Live Call Transcript</div>
-                    <div class="voice-demo">
-                        <div class="voice-wave">
-                            <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
-                            <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
-                            <div class="voice-bar"></div><div class="voice-bar"></div>
-                        </div>
-                        <div class="voice-transcript">
-                            <div class="voice-line">
-                                <span class="voice-speaker ai">AI</span>
-                                <span class="voice-text">"Hi Marcus, this is Sarah from Webb Roofing. I'm calling about your roof restoration enquiry..."</span>
-                            </div>
-                            <div class="voice-line">
-                                <span class="voice-speaker lead">Lead</span>
-                                <span class="voice-text">"Yeah, that's great. I was hoping someone would call."</span>
-                            </div>
-                        </div>
-                        <div class="voice-meta">
-                            <span>2m 34s</span>
-                            <span>Positive sentiment</span>
-                            <span>✓ Inspection booked</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </section>

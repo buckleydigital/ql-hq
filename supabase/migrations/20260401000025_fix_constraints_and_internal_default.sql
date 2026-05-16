@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Fix ON CONFLICT errors & default new signups to 'internal' user_type
 -- =============================================================================
--- 1. Idempotently ensure UNIQUE constraints on sms_agent_config.company_id
---    and voice_agent_config.company_id so upsert ON CONFLICT (company_id) works.
+-- 1. Idempotently ensure UNIQUE constraint on sms_agent_config.company_id
+--    so upsert ON CONFLICT (company_id) works.
 -- 2. Update handle_new_user() trigger to:
 --    a) Default user_type to 'internal' for new signups
 --    b) Base role on whether a new company was created (signup → owner)
@@ -26,26 +26,6 @@ begin
   ) then
     alter table public.sms_agent_config
       add constraint sms_agent_config_company_id_key unique (company_id);
-  end if;
-end $$;
-
--- ── 1b. Ensure voice_agent_config has UNIQUE on company_id ──────────────────
-do $$
-begin
-  -- Remove duplicates (keep most-recently-updated row per company)
-  delete from public.voice_agent_config
-  where id not in (
-    select distinct on (company_id) id
-    from public.voice_agent_config
-    order by company_id, updated_at desc nulls last, created_at desc nulls last
-  );
-
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'voice_agent_config_company_id_key'
-  ) then
-    alter table public.voice_agent_config
-      add constraint voice_agent_config_company_id_key unique (company_id);
   end if;
 end $$;
 

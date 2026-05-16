@@ -748,15 +748,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
   document.getElementById("addPricingItemBtn")?.addEventListener("click", addPricingItemRow);
 
-  // ── Voice AI ──────────────────────────────────────────────────────────────
-  document.getElementById("voiceAgentForm")?.addEventListener("submit", handleVoiceAgentSave);
-  document.getElementById("voiceProviderForm")?.addEventListener("submit", handleVoiceProviderSave);
-  document.getElementById("testVoiceAgent")?.addEventListener("click", testVoiceAgent);
-  document.getElementById("closeCallDetailModal")?.addEventListener("click", () => closeModal("callDetailModal"));
-  document.getElementById("voiceLogsRefresh")?.addEventListener("click", () => { voiceLogsPage = 0; loadVoiceLogs(); });
-  document.getElementById("voiceLogsStatus")?.addEventListener("change", () => { voiceLogsPage = 0; loadVoiceLogs(); });
-  document.getElementById("voiceLogsDirection")?.addEventListener("change", () => { voiceLogsPage = 0; loadVoiceLogs(); });
-
   // ── Opportunity Modal ─────────────────────────────────────────────────────
   document.getElementById("closeOpportunityModal")?.addEventListener("click", () => closeModal("opportunityModal"));
   document.getElementById("oppEditLeadBtn")?.addEventListener("click", () => {
@@ -781,7 +772,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (tabName === "conversations") loadOppConversations(leadId);
         if (tabName === "quotes") loadOppQuotes(leadId);
         if (tabName === "appointments") loadOppAppointments(leadId);
-        if (tabName === "calls") loadOppCalls(leadId);
       }
     });
   });
@@ -1121,7 +1111,6 @@ const PAGE_META = {
   "bulk-sms":         ["Bulk SMS",           "Database reactivation — send personalized SMS to multiple leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
   "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
-  "voice-ai":         ["Voice AI",          "Configure VAPI voice agent for calls."],
   "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
@@ -1177,7 +1166,6 @@ function navigateTo(page) {
     notifications:      loadNotifications,
     "general-settings": loadSettings,
     "ai-settings":      loadAiSettings,
-    "voice-ai":         loadVoiceAi,
     "ai-insights":      loadAiInsights,
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
@@ -4176,334 +4164,6 @@ async function handleBulkSmsSend() {
   }
 }
 
-// ─── Voice AI ─────────────────────────────────────────────────────────────────
-async function loadVoiceAi() {
-  if (!currentCompanyId) return;
-
-  try {
-    // Load voice agent config
-    const { data: config } = await sb
-      .from("voice_agent_config")
-      .select("*")
-      .eq("company_id", currentCompanyId)
-      .maybeSingle();
-
-    // Populate form if config exists
-    if (config) {
-      const vapiAssistantId = document.getElementById("vapiAssistantId");
-      const voiceAgentName = document.getElementById("voiceAgentName");
-      const voiceModel = document.getElementById("voiceModel");
-      const voiceId = document.getElementById("voiceId");
-      const maxDuration = document.getElementById("maxDuration");
-      const transferPhone = document.getElementById("transferPhone");
-      const voiceSystemPrompt = document.getElementById("voiceSystemPrompt");
-      const voiceGreeting = document.getElementById("voiceGreeting");
-      const voiceAgentActive = document.getElementById("voiceAgentActive");
-      const voiceAgentStatus = document.getElementById("voiceAgentStatus");
-      const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
-
-      const vapiPhoneNumberId = document.getElementById("vapiPhoneNumberId");
-      if (vapiPhoneNumberId) vapiPhoneNumberId.value = config.vapi_phone_number_id || "";
-      if (vapiAssistantId) vapiAssistantId.value = config.vapi_assistant_id || "";
-      if (voiceAgentName) voiceAgentName.value = config.name || "";
-      if (voiceModel) voiceModel.value = config.model || "gpt-4o";
-      if (voiceId) voiceId.value = config.voice_id || "";
-      if (maxDuration) maxDuration.value = config.max_duration || 300;
-      if (transferPhone) transferPhone.value = config.transfer_phone || "";
-      if (voiceSystemPrompt) voiceSystemPrompt.value = config.system_prompt || "";
-      if (voiceGreeting) voiceGreeting.value = config.greeting || "";
-      if (voiceAgentActive) voiceAgentActive.checked = config.is_active || false;
-
-      if (voiceAgentStatus) {
-        voiceAgentStatus.textContent = config.is_active ? "Active" : "Inactive";
-      }
-      if (voiceAgentStatusHelp) {
-        voiceAgentStatusHelp.textContent = config.is_active 
-          ? "Voice agent is ready to receive calls." 
-          : "Voice agent is not configured";
-      }
-    }
-
-    // Load call count
-    const { count } = await sb
-      .from("voice_calls")
-      .select("*", { count: "exact" })
-      .eq("company_id", currentCompanyId);
-
-    const voiceCallCount = document.getElementById("voiceCallCount");
-    if (voiceCallCount) voiceCallCount.textContent = count || 0;
-
-    // Load recent calls
-    await loadVoiceCalls();
-
-    // Load full voice logs
-    voiceLogsPage = 0;
-    await loadVoiceLogs();
-
-  } catch (err) {
-    console.error("Load voice AI error:", err);
-    toast("Failed to load voice AI settings.", true);
-  }
-}
-
-async function handleVoiceAgentSave(e) {
-  e.preventDefault();
-
-  try {
-    const payload = {
-      company_id:            currentCompanyId,
-      vapi_phone_number_id:  document.getElementById("vapiPhoneNumberId")?.value || null,
-      vapi_assistant_id:     document.getElementById("vapiAssistantId")?.value || null,
-      name:                  document.getElementById("voiceAgentName")?.value || "Default Voice Agent",
-      model:                 document.getElementById("voiceModel")?.value || "gpt-4o",
-      voice_id:              document.getElementById("voiceId")?.value || null,
-      max_duration:          Number(document.getElementById("maxDuration")?.value) || 300,
-      transfer_phone:        document.getElementById("transferPhone")?.value || null,
-      system_prompt:         document.getElementById("voiceSystemPrompt")?.value || null,
-      greeting:              document.getElementById("voiceGreeting")?.value || null,
-      is_active:             document.getElementById("voiceAgentActive")?.checked || false,
-    };
-
-    const { error } = await sb
-      .from("voice_agent_config")
-      .upsert(payload, { onConflict: "company_id" });
-
-    if (error) { toast(error.message, true); return; }
-
-    toast("Voice agent configuration saved.");
-
-    // Update status display
-    const voiceAgentStatus = document.getElementById("voiceAgentStatus");
-    const voiceAgentStatusHelp = document.getElementById("voiceAgentStatusHelp");
-    if (voiceAgentStatus) voiceAgentStatus.textContent = payload.is_active ? "Active" : "Inactive";
-    if (voiceAgentStatusHelp) {
-      voiceAgentStatusHelp.textContent = payload.is_active 
-        ? "Voice agent is ready to receive calls." 
-        : "Voice agent is currently inactive.";
-    }
-
-  } catch (err) {
-    toast("Failed to save voice agent configuration.", true);
-  }
-}
-
-async function testVoiceAgent() {
-  try {
-    toast("Testing voice agent connection...");
-    await edgeFn("voice-ai-provider", { action: "test" });
-    toast("Voice agent test successful!");
-
-  } catch (err) {
-    toast(`Test failed: ${err.message}`, true);
-  }
-}
-
-async function loadVoiceCalls() {
-  if (!currentCompanyId) return;
-
-  try {
-    const { data: calls } = await sb
-      .from("voice_calls")
-      .select("*, leads(name, phone)")
-      .eq("company_id", currentCompanyId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    const el = document.getElementById("voiceCallsList");
-    if (!el) return;
-
-    if (!calls?.length) {
-      el.innerHTML = `<div class="notice">No calls yet. Configure your voice agent to start receiving calls.</div>`;
-      return;
-    }
-
-    el.innerHTML = calls.map((call) => `
-      <div class="run">
-        <h3>${esc(call.leads?.name) || "Unknown"} <span class="chip">${cap(call.status)}</span></h3>
-        <p>${esc(call.leads?.phone) || "—"} · ${fmtDuration(call.duration)} · ${fmtDate(call.created_at)}</p>
-        ${call.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(call.transcript.substring(0, 100))}${call.transcript.length > 100 ? '...' : ''}"</p>` : ''}
-        ${call.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(call.summary)}</p>` : ''}
-      </div>
-    `).join("");
-
-  } catch (err) {
-    console.error("Load voice calls error:", err);
-  }
-}
-
-function fmtDuration(seconds) {
-  if (!seconds) return "0s";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-// ─── Voice AI Logs ────────────────────────────────────────────────────────────
-let voiceLogsPage = 0;
-
-async function loadVoiceLogs() {
-  if (!currentCompanyId) return;
-
-  const statusFilter = document.getElementById("voiceLogsStatus")?.value || "";
-  const dirFilter    = document.getElementById("voiceLogsDirection")?.value || "";
-  const tableEl      = document.getElementById("voiceLogsTable");
-  if (!tableEl) return;
-
-  try {
-    const from = voiceLogsPage * PER_PAGE;
-    const to = from + PER_PAGE - 1;
-    let query = sb
-      .from("voice_calls")
-      .select("*, leads(name, phone)", { count: "exact" })
-      .eq("company_id", currentCompanyId)
-      .order("created_at", { ascending: false })
-      .range(from, to);
-
-    if (statusFilter) query = query.eq("status", statusFilter);
-    if (dirFilter) query = query.eq("direction", dirFilter);
-
-    const { data: calls, count, error } = await query;
-
-    if (error) throw error;
-
-    if (!calls?.length) {
-      tableEl.innerHTML = `<div class="notice">No call logs found.</div>`;
-      renderPagination("voiceLogsPagination", voiceLogsPage, 0, PER_PAGE, () => {});
-      return;
-    }
-
-    const statusColor = (s) => {
-      const map = { completed: "#22c55e", missed: "#ef4444", failed: "#ef4444", voicemail: "#f59e0b", in_progress: "#3b82f6", ringing: "#8b5cf6" };
-      return map[s] || "var(--muted)";
-    };
-
-    tableEl.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border);text-align:left">
-            <th style="padding:8px 10px">Lead</th>
-            <th style="padding:8px 10px">Direction</th>
-            <th style="padding:8px 10px">Status</th>
-            <th style="padding:8px 10px">Duration</th>
-            <th style="padding:8px 10px">Date</th>
-            <th style="padding:8px 10px">Transcript</th>
-            <th style="padding:8px 10px">Recording</th>
-            <th style="padding:8px 10px"></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${calls.map((c) => `
-            <tr style="border-bottom:1px solid var(--border);cursor:pointer" data-call-id="${esc(c.id)}">
-              <td style="padding:8px 10px;font-weight:500">${esc(c.leads?.name || "Unknown")}</td>
-              <td style="padding:8px 10px"><span class="chip">${cap(c.direction || "—")}</span></td>
-              <td style="padding:8px 10px"><span style="color:${statusColor(c.status)};font-weight:600">${cap(c.status || "—")}</span></td>
-              <td style="padding:8px 10px">${fmtDuration(c.duration)}</td>
-              <td style="padding:8px 10px">${fmtDate(c.created_at)}</td>
-              <td style="padding:8px 10px">${c.transcript ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
-              <td style="padding:8px 10px">${c.recording_url ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>
-              <td style="padding:8px 10px"><button class="btn" type="button" style="font-size:12px;padding:4px 10px">View</button></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-
-    // Attach click handlers via event delegation
-    tableEl.querySelectorAll("tr[data-call-id]").forEach((row) => {
-      row.addEventListener("click", () => openCallDetail(row.dataset.callId));
-    });
-
-    renderPagination("voiceLogsPagination", voiceLogsPage, count, PER_PAGE, (page) => {
-      voiceLogsPage = page;
-      loadVoiceLogs();
-    });
-  } catch (err) {
-    console.error("Load voice logs error:", err);
-    tableEl.innerHTML = `<div class="notice">Failed to load call logs.</div>`;
-  }
-}
-
-async function openCallDetail(callId) {
-  const body = document.getElementById("callDetailBody");
-  if (!body) return;
-  body.innerHTML = `<div class="notice">Loading…</div>`;
-  openModal("callDetailModal");
-
-  try {
-    const { data: call, error } = await sb
-      .from("voice_calls")
-      .select("*, leads(name, phone, email)")
-      .eq("id", callId)
-      .single();
-
-    if (error || !call) {
-      body.innerHTML = `<div class="notice">Call not found.</div>`;
-      return;
-    }
-
-    const title = document.getElementById("callDetailTitle");
-    if (title) title.textContent = `Call with ${call.leads?.name || "Unknown"}`;
-
-    const subtitle = document.getElementById("callDetailSubtitle");
-    if (subtitle) subtitle.textContent = `${(call.direction || "").charAt(0).toUpperCase() + (call.direction || "").slice(1)} call · ${fmtDate(call.created_at)}`;
-
-    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
-    html += `<div><strong>Lead:</strong> ${esc(call.leads?.name || "Unknown")}</div>`;
-    html += `<div><strong>Phone:</strong> ${esc(call.leads?.phone || call.from_number || "—")}</div>`;
-    html += `<div><strong>Direction:</strong> <span class="chip">${cap(call.direction || "—")}</span></div>`;
-    html += `<div><strong>Status:</strong> ${cap(call.status || "—")}</div>`;
-    html += `<div><strong>Duration:</strong> ${fmtDuration(call.duration)}</div>`;
-    html += `<div><strong>Sentiment:</strong> ${call.sentiment || "—"}</div>`;
-    if (call.outcome) html += `<div><strong>Outcome:</strong> ${esc(call.outcome)}</div>`;
-    if (call.cost) html += `<div><strong>Cost:</strong> $${Number(call.cost).toFixed(4)}</div>`;
-    html += `</div>`;
-
-    // Recording player
-    if (call.recording_url) {
-      html += `
-        <div style="margin-bottom:20px">
-          <h3 style="margin-bottom:8px;font-size:14px">Recording</h3>
-          <audio controls preload="metadata" style="width:100%;border-radius:var(--radius)">
-            <source src="${esc(call.recording_url)}" type="audio/mpeg">
-            <source src="${esc(call.recording_url)}" type="audio/wav">
-            Your browser does not support audio playback.
-          </audio>
-        </div>
-      `;
-    }
-
-    // Summary
-    if (call.summary) {
-      html += `
-        <div style="margin-bottom:20px">
-          <h3 style="margin-bottom:8px;font-size:14px">AI Summary</h3>
-          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;line-height:1.6">${esc(call.summary)}</div>
-        </div>
-      `;
-    }
-
-    // Transcript
-    if (call.transcript) {
-      html += `
-        <div>
-          <h3 style="margin-bottom:8px;font-size:14px">Transcript</h3>
-          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);max-height:400px;overflow-y:auto;font-size:13px;line-height:1.8;white-space:pre-wrap">${esc(call.transcript)}</div>
-        </div>
-      `;
-    }
-
-    if (!call.recording_url && !call.transcript && !call.summary) {
-      html += `<div class="notice" style="margin-top:10px">No transcript or recording available for this call.</div>`;
-    }
-
-    body.innerHTML = html;
-
-  } catch (err) {
-    console.error("Open call detail error:", err);
-    body.innerHTML = `<div class="notice">Failed to load call details.</div>`;
-  }
-}
-
 function esc(str) {
   if (!str) return "";
   const d = document.createElement("div");
@@ -4659,39 +4319,6 @@ function openConversationFromOpp(convId, leadId) {
   }, 300);
 }
 
-async function loadOppCalls(leadId) {
-  const el = document.getElementById("oppCallsList");
-  if (!el) return;
-
-  try {
-    const { data: calls } = await sb
-      .from("voice_calls")
-      .select("id, vapi_call_id, direction, status, duration, transcript, summary, sentiment, cost, created_at, recording_url")
-      .eq("company_id", currentCompanyId)
-      .eq("lead_id", leadId)
-      .order("created_at", { ascending: false });
-
-    if (!calls?.length) {
-      el.innerHTML = `<div class="notice">No AI calls found for this lead.</div>`;
-      return;
-    }
-
-    el.innerHTML = calls.map((c) => `
-      <div class="run">
-        <h3>${c.direction === "outbound" ? "Outbound Call" : "Inbound Call"} <span class="chip">${cap(c.status || "unknown")}</span>${c.sentiment ? ` <span class="chip">${esc(cap(c.sentiment))}</span>` : ""}</h3>
-        <p><strong>Duration:</strong> ${fmtDuration(c.duration)} · <strong>Cost:</strong> $${c.cost?.toFixed(2) || "0.00"}</p>
-        ${c.transcript ? `<p style="margin-top:6px;font-style:italic;">"${esc(c.transcript.substring(0, 150))}${c.transcript.length > 150 ? "..." : ""}"</p>` : ""}
-        ${c.summary ? `<p style="margin-top:4px;"><strong>Summary:</strong> ${esc(c.summary)}</p>` : ""}
-        <p style="margin-top:4px;"><span class="muted">${fmtDate(c.created_at)}</span>${c.recording_url ? ` · <a href="${esc(c.recording_url)}" target="_blank" rel="noopener noreferrer">Listen to recording</a>` : ""}</p>
-      </div>
-    `).join("");
-  } catch (err) {
-    el.innerHTML = `<div class="notice">Failed to load call history.</div>`;
-  }
-}
-
-
-
 // ─── Approve & Send Quote ─────────────────────────────────────────────────────
 // Updates quote status to "sent", sends the public link via SMS to the lead,
 // and creates a message in the conversation thread.
@@ -4794,7 +4421,6 @@ async function loadAiInsights() {
         { label: "Callbacks Booked", value: stats.callbacks_booked, icon: "phone" },
         { label: "On-sites Booked", value: stats.onsites_booked, icon: "calendar" },
         { label: "Quotes Generated", value: stats.quotes_generated, icon: "file" },
-        { label: "Voice Calls", value: stats.voice_calls_completed, icon: "phone" },
         { label: "Knowledge Items", value: stats.knowledge_items_count, icon: "spark" },
       ];
 
@@ -5017,7 +4643,6 @@ async function handleCreateApiKey(e) {
   if (document.getElementById("scopeLeadsWrite")?.checked) scopes.push("leads:write");
   if (document.getElementById("scopeQuotesRead")?.checked) scopes.push("quotes:read");
   if (document.getElementById("scopeAppointmentsRead")?.checked) scopes.push("appointments:read");
-  if (document.getElementById("scopeVoiceCallsRead")?.checked) scopes.push("voice-calls:read");
   if (document.getElementById("scopePipelineRead")?.checked) scopes.push("pipeline:read");
   if (document.getElementById("scopeSmsSend")?.checked) scopes.push("sms:send");
 

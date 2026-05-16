@@ -156,36 +156,3 @@ alter table public.sms_agent_config
   add column if not exists max_sms_words            int default 15,
   add column if not exists reply_delay_seconds      int default 0;
 
--- ─── Add VAPI to API Key Provider Enum ──────────────────────────────────────
--- The voice-ai-provider edge function stores VAPI keys in the api_keys table.
-
-alter type public.api_key_provider add value if not exists 'vapi';
-
--- ─── Helper: Save VAPI Key ──────────────────────────────────────────────────
--- Called by the voice-ai-provider edge function to store an encrypted VAPI key.
-
-create or replace function public.save_vapi_key(
-  p_company_id uuid,
-  p_raw_key    text,
-  p_key_hint   text,
-  p_user_id    uuid
-)
-returns void
-language plpgsql
-security definer
-set search_path = 'public', 'extensions'
-as $$
-declare
-  v_encrypted bytea;
-begin
-  v_encrypted := public.encrypt_api_key(p_raw_key, p_company_id);
-
-  insert into public.api_keys (company_id, provider, label, encrypted_key, key_hint, created_by)
-  values (p_company_id, 'vapi', 'VAPI API Key', v_encrypted, p_key_hint, p_user_id)
-  on conflict (company_id, provider, label)
-  do update set
-    encrypted_key = excluded.encrypted_key,
-    key_hint      = excluded.key_hint,
-    updated_at    = now();
-end;
-$$;
