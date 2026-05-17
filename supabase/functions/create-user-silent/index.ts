@@ -7,8 +7,7 @@ function maskPassword(pw: string): string {
 }
 
 async function sendWelcomeEmail(
-  supabaseUrl: string,
-  serviceRoleKey: string,
+  resendApiKey: string,
   email: string,
   name: string,
   password: string,
@@ -68,14 +67,19 @@ async function sendWelcomeEmail(
 </td></tr></table>
 </body></html>`;
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/resend-email`, {
+  const fromAddress =
+    Deno.env.get("RESEND_FROM_EMAIL") ||
+    "QuoteLeadsHQ <noreply@quoteleadshq.com>";
+
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${serviceRoleKey}`,
+      "Authorization": `Bearer ${resendApiKey}`,
     },
     body: JSON.stringify({
-      to: email,
+      from: fromAddress,
+      to: [email],
       subject: "Your QuoteLeadsHQ account has been created",
       html,
       text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nEmail: ${email}\nPassword: starts with ${maskPassword(password)} — contact your admin for the full password.\n\nPlease change your password after your first login.\n\n${loginText}`,
@@ -84,7 +88,7 @@ async function sendWelcomeEmail(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`resend-email returned HTTP ${res.status}: ${body}`);
+    throw new Error(`Resend API returned HTTP ${res.status}: ${body}`);
   }
 }
 
@@ -246,9 +250,10 @@ Deno.serve(async (req) => {
     let emailSent = false;
     let emailError: string | null = null;
     try {
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (!resendApiKey) throw new Error("RESEND_API_KEY is not configured");
       await sendWelcomeEmail(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        resendApiKey,
         sanitizedEmail,
         name.trim(),
         password,
