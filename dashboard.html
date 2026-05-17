@@ -262,6 +262,17 @@ textarea{min-height:100px;resize:vertical}
 .toggle-item input[type="checkbox"]:checked{background:var(--accent)}
 .toggle-item input[type="checkbox"]:checked::after{transform:translateX(18px)}
 .toggle-label{font-size:12px;font-weight:500}
+/* Radio option groups */
+.radio-group{display:flex;flex-direction:column;gap:10px}
+.radio-item{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;transition:all .15s}
+.radio-item:hover{border-color:var(--accent)}
+.radio-item input[type="radio"]{accent-color:var(--accent);margin-top:3px;flex-shrink:0}
+.radio-item-label strong{font-size:13px;display:block;margin-bottom:2px}
+.radio-item-label span{font-size:11px;color:var(--muted)}
+/* Postcode rule rows */
+.pc-rule-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pc-rule-row input{flex:1;min-width:120px;font-size:12px}
+.pc-rule-row select{font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);min-width:140px}
 .check-row input[type="checkbox"]{position:relative;width:40px;height:22px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:999px;outline:none;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;padding:0;min-height:auto}
 .check-row input[type="checkbox"]::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .check-row input[type="checkbox"]:checked{background:var(--accent)}
@@ -321,6 +332,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   .actions{width:100%}
   .actions .btn,.actions .btn2,.actions .iconbtn{flex:1}
   .form2,.custom-row,.grid4,.mini-grid,.split-panels,.settings-grid,.settings-grid-3{grid-template-columns:1fr}
+  .pc-rule-row input,.pc-rule-row select{flex:1 1 100%;min-width:0}
   .item,.table-lite .row,.team-row{grid-template-columns:1fr!important;overflow:hidden}
   .kanban{grid-template-columns:1fr}
   .table-wrap{overflow:visible}
@@ -967,21 +979,21 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="panel-h"><div><h2>Lead Routing</h2><p>Choose how new leads are assigned to team members. Only owners and admins can configure this.</p></div></div>
           <div class="panel-b">
             <form id="leadRoutingForm" class="stack">
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
-                  <input type="radio" name="routingMode" value="all" checked style="accent-color:var(--accent)">
-                  <div><strong style="font-size:13px">Everyone sees all leads</strong><br><span class="muted" style="font-size:11px">All team members can view every lead. No automatic assignment.</span></div>
+              <div class="radio-group">
+                <label class="radio-item">
+                  <input type="radio" name="routingMode" value="all" checked>
+                  <div class="radio-item-label"><strong>Everyone sees all leads</strong><span>All team members can view every lead. No automatic assignment.</span></div>
                 </label>
-                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
-                  <input type="radio" name="routingMode" value="round_robin" style="accent-color:var(--accent)">
-                  <div><strong style="font-size:13px">Round Robin</strong><br><span class="muted" style="font-size:11px">New leads are distributed evenly across active team members in rotation.</span></div>
+                <label class="radio-item">
+                  <input type="radio" name="routingMode" value="round_robin">
+                  <div class="radio-item-label"><strong>Round Robin</strong><span>New leads are distributed evenly across active team members in rotation.</span></div>
                 </label>
-                <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer">
-                  <input type="radio" name="routingMode" value="postcode" style="accent-color:var(--accent)">
-                  <div><strong style="font-size:13px">By Postcode</strong><br><span class="muted" style="font-size:11px">Assign leads to specific team members based on the lead's postcode. Falls back to round robin if no match.</span></div>
+                <label class="radio-item">
+                  <input type="radio" name="routingMode" value="postcode">
+                  <div class="radio-item-label"><strong>By Postcode</strong><span>Assign leads to specific team members based on the lead's postcode. Falls back to round robin if no match.</span></div>
                 </label>
               </div>
-              <div id="postcodeRulesContainer" style="display:none;margin-top:12px">
+              <div id="postcodeRulesContainer" style="display:none;margin-top:4px">
                 <div style="font-size:12px;font-weight:600;margin-bottom:8px">Postcode Rules</div>
                 <div id="postcodeRulesList" class="stack" style="gap:8px"></div>
                 <button type="button" class="btn" onclick="addPostcodeRule()" style="margin-top:8px;font-size:11px">+ Add Postcode Rule</button>
@@ -1320,7 +1332,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" type="tel"></div>
           <div class="field"><label for="leadPostcode">Postcode</label><input id="leadPostcode" name="postcode" type="text"></div>
           <div class="full"><label for="leadAddress">Address</label><input id="leadAddress" name="address" type="text"></div>
-          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option value="Google">Google</option><option value="Meta">Meta</option><option value="Website/Organic">Website/Organic</option><option value="Other">Other</option></select></div>
+          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option value="PPL">PPL</option><option value="Google">Google</option><option value="Meta">Meta</option><option value="Website/Organic">Website/Organic</option><option value="Other">Other</option></select></div>
           <div class="field"><label for="leadStatus">Opportunity Status</label><select id="leadStatus" name="status"><option>New Lead</option><option>Qualifying</option><option>Quote in Progress</option><option>Quoted</option><option>Closed Won</option><option>Closed Lost</option></select></div>
           <div class="field"><label for="leadValue">Estimated Value</label><input id="leadValue" name="value" type="number" min="0" step="0.01"></div>
           <div class="full"><label for="leadNotes">Notes</label><textarea id="leadNotes" name="notes"></textarea></div>

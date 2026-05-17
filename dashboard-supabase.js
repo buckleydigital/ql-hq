@@ -1679,7 +1679,7 @@ function initDisputeModal() {
 
 function openDisputeModal() {
   const lead = allLeads.find((x) => x.id === _currentDisputeLeadId);
-  if (!lead || lead.source?.toLowerCase() !== "ppl") return;
+  if (!lead || !lead.is_ppl) return;
 
   // Reset to step 1
   _currentDisputeId       = null;
@@ -3014,10 +3014,10 @@ async function addPostcodeRule(existing) {
   ).join("");
 
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:8px;align-items:center";
+  row.className = "pc-rule-row";
   row.innerHTML = `
-    <input type="text" class="pc-postcodes" placeholder="e.g. 2000, 2010-2050" value="${existing?.postcodes?.join(", ") || ""}" style="flex:1;font-size:12px">
-    <select class="pc-rep" style="font-size:12px;min-width:140px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2)">
+    <input type="text" class="pc-postcodes" placeholder="e.g. 2000, 2010-2050" value="${existing?.postcodes?.join(", ") || ""}">
+    <select class="pc-rep">
       <option value="">Select rep…</option>
       ${repsOptions}
     </select>

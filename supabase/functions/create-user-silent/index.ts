@@ -240,23 +240,33 @@ Deno.serve(async (req) => {
     }
 
     // ── Send welcome email with login credentials ──────────────────────────────
-    // Fire-and-forget: a failure here must not prevent the account being returned.
-    // The resend-email function accepts only service-role callers, which is safe
-    // because this call is entirely server-side and the key is never exposed.
-    sendWelcomeEmail(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      sanitizedEmail,
-      name.trim(),
-      password,
-      magicLink,
-    ).catch((e) => console.warn("Welcome email failed (non-fatal):", e));
+    // Awaited so the promise completes before the handler returns — Deno's
+    // serverless runtime does not guarantee background tasks finish after the
+    // response is sent. Email failure is non-fatal: the account is still created.
+    let emailSent = false;
+    let emailError: string | null = null;
+    try {
+      await sendWelcomeEmail(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        sanitizedEmail,
+        name.trim(),
+        password,
+        magicLink,
+      );
+      emailSent = true;
+    } catch (e) {
+      emailError = (e as Error).message ?? String(e);
+      console.warn("Welcome email failed (non-fatal):", emailError);
+    }
 
     return json({
       user: {
         id: newUser.user.id,
         email: newUser.user.email,
       },
+      email_sent: emailSent,
+      email_error: emailError,
     });
   } catch (err) {
     console.error("create-user-silent unhandled error:", err);
