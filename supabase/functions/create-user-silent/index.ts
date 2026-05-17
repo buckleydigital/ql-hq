@@ -1,5 +1,93 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// ── Welcome email ─────────────────────────────────────────────────────────────
+function maskPassword(pw: string): string {
+  if (pw.length <= 3) return "***";
+  return pw.slice(0, 3) + "*".repeat(Math.min(pw.length - 3, 8));
+}
+
+async function sendWelcomeEmail(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  email: string,
+  name: string,
+  password: string,
+  magicLink: string | null,
+): Promise<void> {
+  const loginSection = magicLink
+    ? `<a href="${magicLink}"
+         style="display:inline-block;background:#1f6fff;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;margin-bottom:16px">
+         Click here to log in instantly &rarr;
+       </a>
+       <p style="margin:0 0 24px;font-size:12px;color:#9ca3af">
+         This one-time login link expires in 24 hours. After that, use your email and password above.
+       </p>`
+    : `<a href="https://app.quoteleadshq.com/dashboard.html"
+         style="display:inline-block;background:#1f6fff;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600">
+         Log in to QuoteLeadsHQ
+       </a>`;
+
+  const loginText = magicLink
+    ? `One-time login link (expires in 24h): ${magicLink}\n\nAfter it expires, log in at https://app.quoteleadshq.com/dashboard.html`
+    : `Log in at https://app.quoteleadshq.com/dashboard.html`;
+
+  const html = `
+<html><body style="margin:0;padding:0;background:#f3f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f9;padding:40px 20px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08)">
+<tr><td style="background:#1f6fff;padding:24px 32px">
+  <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600">QuoteLeadsHQ</h1>
+</td></tr>
+<tr><td style="padding:32px">
+  <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Your account is ready</h2>
+  <p style="margin:0 0 16px;font-size:14px;color:#374151">Hi ${name},</p>
+  <p style="margin:0 0 24px;font-size:14px;color:#374151">
+    An account has been created for you on QuoteLeadsHQ. Your login details are below.
+  </p>
+  <table cellpadding="0" cellspacing="0" style="background:#f8f9fb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:24px;width:100%">
+    <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Email</td></tr>
+    <tr><td style="font-size:15px;color:#111827;font-weight:600;padding-bottom:14px">${email}</td></tr>
+    <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Password</td></tr>
+    <tr><td style="font-size:15px;color:#111827;font-weight:600;font-family:monospace">${maskPassword(password)}</td></tr>
+  </table>
+  <p style="margin:0 0 4px;font-size:13px;color:#6b7280">
+    Your password starts with the characters shown above. For security, please change it after your first login via <strong>Settings → Change Password</strong>.
+  </p>
+  <p style="margin:0 0 16px;font-size:12px;color:#9ca3af">
+    If you need your full password, contact the person who created your account.
+  </p>
+  ${loginSection}
+</td></tr>
+<tr><td style="padding:16px 32px;background:#f8f9fb;border-top:1px solid #e5e7eb">
+  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center">
+    QuoteLeadsHQ &mdash; All rights reserved.
+  </p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/resend-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({
+      to: email,
+      subject: "Your QuoteLeadsHQ account has been created",
+      html,
+      text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nEmail: ${email}\nPassword: starts with ${maskPassword(password)} — contact your admin for the full password.\n\nPlease change your password after your first login.\n\n${loginText}`,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`resend-email returned HTTP ${res.status}: ${body}`);
+  }
+}
+
 // ── CORS headers ──────────────────────────────────────────────────────────────
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,8 +185,14 @@ Deno.serve(async (req) => {
     if (!name || typeof name !== "string" || !name.trim()) {
       return json({ error: "name is required" }, 400);
     }
+    if (name.trim().length > 120) {
+      return json({ error: "name must be 120 characters or fewer" }, 400);
+    }
     if (!password || typeof password !== "string" || password.length < 8) {
       return json({ error: "password must be at least 8 characters" }, 400);
+    }
+    if (password.length > 72) {
+      return json({ error: "password must be 72 characters or fewer" }, 400);
     }
 
     const sanitizedEmail = email.trim().toLowerCase();
@@ -124,6 +218,39 @@ Deno.serve(async (req) => {
         500,
       );
     }
+
+    // ── Generate a one-time magic login link for the new user ─────────────────
+    // This lets them click straight into the dashboard without typing credentials.
+    // The link is single-use and expires automatically (Supabase default: 24h).
+    let magicLink: string | null = null;
+    try {
+      const { data: linkData, error: linkErr } =
+        await adminClient.auth.admin.generateLink({
+          type: "magiclink",
+          email: sanitizedEmail,
+          options: { redirectTo: "https://app.quoteleadshq.com/dashboard.html" },
+        });
+      if (!linkErr && linkData?.properties?.action_link) {
+        magicLink = linkData.properties.action_link;
+      } else if (linkErr) {
+        console.warn("Magic link generation failed (non-fatal):", linkErr.message);
+      }
+    } catch (e) {
+      console.warn("Magic link generation threw (non-fatal):", (e as Error).message);
+    }
+
+    // ── Send welcome email with login credentials ──────────────────────────────
+    // Fire-and-forget: a failure here must not prevent the account being returned.
+    // The resend-email function accepts only service-role callers, which is safe
+    // because this call is entirely server-side and the key is never exposed.
+    sendWelcomeEmail(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      sanitizedEmail,
+      name.trim(),
+      password,
+      magicLink,
+    ).catch((e) => console.warn("Welcome email failed (non-fatal):", e));
 
     return json({
       user: {

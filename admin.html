@@ -89,11 +89,50 @@ h1{font-size:18px;font-weight:500}
 .pw-toggle{position:absolute;right:10px;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;color:var(--muted)}
 .pw-toggle:hover{color:var(--text)}
 
+/* ── Disputes ────────────────────────────────────────────────────── */
+.dispute-row{padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface-2);margin-bottom:8px}
+.dispute-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dispute-meta{font-size:11px;color:var(--muted);margin-top:4px}
+.dispute-lead{font-size:13px;font-weight:500}
+.dispute-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.badge-reason,.badge-status{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid var(--border)}
+.badge-reason{background:rgba(31,111,255,.08);border-color:rgba(31,111,255,.25);color:#1d4ed8}
+[data-theme=dark] .badge-reason{color:#60a5fa}
+.badge-pending{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#92400e}
+[data-theme=dark] .badge-pending{color:#fbbf24}
+.badge-manual{background:rgba(234,88,12,.1);border-color:rgba(234,88,12,.3);color:#c2410c}
+[data-theme=dark] .badge-manual{color:#fb923c}
+.badge-approved{background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.3);color:#15803d}
+[data-theme=dark] .badge-approved{color:#4ade80}
+.badge-rejected{background:rgba(185,28,28,.1);border-color:rgba(185,28,28,.25);color:#b91c1c}
+[data-theme=dark] .badge-rejected{color:#f87171}
+.badge-auto{background:rgba(107,114,128,.08);border-color:rgba(107,114,128,.25);color:#4b5563}
+[data-theme=dark] .badge-auto{color:#9ca3af}
+.dispute-actions{display:flex;gap:6px;flex-shrink:0}
+.btn-approve{background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.35);color:#15803d}
+[data-theme=dark] .btn-approve{color:#4ade80}
+.btn-reject{background:rgba(185,28,28,.08);border-color:rgba(185,28,28,.25);color:#b91c1c}
+[data-theme=dark] .btn-reject{color:#f87171}
+.dispute-autocheck{margin-top:10px;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-family:monospace;display:none}
+.dispute-toggle{font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;margin-top:6px;text-decoration:underline}
+.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-select{height:34px;padding:0 10px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;color:var(--text);cursor:pointer;outline:none}
+.filter-select:focus{border-color:var(--accent)}
+
+/* ── Modal ───────────────────────────────────────────────────────── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:480px;padding:24px}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:16px}
+.modal textarea{width:100%;min-height:90px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);font:inherit;font-size:13px;color:var(--text);resize:vertical;outline:none}
+.modal textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,111,255,.1)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media(max-width:600px){
   .user-row{grid-template-columns:1fr;gap:8px}
   .panel-h{flex-direction:column;align-items:flex-start}
   .form-grid{grid-template-columns:1fr}
+  .dispute-header{flex-direction:column}
 }
 </style>
 </head>
@@ -128,15 +167,15 @@ h1{font-size:18px;font-weight:500}
     <div class="notice warn" style="margin-bottom:20px">
       ⚠️ <strong>Impersonation is immediate and permanent until you sign out.</strong>
       Clicking "Login as" will replace your current session with the selected user's session and redirect to the dashboard.
-      The target user will <em>not</em> receive any email or notification.
+      The target user will <em>not</em> receive any email or notification about the impersonation.
     </div>
 
-    <!-- Create Account (No Email) panel -->
+    <!-- Create Account panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
         <div>
-          <h2>Create Account (No Email)</h2>
-          <p>Account is created immediately with a pre-set password. No notification is sent to the user.</p>
+          <h2>Create Account</h2>
+          <p>Account is created immediately with a pre-set password. A welcome email with their credentials and a magic login link is sent to the user.</p>
         </div>
       </div>
       <div class="panel-b">
@@ -166,7 +205,7 @@ h1{font-size:18px;font-weight:500}
     </div>
 
     <!-- User list panel -->
-    <div class="card">
+    <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
         <div>
           <h2>All Users</h2>
@@ -184,6 +223,50 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Lead Disputes panel -->
+    <div class="card">
+      <div class="panel-h">
+        <div>
+          <h2>Lead Disputes</h2>
+          <p id="disputeCountLabel">Loading…</p>
+        </div>
+        <div class="filter-bar">
+          <select id="disputeStatusFilter" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="pending_manual_review">Pending manual review</option>
+            <option value="auto_approved">Auto approved</option>
+            <option value="auto_rejected">Auto rejected</option>
+            <option value="manual_approved">Manual approved</option>
+            <option value="manual_rejected">Manual rejected</option>
+          </select>
+          <button class="btn btn-sm" id="refreshDisputesBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="disputeLoadingState" class="notice">Loading disputes…</div>
+        <div id="disputeList" class="hidden"></div>
+        <div id="disputeEmptyState" class="notice hidden">No disputes found.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Resolve dispute modal ─────────────────────────────────────────────────── -->
+<div id="resolveModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <h3 id="modalTitle">Resolve dispute</h3>
+    <p id="modalDesc" style="font-size:12px;color:var(--muted);margin-bottom:14px"></p>
+    <div class="form-row" style="margin-bottom:4px">
+      <label class="form-label" for="modalNotes">Resolution notes <span style="font-weight:400">(optional)</span></label>
+      <textarea id="modalNotes" placeholder="Add any notes about this resolution…" maxlength="2000"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="modalCancelBtn" type="button">Cancel</button>
+      <button class="btn btn-sm btn-reject" id="modalRejectBtn" type="button">Reject dispute</button>
+      <button class="btn btn-sm btn-approve" id="modalApproveBtn" type="button">Approve dispute</button>
+    </div>
   </div>
 </div>
 
@@ -475,6 +558,181 @@ h1{font-size:18px;font-weight:500}
     applyFilter(this.value);
   });
 
+  // ── Disputes ──────────────────────────────────────────────────────────────
+
+  var allDisputes = [];
+  var pendingResolve = null; // { disputeId, leadDesc }
+
+  function disputeStatusClass(status) {
+    if (status === 'pending') return 'badge-pending';
+    if (status === 'pending_manual_review') return 'badge-manual';
+    if (status === 'auto_approved' || status === 'manual_approved') return 'badge-approved';
+    if (status === 'auto_rejected' || status === 'manual_rejected') return 'badge-rejected';
+    return 'badge-auto';
+  }
+
+  function disputeStatusLabel(status) {
+    return {
+      pending:              'Pending',
+      auto_approved:        'Auto approved',
+      auto_rejected:        'Auto rejected',
+      pending_manual_review:'Manual review',
+      manual_approved:      'Approved',
+      manual_rejected:      'Rejected',
+    }[status] || status;
+  }
+
+  function reasonLabel(r) {
+    return {
+      invalid_number:           'Invalid number',
+      duplicate:                'Duplicate',
+      outside_agreed_criteria:  'Outside criteria',
+    }[r] || r;
+  }
+
+  function renderDisputeRow(d) {
+    var leadName = d.lead
+      ? escapeHtml(((d.lead.first_name || '') + ' ' + (d.lead.last_name || '')).trim() || d.lead.email || 'Unknown lead')
+      : 'Unknown lead';
+    var companyName = d.company ? escapeHtml(d.company.name || 'Unknown company') : 'Unknown company';
+    var raisedBy = d.raised_by_profile ? escapeHtml(d.raised_by_profile.full_name || 'Unknown') : 'Unknown';
+    var createdAt = d.created_at ? new Date(d.created_at).toLocaleString() : '';
+    var canResolve = ['pending', 'auto_approved', 'auto_rejected', 'pending_manual_review'].includes(d.status);
+
+    var resolveBtn = canResolve
+      ? '<button class="btn btn-sm resolve-btn" data-id="' + escapeHtml(d.id) + '" data-lead="' + leadName + '" type="button">Resolve</button>'
+      : '';
+
+    var resolutionNote = (d.status === 'manual_approved' || d.status === 'manual_rejected') && d.resolution_notes
+      ? '<div style="margin-top:8px;font-size:11px;color:var(--muted)">Resolution: ' + escapeHtml(d.resolution_notes) + '</div>'
+      : '';
+
+    var autoCheckStr = d.auto_check_result ? JSON.stringify(d.auto_check_result, null, 2) : '';
+    var toggleId = 'ac-' + d.id.replace(/-/g,'');
+
+    var row = document.createElement('div');
+    row.className = 'dispute-row';
+    row.innerHTML =
+      '<div class="dispute-header">' +
+        '<div>' +
+          '<div class="dispute-lead">' + leadName + '</div>' +
+          '<div class="dispute-meta">' + companyName + ' &bull; Raised by ' + raisedBy + ' &bull; ' + escapeHtml(createdAt) + '</div>' +
+          '<div class="dispute-badges">' +
+            '<span class="badge-reason badge-status">' + escapeHtml(reasonLabel(d.reason)) + '</span>' +
+            '<span class="badge-status ' + disputeStatusClass(d.status) + '">' + escapeHtml(disputeStatusLabel(d.status)) + '</span>' +
+          '</div>' +
+          resolutionNote +
+          (autoCheckStr ? '<button class="dispute-toggle" data-target="' + toggleId + '" type="button">Show auto-check</button>' : '') +
+          (autoCheckStr ? '<pre class="dispute-autocheck" id="' + toggleId + '">' + escapeHtml(autoCheckStr) + '</pre>' : '') +
+        '</div>' +
+        '<div class="dispute-actions">' + resolveBtn + '</div>' +
+      '</div>';
+
+    var toggle = row.querySelector('.dispute-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        var pre = document.getElementById(this.dataset.target);
+        if (!pre) return;
+        var shown = pre.style.display === 'block';
+        pre.style.display = shown ? 'none' : 'block';
+        this.textContent = shown ? 'Show auto-check' : 'Hide auto-check';
+      });
+    }
+
+    var resolveEl = row.querySelector('.resolve-btn');
+    if (resolveEl) {
+      resolveEl.addEventListener('click', function () {
+        openResolveModal(this.dataset.id, this.dataset.lead);
+      });
+    }
+
+    return row;
+  }
+
+  function applyDisputeFilter() {
+    var status = document.getElementById('disputeStatusFilter').value;
+    var filtered = status ? allDisputes.filter(function (d) { return d.status === status; }) : allDisputes;
+    var listEl = document.getElementById('disputeList');
+    var emptyEl = document.getElementById('disputeEmptyState');
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      filtered.forEach(function (d) { listEl.appendChild(renderDisputeRow(d)); });
+    }
+  }
+
+  async function loadDisputes() {
+    document.getElementById('disputeLoadingState').classList.remove('hidden');
+    document.getElementById('disputeList').classList.add('hidden');
+    document.getElementById('disputeEmptyState').classList.add('hidden');
+    try {
+      var result = await callEdge({ action: 'list_disputes' });
+      allDisputes = result.disputes || [];
+      var label = document.getElementById('disputeCountLabel');
+      if (label) {
+        label.textContent = allDisputes.length + ' dispute' + (allDisputes.length === 1 ? '' : 's') + ' total';
+      }
+      document.getElementById('disputeLoadingState').classList.add('hidden');
+      applyDisputeFilter();
+    } catch (err) {
+      document.getElementById('disputeLoadingState').textContent = 'Failed to load disputes: ' + err.message;
+      toast('Failed to load disputes: ' + err.message, true);
+    }
+  }
+
+  // ── Resolve modal ──────────────────────────────────────────────────────────
+
+  function openResolveModal(disputeId, leadDesc) {
+    pendingResolve = { disputeId: disputeId, leadDesc: leadDesc };
+    document.getElementById('modalDesc').textContent = 'Dispute for: ' + leadDesc;
+    document.getElementById('modalNotes').value = '';
+    document.getElementById('resolveModal').classList.remove('hidden');
+    document.getElementById('modalNotes').focus();
+  }
+
+  function closeResolveModal() {
+    pendingResolve = null;
+    document.getElementById('resolveModal').classList.add('hidden');
+  }
+
+  async function submitResolve(resolution) {
+    if (!pendingResolve) return;
+    var notes = document.getElementById('modalNotes').value.trim();
+    var disputeId = pendingResolve.disputeId;
+
+    document.getElementById('modalApproveBtn').disabled = true;
+    document.getElementById('modalRejectBtn').disabled  = true;
+
+    try {
+      await callEdge({ action: 'resolve_dispute', dispute_id: disputeId, resolution: resolution, notes: notes });
+      toast('Dispute ' + (resolution === 'manual_approved' ? 'approved' : 'rejected') + ' successfully.');
+      closeResolveModal();
+      await loadDisputes();
+    } catch (err) {
+      toast(err.message || 'Failed to resolve dispute.', true);
+    } finally {
+      document.getElementById('modalApproveBtn').disabled = false;
+      document.getElementById('modalRejectBtn').disabled  = false;
+    }
+  }
+
+  document.getElementById('modalApproveBtn').addEventListener('click', function () { submitResolve('manual_approved'); });
+  document.getElementById('modalRejectBtn').addEventListener('click', function ()  { submitResolve('manual_rejected'); });
+  document.getElementById('modalCancelBtn').addEventListener('click', closeResolveModal);
+  document.getElementById('resolveModal').addEventListener('click', function (e) {
+    if (e.target === this) closeResolveModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeResolveModal();
+  });
+
+  document.getElementById('disputeStatusFilter').addEventListener('change', applyDisputeFilter);
+  document.getElementById('refreshDisputesBtn').addEventListener('click', loadDisputes);
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   async function boot() {
     // 1. Wait for Supabase SDK
@@ -535,6 +793,9 @@ h1{font-size:18px;font-weight:500}
       document.getElementById('loadingState').textContent = 'Failed to load users: ' + err.message;
       toast('Failed to load users: ' + err.message, true);
     }
+
+    // 6. Load disputes panel
+    await loadDisputes();
   }
 
   // Run after scripts are ready
