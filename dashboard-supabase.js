@@ -750,6 +750,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("serviceAreaInput")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); _addServiceAreaFromInput(); } });
   document.getElementById("saveServiceAreasBtn")?.addEventListener("click", handleServiceAreasSave);
 
+  // ── PPL Orders ────────────────────────────────────────────────────────────
+  document.getElementById("openPplOrderModal")?.addEventListener("click", () => openModal("pplOrderModal"));
+  document.getElementById("cancelPplOrderModal")?.addEventListener("click", () => closeModal("pplOrderModal"));
+  document.getElementById("pplOrderForm")?.addEventListener("submit", handleCreatePplOrder);
+
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
@@ -3318,6 +3323,7 @@ async function loadSettings() {
     renderSettingsCustomFields();
     loadLeadRoutingUI(company?.settings || {});
     loadServiceAreasUI(company?.ppl_agreed_postcodes || []);
+    await loadPplOrdersUI();
   } catch (err) {
     toast("Failed to load settings.", true);
   }
@@ -3520,6 +3526,97 @@ async function handleServiceAreasSave() {
     toast("Failed to save service areas.", true);
   }
 }
+
+// ─── PPL Orders ───────────────────────────────────────────────────────────────
+
+async function loadPplOrdersUI() {
+  const container = document.getElementById("pplOrdersList");
+  if (!container || !currentCompanyId) return;
+
+  const { data: orders, error } = await sb
+    .from("ppl_orders")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .order("purchased_at", { ascending: false });
+
+  if (error) { container.innerHTML = `<div class="notice">Failed to load orders.</div>`; return; }
+  if (!orders?.length) { container.innerHTML = `<div class="notice">No PPL orders yet. Create one to start tracking lead delivery.</div>`; return; }
+
+  container.innerHTML = orders.map((o) => {
+    const pct      = o.total_leads > 0 ? Math.min(100, Math.round((o.delivered_leads / o.total_leads) * 100)) : 0;
+    const remaining = Math.max(0, o.total_leads - o.delivered_leads);
+    const colour   = o.status === "completed" ? "#388e3c" : o.status === "cancelled" ? "#9e9e9e" : pct >= 90 ? "#f57c00" : "#1976d2";
+    const purchased = new Date(o.purchased_at).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+    const due       = new Date(o.due_date + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+    const statusBadge = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${o.status === "completed" ? "#e8f5e9" : o.status === "cancelled" ? "#f5f5f5" : "#e3f2fd"};color:${o.status === "completed" ? "#2e7d32" : o.status === "cancelled" ? "#757575" : "#1565c0"};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
+    const cancelBtn = o.status === "active"
+      ? `<button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="cancelPplOrder('${o.id}')">Cancel</button>`
+      : "";
+    return `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;background:var(--surface-2)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              ${statusBadge}
+              <span style="font-size:12px;color:var(--muted)">Purchased ${purchased} &nbsp;·&nbsp; Due ${due}</span>
+            </div>
+            <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
+              ${o.delivered_leads} / ${o.total_leads}
+              <span style="font-size:13px;font-weight:400;color:var(--muted)">leads delivered</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${remaining} remaining</div>
+            <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:${colour};border-radius:4px;transition:width .3s"></div>
+            </div>
+            ${o.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">${o.notes}</div>` : ""}
+          </div>
+          <div style="flex-shrink:0">${cancelBtn}</div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+async function handleCreatePplOrder(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+
+  const total   = parseInt(document.getElementById("pplOrderTotal")?.value, 10);
+  const dueDate = document.getElementById("pplOrderDueDate")?.value;
+  const notes   = document.getElementById("pplOrderNotes")?.value?.trim() || null;
+
+  if (!total || total < 1) { toast("Please enter a valid number of leads.", true); return; }
+  if (!dueDate) { toast("Please select a due date.", true); return; }
+
+  try {
+    const { error } = await sb.from("ppl_orders").insert({
+      company_id:  currentCompanyId,
+      total_leads: total,
+      due_date:    dueDate,
+      notes,
+    });
+    if (error) { toast(error.message, true); return; }
+    toast("PPL order created.");
+    closeModal("pplOrderModal");
+    document.getElementById("pplOrderForm")?.reset();
+    await loadPplOrdersUI();
+  } catch {
+    toast("Failed to create order.", true);
+  }
+}
+
+async function cancelPplOrder(orderId) {
+  confirmAction("Cancel this PPL order? It will no longer count incoming leads.", async () => {
+    try {
+      const { error } = await sb.from("ppl_orders").update({ status: "cancelled" }).eq("id", orderId);
+      if (error) { toast(error.message, true); return; }
+      toast("Order cancelled.");
+      await loadPplOrdersUI();
+    } catch {
+      toast("Failed to cancel order.", true);
+    }
+  });
+}
+window.cancelPplOrder = cancelPplOrder;
 
 async function handleCompanyProfileSave(e) {
   e.preventDefault();

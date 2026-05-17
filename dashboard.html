@@ -990,6 +990,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </form>
           </div>
         </section>
+        <!-- PPL Orders -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h">
+            <div><h2>PPL Orders</h2><p>Track Pay-Per-Lead orders. Each order records how many leads were contracted, when they were purchased, and the delivery deadline. Leads delivered with source <strong>PPL</strong> are counted automatically.</p></div>
+            <div class="actions"><button id="openPplOrderModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Order</span></button></div>
+          </div>
+          <div class="panel-b">
+            <div id="pplOrdersList"><div class="notice">Loading orders…</div></div>
+          </div>
+        </section>
         <!-- PPL Service Areas -->
         <section class="panel" style="margin-top:24px">
           <div class="panel-h"><div><h2>PPL Service Areas</h2><p>The postcodes your company has contracted to receive leads for. Used to auto-check <em>Outside Agreed Criteria</em> disputes.</p></div></div>
@@ -1752,6 +1762,28 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div class="mf">
       <div></div>
       <div class="actions"><button class="btn2" type="submit" form="passwordResetForm">Update Password</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── New PPL Order Modal ──────────────────────────────────────────────────── -->
+<div id="pplOrderModal" class="modal">
+  <div class="modal-card small">
+    <div class="mh"><h2>New PPL Order</h2><p>Record a new Pay-Per-Lead order. Leads delivered with source PPL will count against this order automatically.</p></div>
+    <div class="mb">
+      <form id="pplOrderForm" class="stack">
+        <div class="form2">
+          <div class="field"><label for="pplOrderTotal">Total Leads Ordered</label><input id="pplOrderTotal" type="number" min="1" required placeholder="e.g. 15"></div>
+          <div class="field"><label for="pplOrderDueDate">Due Date</label><input id="pplOrderDueDate" type="date" required></div>
+          <div class="full"><label for="pplOrderNotes">Notes (optional)</label><textarea id="pplOrderNotes" rows="2" placeholder="e.g. Order #1234, campaign notes…" style="min-height:56px"></textarea></div>
+        </div>
+      </form>
+    </div>
+    <div class="mf">
+      <div class="actions">
+        <button id="cancelPplOrderModal" class="btn" type="button">Cancel</button>
+        <button class="btn2" type="submit" form="pplOrderForm">Create Order</button>
+      </div>
     </div>
   </div>
 </div>
