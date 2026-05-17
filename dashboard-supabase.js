@@ -1679,7 +1679,7 @@ function initDisputeModal() {
 
 function openDisputeModal() {
   const lead = allLeads.find((x) => x.id === _currentDisputeLeadId);
-  if (!lead || lead.source?.toLowerCase() !== "ppl") return;
+  if (!lead || !lead.is_ppl) return;
 
   // Reset to step 1
   _currentDisputeId       = null;
