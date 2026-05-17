@@ -203,6 +203,125 @@ Deno.serve(async (req) => {
       return json({ session: otpData.session });
     }
 
+    // ── action: list_disputes ─────────────────────────────────────────────────
+    // Returns all lead disputes across every company (admin view).
+    // All reads happen via the service-role client — RLS is bypassed server-side
+    // and no sensitive keys are ever returned to the browser.
+    if (action === "list_disputes") {
+      const { data: disputes, error: disputeErr } = await adminClient
+        .from("lead_disputes")
+        .select(`
+          id,
+          reason,
+          status,
+          auto_check_result,
+          manual_review_notes,
+          scrub_cap_pct,
+          scrub_used_pct,
+          resolution_notes,
+          resolved_at,
+          created_at,
+          updated_at,
+          lead_id,
+          company_id,
+          raised_by,
+          resolved_by
+        `)
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (disputeErr) {
+        console.error("list_disputes error:", disputeErr.message);
+        return json({ error: "Failed to load disputes" }, 500);
+      }
+
+      if (!disputes?.length) return json({ disputes: [] });
+
+      // Batch-fetch related records to avoid N+1 queries
+      const leadIds     = [...new Set(disputes.map((d: { lead_id: string }) => d.lead_id))];
+      const companyIds  = [...new Set(disputes.map((d: { company_id: string }) => d.company_id))];
+      const userIds     = [...new Set([
+        ...disputes.map((d: { raised_by: string | null }) => d.raised_by).filter(Boolean),
+        ...disputes.map((d: { resolved_by: string | null }) => d.resolved_by).filter(Boolean),
+      ])] as string[];
+
+      const [{ data: leads }, { data: companies }, { data: profiles }] = await Promise.all([
+        adminClient.from("leads").select("id, first_name, last_name, phone, postcode, email").in("id", leadIds),
+        adminClient.from("companies").select("id, name").in("id", companyIds),
+        adminClient.from("profiles").select("id, full_name").in("id", userIds),
+      ]);
+
+      const leadMap    = Object.fromEntries((leads    || []).map((r: { id: string }) => [r.id, r]));
+      const companyMap = Object.fromEntries((companies|| []).map((r: { id: string }) => [r.id, r]));
+      const profileMap = Object.fromEntries((profiles || []).map((r: { id: string }) => [r.id, r]));
+
+      const enriched = disputes.map((d: {
+        id: string; reason: string; status: string; auto_check_result: unknown;
+        manual_review_notes: string | null; scrub_cap_pct: number | null;
+        scrub_used_pct: number | null; resolution_notes: string | null;
+        resolved_at: string | null; created_at: string; updated_at: string;
+        lead_id: string; company_id: string; raised_by: string | null; resolved_by: string | null;
+      }) => ({
+        ...d,
+        lead:          leadMap[d.lead_id]    ?? null,
+        company:       companyMap[d.company_id] ?? null,
+        raised_by_profile:   profileMap[d.raised_by ?? ""] ?? null,
+        resolved_by_profile: profileMap[d.resolved_by ?? ""] ?? null,
+      }));
+
+      return json({ disputes: enriched });
+    }
+
+    // ── action: resolve_dispute ───────────────────────────────────────────────
+    // Allows an admin to manually approve or reject a dispute.
+    if (action === "resolve_dispute") {
+      const { dispute_id, resolution, notes } = body as {
+        dispute_id?: string;
+        resolution?: string;
+        notes?: string;
+      };
+
+      if (!dispute_id || typeof dispute_id !== "string") {
+        return json({ error: "dispute_id is required" }, 400);
+      }
+      if (!resolution || !["manual_approved", "manual_rejected"].includes(resolution)) {
+        return json({ error: "resolution must be 'manual_approved' or 'manual_rejected'" }, 400);
+      }
+
+      // Fetch dispute to confirm it exists and is in a resolvable state
+      const { data: dispute, error: fetchErr } = await adminClient
+        .from("lead_disputes")
+        .select("id, status")
+        .eq("id", dispute_id)
+        .maybeSingle();
+
+      if (fetchErr || !dispute) {
+        return json({ error: "Dispute not found" }, 404);
+      }
+
+      const resolvableStatuses = ["pending", "auto_approved", "auto_rejected", "pending_manual_review"];
+      if (!resolvableStatuses.includes(dispute.status)) {
+        return json({ error: `Dispute is already resolved (status: ${dispute.status})` }, 409);
+      }
+
+      const { error: updateErr } = await adminClient
+        .from("lead_disputes")
+        .update({
+          status:           resolution,
+          resolved_at:      new Date().toISOString(),
+          resolved_by:      caller.id,
+          resolution_notes: notes?.trim() || null,
+        })
+        .eq("id", dispute_id);
+
+      if (updateErr) {
+        console.error("resolve_dispute update error:", updateErr.message);
+        return json({ error: "Failed to resolve dispute" }, 500);
+      }
+
+      return json({ dispute_id, status: resolution });
+    }
+
     // ── Unknown action ────────────────────────────────────────────────────────
     return json({ error: `Unknown action: ${action ?? "(none)"}` }, 400);
   } catch (err) {
