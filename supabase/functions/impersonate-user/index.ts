@@ -281,11 +281,15 @@ Deno.serve(async (req) => {
         notes?: string;
       };
 
-      if (!dispute_id || typeof dispute_id !== "string") {
-        return json({ error: "dispute_id is required" }, 400);
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!dispute_id || typeof dispute_id !== "string" || !UUID_RE.test(dispute_id)) {
+        return json({ error: "dispute_id must be a valid UUID" }, 400);
       }
       if (!resolution || !["manual_approved", "manual_rejected"].includes(resolution)) {
         return json({ error: "resolution must be 'manual_approved' or 'manual_rejected'" }, 400);
+      }
+      if (notes !== undefined && typeof notes === "string" && notes.length > 2000) {
+        return json({ error: "notes must be 2000 characters or fewer" }, 400);
       }
 
       // Fetch dispute to confirm it exists and is in a resolvable state

@@ -1,6 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ── Welcome email ─────────────────────────────────────────────────────────────
+function maskPassword(pw: string): string {
+  if (pw.length <= 3) return "***";
+  return pw.slice(0, 3) + "*".repeat(Math.min(pw.length - 3, 8));
+}
+
 async function sendWelcomeEmail(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -44,10 +49,13 @@ async function sendWelcomeEmail(
     <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Email</td></tr>
     <tr><td style="font-size:15px;color:#111827;font-weight:600;padding-bottom:14px">${email}</td></tr>
     <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Password</td></tr>
-    <tr><td style="font-size:15px;color:#111827;font-weight:600;font-family:monospace">${password}</td></tr>
+    <tr><td style="font-size:15px;color:#111827;font-weight:600;font-family:monospace">${maskPassword(password)}</td></tr>
   </table>
-  <p style="margin:0 0 16px;font-size:13px;color:#6b7280">
-    For security, please change your password after your first login.
+  <p style="margin:0 0 4px;font-size:13px;color:#6b7280">
+    Your password starts with the characters shown above. For security, please change it after your first login via <strong>Settings → Change Password</strong>.
+  </p>
+  <p style="margin:0 0 16px;font-size:12px;color:#9ca3af">
+    If you need your full password, contact the person who created your account.
   </p>
   ${loginSection}
 </td></tr>
@@ -70,7 +78,7 @@ async function sendWelcomeEmail(
       to: email,
       subject: "Your QuoteLeadsHQ account has been created",
       html,
-      text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nEmail: ${email}\nPassword: ${password}\n\nPlease change your password after your first login.\n\n${loginText}`,
+      text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nEmail: ${email}\nPassword: starts with ${maskPassword(password)} — contact your admin for the full password.\n\nPlease change your password after your first login.\n\n${loginText}`,
     }),
   });
 
@@ -177,8 +185,14 @@ Deno.serve(async (req) => {
     if (!name || typeof name !== "string" || !name.trim()) {
       return json({ error: "name is required" }, 400);
     }
+    if (name.trim().length > 120) {
+      return json({ error: "name must be 120 characters or fewer" }, 400);
+    }
     if (!password || typeof password !== "string" || password.length < 8) {
       return json({ error: "password must be at least 8 characters" }, 400);
+    }
+    if (password.length > 72) {
+      return json({ error: "password must be 72 characters or fewer" }, 400);
     }
 
     const sanitizedEmail = email.trim().toLowerCase();
