@@ -521,7 +521,11 @@ h1{font-size:18px;font-weight:500}
 
     try {
       var result = await callCreateUserSilent(name, email, password);
-      toast('Account created for ' + result.user.email);
+      if (result.email_sent === false) {
+        toast('Account created but welcome email failed to send — check edge function logs. (' + (result.email_error || 'unknown error') + ')', true);
+      } else {
+        toast('Account created for ' + result.user.email + ' — welcome email sent.');
+      }
       document.getElementById('createAccountForm').reset();
 
       // Refresh user list so the new account appears immediately
