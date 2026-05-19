@@ -63,7 +63,7 @@ function validateLeadFields(body: Record<string, unknown>): string | null {
   const strFields: [string, number][] = [
     ["name", MAX_STR], ["first_name", MAX_STR], ["last_name", MAX_STR],
     ["email", 320], ["phone", 30], ["source", MAX_STR],
-    ["service_type", MAX_STR], ["address", MAX_STR], ["postcode", 20],
+    ["service_type", MAX_STR], ["address", MAX_STR], ["postcode", 50],
   ];
   for (const [key, max] of strFields) {
     if (body[key] !== undefined && body[key] !== null) {
