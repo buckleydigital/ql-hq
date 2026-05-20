@@ -3165,6 +3165,9 @@ async function loadPplOrdersUI() {
   const container = document.getElementById("pplOrdersList");
   if (!container || !currentCompanyId) return;
 
+  const newOrderBtn = document.getElementById("openPplOrderModal");
+  if (newOrderBtn) newOrderBtn.style.display = currentUserIsSuperAdmin ? "" : "none";
+
   const { data: orders, error } = await sb
     .from("ppl_orders")
     .select("*")
@@ -3211,6 +3214,7 @@ async function loadPplOrdersUI() {
 async function handleCreatePplOrder(e) {
   e.preventDefault();
   if (!currentCompanyId) return;
+  if (!currentUserIsSuperAdmin) { toast("Only super admins can create PPL orders.", true); return; }
 
   const total   = parseInt(document.getElementById("pplOrderTotal")?.value, 10);
   const dueDate = document.getElementById("pplOrderDueDate")?.value;
