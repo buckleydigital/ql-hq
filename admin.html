@@ -223,6 +223,34 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- PPL Orders panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>PPL Orders</h2>
+          <p id="pplOrderCountLabel">Loading…</p>
+        </div>
+        <div class="filter-bar">
+          <select id="pplCompanyFilter" class="filter-select">
+            <option value="">All companies</option>
+          </select>
+          <select id="pplStatusFilter" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn btn-sm" id="refreshPplOrdersBtn" type="button">Refresh</button>
+          <button class="btn2 btn-sm" id="openPplOrderModalBtn" type="button">+ New Order</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="pplOrderLoadingState" class="notice">Loading orders…</div>
+        <div id="pplOrderList" class="hidden"></div>
+        <div id="pplOrderEmptyState" class="notice hidden">No PPL orders found.</div>
+      </div>
+    </div>
+
     <!-- Lead Disputes panel -->
     <div class="card">
       <div class="panel-h">
@@ -266,6 +294,37 @@ h1{font-size:18px;font-weight:500}
       <button class="btn btn-sm" id="modalCancelBtn" type="button">Cancel</button>
       <button class="btn btn-sm btn-reject" id="modalRejectBtn" type="button">Reject dispute</button>
       <button class="btn btn-sm btn-approve" id="modalApproveBtn" type="button">Approve dispute</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Create PPL Order modal ─────────────────────────────────────────────────── -->
+<div id="pplOrderModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:520px">
+    <h3>Create PPL Order</h3>
+    <div class="form-row" style="margin-bottom:12px">
+      <label class="form-label" for="pplCompanySelect">Company</label>
+      <select class="form-input" id="pplCompanySelect">
+        <option value="">Select a company…</option>
+      </select>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="form-row">
+        <label class="form-label" for="pplTotalLeads">Total Leads Ordered</label>
+        <input class="form-input" id="pplTotalLeads" type="number" min="1" placeholder="e.g. 15">
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="pplDueDate">Due Date</label>
+        <input class="form-input" id="pplDueDate" type="date">
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:4px">
+      <label class="form-label" for="pplNotes">Notes <span style="font-weight:400">(optional)</span></label>
+      <textarea id="pplNotes" placeholder="e.g. Order #1234, campaign notes…" maxlength="2000"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="pplModalCancelBtn" type="button">Cancel</button>
+      <button class="btn2 btn-sm" id="pplModalSubmitBtn" type="button">Create Order</button>
     </div>
   </div>
 </div>
@@ -737,6 +796,168 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('disputeStatusFilter').addEventListener('change', applyDisputeFilter);
   document.getElementById('refreshDisputesBtn').addEventListener('click', loadDisputes);
 
+  // ── PPL Orders ─────────────────────────────────────────────────────────────
+
+  var allPplOrders = [];
+  var allCompanies = [];
+
+  function pplStatusClass(status) {
+    if (status === 'completed') return 'badge-approved';
+    if (status === 'cancelled') return 'badge-rejected';
+    return 'badge-pending';
+  }
+
+  function renderPplOrderRow(o) {
+    var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
+    var pct = o.total_leads > 0 ? Math.min(100, Math.round((o.delivered_leads / o.total_leads) * 100)) : 0;
+    var remaining = Math.max(0, o.total_leads - o.delivered_leads);
+    var purchased = o.purchased_at
+      ? new Date(o.purchased_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    var due = o.due_date
+      ? new Date(o.due_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    var statusLabel = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' }[o.status] || o.status;
+
+    var row = document.createElement('div');
+    row.className = 'dispute-row';
+    row.innerHTML =
+      '<div class="dispute-header">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="dispute-lead">' + companyName + '</div>' +
+          '<div class="dispute-meta">Purchased ' + purchased + ' &bull; Due ' + due + '</div>' +
+          '<div class="dispute-badges" style="margin-bottom:8px">' +
+            '<span class="badge-status ' + pplStatusClass(o.status) + '">' + escapeHtml(statusLabel) + '</span>' +
+          '</div>' +
+          '<div style="font-size:16px;font-weight:600">' +
+            o.delivered_leads + ' / ' + o.total_leads +
+            ' <span style="font-size:12px;font-weight:400;color:var(--muted)">leads delivered</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + remaining + ' remaining</div>' +
+          '<div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;max-width:320px">' +
+            '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
+          '</div>' +
+          (o.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">' + escapeHtml(o.notes) + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    return row;
+  }
+
+  function applyPplFilter() {
+    var company = document.getElementById('pplCompanyFilter').value;
+    var status  = document.getElementById('pplStatusFilter').value;
+    var filtered = allPplOrders.filter(function (o) {
+      return (!company || o.company_id === company) && (!status || o.status === status);
+    });
+    var listEl  = document.getElementById('pplOrderList');
+    var emptyEl = document.getElementById('pplOrderEmptyState');
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      filtered.forEach(function (o) { listEl.appendChild(renderPplOrderRow(o)); });
+    }
+  }
+
+  async function loadPplOrders() {
+    document.getElementById('pplOrderLoadingState').classList.remove('hidden');
+    document.getElementById('pplOrderList').classList.add('hidden');
+    document.getElementById('pplOrderEmptyState').classList.add('hidden');
+    try {
+      var result = await callEdge({ action: 'list_ppl_orders' });
+      allPplOrders = result.orders || [];
+      var label = document.getElementById('pplOrderCountLabel');
+      if (label) {
+        label.textContent = allPplOrders.length + ' order' + (allPplOrders.length === 1 ? '' : 's') + ' total';
+      }
+      document.getElementById('pplOrderLoadingState').classList.add('hidden');
+      applyPplFilter();
+    } catch (err) {
+      document.getElementById('pplOrderLoadingState').textContent = 'Failed to load orders: ' + err.message;
+      toast('Failed to load PPL orders: ' + err.message, true);
+    }
+  }
+
+  function populateCompanySelects() {
+    var selects = [
+      { el: document.getElementById('pplCompanySelect'), placeholder: 'Select a company…' },
+      { el: document.getElementById('pplCompanyFilter'), placeholder: 'All companies' },
+    ];
+    selects.forEach(function (s) {
+      if (!s.el) return;
+      while (s.el.options.length > 1) s.el.remove(1);
+      allCompanies.forEach(function (c) {
+        var opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name || c.id;
+        s.el.appendChild(opt);
+      });
+    });
+  }
+
+  async function loadCompanies() {
+    if (allCompanies.length) { populateCompanySelects(); return; }
+    try {
+      var result = await callEdge({ action: 'list_companies' });
+      allCompanies = result.companies || [];
+      populateCompanySelects();
+    } catch (err) {
+      toast('Failed to load companies: ' + err.message, true);
+    }
+  }
+
+  function openPplOrderModal() {
+    document.getElementById('pplCompanySelect').value = '';
+    document.getElementById('pplTotalLeads').value = '';
+    document.getElementById('pplDueDate').value = '';
+    document.getElementById('pplNotes').value = '';
+    document.getElementById('pplOrderModal').classList.remove('hidden');
+    loadCompanies();
+  }
+
+  function closePplOrderModal() {
+    document.getElementById('pplOrderModal').classList.add('hidden');
+  }
+
+  document.getElementById('openPplOrderModalBtn').addEventListener('click', openPplOrderModal);
+  document.getElementById('pplModalCancelBtn').addEventListener('click', closePplOrderModal);
+  document.getElementById('pplOrderModal').addEventListener('click', function (e) {
+    if (e.target === this) closePplOrderModal();
+  });
+
+  document.getElementById('pplModalSubmitBtn').addEventListener('click', async function () {
+    var btn        = this;
+    var companyId  = document.getElementById('pplCompanySelect').value;
+    var totalLeads = parseInt(document.getElementById('pplTotalLeads').value, 10);
+    var dueDate    = document.getElementById('pplDueDate').value;
+    var notes      = document.getElementById('pplNotes').value.trim() || null;
+
+    if (!companyId)            { toast('Please select a company.', true); return; }
+    if (!totalLeads || totalLeads < 1) { toast('Please enter a valid number of leads.', true); return; }
+    if (!dueDate)              { toast('Please select a due date.', true); return; }
+
+    btn.disabled    = true;
+    btn.textContent = 'Creating…';
+    try {
+      await callEdge({ action: 'create_ppl_order', company_id: companyId, total_leads: totalLeads, due_date: dueDate, notes: notes });
+      toast('PPL order created.');
+      closePplOrderModal();
+      await loadPplOrders();
+    } catch (err) {
+      toast(err.message || 'Failed to create order.', true);
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Create Order';
+    }
+  });
+
+  document.getElementById('pplCompanyFilter').addEventListener('change', applyPplFilter);
+  document.getElementById('pplStatusFilter').addEventListener('change', applyPplFilter);
+  document.getElementById('refreshPplOrdersBtn').addEventListener('click', loadPplOrders);
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   async function boot() {
     // 1. Wait for Supabase SDK
@@ -800,6 +1021,9 @@ h1{font-size:18px;font-weight:500}
 
     // 6. Load disputes panel
     await loadDisputes();
+
+    // 7. Load PPL orders panel and pre-populate company dropdowns
+    await Promise.all([loadPplOrders(), loadCompanies()]);
   }
 
   // Run after scripts are ready

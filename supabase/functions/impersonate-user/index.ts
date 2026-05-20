@@ -326,6 +326,112 @@ Deno.serve(async (req) => {
       return json({ dispute_id, status: resolution });
     }
 
+    // ── action: list_companies ────────────────────────────────────────────────
+    // Returns id + name for every company, sorted alphabetically.
+    if (action === "list_companies") {
+      const { data: companies, error: companyErr } = await adminClient
+        .from("companies")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (companyErr) {
+        console.error("list_companies error:", companyErr.message);
+        return json({ error: "Failed to load companies" }, 500);
+      }
+
+      return json({ companies: companies || [] });
+    }
+
+    // ── action: list_ppl_orders ───────────────────────────────────────────────
+    // Returns all PPL orders across all companies, enriched with company name.
+    if (action === "list_ppl_orders") {
+      const { data: orders, error: ordersErr } = await adminClient
+        .from("ppl_orders")
+        .select("*")
+        .order("purchased_at", { ascending: false })
+        .limit(500);
+
+      if (ordersErr) {
+        console.error("list_ppl_orders error:", ordersErr.message);
+        return json({ error: "Failed to load PPL orders" }, 500);
+      }
+
+      if (!orders?.length) return json({ orders: [] });
+
+      const companyIds = [...new Set(orders.map((o: { company_id: string }) => o.company_id))];
+      const { data: companies } = await adminClient
+        .from("companies")
+        .select("id, name")
+        .in("id", companyIds);
+
+      const companyMap = Object.fromEntries(
+        (companies || []).map((c: { id: string; name: string }) => [c.id, c]),
+      );
+
+      const enriched = orders.map((o: { company_id: string }) => ({
+        ...o,
+        company: companyMap[o.company_id] ?? null,
+      }));
+
+      return json({ orders: enriched });
+    }
+
+    // ── action: create_ppl_order ──────────────────────────────────────────────
+    // Creates a PPL order for any company on behalf of the super-admin.
+    if (action === "create_ppl_order") {
+      const { company_id, total_leads, due_date, notes } = body as {
+        company_id?: string;
+        total_leads?: number;
+        due_date?: string;
+        notes?: string | null;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!company_id || typeof company_id !== "string" || !UUID_RE.test(company_id)) {
+        return json({ error: "company_id must be a valid UUID" }, 400);
+      }
+      if (
+        total_leads === undefined || typeof total_leads !== "number" ||
+        !Number.isInteger(total_leads) || total_leads < 1
+      ) {
+        return json({ error: "total_leads must be a positive integer" }, 400);
+      }
+      if (!due_date || typeof due_date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(due_date)) {
+        return json({ error: "due_date must be a date in YYYY-MM-DD format" }, 400);
+      }
+      if (notes !== undefined && notes !== null && typeof notes === "string" && notes.length > 2000) {
+        return json({ error: "notes must be 2000 characters or fewer" }, 400);
+      }
+
+      const { data: company, error: companyCheckErr } = await adminClient
+        .from("companies")
+        .select("id, name")
+        .eq("id", company_id)
+        .maybeSingle();
+
+      if (companyCheckErr || !company) {
+        return json({ error: "Company not found" }, 404);
+      }
+
+      const { data: order, error: insertErr } = await adminClient
+        .from("ppl_orders")
+        .insert({
+          company_id,
+          total_leads,
+          due_date,
+          notes: (typeof notes === "string" && notes.trim()) ? notes.trim() : null,
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error("create_ppl_order error:", insertErr.message);
+        return json({ error: "Failed to create PPL order" }, 500);
+      }
+
+      return json({ order: { ...order, company } });
+    }
+
     // ── Unknown action ────────────────────────────────────────────────────────
     return json({ error: `Unknown action: ${action ?? "(none)"}` }, 400);
   } catch (err) {
