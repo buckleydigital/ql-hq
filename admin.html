@@ -880,8 +880,15 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('pplOrderList').classList.add('hidden');
     document.getElementById('pplOrderEmptyState').classList.add('hidden');
     try {
-      var result = await callEdge({ action: 'list_ppl_orders' });
-      allPplOrders = result.orders || [];
+      var { data: orders, error } = await sb
+        .from('ppl_orders')
+        .select('*, company:companies(id, name)')
+        .order('purchased_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      allPplOrders = (orders || []).map(function (o) {
+        return Object.assign({}, o, { company: o.company || null });
+      });
       var label = document.getElementById('pplOrderCountLabel');
       if (label) {
         label.textContent = allPplOrders.length + ' order' + (allPplOrders.length === 1 ? '' : 's') + ' total';
