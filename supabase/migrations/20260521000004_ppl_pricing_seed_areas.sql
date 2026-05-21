@@ -1,3 +1,9 @@
+-- Ensure area column exists (idempotent — safe if 003 already ran)
+alter table ppl_pricing add column if not exists area text;
+alter table ppl_pricing drop constraint if exists ppl_pricing_niche_key;
+create unique index if not exists ppl_pricing_niche_default_idx on ppl_pricing(niche) where area is null;
+create unique index if not exists ppl_pricing_niche_area_idx on ppl_pricing(niche, area) where area is not null;
+
 -- Seed per-city pricing rows for all 46 major AU cities × 5 niches.
 -- Prices match the niche defaults set in 20260521000002.
 -- Admin can edit individual rows in /admin after this runs.
