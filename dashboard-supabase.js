@@ -5552,41 +5552,66 @@ function renderBuyLeadsOrders(orders) {
   if (!el) return;
   orders.forEach(o => _pplOrdersCache.set(o.id, o));
   if (!orders.length) { el.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`; return; }
+
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
-  const statusColor = s => ({ pending:'#9a9a9a', paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#ef4444' }[s] || '#9a9a9a');
-  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">City</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Coverage</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Qty</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Delivered</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Total</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Status</th>
-    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Date</th>
-    <th style="padding:8px 10px"></th>
-  </tr></thead><tbody>
-  ${orders.map(o => {
-    const city = o.area_city || o.area || '—';
-    const coverage = o.location_type === 'postcodes'
-      ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
-      : `${o.radius_km || 50}km radius`;
-    const isPending = o.status === 'pending';
-    const actions = isPending
-      ? `<button onclick="retryPplOrder('${o.id}')" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--accent,#4797FF);background:transparent;color:var(--accent,#4797FF);cursor:pointer;font-family:inherit;margin-right:4px;white-space:nowrap">Retry</button><button onclick="deletePendingOrder('${o.id}')" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-family:inherit;white-space:nowrap">Delete</button>`
-      : '';
-    return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:10px">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
-      <td style="padding:10px">${city}</td>
-      <td style="padding:10px;color:var(--muted)">${coverage}</td>
-      <td style="padding:10px">${o.quantity}</td>
-      <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
-      <td style="padding:10px">${fmt(o.total_amount)}</td>
-      <td style="padding:10px"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
-      <td style="padding:10px;color:var(--muted)">${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
-      <td style="padding:10px;white-space:nowrap">${actions}</td>
-    </tr>`;
-  }).join('')}
-  </tbody></table></div>`;
+  const statusColor = s => ({ paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#9a9a9a' }[s] || '#9a9a9a');
+
+  const pending = orders.filter(o => o.status === 'pending');
+  const active  = orders.filter(o => o.status !== 'pending');
+
+  let html = '';
+
+  // Pending (incomplete checkout) — shown as banners above the table
+  if (pending.length) {
+    html += pending.map(o => {
+      const city  = o.area_city || o.area || '—';
+      const label = `${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:18px">⚠️</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#92400e">Payment not completed</div>
+            <div style="font-size:12px;color:#b45309;margin-top:1px">${label}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="retryPplOrder('${o.id}')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid #f59e0b;background:#f59e0b;color:#fff;cursor:pointer;font-family:inherit;font-weight:500">Complete Payment</button>
+          <button onclick="deletePendingOrder('${o.id}')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-family:inherit">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Active / fulfilled / cancelled orders — table
+  if (active.length) {
+    html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">City</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Coverage</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Delivered</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Total</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Status</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Date</th>
+    </tr></thead><tbody>
+    ${active.map(o => {
+      const city = o.area_city || o.area || '—';
+      const coverage = o.location_type === 'postcodes'
+        ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
+        : `${o.radius_km || 50}km radius`;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+        <td style="padding:10px">${city}</td>
+        <td style="padding:10px;color:var(--muted)">${coverage}</td>
+        <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
+        <td style="padding:10px">${fmt(o.total_amount)}</td>
+        <td style="padding:10px"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
+        <td style="padding:10px;color:var(--muted)">${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 async function retryPplOrder(orderId) {
