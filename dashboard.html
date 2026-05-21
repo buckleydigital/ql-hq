@@ -1824,13 +1824,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 <!-- ── New PPL Order Modal ──────────────────────────────────────────────────── -->
 <div id="pplOrderModal" class="modal">
   <div class="modal-card small">
-    <div class="mh"><h2>New PPL Order</h2><p>Record a new Pay-Per-Lead order. Leads delivered with source PPL will count against this order automatically.</p></div>
+    <div class="mh"><h2>New PPL Order</h2><p>Manually record a Pay-Per-Lead order. Leads delivered with source PPL will count against this order automatically.</p></div>
     <div class="mb">
       <form id="pplOrderForm" class="stack">
         <div class="form2">
-          <div class="field"><label for="pplOrderTotal">Total Leads Ordered</label><input id="pplOrderTotal" type="number" min="1" required placeholder="e.g. 15"></div>
-          <div class="field"><label for="pplOrderDueDate">Due Date</label><input id="pplOrderDueDate" type="date" required></div>
-          <div class="full"><label for="pplOrderNotes">Notes (optional)</label><textarea id="pplOrderNotes" rows="2" placeholder="e.g. Order #1234, campaign notes…" style="min-height:56px"></textarea></div>
+          <div class="field"><label for="pplOrderNiche">Niche</label><select id="pplOrderNiche" required><option value="">Select niche…</option><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+          <div class="field"><label for="pplOrderCity">City</label><input id="pplOrderCity" type="text" required placeholder="e.g. Brisbane"></div>
+          <div class="field"><label for="pplOrderQty">Quantity</label><input id="pplOrderQty" type="number" min="1" required placeholder="e.g. 20"></div>
+          <div class="field"><label for="pplOrderPPL">Price Per Lead ($)</label><input id="pplOrderPPL" type="number" min="0" step="0.01" required placeholder="e.g. 75.00"></div>
         </div>
       </form>
     </div>
