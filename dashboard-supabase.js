@@ -912,7 +912,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, plan, settings")
+        .select("name, settings")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -929,9 +929,8 @@ async function showApp() {
         if (sidebarCompany) sidebarCompany.textContent = company.name;
       }
 
-      // Show plan-specific nav items
       const navBuyLeads = document.getElementById("navBuyLeads");
-      if (navBuyLeads) navBuyLeads.style.display = company?.plan === 'ppl' ? '' : 'none';
+      if (navBuyLeads) navBuyLeads.style.display = '';
     }
 
     // Fetch current user's permissions from sales_reps
@@ -974,11 +973,6 @@ async function showApp() {
       history.replaceState({}, '', window.location.pathname);
     }
 
-    // Show onboarding wizard for managed plan before first login
-    if (currentCompany?.plan === 'managed' && !currentCompany?.settings?.onboarding_complete) {
-      showOnboardingWizard(currentCompany, currentUser);
-      return;
-    }
 
     navigateTo(currentPageId || "dashboard");
   } catch (err) {
