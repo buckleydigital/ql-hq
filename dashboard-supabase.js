@@ -931,6 +931,10 @@ async function showApp() {
 
       const navBuyLeads = document.getElementById("navBuyLeads");
       if (navBuyLeads) navBuyLeads.style.display = '';
+
+      if (!company?.settings?.onboarding_complete) {
+        showOnboardingWizard(company, currentUser);
+      }
     }
 
     // Fetch current user's permissions from sales_reps
