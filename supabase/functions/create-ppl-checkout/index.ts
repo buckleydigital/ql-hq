@@ -101,6 +101,7 @@ serve(async (req) => {
           },
         },
         quantity: 1,
+        tax_rates: [Deno.env.get('STRIPE_TAX_RATE_GST')!],
       }],
       metadata: {
         type: 'ppl',
