@@ -5433,11 +5433,10 @@ function renderBuyLeadsNiches(pricing) {
   if (!el) return;
   el.innerHTML = pricing.map(p => {
     const label = p.niche.charAt(0).toUpperCase() + p.niche.slice(1);
-    const price = `$${parseFloat(p.price_per_lead).toFixed(0)}/lead`;
     return `<button type="button" onclick="buyLeadsSelectNiche('${p.niche}', ${p.price_per_lead})"
       id="nicheCard-${p.niche}"
-      style="padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-      <div>${label}</div><div style="font-size:11px;opacity:0.65;font-weight:400;margin-top:2px">${price}</div>
+      style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      ${label}
     </button>`;
   }).join('');
 }
