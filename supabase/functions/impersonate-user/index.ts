@@ -327,11 +327,11 @@ Deno.serve(async (req) => {
     }
 
     // ── action: list_companies ────────────────────────────────────────────────
-    // Returns id + name for every company, sorted alphabetically.
+    // Returns id, name, plan, email for every company, sorted alphabetically.
     if (action === "list_companies") {
       const { data: companies, error: companyErr } = await adminClient
         .from("companies")
-        .select("id, name")
+        .select("id, name, plan, email")
         .order("name", { ascending: true });
 
       if (companyErr) {
@@ -340,6 +340,99 @@ Deno.serve(async (req) => {
       }
 
       return json({ companies: companies || [] });
+    }
+
+    // ── action: update_company ────────────────────────────────────────────────
+    // Updates plan (and optionally name/email) for a company.
+    if (action === "update_company") {
+      const { company_id, plan, name, email } = body as {
+        company_id?: string;
+        plan?: string;
+        name?: string;
+        email?: string;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!company_id || !UUID_RE.test(company_id)) {
+        return json({ error: "company_id must be a valid UUID" }, 400);
+      }
+      const VALID_PLANS = ["managed", "ppl"];
+      if (plan !== undefined && !VALID_PLANS.includes(plan)) {
+        return json({ error: "plan must be 'managed' or 'ppl'" }, 400);
+      }
+
+      const update: Record<string, unknown> = {};
+      if (plan  !== undefined) update.plan  = plan;
+      if (name  !== undefined && name.trim())  update.name  = name.trim();
+      if (email !== undefined && email.trim()) update.email = email.trim().toLowerCase();
+
+      if (!Object.keys(update).length) return json({ success: true, company_id });
+
+      const { error: updateErr } = await adminClient
+        .from("companies")
+        .update(update)
+        .eq("id", company_id);
+
+      if (updateErr) {
+        console.error("update_company error:", updateErr.message);
+        return json({ error: "Failed to update company: " + updateErr.message }, 500);
+      }
+
+      return json({ success: true, company_id });
+    }
+
+    // ── action: list_twilio_numbers ───────────────────────────────────────────
+    // Returns all Twilio numbers with their assigned company.
+    if (action === "list_twilio_numbers") {
+      const { data: numbers, error: numErr } = await adminClient
+        .from("twilio_numbers")
+        .select("id, phone_number, friendly_name, company_id, created_at, company:companies(id, name)")
+        .order("created_at", { ascending: false });
+
+      if (numErr) {
+        console.error("list_twilio_numbers error:", numErr.message);
+        return json({ error: "Failed to load Twilio numbers" }, 500);
+      }
+
+      return json({ numbers: numbers || [] });
+    }
+
+    // ── action: update_twilio_number ──────────────────────────────────────────
+    // Reassigns a Twilio number to a different company or updates friendly_name.
+    if (action === "update_twilio_number") {
+      const { number_id, company_id, friendly_name } = body as {
+        number_id?: string;
+        company_id?: string;
+        friendly_name?: string;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!number_id || !UUID_RE.test(number_id)) {
+        return json({ error: "number_id must be a valid UUID" }, 400);
+      }
+
+      const update: Record<string, unknown> = {};
+      if (company_id !== undefined) {
+        if (company_id && !UUID_RE.test(company_id)) {
+          return json({ error: "company_id must be a valid UUID or empty" }, 400);
+        }
+        update.company_id = company_id || null;
+      }
+      if (friendly_name !== undefined) update.friendly_name = friendly_name.trim() || null;
+
+      if (!Object.keys(update).length) return json({ success: true });
+
+      const { error: updateErr } = await adminClient
+        .from("twilio_numbers")
+        .update(update)
+        .eq("id", number_id);
+
+      if (updateErr) {
+        console.error("update_twilio_number error:", updateErr.message);
+        return json({ error: "Failed to update number: " + updateErr.message }, 500);
+      }
+
+      return json({ success: true });
     }
 
     // ── action: list_ppl_orders ───────────────────────────────────────────────

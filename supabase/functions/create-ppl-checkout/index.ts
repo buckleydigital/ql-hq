@@ -31,12 +31,22 @@ serve(async (req) => {
       throw new Error('Missing required fields: company_id, niche, area_city, quantity')
     }
 
-    // Always validate price from DB by niche — never trust client
-    const { data: pricing } = await supabase
+    // Always validate price from DB — never trust client.
+    // Try area-specific price first, fall back to niche default (area IS NULL).
+    const { data: areaPrice } = await supabase
       .from('ppl_pricing')
       .select('price_per_lead')
       .eq('niche', niche)
+      .eq('area', area_city)
       .maybeSingle()
+
+    const pricing = areaPrice ?? (await supabase
+      .from('ppl_pricing')
+      .select('price_per_lead')
+      .eq('niche', niche)
+      .is('area', null)
+      .maybeSingle()
+    ).data
 
     if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
 
