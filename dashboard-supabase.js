@@ -5373,157 +5373,196 @@ async function completeOnboarding() {
 // Buy Leads (PPL plan)
 // =============================================================================
 
-let _pplPricing = [];
-let _buyLeadsSelectedNiche = null;
-let _buyLeadsSelectedArea = null;
-let _buyLeadsSelectedPPL = null;
+// =============================================================================
+// Buy Leads state
+// =============================================================================
+let _pplPricing = [];           // [{niche, price_per_lead}]
+let _blNiche    = null;
+let _blCity     = null;
+let _blLocType  = 'radius';     // 'radius' | 'postcodes'
+let _blPPL      = null;
 
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
-  const { data: pricing } = await sb
-    .from('ppl_pricing')
-    .select('*')
-    .eq('is_active', true)
-    .order('niche');
-
-  const { data: orders } = await sb
-    .from('ppl_lead_orders')
-    .select('*')
-    .eq('company_id', currentCompanyId)
-    .order('created_at', { ascending: false });
+  const [{ data: pricing }, { data: orders }] = await Promise.all([
+    sb.from('ppl_pricing').select('niche, price_per_lead').order('niche'),
+    sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
+  ]);
 
   _pplPricing = pricing || [];
-  renderBuyLeads(_pplPricing, orders || []);
+  _blNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+
+  renderBuyLeadsNiches(_pplPricing);
+  renderBuyLeadsOrders(orders || []);
+
+  // Wire up city select
+  const cityEl = document.getElementById('buyLeadsCity');
+  if (cityEl) cityEl.onchange = () => { _blCity = cityEl.value || null; buyLeadsOnCityChange(); };
+
+  // Wire up quantity slider
+  const qtyEl = document.getElementById('buyLeadsQty');
+  if (qtyEl) qtyEl.oninput = () => {
+    document.getElementById('buyLeadsQtyLabel').textContent = `${qtyEl.value} leads`;
+    buyLeadsUpdateSummary();
+  };
+
+  // Wire up radius select
+  document.getElementById('buyLeadsRadius')?.addEventListener('change', buyLeadsUpdateSummary);
+
+  // Wire up postcode textarea
+  document.getElementById('buyLeadsPostcodes')?.addEventListener('input', buyLeadsUpdateSummary);
 }
 
-function renderBuyLeads(pricing, orders) {
-  const niches = [...new Set(pricing.map(p => p.niche))];
-  const nicheCards = document.getElementById('buyLeadsNicheCards');
-  if (nicheCards) {
-    nicheCards.innerHTML = niches.map(n => `
-      <button type="button" onclick="buyLeadsSelectNiche('${n}')"
-        id="nicheCard-${n}"
-        style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit">
-        ${n.charAt(0).toUpperCase() + n.slice(1)}
-      </button>
-    `).join('');
-  }
-
-  const ordersEl = document.getElementById('buyLeadsOrdersTable');
-  if (ordersEl) {
-    if (!orders.length) {
-      ordersEl.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`;
-    } else {
-      const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
-      const statusColor = s => ({ pending:'#9a9a9a', paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#ef4444' }[s] || '#9a9a9a');
-      ordersEl.innerHTML = `<div class="table-lite">
-        <table><thead><tr>
-          <th>Niche</th><th>Area</th><th>Quantity</th><th>Delivered</th><th>Total</th><th>Status</th><th>Date</th>
-        </tr></thead><tbody>
-        ${orders.map(o => `<tr>
-          <td>${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
-          <td>${o.area.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}</td>
-          <td>${o.quantity}</td>
-          <td>${o.delivered_count} / ${o.quantity}</td>
-          <td>${fmt(o.total_amount)}</td>
-          <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
-          <td>${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
-        </tr>`).join('')}
-        </tbody></table>
-      </div>`;
-    }
-  }
+function renderBuyLeadsNiches(pricing) {
+  const el = document.getElementById('buyLeadsNicheCards');
+  if (!el) return;
+  el.innerHTML = pricing.map(p => {
+    const label = p.niche.charAt(0).toUpperCase() + p.niche.slice(1);
+    const price = `$${parseFloat(p.price_per_lead).toFixed(0)}/lead`;
+    return `<button type="button" onclick="buyLeadsSelectNiche('${p.niche}', ${p.price_per_lead})"
+      id="nicheCard-${p.niche}"
+      style="padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      <div>${label}</div><div style="font-size:11px;opacity:0.65;font-weight:400;margin-top:2px">${price}</div>
+    </button>`;
+  }).join('');
 }
 
-function buyLeadsSelectNiche(niche) {
-  _buyLeadsSelectedNiche = niche;
-  _buyLeadsSelectedArea = null;
-  _buyLeadsSelectedPPL = null;
+function buyLeadsSelectNiche(niche, ppl) {
+  _blNiche = niche;
+  _blPPL   = ppl;
+  _blCity  = null;
 
+  // Update card styles
   document.querySelectorAll('[id^="nicheCard-"]').forEach(el => {
     el.style.background = '';
     el.style.borderColor = 'var(--border)';
     el.style.color = 'var(--text,var(--ink))';
   });
   const card = document.getElementById(`nicheCard-${niche}`);
-  if (card) {
-    card.style.background = '#4797FF';
-    card.style.borderColor = '#4797FF';
-    card.style.color = '#fff';
-  }
+  if (card) { card.style.background = '#4797FF'; card.style.borderColor = '#4797FF'; card.style.color = '#fff'; }
 
-  const areas = _pplPricing.filter(p => p.niche === niche);
-  const areaSelect = document.getElementById('buyLeadsArea');
-  if (areaSelect) {
-    areaSelect.innerHTML = `<option value="">Select area…</option>` +
-      areas.map(a => `<option value="${a.area}" data-ppl="${a.price_per_lead}">${a.area.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())} — $${parseFloat(a.price_per_lead).toFixed(0)}/lead</option>`).join('');
-    areaSelect.onchange = () => {
-      const opt = areaSelect.selectedOptions[0];
-      _buyLeadsSelectedArea = opt?.value || null;
-      _buyLeadsSelectedPPL = opt ? parseFloat(opt.dataset.ppl) : null;
-      updateBuyLeadsSummary();
-    };
-  }
-  document.getElementById('buyLeadsAreaField').style.display = '';
-  document.getElementById('buyLeadsQtyField').style.display = '';
+  // Reset downstream fields
+  const cityEl = document.getElementById('buyLeadsCity');
+  if (cityEl) cityEl.value = '';
+  document.getElementById('buyLeadsCityField').style.display = '';
+  document.getElementById('buyLeadsLocationField').style.display = 'none';
+  document.getElementById('buyLeadsQtyField').style.display = 'none';
   document.getElementById('buyLeadsSummary').style.display = 'none';
-
-  const qtyInput = document.getElementById('buyLeadsQty');
-  if (qtyInput) {
-    qtyInput.oninput = () => {
-      document.getElementById('buyLeadsQtyLabel').textContent = `${qtyInput.value} leads`;
-      updateBuyLeadsSummary();
-    };
-    document.getElementById('buyLeadsQtyLabel').textContent = `${qtyInput.value} leads`;
-  }
 }
 
-function updateBuyLeadsSummary() {
-  if (!_buyLeadsSelectedArea || !_buyLeadsSelectedPPL) return;
-  const qty = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
-  const total = qty * _buyLeadsSelectedPPL;
-  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+function buyLeadsOnCityChange() {
+  if (!_blCity) return;
+  document.getElementById('buyLeadsLocationField').style.display = '';
+  document.getElementById('buyLeadsQtyField').style.display = '';
+  buyLeadsSetLocType(_blLocType);
+  buyLeadsUpdateSummary();
+}
 
-  document.getElementById('buyLeadsSumNiche').textContent = _buyLeadsSelectedNiche?.charAt(0).toUpperCase() + _buyLeadsSelectedNiche?.slice(1) || '—';
-  document.getElementById('buyLeadsSumArea').textContent = _buyLeadsSelectedArea?.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
-  document.getElementById('buyLeadsSumQty').textContent = `${qty} leads`;
-  document.getElementById('buyLeadsSumPPL').textContent = fmt(_buyLeadsSelectedPPL);
-  document.getElementById('buyLeadsSumTotal').textContent = fmt(total);
+function buyLeadsSetLocType(type) {
+  _blLocType = type;
+  const isRadius = type === 'radius';
 
-  const summary = document.getElementById('buyLeadsSummary');
-  if (summary) summary.style.display = '';
+  const rBtn = document.getElementById('locTypeRadius');
+  const pBtn = document.getElementById('locTypePostcodes');
+  if (rBtn) { rBtn.style.background = isRadius ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'; rBtn.style.borderColor = isRadius ? 'var(--accent,#4797FF)' : 'var(--border)'; rBtn.style.color = isRadius ? '#fff' : 'var(--text,var(--ink))'; }
+  if (pBtn) { pBtn.style.background = !isRadius ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'; pBtn.style.borderColor = !isRadius ? 'var(--accent,#4797FF)' : 'var(--border)'; pBtn.style.color = !isRadius ? '#fff' : 'var(--text,var(--ink))'; }
+
+  document.getElementById('locRadiusPanel').style.display    = isRadius ? '' : 'none';
+  document.getElementById('locPostcodesPanel').style.display = !isRadius ? '' : 'none';
+  buyLeadsUpdateSummary();
+}
+
+function buyLeadsUpdateSummary() {
+  if (!_blNiche || !_blCity || !_blPPL) return;
+
+  const qty  = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
+  const fmt  = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+
+  let coverage = '';
+  if (_blLocType === 'postcodes') {
+    const raw = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
+    const count = raw ? raw.split(/[\s,]+/).filter(Boolean).length : 0;
+    if (!count) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
+    coverage = `${count} postcode${count !== 1 ? 's' : ''}`;
+  } else {
+    const radius = document.getElementById('buyLeadsRadius')?.value || 50;
+    coverage = `${radius}km radius`;
+  }
+
+  document.getElementById('buyLeadsSumNiche').textContent    = _blNiche.charAt(0).toUpperCase() + _blNiche.slice(1);
+  document.getElementById('buyLeadsSumCity').textContent     = _blCity;
+  document.getElementById('buyLeadsSumCoverage').textContent = coverage;
+  document.getElementById('buyLeadsSumQty').textContent      = `${qty} leads`;
+  document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
+  document.getElementById('buyLeadsSumTotal').textContent    = fmt(qty * _blPPL);
+  document.getElementById('buyLeadsSummary').style.display   = '';
 
   const btn = document.getElementById('buyLeadsCheckoutBtn');
-  if (btn) {
-    btn.onclick = () => startPplCheckout(_buyLeadsSelectedNiche, _buyLeadsSelectedArea, qty, _buyLeadsSelectedPPL);
-  }
+  if (btn) btn.onclick = () => startPplCheckout();
 }
 
-async function startPplCheckout(niche, area, quantity, pricePerLead) {
+async function startPplCheckout() {
+  const qty       = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
+  const radius    = parseInt(document.getElementById('buyLeadsRadius')?.value || 50);
+  const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
+
+  if (!_blNiche || !_blCity) { toast('Please select a niche and city.', true); return; }
+  if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
+
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify({
-        company_id: currentCompanyId,
-        niche,
-        area,
-        quantity,
-        price_per_lead: pricePerLead,
+        company_id:    currentCompanyId,
+        niche:         _blNiche,
+        area_city:     _blCity,
+        location_type: _blLocType,
+        radius_km:     _blLocType === 'radius' ? radius : null,
+        postcode_list: _blLocType === 'postcodes' ? postcodes : null,
+        quantity:      qty,
       }),
     });
     const data = await res.json();
-    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL');
+    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL returned');
     window.location.href = data.url;
   } catch (err) {
     toast(err.message || 'Failed to start checkout', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
   }
+}
+
+function renderBuyLeadsOrders(orders) {
+  const el = document.getElementById('buyLeadsOrdersTable');
+  if (!el) return;
+  if (!orders.length) { el.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`; return; }
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const statusColor = s => ({ pending:'#9a9a9a', paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#ef4444' }[s] || '#9a9a9a');
+  el.innerHTML = `<div class="table-lite"><table><thead><tr>
+    <th>Niche</th><th>City</th><th>Coverage</th><th>Qty</th><th>Delivered</th><th>Total</th><th>Status</th><th>Date</th>
+  </tr></thead><tbody>
+  ${orders.map(o => {
+    const city = o.area_city || o.area || '—';
+    const coverage = o.location_type === 'postcodes'
+      ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
+      : `${o.radius_km || 50}km radius`;
+    return `<tr>
+      <td>${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+      <td>${city}</td>
+      <td style="font-size:12px">${coverage}</td>
+      <td>${o.quantity}</td>
+      <td>${o.delivered_count} / ${o.quantity}</td>
+      <td>${fmt(o.total_amount)}</td>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
+      <td>${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+    </tr>`;
+  }).join('')}
+  </tbody></table></div>`;
 }
 
 // =============================================================================

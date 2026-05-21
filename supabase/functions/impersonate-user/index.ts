@@ -432,6 +432,63 @@ Deno.serve(async (req) => {
       return json({ order: { ...order, company } });
     }
 
+    // ── action: update_user ───────────────────────────────────────────────────
+    // Updates email (auth.users) and/or full_name/is_admin (profiles) for any user.
+    if (action === 'update_user') {
+      const { user_id, full_name, email, is_admin } = body as {
+        user_id?: string;
+        full_name?: string;
+        email?: string;
+        is_admin?: boolean;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user_id || typeof user_id !== 'string' || !UUID_RE.test(user_id)) {
+        return json({ error: 'user_id must be a valid UUID' }, 400);
+      }
+      if (full_name !== undefined && (typeof full_name !== 'string' || full_name.trim().length === 0 || full_name.length > 200)) {
+        return json({ error: 'full_name must be 1–200 characters' }, 400);
+      }
+      if (email !== undefined) {
+        const e = (email || '').trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+          return json({ error: 'Invalid email address' }, 400);
+        }
+      }
+      // Prevent an admin from stripping their own admin flag
+      if (user_id === caller.id && is_admin === false) {
+        return json({ error: 'Cannot remove your own super-admin access' }, 400);
+      }
+
+      // Update email in auth.users
+      if (email !== undefined) {
+        const cleanEmail = email.trim().toLowerCase();
+        const { error: emailErr } = await adminClient.auth.admin.updateUserById(user_id, { email: cleanEmail });
+        if (emailErr) {
+          console.error('update_user email error:', emailErr.message);
+          return json({ error: 'Failed to update email: ' + emailErr.message }, 500);
+        }
+      }
+
+      // Update profile fields
+      const profileUpdate: Record<string, unknown> = {};
+      if (full_name !== undefined) profileUpdate.full_name = full_name.trim();
+      if (is_admin  !== undefined) profileUpdate.is_admin  = !!is_admin;
+
+      if (Object.keys(profileUpdate).length > 0) {
+        const { error: profileErr } = await adminClient
+          .from('profiles')
+          .update(profileUpdate)
+          .eq('id', user_id);
+        if (profileErr) {
+          console.error('update_user profile error:', profileErr.message);
+          return json({ error: 'Failed to update profile: ' + profileErr.message }, 500);
+        }
+      }
+
+      return json({ success: true, user_id });
+    }
+
     // ── Unknown action ────────────────────────────────────────────────────────
     return json({ error: `Unknown action: ${action ?? "(none)"}` }, 400);
   } catch (err) {
