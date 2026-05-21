@@ -90,7 +90,7 @@ serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      customer_email: company.email,
+      ...(company.email ? { customer_email: company.email } : {}),
       line_items: [{
         price_data: {
           currency: 'aud',

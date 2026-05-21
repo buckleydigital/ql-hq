@@ -5445,8 +5445,32 @@ function buyLeadsSelectNiche(niche, ppl) {
   document.getElementById('buyLeadsSummary').style.display = 'none';
 }
 
-function buyLeadsOnCityChange() {
-  if (!_blCity) return;
+async function buyLeadsOnCityChange() {
+  if (!_blCity || !_blNiche) return;
+
+  // Look up area-specific price, fall back to niche default
+  const { data: areaRow } = await sb
+    .from('ppl_pricing')
+    .select('price_per_lead')
+    .eq('niche', _blNiche)
+    .eq('area', _blCity)
+    .maybeSingle();
+
+  if (areaRow) {
+    _blPPL = areaRow.price_per_lead;
+  } else {
+    // fall back to the default already loaded on the niche card
+    const fallback = _pplPricing.find(p => p.niche === _blNiche);
+    if (fallback) _blPPL = fallback.price_per_lead;
+  }
+
+  // Update the price shown on the selected niche card
+  const card = document.getElementById(`nicheCard-${_blNiche}`);
+  if (card) {
+    const priceEl = card.querySelector('div:last-child');
+    if (priceEl) priceEl.textContent = `$${parseFloat(_blPPL).toFixed(0)}/lead`;
+  }
+
   document.getElementById('buyLeadsLocationField').style.display = '';
   document.getElementById('buyLeadsQtyField').style.display = '';
   buyLeadsSetLocType(_blLocType);
