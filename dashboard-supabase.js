@@ -3034,22 +3034,25 @@ async function loadPplOrdersUI() {
   if (newOrderBtn) newOrderBtn.style.display = currentUserIsSuperAdmin ? "" : "none";
 
   const { data: orders, error } = await sb
-    .from("ppl_orders")
+    .from("ppl_lead_orders")
     .select("*")
     .eq("company_id", currentCompanyId)
-    .order("purchased_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) { container.innerHTML = `<div class="notice">Failed to load orders.</div>`; return; }
   if (!orders?.length) { container.innerHTML = `<div class="notice">No PPL orders yet. Create one to start tracking lead delivery.</div>`; return; }
 
-  container.innerHTML = orders.map((o) => {
-    const pct      = o.total_leads > 0 ? Math.min(100, Math.round((o.delivered_leads / o.total_leads) * 100)) : 0;
-    const remaining = Math.max(0, o.total_leads - o.delivered_leads);
-    const colour   = o.status === "completed" ? "#388e3c" : o.status === "cancelled" ? "#9e9e9e" : pct >= 90 ? "#f57c00" : "#1976d2";
-    const purchased = new Date(o.purchased_at).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
-    const due       = new Date(o.due_date + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
-    const statusBadge = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${o.status === "completed" ? "#e8f5e9" : o.status === "cancelled" ? "#f5f5f5" : "#e3f2fd"};color:${o.status === "completed" ? "#2e7d32" : o.status === "cancelled" ? "#757575" : "#1565c0"};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
-    const cancelBtn = o.status === "active"
+  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
+  const statusColor = s => ({ pending:"#9a9a9a", paid:"#4797FF", active:"#22c55e", fulfilled:"#22c55e", cancelled:"#ef4444" }[s] || "#9a9a9a");
+
+  const totalSpend = orders.filter(o => o.status !== "cancelled").reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  container.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:14px">${orders.length} order${orders.length === 1 ? "" : "s"} · Total spend: <strong style="color:var(--text)">${fmt(totalSpend)}</strong></div>`
+    + orders.map((o) => {
+    const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
+    const colour = o.status === "cancelled" ? "#9e9e9e" : pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
+    const city   = o.area_city || o.area || "—";
+    const statusBadge = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
+    const cancelBtn = ["paid","active"].includes(o.status) && currentUserIsSuperAdmin
       ? `<button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="cancelPplOrder('${o.id}')">Cancel</button>`
       : "";
     return `
@@ -3058,17 +3061,19 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               ${statusBadge}
-              <span style="font-size:12px;color:var(--muted)">Purchased ${purchased} &nbsp;·&nbsp; Due ${due}</span>
+              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
             </div>
             <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
-              ${o.delivered_leads} / ${o.total_leads}
+              ${o.delivered_count} / ${o.quantity}
               <span style="font-size:13px;font-weight:400;color:var(--muted)">leads delivered</span>
             </div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${remaining} remaining</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+              ${fmt(o.total_amount)} · Ordered ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
+              ${o.stripe_session_id ? "" : " · Manual order"}
+            </div>
             <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
               <div style="width:${pct}%;height:100%;background:${colour};border-radius:4px;transition:width .3s"></div>
             </div>
-            ${o.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">${o.notes}</div>` : ""}
           </div>
           <div style="flex-shrink:0">${cancelBtn}</div>
         </div>
@@ -3081,37 +3086,47 @@ async function handleCreatePplOrder(e) {
   if (!currentCompanyId) return;
   if (!currentUserIsSuperAdmin) { toast("Only super admins can create PPL orders.", true); return; }
 
-  const total   = parseInt(document.getElementById("pplOrderTotal")?.value, 10);
-  const dueDate = document.getElementById("pplOrderDueDate")?.value;
-  const notes   = document.getElementById("pplOrderNotes")?.value?.trim() || null;
+  const niche = document.getElementById("pplOrderNiche")?.value;
+  const city  = document.getElementById("pplOrderCity")?.value?.trim();
+  const qty   = parseInt(document.getElementById("pplOrderQty")?.value, 10);
+  const ppl   = parseFloat(document.getElementById("pplOrderPPL")?.value);
 
-  if (!total || total < 1) { toast("Please enter a valid number of leads.", true); return; }
-  if (!dueDate) { toast("Please select a due date.", true); return; }
+  if (!niche || !city || !qty || qty < 1 || isNaN(ppl) || ppl < 0) {
+    toast("Please fill in all required fields.", true);
+    return;
+  }
 
   try {
-    const { error } = await sb.from("ppl_orders").insert({
-      company_id:  currentCompanyId,
-      total_leads: total,
-      due_date:    dueDate,
-      notes,
+    const { error } = await sb.from("ppl_lead_orders").insert({
+      company_id:    currentCompanyId,
+      niche,
+      area:          city,
+      area_city:     city,
+      location_type: "radius",
+      quantity:      qty,
+      price_per_lead: ppl,
+      total_amount:  qty * ppl,
+      status:        "active",
     });
     if (error) { toast(error.message, true); return; }
     toast("PPL order created.");
     closeModal("pplOrderModal");
     document.getElementById("pplOrderForm")?.reset();
     await loadPplOrdersUI();
-  } catch {
-    toast("Failed to create order.", true);
+    await loadBuyLeads();
+  } catch (err) {
+    toast("Failed to create order: " + err.message, true);
   }
 }
 
 async function cancelPplOrder(orderId) {
   confirmAction("Cancel this PPL order? It will no longer count incoming leads.", async () => {
     try {
-      const { error } = await sb.from("ppl_orders").update({ status: "cancelled" }).eq("id", orderId);
+      const { error } = await sb.from("ppl_lead_orders").update({ status: "cancelled" }).eq("id", orderId);
       if (error) { toast(error.message, true); return; }
       toast("Order cancelled.");
       await loadPplOrdersUI();
+      await loadBuyLeads();
     } catch {
       toast("Failed to cancel order.", true);
     }
@@ -5370,11 +5385,12 @@ async function completeOnboarding() {
 // =============================================================================
 // Buy Leads state
 // =============================================================================
-let _pplPricing = [];           // [{niche, price_per_lead}]
-let _blNiche    = null;
-let _blCity     = null;
-let _blLocType  = 'radius';     // 'radius' | 'postcodes'
-let _blPPL      = null;
+let _pplPricing    = [];           // [{niche, price_per_lead}]
+let _blNiche       = null;
+let _blCity        = null;
+let _blLocType     = 'radius';     // 'radius' | 'postcodes'
+let _blPPL         = null;
+const _pplOrdersCache = new Map(); // id → order row (for retry)
 
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
@@ -5534,30 +5550,94 @@ async function startPplCheckout() {
 function renderBuyLeadsOrders(orders) {
   const el = document.getElementById('buyLeadsOrdersTable');
   if (!el) return;
+  orders.forEach(o => _pplOrdersCache.set(o.id, o));
   if (!orders.length) { el.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`; return; }
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
   const statusColor = s => ({ pending:'#9a9a9a', paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#ef4444' }[s] || '#9a9a9a');
-  el.innerHTML = `<div class="table-lite"><table><thead><tr>
-    <th>Niche</th><th>City</th><th>Coverage</th><th>Qty</th><th>Delivered</th><th>Total</th><th>Status</th><th>Date</th>
+  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">City</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Coverage</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Qty</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Delivered</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Total</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Status</th>
+    <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Date</th>
+    <th style="padding:8px 10px"></th>
   </tr></thead><tbody>
   ${orders.map(o => {
     const city = o.area_city || o.area || '—';
     const coverage = o.location_type === 'postcodes'
       ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
       : `${o.radius_km || 50}km radius`;
-    return `<tr>
-      <td>${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
-      <td>${city}</td>
-      <td style="font-size:12px">${coverage}</td>
-      <td>${o.quantity}</td>
-      <td>${o.delivered_count} / ${o.quantity}</td>
-      <td>${fmt(o.total_amount)}</td>
-      <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
-      <td>${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+    const isPending = o.status === 'pending';
+    const actions = isPending
+      ? `<button onclick="retryPplOrder('${o.id}')" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--accent,#4797FF);background:transparent;color:var(--accent,#4797FF);cursor:pointer;font-family:inherit;margin-right:4px;white-space:nowrap">Retry</button><button onclick="deletePendingOrder('${o.id}')" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-family:inherit;white-space:nowrap">Delete</button>`
+      : '';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:10px">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+      <td style="padding:10px">${city}</td>
+      <td style="padding:10px;color:var(--muted)">${coverage}</td>
+      <td style="padding:10px">${o.quantity}</td>
+      <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
+      <td style="padding:10px">${fmt(o.total_amount)}</td>
+      <td style="padding:10px"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
+      <td style="padding:10px;color:var(--muted)">${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+      <td style="padding:10px;white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('')}
   </tbody></table></div>`;
 }
+
+async function retryPplOrder(orderId) {
+  const o = _pplOrdersCache.get(orderId);
+  if (!o) { toast('Order not found.', true); return; }
+
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+
+  try {
+    // Delete the stale pending row before creating a fresh checkout
+    await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({
+        company_id:    currentCompanyId,
+        niche:         o.niche,
+        area_city:     o.area_city || o.area,
+        location_type: o.location_type || 'radius',
+        radius_km:     o.radius_km || 50,
+        postcode_list: o.postcode_list || null,
+        quantity:      o.quantity,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL returned');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || 'Failed to start checkout', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
+  }
+}
+window.retryPplOrder = retryPplOrder;
+
+async function deletePendingOrder(orderId) {
+  confirmAction('Delete this pending order? This cannot be undone.', async () => {
+    try {
+      const { error } = await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+      if (error) { toast(error.message, true); return; }
+      toast('Pending order deleted.');
+      _pplOrdersCache.delete(orderId);
+      await loadBuyLeads();
+    } catch (err) {
+      toast('Failed to delete order.', true);
+    }
+  });
+}
+window.deletePendingOrder = deletePendingOrder;
 
 // =============================================================================
 // PPL Admin (super admin only)
