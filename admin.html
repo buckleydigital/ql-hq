@@ -204,6 +204,41 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Companies panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Companies</h2>
+          <p id="companyCountLabel">Loading…</p>
+        </div>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="companySearchInput" type="search" placeholder="Search companies…" autocomplete="off">
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="companyLoadingState" class="notice">Loading companies…</div>
+        <div id="companyList" class="hidden"></div>
+        <div id="companyEmptyState" class="notice hidden">No companies match.</div>
+      </div>
+    </div>
+
+    <!-- Twilio Numbers panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Twilio Numbers</h2>
+          <p id="twilioNumberCountLabel">Loading…</p>
+        </div>
+        <button class="btn btn-sm" id="refreshTwilioNumbersBtn" type="button">Refresh</button>
+      </div>
+      <div class="panel-b">
+        <div id="twilioNumberLoadingState" class="notice">Loading…</div>
+        <div id="twilioNumberList" class="hidden"></div>
+        <div id="twilioNumberEmptyState" class="notice hidden">No Twilio numbers found.</div>
+      </div>
+    </div>
+
     <!-- User list panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -1190,6 +1225,12 @@ h1{font-size:18px;font-weight:500}
     // 7. Load PPL orders panel and pre-populate company dropdowns
     await Promise.all([loadPplOrders(), loadCompanies()]);
 
+    // 6b. Load companies panel
+    await loadCompaniesPanel();
+
+    // 6c. Load Twilio numbers panel
+    await loadTwilioNumbers();
+
     // 8. Load PPL pricing panel
     await loadPplPricing();
 
@@ -1199,6 +1240,157 @@ h1{font-size:18px;font-weight:500}
     // 10. Load PPL Stripe orders panel
     await loadPplLeadOrders();
   }
+
+  // ── Companies ─────────────────────────────────────────────────────────────
+  var allCompaniesPanel = [];
+
+  async function loadCompaniesPanel() {
+    var loadingEl = document.getElementById('companyLoadingState');
+    var listEl    = document.getElementById('companyList');
+    if (!loadingEl) return;
+    try {
+      var result = await callEdge({ action: 'list_companies' });
+      allCompaniesPanel = result.companies || [];
+      var label = document.getElementById('companyCountLabel');
+      if (label) label.textContent = allCompaniesPanel.length + ' compan' + (allCompaniesPanel.length === 1 ? 'y' : 'ies');
+      loadingEl.classList.add('hidden');
+      applyCompanyFilter('');
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load companies: ' + err.message;
+    }
+  }
+
+  function renderCompanyRow(c) {
+    var row = document.createElement('div');
+    row.className = 'user-row';
+    row.style.cssText = 'grid-template-columns:1fr auto auto;gap:10px';
+    var planLabel = { managed: 'Managed', ppl: 'PPL' }[c.plan] || (c.plan || 'unset');
+    var planColor = c.plan === 'ppl' ? '#1d4ed8' : c.plan === 'managed' ? '#15803d' : '#667284';
+    row.innerHTML =
+      '<div class="user-info">' +
+        '<div class="user-name">' + escapeHtml(c.name || '(no name)') + '</div>' +
+        '<div class="user-meta">' + escapeHtml(c.email || '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px">' +
+        '<span style="font-size:11px;font-weight:600;color:' + planColor + '">' + escapeHtml(planLabel) + '</span>' +
+        '<select class="plan-select" style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
+          '<option value="managed"' + (c.plan === 'managed' ? ' selected' : '') + '>Managed</option>' +
+          '<option value="ppl"' + (c.plan === 'ppl' ? ' selected' : '') + '>PPL</option>' +
+        '</select>' +
+        '<button class="btn2 btn-sm save-plan-btn" type="button">Save</button>' +
+      '</div>';
+
+    var select = row.querySelector('.plan-select');
+    row.querySelector('.save-plan-btn').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        await callEdge({ action: 'update_company', company_id: c.id, plan: select.value });
+        c.plan = select.value;
+        row.querySelector('span').textContent = { managed: 'Managed', ppl: 'PPL' }[c.plan] || c.plan;
+        row.querySelector('span').style.color = c.plan === 'ppl' ? '#1d4ed8' : '#15803d';
+        toast('Plan updated to ' + c.plan + '.');
+      } catch (err) { toast('Failed: ' + err.message, true); }
+      btn.disabled = false; btn.textContent = 'Save';
+    });
+    return row;
+  }
+
+  function applyCompanyFilter(q) {
+    var query   = (q || '').trim().toLowerCase();
+    var listEl  = document.getElementById('companyList');
+    var emptyEl = document.getElementById('companyEmptyState');
+    var filtered = query
+      ? allCompaniesPanel.filter(function (c) { return (c.name || '').toLowerCase().includes(query) || (c.email || '').toLowerCase().includes(query); })
+      : allCompaniesPanel;
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+      listEl.classList.add('hidden'); emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden'); listEl.classList.remove('hidden');
+      listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+      filtered.forEach(function (c) { listEl.appendChild(renderCompanyRow(c)); });
+    }
+  }
+
+  document.getElementById('companySearchInput').addEventListener('input', function () {
+    applyCompanyFilter(this.value);
+  });
+
+  // ── Twilio Numbers ────────────────────────────────────────────────────────
+  var allTwilioNumbers = [];
+
+  async function loadTwilioNumbers() {
+    var loadingEl = document.getElementById('twilioNumberLoadingState');
+    var listEl    = document.getElementById('twilioNumberList');
+    var emptyEl   = document.getElementById('twilioNumberEmptyState');
+    if (!loadingEl) return;
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    try {
+      var result = await callEdge({ action: 'list_twilio_numbers' });
+      allTwilioNumbers = result.numbers || [];
+      var label = document.getElementById('twilioNumberCountLabel');
+      if (label) label.textContent = allTwilioNumbers.length + ' number' + (allTwilioNumbers.length === 1 ? '' : 's');
+      loadingEl.classList.add('hidden');
+      if (!allTwilioNumbers.length) {
+        emptyEl.classList.remove('hidden');
+      } else {
+        listEl.classList.remove('hidden');
+        renderTwilioNumbers();
+      }
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load: ' + err.message;
+    }
+  }
+
+  function renderTwilioNumbers() {
+    var listEl = document.getElementById('twilioNumberList');
+    listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+    listEl.innerHTML = '';
+    allTwilioNumbers.forEach(function (n) {
+      var row = document.createElement('div');
+      row.className = 'user-row';
+      row.style.cssText = 'grid-template-columns:1fr auto;gap:10px';
+      var companyName = n.company ? escapeHtml(n.company.name || 'Unassigned') : '<span style="color:var(--muted);font-style:italic">Unassigned</span>';
+      row.innerHTML =
+        '<div class="user-info">' +
+          '<div class="user-name">' + escapeHtml(n.phone_number || '') + '</div>' +
+          '<div class="user-meta">' + escapeHtml(n.friendly_name || '') + ' &bull; Assigned to: ' + companyName + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<input type="text" class="twilio-fname" placeholder="Friendly name" value="' + escapeHtml(n.friendly_name || '') + '" style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px">' +
+          '<select class="twilio-company" style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
+            '<option value="">Unassigned</option>' +
+            allCompaniesPanel.map(function (c) {
+              return '<option value="' + escapeHtml(c.id) + '"' + (n.company_id === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<button class="btn2 btn-sm twilio-save-btn" type="button">Save</button>' +
+        '</div>';
+
+      row.querySelector('.twilio-save-btn').addEventListener('click', async function () {
+        var btn = this;
+        btn.disabled = true; btn.textContent = 'Saving…';
+        var fname     = row.querySelector('.twilio-fname').value.trim();
+        var companyId = row.querySelector('.twilio-company').value;
+        try {
+          await callEdge({ action: 'update_twilio_number', number_id: n.id, friendly_name: fname, company_id: companyId });
+          n.friendly_name = fname;
+          n.company_id    = companyId || null;
+          var matched = allCompaniesPanel.find(function (c) { return c.id === companyId; });
+          n.company = matched ? { id: matched.id, name: matched.name } : null;
+          row.querySelector('.user-meta').innerHTML = escapeHtml(fname || '') + ' &bull; Assigned to: ' + (n.company ? escapeHtml(n.company.name) : '<span style="color:var(--muted);font-style:italic">Unassigned</span>');
+          toast('Number updated.');
+        } catch (err) { toast('Failed: ' + err.message, true); }
+        btn.disabled = false; btn.textContent = 'Save';
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  document.getElementById('refreshTwilioNumbersBtn').addEventListener('click', loadTwilioNumbers);
 
   // ── PPL Stripe Orders ─────────────────────────────────────────────────────
   var allPplLeadOrders = [];
@@ -1310,7 +1502,7 @@ h1{font-size:18px;font-weight:500}
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
     try {
-      var { data, error } = await sb.from('ppl_pricing').select('id, niche, price_per_lead').order('niche');
+      var { data, error } = await sb.from('ppl_pricing').select('id, niche, area, price_per_lead').order('niche').order('area');
       if (error) throw error;
       renderPplPricing(data || []);
     } catch (err) {
@@ -1321,23 +1513,70 @@ h1{font-size:18px;font-weight:500}
   function renderPplPricing(rows) {
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
-    if (!rows.length) { el.innerHTML = '<div class="notice">No pricing rows found.</div>'; return; }
-    el.innerHTML =
+    var addForm =
+      '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:10px;border:1px solid var(--border)">' +
+        '<div style="font-size:12px;font-weight:600;margin-bottom:10px">Add Pricing Row</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+          '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>' +
+          '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
+            '<option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="landscaping">Landscaping</option>' +
+          '</select></div>' +
+          '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Area <span style="font-weight:400">(blank = default)</span></label>' +
+          '<input id="addPriceArea" type="text" placeholder="e.g. Brisbane" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px"></div>' +
+          '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Price / Lead (AUD)</label>' +
+          '<input id="addPriceValue" type="number" step="0.01" min="1" placeholder="e.g. 85.00" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:120px"></div>' +
+          '<button class="btn2 btn-sm" onclick="addPricingRow()" style="margin-bottom:0">Add Row</button>' +
+        '</div>' +
+      '</div>';
+
+    if (!rows.length) {
+      el.innerHTML = addForm + '<div class="notice">No pricing rows yet. Add one above.</div>';
+      return;
+    }
+
+    el.innerHTML = addForm +
       '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price / Lead (AUD)</th>' +
         '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
       '</tr></thead><tbody>' +
       rows.map(function (p) {
+        var areaLabel = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">Default (all areas)</span>';
         return '<tr id="pricingRow-' + p.id + '">' +
           '<td style="padding:8px 10px;font-weight:600;text-transform:capitalize">' + escapeHtml(p.niche) + '</td>' +
+          '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
-          '<td style="padding:8px 10px"><button class="btn2 btn-sm" onclick="savePricingRow(\'' + p.id + '\')">Save</button></td>' +
+          '<td style="padding:8px 10px;display:flex;gap:6px">' +
+            '<button class="btn2 btn-sm" onclick="savePricingRow(\'' + p.id + '\')">Save</button>' +
+            '<button class="btn btn-sm btn-danger" onclick="deletePricingRow(\'' + p.id + '\')">Delete</button>' +
+          '</td>' +
         '</tr>';
       }).join('') +
       '</tbody></table>';
   }
+
+  window.addPricingRow = async function () {
+    var niche = document.getElementById('addPriceNiche').value;
+    var area  = document.getElementById('addPriceArea').value.trim() || null;
+    var price = parseFloat(document.getElementById('addPriceValue').value);
+    if (isNaN(price) || price <= 0) { toast('Enter a valid price.', true); return; }
+    var { error } = await sb.from('ppl_pricing').insert({ niche, area, price_per_lead: price });
+    if (error) { toast(error.message, true); return; }
+    toast('Pricing row added.');
+    document.getElementById('addPriceArea').value  = '';
+    document.getElementById('addPriceValue').value = '';
+    await loadPplPricing();
+  };
+
+  window.deletePricingRow = async function (id) {
+    if (!confirm('Delete this pricing row?')) return;
+    var { error } = await sb.from('ppl_pricing').delete().eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Row deleted.');
+    await loadPplPricing();
+  };
 
   // ── PPL Campaign Registry ─────────────────────────────────────────────────
   async function loadPplCampaigns() {
