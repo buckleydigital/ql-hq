@@ -1263,36 +1263,11 @@ h1{font-size:18px;font-weight:500}
   function renderCompanyRow(c) {
     var row = document.createElement('div');
     row.className = 'user-row';
-    row.style.cssText = 'grid-template-columns:1fr auto auto;gap:10px';
-    var planLabel = { managed: 'Managed', ppl: 'PPL' }[c.plan] || (c.plan || 'unset');
-    var planColor = c.plan === 'ppl' ? '#1d4ed8' : c.plan === 'managed' ? '#15803d' : '#667284';
     row.innerHTML =
       '<div class="user-info">' +
         '<div class="user-name">' + escapeHtml(c.name || '(no name)') + '</div>' +
         '<div class="user-meta">' + escapeHtml(c.email || '') + '</div>' +
-      '</div>' +
-      '<div style="display:flex;align-items:center;gap:6px">' +
-        '<span style="font-size:11px;font-weight:600;color:' + planColor + '">' + escapeHtml(planLabel) + '</span>' +
-        '<select class="plan-select" style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
-          '<option value="managed"' + (c.plan === 'managed' ? ' selected' : '') + '>Managed</option>' +
-          '<option value="ppl"' + (c.plan === 'ppl' ? ' selected' : '') + '>PPL</option>' +
-        '</select>' +
-        '<button class="btn2 btn-sm save-plan-btn" type="button">Save</button>' +
       '</div>';
-
-    var select = row.querySelector('.plan-select');
-    row.querySelector('.save-plan-btn').addEventListener('click', async function () {
-      var btn = this;
-      btn.disabled = true; btn.textContent = 'Saving…';
-      try {
-        await callEdge({ action: 'update_company', company_id: c.id, plan: select.value });
-        c.plan = select.value;
-        row.querySelector('span').textContent = { managed: 'Managed', ppl: 'PPL' }[c.plan] || c.plan;
-        row.querySelector('span').style.color = c.plan === 'ppl' ? '#1d4ed8' : '#15803d';
-        toast('Plan updated to ' + c.plan + '.');
-      } catch (err) { toast('Failed: ' + err.message, true); }
-      btn.disabled = false; btn.textContent = 'Save';
-    });
     return row;
   }
 
