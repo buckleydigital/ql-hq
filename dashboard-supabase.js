@@ -5597,6 +5597,9 @@ async function retryPplOrder(orderId) {
   if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
 
   try {
+    // Delete the stale pending row before creating a fresh checkout
+    await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
       method: 'POST',
