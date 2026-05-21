@@ -378,25 +378,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </ul>
     </section>
     <section class="auth-main">
-      <div id="authTabs" class="switch">
-        <button type="button" class="active" data-tab="login">Sign In</button>
-        <button type="button" data-tab="signup">Sign Up</button>
-      </div>
       <form id="loginForm" class="auth-form">
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Sign In</button>
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
-      </form>
-      <form id="signupForm" class="auth-form hidden">
-        <div class="field"><label for="signupName">Full Name</label><input id="signupName" name="full_name" type="text" required autocomplete="name"></div>
-        <div class="field"><label for="signupCompany">Company Name</label><input id="signupCompany" name="company_name" type="text" required></div>
-        <div class="field"><label for="signupEmail">Email</label><input id="signupEmail" name="email" type="email" required autocomplete="email"></div>
-        <div class="field"><label for="signupPassword">Password</label><input id="signupPassword" name="password" type="password" required autocomplete="new-password" minlength="6"></div>
-        <div class="field"><label for="signupActivationKey">Activation Key</label><input id="signupActivationKey" name="activation_key" type="password" required autocomplete="off"><p class="field-hint">Enter the activation key provided to you.</p></div>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
-        <button class="btn2" type="submit">Create Account</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
         <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
@@ -448,12 +435,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
         <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
         <button class="nav-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Bulk SMS</span></button>
+        <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button" style="display:none"><span class="icon" data-icon="gift"></span><span class="nav-text">Buy Leads</span></button>
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">AI Insights</span></button>
         <button class="nav-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
         <button class="nav-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
+        <button id="navPplAdmin" class="nav-item" data-page="ppl-admin" type="button" style="display:none"><span class="icon" data-icon="settings"></span><span class="nav-text">PPL Campaigns</span></button>
       </div>
     </div>
 
@@ -1315,6 +1304,81 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         </div>
       </div>
 
+      <!-- Buy Leads (PPL plan only) -->
+      <div id="page-buy-leads" class="page hidden">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Purchase Lead Pack</h2><p>Choose your niche and area to buy exclusive leads delivered in real-time to your pipeline.</p></div>
+            </div>
+            <div class="panel-b">
+              <div class="stack" style="max-width:560px;gap:20px">
+                <div class="field">
+                  <label>Niche</label>
+                  <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+                </div>
+                <div class="field" id="buyLeadsAreaField" style="display:none">
+                  <label for="buyLeadsArea">Area</label>
+                  <select id="buyLeadsArea"></select>
+                </div>
+                <div class="field" id="buyLeadsQtyField" style="display:none">
+                  <label for="buyLeadsQty">Quantity — <span id="buyLeadsQtyLabel">10 leads</span></label>
+                  <input id="buyLeadsQty" type="range" min="10" max="100" step="10" value="10" style="width:100%">
+                </div>
+                <div id="buyLeadsSummary" style="display:none;background:var(--surface-2,var(--bg-lift));border:1px solid var(--border);border-radius:10px;padding:16px">
+                  <div style="font-size:13px;color:var(--muted);line-height:2">
+                    <div style="display:flex;justify-content:space-between"><span>Niche</span><span id="buyLeadsSumNiche" style="color:var(--text)">—</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Area</span><span id="buyLeadsSumArea" style="color:var(--text)">—</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Quantity</span><span id="buyLeadsSumQty" style="color:var(--text)">—</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Price per lead</span><span id="buyLeadsSumPPL" style="color:var(--text)">—</span></div>
+                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;font-weight:600;font-size:14px"><span>Total</span><span id="buyLeadsSumTotal" style="color:var(--text)">—</span></div>
+                  </div>
+                  <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Purchase Leads →</button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-h"><div><h2>Order History</h2><p>Your lead pack purchases and delivery status.</p></div></div>
+            <div class="panel-b">
+              <div id="buyLeadsOrdersTable"><div class="notice">Loading orders…</div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- PPL Campaigns Admin (super admin only) -->
+      <div id="page-ppl-admin" class="page hidden">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-h"><div><h2>PPL Pricing</h2><p>Manage pricing per niche and area. Changes take effect on the next order.</p></div></div>
+            <div class="panel-b">
+              <div id="pplAdminPricingTable"><div class="notice">Loading…</div></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Campaign Registry</h2><p>QuoteLeads' Meta and Google campaign IDs used to route PPL leads.</p></div>
+              <div class="actions"><button id="openAddCampaignForm" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>Add Campaign</span></button></div>
+            </div>
+            <div class="panel-b">
+              <div id="addCampaignForm" class="stack" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift));border-radius:10px;border:1px solid var(--border)">
+                <div class="form2">
+                  <div class="field"><label for="campNiche">Niche</label><select id="campNiche"><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="landscaping">Landscaping</option></select></div>
+                  <div class="field"><label for="campArea">Area</label><input id="campArea" type="text" placeholder="e.g. brisbane"></div>
+                  <div class="field"><label for="campPlatform">Platform</label><select id="campPlatform"><option value="meta">Meta</option><option value="google">Google</option></select></div>
+                  <div class="field"><label for="campId">Campaign ID</label><input id="campId" type="text" placeholder="Campaign ID"></div>
+                  <div class="field"><label for="campAdAccountId">Ad Account ID</label><input id="campAdAccountId" type="text" placeholder="Ad Account ID"></div>
+                  <div class="field"><label for="campCpl">Cost per Lead</label><input id="campCpl" type="number" step="0.01" placeholder="e.g. 35.00"></div>
+                </div>
+                <div class="actions"><button id="cancelAddCampaign" class="btn" type="button">Cancel</button><button id="saveNewCampaign" class="btn2" type="button">Add Campaign</button></div>
+              </div>
+              <div id="pplAdminCampaignsTable"><div class="notice">Loading…</div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
     </section>
   </main>
 </div>
@@ -1772,5 +1836,47 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   });
 })();
 </script>
+
+<!-- ── Onboarding Wizard (managed plan only) ────────────────────────────── -->
+<div id="onboardingWizard" style="display:none;position:fixed;inset:0;background:rgba(5,5,5,0.96);z-index:1000;align-items:center;justify-content:center;font-family:'Poppins',system-ui,sans-serif">
+  <div style="max-width:520px;width:calc(100% - 40px);background:#101010;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+    <div id="wizardDots" style="display:flex;gap:6px;margin-bottom:32px;align-items:center"></div>
+    <div id="wizardStep1">
+      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your system is being set up.</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 8px">While we configure your campaigns and AI agent, complete these two quick steps so we can launch.</p>
+      <p id="wizardCompanyName" style="font-size:13px;color:#4797FF;margin:0 0 28px"></p>
+      <button onclick="wizardGoTo(2)" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Let's go →</button>
+    </div>
+    <div id="wizardStep2" style="display:none">
+      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Connect your Meta Business account.</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 24px">We need access to your Meta Business Assets to build and launch your ad campaigns. Takes about 60 seconds.</p>
+      <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box">Connect Meta Business →</a>
+      <a onclick="wizardGoTo(3)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:12px;cursor:pointer">I've connected my Meta account →</a>
+      <p style="font-size:12px;color:#666;text-align:center;margin-top:16px">Having trouble? Email contact@quoteleads.com.au</p>
+    </div>
+    <div id="wizardStep3" style="display:none">
+      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Add a payment method to Meta Ads Manager.</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your campaigns run on your Meta account and are billed directly to you — not to QuoteLeads. Add a payment method before ads can go live.</p>
+      <ol style="font-size:14px;color:#9a9a9a;line-height:2;margin:0 0 28px;padding-left:20px">
+        <li>Open Meta Ads Manager (ads.facebook.com)</li>
+        <li>Go to Billing &amp; Payments</li>
+        <li>Add your credit or debit card</li>
+      </ol>
+      <button onclick="wizardGoTo(4)" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">I've added my payment method →</button>
+      <a onclick="wizardGoTo(4)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:12px;cursor:pointer">I'll do this later →</a>
+    </div>
+    <div id="wizardStep4" style="display:none">
+      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">You're live.</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your system is configured. Campaigns are being built and your AI agent is ready. First leads typically arrive within 24–48 hours of launch.</p>
+      <ul style="list-style:none;padding:0;margin:0 0 28px;font-size:13px;color:#9a9a9a;line-height:2.2">
+        <li><span style="color:#22c55e">✓</span> AI SMS agent configured</li>
+        <li><span style="color:#22c55e">✓</span> CRM and pipeline ready</li>
+        <li><span style="color:#22c55e">✓</span> Quote automation enabled</li>
+        <li><span style="color:#22c55e">✓</span> Campaigns being built</li>
+      </ul>
+      <button id="wizardFinishBtn" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Go to my dashboard →</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -437,48 +437,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const forgotPasswordLink = document.getElementById("forgotPasswordLink");
   const backToLogin = document.getElementById("backToLogin");
   const forgotPasswordForm = document.getElementById("forgotPasswordForm");
-  const signupForm = document.getElementById("signupForm");
-  const authTabs = document.getElementById("authTabs");
-
-  // ── Auth Tab Switching (Sign In / Sign Up) ──────────────────────────────
-  authTabs?.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-tab]");
-    if (!btn) return;
-    const tab = btn.dataset.tab;
-
-    // Update active tab
-    authTabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-
-    // Show the correct form, hide others
-    loginForm?.classList.toggle("hidden", tab !== "login");
-    signupForm?.classList.toggle("hidden", tab !== "signup");
-    forgotPasswordForm?.classList.add("hidden");
-    // Render / reset Turnstile for the newly-visible form
-    renderTurnstileFor(tab === "login" ? "loginForm" : "signupForm");
-  });
 
   forgotPasswordLink?.addEventListener("click", () => {
     loginForm?.classList.add("hidden");
-    signupForm?.classList.add("hidden");
     forgotPasswordForm?.classList.remove("hidden");
-    authTabs?.classList.add("hidden");
     // Pre-fill email if already entered on login form
     const loginEmail = document.getElementById("loginEmail");
     const forgotEmail = document.getElementById("forgotEmail");
     if (loginEmail?.value && forgotEmail) forgotEmail.value = loginEmail.value;
-    // Render / reset the Turnstile widget for this form
     renderTurnstileFor('forgotPasswordForm');
   });
 
   backToLogin?.addEventListener("click", () => {
     forgotPasswordForm?.classList.add("hidden");
     loginForm?.classList.remove("hidden");
-    authTabs?.classList.remove("hidden");
-    // Reset tab active state to Sign In
-    authTabs?.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.tab === "login");
-    });
     renderTurnstileFor('loginForm');
   });
 
@@ -513,10 +485,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       setTimeout(() => {
         forgotPasswordForm?.classList.add("hidden");
         loginForm?.classList.remove("hidden");
-        authTabs?.classList.remove("hidden");
-        authTabs?.querySelectorAll("button").forEach((b) => {
-          b.classList.toggle("active", b.dataset.tab === "login");
-        });
       }, 2000);
     };
 
@@ -542,113 +510,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         submitBtn.disabled = false;
         submitBtn.textContent = "Send Reset Link";
       }
-    }
-  });
-
-  // ── Sign Up Form ──────────────────────────────────────────────────────────
-  signupForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const submitBtn = signupForm.querySelector('button[type="submit"]');
-    const nameInput = document.getElementById("signupName");
-    const companyInput = document.getElementById("signupCompany");
-    const emailInput = document.getElementById("signupEmail");
-    const passwordInput = document.getElementById("signupPassword");
-    const keyInput = document.getElementById("signupActivationKey");
-
-    const full_name = nameInput?.value?.trim() || "";
-    const company_name = companyInput?.value?.trim() || "";
-    const email = emailInput?.value?.trim() || "";
-    const password = passwordInput?.value || "";
-    const activation_key = keyInput?.value?.trim() || "";
-
-    // Get Turnstile token
-    const turnstileInput = signupForm.querySelector('[name="cf-turnstile-response"]');
-    const cfToken = turnstileInput ? turnstileInput.value : "";
-    if (!cfToken) {
-      toast("Please complete the CAPTCHA verification.", true);
-      return;
-    }
-
-    if (!full_name || !company_name || !email || !password || !activation_key) {
-      toast("Please fill in all fields.", true);
-      return;
-    }
-    if (password.length < 6) {
-      toast("Password must be at least 6 characters.", true);
-      return;
-    }
-
-    // Disable form during submission
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Creating account...";
-    }
-    const inputs = signupForm.querySelectorAll("input");
-    inputs.forEach((i) => (i.disabled = true));
-
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          full_name,
-          company_name,
-          activation_key,
-          cf_turnstile_response: cfToken,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast(data.error || "Sign up failed. Please try again.", true);
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Create Account";
-        }
-        inputs.forEach((i) => (i.disabled = false));
-        if (window.turnstile) turnstile.reset(signupForm.querySelector('.cf-turnstile'));
-        return;
-      }
-
-      // Account created — auto sign in
-      toast("Account created! Signing you in...");
-      const { data: signInData, error: signInError } = await sb.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        toast("Account created but auto sign-in failed. Please sign in manually.", true);
-        // Switch to login tab and pre-fill email
-        authTabs?.querySelectorAll("button").forEach((b) => {
-          b.classList.toggle("active", b.dataset.tab === "login");
-        });
-        signupForm?.classList.add("hidden");
-        loginForm?.classList.remove("hidden");
-        const loginEmail = document.getElementById("loginEmail");
-        if (loginEmail) loginEmail.value = email;
-      } else if (signInData?.session?.user) {
-        // Navigate immediately — don't wait for onAuthStateChange
-        currentUser = signInData.session.user;
-        authInitialized = true;
-        showApp();
-      }
-    } catch (err) {
-      toast("Sign up failed. Please try again.", true);
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Create Account";
-      }
-      inputs.forEach((i) => (i.disabled = false));
     }
   });
 
@@ -991,25 +852,9 @@ function showAuth() {
     if (passwordInput) passwordInput.disabled = false;
   }
 
-  // Reset signup form state
-  const signupForm = document.getElementById("signupForm");
-  if (signupForm) {
-    signupForm.reset();
-    signupForm.classList.add("hidden");
-  }
-
   // Reset forgot password form
   const forgotPasswordForm = document.getElementById("forgotPasswordForm");
   if (forgotPasswordForm) forgotPasswordForm.classList.add("hidden");
-
-  // Reset tabs to Sign In
-  const authTabs = document.getElementById("authTabs");
-  if (authTabs) {
-    authTabs.classList.remove("hidden");
-    authTabs.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.tab === "login");
-    });
-  }
 }
 
 async function showApp() {
@@ -1063,24 +908,35 @@ async function showApp() {
       if (sidebarAvatar) sidebarAvatar.textContent = initials;
     }
 
+    let currentCompany = null;
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name")
+        .select("name, plan, settings")
         .eq("id", currentCompanyId)
         .maybeSingle();
-        
+
       if (companyError) {
         console.error("Company fetch error:", companyError);
       }
-      
+
+      currentCompany = company;
+
       if (company?.name) {
         const brandName = document.getElementById("brandCompanyName");
         if (brandName) brandName.textContent = company.name;
         const sidebarCompany = document.getElementById("sidebarCompanyName");
         if (sidebarCompany) sidebarCompany.textContent = company.name;
       }
+
+      // Show plan-specific nav items
+      const navBuyLeads = document.getElementById("navBuyLeads");
+      if (navBuyLeads) navBuyLeads.style.display = company?.plan === 'ppl' ? '' : 'none';
     }
+
+    // Show super-admin nav items
+    const navPplAdmin = document.getElementById("navPplAdmin");
+    if (navPplAdmin) navPplAdmin.style.display = currentUserIsSuperAdmin ? '' : 'none';
 
     // Fetch current user's permissions from sales_reps
     if (currentCompanyId && currentUser) {
@@ -1111,6 +967,23 @@ async function showApp() {
     // Load notification badge count
     loadNotificationBadge();
 
+    // Check URL params for post-checkout banners
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('ppl_success') === 'true') {
+      toast('Payment confirmed! Your leads are being queued and will appear in your pipeline shortly.');
+      history.replaceState({}, '', window.location.pathname);
+    }
+    if (urlParams.get('ppl_cancelled') === 'true') {
+      toast('Order cancelled — no charge was made.');
+      history.replaceState({}, '', window.location.pathname);
+    }
+
+    // Show onboarding wizard for managed plan before first login
+    if (currentCompany?.plan === 'managed' && !currentCompany?.settings?.onboarding_complete) {
+      showOnboardingWizard(currentCompany, currentUser);
+      return;
+    }
+
     navigateTo(currentPageId || "dashboard");
   } catch (err) {
     console.error("Error loading app:", err);
@@ -1137,6 +1010,8 @@ const PAGE_META = {
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
+  "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your niche and area."],
+  "ppl-admin":        ["PPL Campaigns",      "Manage PPL pricing and campaign registry."],
 };
 
 function isAdmin() {
@@ -1192,6 +1067,8 @@ function navigateTo(page) {
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
+    "buy-leads":        loadBuyLeads,
+    "ppl-admin":        loadPplAdmin,
   };
   loaders[page]?.();
 }
@@ -5405,4 +5282,371 @@ async function skipReviewRequest(requestId) {
   } catch (err) {
     toast("Failed to skip review request.", true);
   }
+}
+
+// =============================================================================
+// Onboarding Wizard (managed plan only)
+// =============================================================================
+
+function showOnboardingWizard(company, user) {
+  const wizard = document.getElementById('onboardingWizard');
+  if (!wizard) return;
+  wizard.style.display = 'flex';
+  const nameEl = document.getElementById('wizardCompanyName');
+  if (nameEl) nameEl.textContent = company?.name || '';
+  wizardGoTo(1);
+
+  document.getElementById('wizardFinishBtn')?.addEventListener('click', completeOnboarding, { once: true });
+}
+
+function wizardGoTo(step) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById(`wizardStep${i}`);
+    if (el) el.style.display = i === step ? '' : 'none';
+  }
+  const dots = document.getElementById('wizardDots');
+  if (dots) {
+    dots.innerHTML = [1,2,3,4].map(i =>
+      i === step
+        ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
+        : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
+    ).join('');
+  }
+}
+
+async function completeOnboarding() {
+  try {
+    const { data: existingCompany } = await sb
+      .from('companies')
+      .select('settings')
+      .eq('id', currentCompanyId)
+      .maybeSingle();
+
+    const updatedSettings = {
+      ...(existingCompany?.settings || {}),
+      onboarding_complete: true,
+    };
+    await sb.from('companies').update({ settings: updatedSettings }).eq('id', currentCompanyId);
+
+    const { data: { session } } = await sb.auth.getSession();
+    const { data: co } = await sb
+      .from('companies')
+      .select('name, email, phone')
+      .eq('id', currentCompanyId)
+      .maybeSingle();
+
+    // Notify internal — fire and forget
+    fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        subject: `🚀 New managed client onboarded — ${co.name}`,
+        body: `
+          <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
+          <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
+          <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
+          <p style="font-family:system-ui,sans-serif;color:#555">Meta connection and ad spend steps marked complete. Campaigns can now be built.</p>
+        `,
+      }),
+      keepalive: true,
+    }).catch(e => console.warn('notify-internal error:', e));
+
+    // Provision Twilio — fire and forget
+    fetch(`${SUPABASE_URL}/functions/v1/provision-twilio`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ company_id: currentCompanyId }),
+      keepalive: true,
+    }).catch(e => console.warn('provision-twilio error:', e));
+
+    document.getElementById('onboardingWizard').style.display = 'none';
+    navigateTo('dashboard');
+  } catch (err) {
+    console.error('completeOnboarding error:', err);
+    toast('Error saving progress. Please try again.', true);
+  }
+}
+
+// =============================================================================
+// Buy Leads (PPL plan)
+// =============================================================================
+
+let _pplPricing = [];
+let _buyLeadsSelectedNiche = null;
+let _buyLeadsSelectedArea = null;
+let _buyLeadsSelectedPPL = null;
+
+async function loadBuyLeads() {
+  if (!currentCompanyId) return;
+
+  const { data: pricing } = await sb
+    .from('ppl_pricing')
+    .select('*')
+    .eq('is_active', true)
+    .order('niche');
+
+  const { data: orders } = await sb
+    .from('ppl_lead_orders')
+    .select('*')
+    .eq('company_id', currentCompanyId)
+    .order('created_at', { ascending: false });
+
+  _pplPricing = pricing || [];
+  renderBuyLeads(_pplPricing, orders || []);
+}
+
+function renderBuyLeads(pricing, orders) {
+  const niches = [...new Set(pricing.map(p => p.niche))];
+  const nicheCards = document.getElementById('buyLeadsNicheCards');
+  if (nicheCards) {
+    nicheCards.innerHTML = niches.map(n => `
+      <button type="button" onclick="buyLeadsSelectNiche('${n}')"
+        id="nicheCard-${n}"
+        style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit">
+        ${n.charAt(0).toUpperCase() + n.slice(1)}
+      </button>
+    `).join('');
+  }
+
+  const ordersEl = document.getElementById('buyLeadsOrdersTable');
+  if (ordersEl) {
+    if (!orders.length) {
+      ordersEl.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`;
+    } else {
+      const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+      const statusColor = s => ({ pending:'#9a9a9a', paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#ef4444' }[s] || '#9a9a9a');
+      ordersEl.innerHTML = `<div class="table-lite">
+        <table><thead><tr>
+          <th>Niche</th><th>Area</th><th>Quantity</th><th>Delivered</th><th>Total</th><th>Status</th><th>Date</th>
+        </tr></thead><tbody>
+        ${orders.map(o => `<tr>
+          <td>${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+          <td>${o.area.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}</td>
+          <td>${o.quantity}</td>
+          <td>${o.delivered_count} / ${o.quantity}</td>
+          <td>${fmt(o.total_amount)}</td>
+          <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
+          <td>${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+        </tr>`).join('')}
+        </tbody></table>
+      </div>`;
+    }
+  }
+}
+
+function buyLeadsSelectNiche(niche) {
+  _buyLeadsSelectedNiche = niche;
+  _buyLeadsSelectedArea = null;
+  _buyLeadsSelectedPPL = null;
+
+  document.querySelectorAll('[id^="nicheCard-"]').forEach(el => {
+    el.style.background = '';
+    el.style.borderColor = 'var(--border)';
+    el.style.color = 'var(--text,var(--ink))';
+  });
+  const card = document.getElementById(`nicheCard-${niche}`);
+  if (card) {
+    card.style.background = '#4797FF';
+    card.style.borderColor = '#4797FF';
+    card.style.color = '#fff';
+  }
+
+  const areas = _pplPricing.filter(p => p.niche === niche);
+  const areaSelect = document.getElementById('buyLeadsArea');
+  if (areaSelect) {
+    areaSelect.innerHTML = `<option value="">Select area…</option>` +
+      areas.map(a => `<option value="${a.area}" data-ppl="${a.price_per_lead}">${a.area.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())} — $${parseFloat(a.price_per_lead).toFixed(0)}/lead</option>`).join('');
+    areaSelect.onchange = () => {
+      const opt = areaSelect.selectedOptions[0];
+      _buyLeadsSelectedArea = opt?.value || null;
+      _buyLeadsSelectedPPL = opt ? parseFloat(opt.dataset.ppl) : null;
+      updateBuyLeadsSummary();
+    };
+  }
+  document.getElementById('buyLeadsAreaField').style.display = '';
+  document.getElementById('buyLeadsQtyField').style.display = '';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  const qtyInput = document.getElementById('buyLeadsQty');
+  if (qtyInput) {
+    qtyInput.oninput = () => {
+      document.getElementById('buyLeadsQtyLabel').textContent = `${qtyInput.value} leads`;
+      updateBuyLeadsSummary();
+    };
+    document.getElementById('buyLeadsQtyLabel').textContent = `${qtyInput.value} leads`;
+  }
+}
+
+function updateBuyLeadsSummary() {
+  if (!_buyLeadsSelectedArea || !_buyLeadsSelectedPPL) return;
+  const qty = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
+  const total = qty * _buyLeadsSelectedPPL;
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+
+  document.getElementById('buyLeadsSumNiche').textContent = _buyLeadsSelectedNiche?.charAt(0).toUpperCase() + _buyLeadsSelectedNiche?.slice(1) || '—';
+  document.getElementById('buyLeadsSumArea').textContent = _buyLeadsSelectedArea?.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
+  document.getElementById('buyLeadsSumQty').textContent = `${qty} leads`;
+  document.getElementById('buyLeadsSumPPL').textContent = fmt(_buyLeadsSelectedPPL);
+  document.getElementById('buyLeadsSumTotal').textContent = fmt(total);
+
+  const summary = document.getElementById('buyLeadsSummary');
+  if (summary) summary.style.display = '';
+
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) {
+    btn.onclick = () => startPplCheckout(_buyLeadsSelectedNiche, _buyLeadsSelectedArea, qty, _buyLeadsSelectedPPL);
+  }
+}
+
+async function startPplCheckout(niche, area, quantity, pricePerLead) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        company_id: currentCompanyId,
+        niche,
+        area,
+        quantity,
+        price_per_lead: pricePerLead,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || 'Failed to start checkout', true);
+  }
+}
+
+// =============================================================================
+// PPL Admin (super admin only)
+// =============================================================================
+
+async function loadPplAdmin() {
+  if (!currentUserIsSuperAdmin) {
+    toast('Access denied.', true);
+    return;
+  }
+
+  const [{ data: pricing }, { data: campaigns }] = await Promise.all([
+    sb.from('ppl_pricing').select('*').order('niche').order('area'),
+    sb.from('ppl_campaigns').select('*').order('niche').order('area'),
+  ]);
+
+  renderPplAdmin(pricing || [], campaigns || []);
+}
+
+function renderPplAdmin(pricing, campaigns) {
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+
+  // Pricing table
+  const pricingEl = document.getElementById('pplAdminPricingTable');
+  if (pricingEl) {
+    pricingEl.innerHTML = `<div class="table-lite">
+      <table><thead><tr><th>Niche</th><th>Area</th><th>Price/Lead</th><th>Min</th><th>Max</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+      ${pricing.map(p => `<tr id="pricingRow-${p.id}">
+        <td>${p.niche}</td>
+        <td>${p.area}</td>
+        <td><input type="number" step="0.01" value="${p.price_per_lead}" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="price_per_lead" data-id="${p.id}"></td>
+        <td><input type="number" value="${p.min_quantity}" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="min_quantity" data-id="${p.id}"></td>
+        <td><input type="number" value="${p.max_quantity}" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="max_quantity" data-id="${p.id}"></td>
+        <td><input type="checkbox" ${p.is_active ? 'checked' : ''} onchange="savePricingRow('${p.id}')" data-field="is_active" data-id="${p.id}"></td>
+        <td><button class="btn2" style="padding:4px 10px;font-size:11px" onclick="savePricingRow('${p.id}')">Save</button></td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  // Campaigns table
+  const campsEl = document.getElementById('pplAdminCampaignsTable');
+  if (campsEl) {
+    if (!campaigns.length) {
+      campsEl.innerHTML = `<div class="notice">No campaigns yet. Add one above.</div>`;
+    } else {
+      campsEl.innerHTML = `<div class="table-lite">
+        <table><thead><tr><th>Niche</th><th>Area</th><th>Platform</th><th>Campaign ID</th><th>Ad Account</th><th>CPL</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        ${campaigns.map(c => `<tr>
+          <td>${c.niche}</td>
+          <td>${c.area}</td>
+          <td>${c.platform}</td>
+          <td style="font-family:monospace;font-size:11px">${c.campaign_id}</td>
+          <td style="font-family:monospace;font-size:11px">${c.ad_account_id || '—'}</td>
+          <td>${c.cost_per_lead ? fmt(c.cost_per_lead) : '—'}</td>
+          <td><span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${c.status==='active'?'#22c55e22':'#9a9a9a22'};color:${c.status==='active'?'#22c55e':'#9a9a9a'}">${c.status}</span></td>
+          <td><button class="btn" style="padding:4px 8px;font-size:11px;color:var(--danger,#d00)" onclick="deleteCampaign('${c.id}')">Delete</button></td>
+        </tr>`).join('')}
+        </tbody></table>
+      </div>`;
+    }
+  }
+
+  // Add campaign form toggle
+  document.getElementById('openAddCampaignForm')?.addEventListener('click', () => {
+    const form = document.getElementById('addCampaignForm');
+    if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+  }, { once: false });
+
+  document.getElementById('cancelAddCampaign')?.addEventListener('click', () => {
+    const form = document.getElementById('addCampaignForm');
+    if (form) form.style.display = 'none';
+  });
+
+  document.getElementById('saveNewCampaign')?.addEventListener('click', saveNewCampaign);
+}
+
+async function savePricingRow(id) {
+  const row = document.getElementById(`pricingRow-${id}`);
+  if (!row) return;
+  const price_per_lead = parseFloat(row.querySelector('[data-field="price_per_lead"]')?.value);
+  const min_quantity = parseInt(row.querySelector('[data-field="min_quantity"]')?.value);
+  const max_quantity = parseInt(row.querySelector('[data-field="max_quantity"]')?.value);
+  const is_active = row.querySelector('[data-field="is_active"]')?.checked;
+  const { error } = await sb.from('ppl_pricing').update({ price_per_lead, min_quantity, max_quantity, is_active }).eq('id', id);
+  if (error) { toast(error.message, true); return; }
+  toast('Pricing saved.');
+}
+
+async function saveNewCampaign() {
+  const niche = document.getElementById('campNiche')?.value;
+  const area = document.getElementById('campArea')?.value?.trim();
+  const platform = document.getElementById('campPlatform')?.value;
+  const campaign_id = document.getElementById('campId')?.value?.trim();
+  const ad_account_id = document.getElementById('campAdAccountId')?.value?.trim();
+  const cost_per_lead = parseFloat(document.getElementById('campCpl')?.value) || null;
+
+  if (!niche || !area || !platform || !campaign_id) {
+    toast('Niche, area, platform and campaign ID are required.', true);
+    return;
+  }
+
+  const { error } = await sb.from('ppl_campaigns').insert({ niche, area, platform, campaign_id, ad_account_id: ad_account_id || null, cost_per_lead });
+  if (error) { toast(error.message, true); return; }
+  toast('Campaign added.');
+  document.getElementById('addCampaignForm').style.display = 'none';
+  loadPplAdmin();
+}
+
+async function deleteCampaign(id) {
+  confirmAction('Delete this campaign? This cannot be undone.', async () => {
+    const { error } = await sb.from('ppl_campaigns').delete().eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Campaign deleted.');
+    loadPplAdmin();
+  }, { okLabel: 'Delete', title: 'Delete Campaign' });
 }
