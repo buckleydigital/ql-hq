@@ -236,6 +236,36 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- PPL Campaign Registry panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Campaign Registry</h2>
+          <p>QuoteLeads' Meta and Google campaign IDs used to route PPL leads.</p>
+        </div>
+        <div class="filter-bar">
+          <button class="btn2 btn-sm" id="openAddCampaignBtn" type="button">+ Add Campaign</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="landscaping">Landscaping</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Campaign ID</label><input id="adminCampId" class="form-input" type="text" placeholder="Campaign ID"></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Ad Account ID</label><input id="adminCampAdAccountId" class="form-input" type="text" placeholder="Ad Account ID"></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Cost per Lead</label><input id="adminCampCpl" class="form-input" type="number" step="0.01" placeholder="e.g. 35.00"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" id="cancelAddCampaignBtn" type="button">Cancel</button>
+            <button class="btn2 btn-sm" id="saveNewCampaignBtn" type="button">Add Campaign</button>
+          </div>
+        </div>
+        <div id="pplCampaignsTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- PPL Orders panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -1040,6 +1070,9 @@ h1{font-size:18px;font-weight:500}
 
     // 8. Load PPL pricing panel
     await loadPplPricing();
+
+    // 9. Load PPL campaign registry
+    await loadPplCampaigns();
   }
 
   // ── PPL Pricing ───────────────────────────────────────────────────────────
@@ -1083,6 +1116,93 @@ h1{font-size:18px;font-weight:500}
       }).join('') +
       '</tbody></table>';
   }
+
+  // ── PPL Campaign Registry ─────────────────────────────────────────────────
+  async function loadPplCampaigns() {
+    var el = document.getElementById('pplCampaignsTable');
+    if (!el) return;
+    try {
+      var { data, error } = await sb.from('ppl_campaigns').select('*').order('niche').order('area');
+      if (error) throw error;
+      renderPplCampaigns(data || []);
+    } catch (err) {
+      el.innerHTML = '<div class="notice">Failed to load campaigns: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderPplCampaigns(rows) {
+    var el = document.getElementById('pplCampaignsTable');
+    if (!el) return;
+    if (!rows.length) { el.innerHTML = '<div class="notice">No campaigns yet. Add one above.</div>'; return; }
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Platform</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Campaign ID</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Ad Account</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">CPL</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Status</th>' +
+        '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (c) {
+        var statusStyle = c.status === 'active'
+          ? 'background:#22c55e22;color:#22c55e'
+          : 'background:#9a9a9a22;color:#9a9a9a';
+        return '<tr>' +
+          '<td style="padding:8px 10px">' + escapeHtml(c.niche) + '</td>' +
+          '<td style="padding:8px 10px">' + escapeHtml(c.area) + '</td>' +
+          '<td style="padding:8px 10px">' + escapeHtml(c.platform) + '</td>' +
+          '<td style="padding:8px 10px;font-family:monospace;font-size:11px">' + escapeHtml(c.campaign_id) + '</td>' +
+          '<td style="padding:8px 10px;font-family:monospace;font-size:11px">' + escapeHtml(c.ad_account_id || '—') + '</td>' +
+          '<td style="padding:8px 10px">' + (c.cost_per_lead ? '$' + parseFloat(c.cost_per_lead).toFixed(2) : '—') + '</td>' +
+          '<td style="padding:8px 10px"><span style="font-size:11px;padding:2px 8px;border-radius:20px;' + statusStyle + '">' + escapeHtml(c.status) + '</span></td>' +
+          '<td style="padding:8px 10px"><button class="btn btn-sm" style="color:#d00" onclick="adminDeleteCampaign(\'' + c.id + '\')">Delete</button></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  document.getElementById('openAddCampaignBtn')?.addEventListener('click', function () {
+    var f = document.getElementById('addCampaignFormAdmin');
+    if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
+  });
+
+  document.getElementById('cancelAddCampaignBtn')?.addEventListener('click', function () {
+    document.getElementById('addCampaignFormAdmin').style.display = 'none';
+  });
+
+  document.getElementById('saveNewCampaignBtn')?.addEventListener('click', async function () {
+    var niche       = document.getElementById('adminCampNiche').value;
+    var area        = document.getElementById('adminCampArea').value.trim();
+    var platform    = document.getElementById('adminCampPlatform').value;
+    var campaign_id = document.getElementById('adminCampId').value.trim();
+    var ad_account  = document.getElementById('adminCampAdAccountId').value.trim();
+    var cpl         = parseFloat(document.getElementById('adminCampCpl').value) || null;
+
+    if (!niche || !area || !platform || !campaign_id) {
+      toast('Niche, area, platform and campaign ID are required.', true);
+      return;
+    }
+    var { error } = await sb.from('ppl_campaigns').insert({
+      niche, area, platform, campaign_id,
+      ad_account_id: ad_account || null,
+      cost_per_lead: cpl,
+    });
+    if (error) { toast(error.message, true); return; }
+    toast('Campaign added.');
+    document.getElementById('addCampaignFormAdmin').style.display = 'none';
+    await loadPplCampaigns();
+  });
+
+  window.adminDeleteCampaign = async function (id) {
+    if (!confirm('Delete this campaign? This cannot be undone.')) return;
+    var { error } = await sb.from('ppl_campaigns').delete().eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Campaign deleted.');
+    await loadPplCampaigns();
+  };
 
   window.savePricingRow = async function (id) {
     var row = document.getElementById('pricingRow-' + id);

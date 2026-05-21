@@ -435,14 +435,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <button class="nav-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
         <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
         <button class="nav-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Bulk SMS</span></button>
-        <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button" style="display:none"><span class="icon" data-icon="gift"></span><span class="nav-text">Buy Leads</span></button>
         <button class="nav-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account and Company</span></button>
         <button class="nav-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Settings</span></button>
         <button class="nav-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">AI Insights</span></button>
         <button class="nav-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
         <button class="nav-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team Members</span></button>
         <button class="nav-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
-        <button id="navPplAdmin" class="nav-item" data-page="ppl-admin" type="button" style="display:none"><span class="icon" data-icon="settings"></span><span class="nav-text">PPL Campaigns</span></button>
       </div>
     </div>
 
@@ -1342,32 +1340,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div class="panel-h"><div><h2>Order History</h2><p>Your lead pack purchases and delivery status.</p></div></div>
             <div class="panel-b">
               <div id="buyLeadsOrdersTable"><div class="notice">Loading orders…</div></div>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <!-- PPL Campaigns Admin (super admin only) -->
-      <div id="page-ppl-admin" class="page hidden">
-        <div class="stack">
-          <section class="panel">
-            <div class="panel-h">
-              <div><h2>Campaign Registry</h2><p>QuoteLeads' Meta and Google campaign IDs used to route PPL leads.</p></div>
-              <div class="actions"><button id="openAddCampaignForm" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>Add Campaign</span></button></div>
-            </div>
-            <div class="panel-b">
-              <div id="addCampaignForm" class="stack" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift));border-radius:10px;border:1px solid var(--border)">
-                <div class="form2">
-                  <div class="field"><label for="campNiche">Niche</label><select id="campNiche"><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="landscaping">Landscaping</option></select></div>
-                  <div class="field"><label for="campArea">Area</label><input id="campArea" type="text" placeholder="e.g. brisbane"></div>
-                  <div class="field"><label for="campPlatform">Platform</label><select id="campPlatform"><option value="meta">Meta</option><option value="google">Google</option></select></div>
-                  <div class="field"><label for="campId">Campaign ID</label><input id="campId" type="text" placeholder="Campaign ID"></div>
-                  <div class="field"><label for="campAdAccountId">Ad Account ID</label><input id="campAdAccountId" type="text" placeholder="Ad Account ID"></div>
-                  <div class="field"><label for="campCpl">Cost per Lead</label><input id="campCpl" type="number" step="0.01" placeholder="e.g. 35.00"></div>
-                </div>
-                <div class="actions"><button id="cancelAddCampaign" class="btn" type="button">Cancel</button><button id="saveNewCampaign" class="btn2" type="button">Add Campaign</button></div>
-              </div>
-              <div id="pplAdminCampaignsTable"><div class="notice">Loading…</div></div>
             </div>
           </section>
         </div>

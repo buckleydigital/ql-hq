@@ -934,10 +934,6 @@ async function showApp() {
       if (navBuyLeads) navBuyLeads.style.display = company?.plan === 'ppl' ? '' : 'none';
     }
 
-    // Show super-admin nav items
-    const navPplAdmin = document.getElementById("navPplAdmin");
-    if (navPplAdmin) navPplAdmin.style.display = currentUserIsSuperAdmin ? '' : 'none';
-
     // Fetch current user's permissions from sales_reps
     if (currentCompanyId && currentUser) {
       const { data: repData } = await sb
@@ -1011,7 +1007,6 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your niche and area."],
-  "ppl-admin":        ["PPL Campaigns",      "Manage PPL pricing and campaign registry."],
 };
 
 function isAdmin() {
@@ -1068,7 +1063,6 @@ function navigateTo(page) {
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
     "buy-leads":        loadBuyLeads,
-    "ppl-admin":        loadPplAdmin,
   };
   loaders[page]?.();
 }
@@ -5536,83 +5530,3 @@ async function startPplCheckout(niche, area, quantity, pricePerLead) {
 // PPL Admin (super admin only)
 // =============================================================================
 
-async function loadPplAdmin() {
-  if (!currentUserIsSuperAdmin) {
-    toast('Access denied.', true);
-    return;
-  }
-
-  const { data: campaigns } = await sb.from('ppl_campaigns').select('*').order('niche').order('area');
-
-  renderPplAdmin(campaigns || []);
-}
-
-function renderPplAdmin(campaigns) {
-  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
-
-  // Campaigns table
-  const campsEl = document.getElementById('pplAdminCampaignsTable');
-  if (campsEl) {
-    if (!campaigns.length) {
-      campsEl.innerHTML = `<div class="notice">No campaigns yet. Add one above.</div>`;
-    } else {
-      campsEl.innerHTML = `<div class="table-lite">
-        <table><thead><tr><th>Niche</th><th>Area</th><th>Platform</th><th>Campaign ID</th><th>Ad Account</th><th>CPL</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-        ${campaigns.map(c => `<tr>
-          <td>${c.niche}</td>
-          <td>${c.area}</td>
-          <td>${c.platform}</td>
-          <td style="font-family:monospace;font-size:11px">${c.campaign_id}</td>
-          <td style="font-family:monospace;font-size:11px">${c.ad_account_id || '—'}</td>
-          <td>${c.cost_per_lead ? fmt(c.cost_per_lead) : '—'}</td>
-          <td><span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${c.status==='active'?'#22c55e22':'#9a9a9a22'};color:${c.status==='active'?'#22c55e':'#9a9a9a'}">${c.status}</span></td>
-          <td><button class="btn" style="padding:4px 8px;font-size:11px;color:var(--danger,#d00)" onclick="deleteCampaign('${c.id}')">Delete</button></td>
-        </tr>`).join('')}
-        </tbody></table>
-      </div>`;
-    }
-  }
-
-  // Add campaign form toggle
-  document.getElementById('openAddCampaignForm')?.addEventListener('click', () => {
-    const form = document.getElementById('addCampaignForm');
-    if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
-  }, { once: false });
-
-  document.getElementById('cancelAddCampaign')?.addEventListener('click', () => {
-    const form = document.getElementById('addCampaignForm');
-    if (form) form.style.display = 'none';
-  });
-
-  document.getElementById('saveNewCampaign')?.addEventListener('click', saveNewCampaign);
-}
-
-async function saveNewCampaign() {
-  const niche = document.getElementById('campNiche')?.value;
-  const area = document.getElementById('campArea')?.value?.trim();
-  const platform = document.getElementById('campPlatform')?.value;
-  const campaign_id = document.getElementById('campId')?.value?.trim();
-  const ad_account_id = document.getElementById('campAdAccountId')?.value?.trim();
-  const cost_per_lead = parseFloat(document.getElementById('campCpl')?.value) || null;
-
-  if (!niche || !area || !platform || !campaign_id) {
-    toast('Niche, area, platform and campaign ID are required.', true);
-    return;
-  }
-
-  const { error } = await sb.from('ppl_campaigns').insert({ niche, area, platform, campaign_id, ad_account_id: ad_account_id || null, cost_per_lead });
-  if (error) { toast(error.message, true); return; }
-  toast('Campaign added.');
-  document.getElementById('addCampaignForm').style.display = 'none';
-  loadPplAdmin();
-}
-
-async function deleteCampaign(id) {
-  confirmAction('Delete this campaign? This cannot be undone.', async () => {
-    const { error } = await sb.from('ppl_campaigns').delete().eq('id', id);
-    if (error) { toast(error.message, true); return; }
-    toast('Campaign deleted.');
-    loadPplAdmin();
-  }, { okLabel: 'Delete', title: 'Delete Campaign' });
-}
