@@ -228,7 +228,7 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-h">
         <div>
           <h2>PPL Pricing</h2>
-          <p>Manage pricing per niche and area. Changes take effect on the next order.</p>
+          <p>Fixed price per lead by niche. Changes take effect on the next order.</p>
         </div>
       </div>
       <div class="panel-b">
@@ -263,6 +263,42 @@ h1{font-size:18px;font-weight:500}
           </div>
         </div>
         <div id="pplCampaignsTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- PPL Stripe Orders panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>PPL Stripe Orders</h2>
+          <p id="pplLeadOrderCountLabel">All client-purchased lead packs via Stripe checkout.</p>
+        </div>
+        <div class="filter-bar">
+          <select id="pplLeadCompanyFilter" class="filter-select">
+            <option value="">All companies</option>
+          </select>
+          <select id="pplLeadNicheFilter" class="filter-select">
+            <option value="">All niches</option>
+            <option value="solar">Solar</option>
+            <option value="roofing">Roofing</option>
+            <option value="hvac">HVAC</option>
+            <option value="renovation">Renovation</option>
+            <option value="landscaping">Landscaping</option>
+          </select>
+          <select id="pplLeadStatusFilter" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn btn-sm" id="refreshPplLeadOrdersBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="pplLeadOrderLoadingState" class="notice">Loading…</div>
+        <div id="pplLeadOrderList" class="hidden"></div>
+        <div id="pplLeadOrderEmptyState" class="notice hidden">No Stripe lead orders found.</div>
       </div>
     </div>
 
@@ -1159,7 +1195,115 @@ h1{font-size:18px;font-weight:500}
 
     // 9. Load PPL campaign registry
     await loadPplCampaigns();
+
+    // 10. Load PPL Stripe orders panel
+    await loadPplLeadOrders();
   }
+
+  // ── PPL Stripe Orders ─────────────────────────────────────────────────────
+  var allPplLeadOrders = [];
+
+  async function loadPplLeadOrders() {
+    var loadingEl = document.getElementById('pplLeadOrderLoadingState');
+    var listEl    = document.getElementById('pplLeadOrderList');
+    var emptyEl   = document.getElementById('pplLeadOrderEmptyState');
+    if (!loadingEl) return;
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    try {
+      var { data: orders, error } = await sb
+        .from('ppl_lead_orders')
+        .select('*, company:companies(id, name)')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      allPplLeadOrders = orders || [];
+      var label = document.getElementById('pplLeadOrderCountLabel');
+      if (label) label.textContent = allPplLeadOrders.length + ' order' + (allPplLeadOrders.length === 1 ? '' : 's') + ' total';
+      loadingEl.classList.add('hidden');
+
+      // Populate company filter
+      var cf = document.getElementById('pplLeadCompanyFilter');
+      while (cf.options.length > 1) cf.remove(1);
+      var seen = {};
+      allPplLeadOrders.forEach(function (o) {
+        if (o.company && !seen[o.company_id]) {
+          seen[o.company_id] = true;
+          var opt = document.createElement('option');
+          opt.value = o.company_id;
+          opt.textContent = o.company.name || o.company_id;
+          cf.appendChild(opt);
+        }
+      });
+
+      applyPplLeadFilter();
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load: ' + err.message;
+      toast('Failed to load PPL Stripe orders: ' + err.message, true);
+    }
+  }
+
+  function renderPplLeadOrderRow(o) {
+    var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
+    var niche       = (o.niche || '').charAt(0).toUpperCase() + (o.niche || '').slice(1);
+    var locDesc     = o.location_type === 'postcodes'
+      ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
+      : escapeHtml(o.area_city || '') + ' — ' + (o.radius_km || 50) + 'km radius';
+    var created = o.created_at
+      ? new Date(o.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    var statusClass = { active: 'badge-approved', completed: 'badge-approved', cancelled: 'badge-rejected', pending: 'badge-pending' }[o.status] || 'badge-pending';
+    var statusLabel = (o.status || 'pending').charAt(0).toUpperCase() + (o.status || 'pending').slice(1);
+    var total = o.total_amount ? '$' + Number(o.total_amount).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+
+    var row = document.createElement('div');
+    row.className = 'dispute-row';
+    row.innerHTML =
+      '<div class="dispute-header">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="dispute-lead">' + companyName + '</div>' +
+          '<div class="dispute-meta">' + created + (o.stripe_session_id ? ' &bull; Stripe: ' + escapeHtml(o.stripe_session_id.slice(0, 24)) + '…' : '') + '</div>' +
+          '<div class="dispute-badges">' +
+            '<span class="badge-reason">' + escapeHtml(niche) + '</span>' +
+            '<span class="badge-status ' + statusClass + '">' + escapeHtml(statusLabel) + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:4px">' + escapeHtml(locDesc) + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div style="font-size:18px;font-weight:600">' + escapeHtml(total) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + (o.quantity || 0) + ' leads &times; $' + (o.price_per_lead || 0) + '/lead</div>' +
+        '</div>' +
+      '</div>';
+    return row;
+  }
+
+  function applyPplLeadFilter() {
+    var company = document.getElementById('pplLeadCompanyFilter').value;
+    var niche   = document.getElementById('pplLeadNicheFilter').value;
+    var status  = document.getElementById('pplLeadStatusFilter').value;
+    var filtered = allPplLeadOrders.filter(function (o) {
+      return (!company || o.company_id === company) &&
+             (!niche   || o.niche === niche) &&
+             (!status  || o.status === status);
+    });
+    var listEl  = document.getElementById('pplLeadOrderList');
+    var emptyEl = document.getElementById('pplLeadOrderEmptyState');
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+      listEl.classList.add('hidden');
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      filtered.forEach(function (o) { listEl.appendChild(renderPplLeadOrderRow(o)); });
+    }
+  }
+
+  document.getElementById('refreshPplLeadOrdersBtn').addEventListener('click', loadPplLeadOrders);
+  document.getElementById('pplLeadCompanyFilter').addEventListener('change', applyPplLeadFilter);
+  document.getElementById('pplLeadNicheFilter').addEventListener('change', applyPplLeadFilter);
+  document.getElementById('pplLeadStatusFilter').addEventListener('change', applyPplLeadFilter);
 
   // ── PPL Pricing ───────────────────────────────────────────────────────────
   async function loadPplPricing() {
