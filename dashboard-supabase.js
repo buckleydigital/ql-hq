@@ -5542,35 +5542,13 @@ async function loadPplAdmin() {
     return;
   }
 
-  const [{ data: pricing }, { data: campaigns }] = await Promise.all([
-    sb.from('ppl_pricing').select('*').order('niche').order('area'),
-    sb.from('ppl_campaigns').select('*').order('niche').order('area'),
-  ]);
+  const { data: campaigns } = await sb.from('ppl_campaigns').select('*').order('niche').order('area');
 
-  renderPplAdmin(pricing || [], campaigns || []);
+  renderPplAdmin(campaigns || []);
 }
 
-function renderPplAdmin(pricing, campaigns) {
+function renderPplAdmin(campaigns) {
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
-
-  // Pricing table
-  const pricingEl = document.getElementById('pplAdminPricingTable');
-  if (pricingEl) {
-    pricingEl.innerHTML = `<div class="table-lite">
-      <table><thead><tr><th>Niche</th><th>Area</th><th>Price/Lead</th><th>Min</th><th>Max</th><th>Active</th><th></th></tr></thead>
-      <tbody>
-      ${pricing.map(p => `<tr id="pricingRow-${p.id}">
-        <td>${p.niche}</td>
-        <td>${p.area}</td>
-        <td><input type="number" step="0.01" value="${p.price_per_lead}" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="price_per_lead" data-id="${p.id}"></td>
-        <td><input type="number" value="${p.min_quantity}" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="min_quantity" data-id="${p.id}"></td>
-        <td><input type="number" value="${p.max_quantity}" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:12px" data-field="max_quantity" data-id="${p.id}"></td>
-        <td><input type="checkbox" ${p.is_active ? 'checked' : ''} onchange="savePricingRow('${p.id}')" data-field="is_active" data-id="${p.id}"></td>
-        <td><button class="btn2" style="padding:4px 10px;font-size:11px" onclick="savePricingRow('${p.id}')">Save</button></td>
-      </tr>`).join('')}
-      </tbody></table>
-    </div>`;
-  }
 
   // Campaigns table
   const campsEl = document.getElementById('pplAdminCampaignsTable');
@@ -5608,18 +5586,6 @@ function renderPplAdmin(pricing, campaigns) {
   });
 
   document.getElementById('saveNewCampaign')?.addEventListener('click', saveNewCampaign);
-}
-
-async function savePricingRow(id) {
-  const row = document.getElementById(`pricingRow-${id}`);
-  if (!row) return;
-  const price_per_lead = parseFloat(row.querySelector('[data-field="price_per_lead"]')?.value);
-  const min_quantity = parseInt(row.querySelector('[data-field="min_quantity"]')?.value);
-  const max_quantity = parseInt(row.querySelector('[data-field="max_quantity"]')?.value);
-  const is_active = row.querySelector('[data-field="is_active"]')?.checked;
-  const { error } = await sb.from('ppl_pricing').update({ price_per_lead, min_quantity, max_quantity, is_active }).eq('id', id);
-  if (error) { toast(error.message, true); return; }
-  toast('Pricing saved.');
 }
 
 async function saveNewCampaign() {

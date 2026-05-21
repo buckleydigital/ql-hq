@@ -223,6 +223,19 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- PPL Pricing panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>PPL Pricing</h2>
+          <p>Manage pricing per niche and area. Changes take effect on the next order.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="pplPricingTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- PPL Orders panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -1024,7 +1037,64 @@ h1{font-size:18px;font-weight:500}
 
     // 7. Load PPL orders panel and pre-populate company dropdowns
     await Promise.all([loadPplOrders(), loadCompanies()]);
+
+    // 8. Load PPL pricing panel
+    await loadPplPricing();
   }
+
+  // ── PPL Pricing ───────────────────────────────────────────────────────────
+  async function loadPplPricing() {
+    var el = document.getElementById('pplPricingTable');
+    if (!el) return;
+    try {
+      var { data, error } = await sb.from('ppl_pricing').select('*').order('niche').order('area');
+      if (error) throw error;
+      renderPplPricing(data || []);
+    } catch (err) {
+      el.innerHTML = '<div class="notice">Failed to load pricing: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderPplPricing(rows) {
+    var el = document.getElementById('pplPricingTable');
+    if (!el) return;
+    if (!rows.length) { el.innerHTML = '<div class="notice">No pricing rows found.</div>'; return; }
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price/Lead</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Min</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Max</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Active</th>' +
+        '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (p) {
+        return '<tr id="pricingRow-' + p.id + '">' +
+          '<td style="padding:8px 10px">' + escapeHtml(p.niche) + '</td>' +
+          '<td style="padding:8px 10px">' + escapeHtml(p.area) + '</td>' +
+          '<td style="padding:8px 10px"><input type="number" step="0.01" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:80px;padding:4px 6px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:12px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" value="' + p.min_quantity + '" data-field="min_quantity" data-id="' + p.id + '" style="width:60px;padding:4px 6px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:12px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" value="' + p.max_quantity + '" data-field="max_quantity" data-id="' + p.id + '" style="width:60px;padding:4px 6px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:12px"></td>' +
+          '<td style="padding:8px 10px"><input type="checkbox" ' + (p.is_active ? 'checked' : '') + ' data-field="is_active" data-id="' + p.id + '"></td>' +
+          '<td style="padding:8px 10px"><button class="btn2 btn-sm" onclick="savePricingRow(\'' + p.id + '\')">Save</button></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  window.savePricingRow = async function (id) {
+    var row = document.getElementById('pricingRow-' + id);
+    if (!row) return;
+    var price_per_lead = parseFloat(row.querySelector('[data-field="price_per_lead"]').value);
+    var min_quantity   = parseInt(row.querySelector('[data-field="min_quantity"]').value);
+    var max_quantity   = parseInt(row.querySelector('[data-field="max_quantity"]').value);
+    var is_active      = row.querySelector('[data-field="is_active"]').checked;
+    var { error } = await sb.from('ppl_pricing').update({ price_per_lead, min_quantity, max_quantity, is_active }).eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Pricing saved.');
+  };
 
   // Run after scripts are ready
   if (document.readyState === 'loading') {
