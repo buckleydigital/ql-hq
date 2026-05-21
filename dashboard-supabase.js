@@ -5380,7 +5380,7 @@ async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
   const [{ data: pricing }, { data: orders }] = await Promise.all([
-    sb.from('ppl_pricing').select('niche, price_per_lead').order('niche'),
+    sb.from('ppl_pricing').select('niche, price_per_lead').is('area', null).order('niche'),
     sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
   ]);
 
