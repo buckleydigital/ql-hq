@@ -2037,43 +2037,131 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 </script>
 
 <!-- ── Onboarding Wizard (managed plan only) ────────────────────────────── -->
-<div id="onboardingWizard" style="display:none;position:fixed;inset:0;background:rgba(5,5,5,0.96);z-index:1000;align-items:center;justify-content:center;font-family:'Poppins',system-ui,sans-serif">
-  <div style="max-width:520px;width:calc(100% - 40px);background:#101010;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+<div id="onboardingWizard" style="display:none;position:fixed;inset:0;background:rgba(5,5,5,0.96);z-index:1000;align-items:center;justify-content:center;font-family:'Poppins',system-ui,sans-serif;overflow-y:auto">
+  <div style="max-width:520px;width:calc(100% - 40px);background:#101010;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px;box-shadow:0 24px 64px rgba(0,0,0,0.6);margin:20px auto">
     <div id="wizardDots" style="display:flex;gap:6px;margin-bottom:32px;align-items:center"></div>
+
+    <!-- Step 1: Welcome -->
     <div id="wizardStep1">
-      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your system is being set up.</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 8px">While we configure your campaigns and AI agent, complete these two quick steps so we can launch.</p>
+      <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Let's build your lead machine.</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 8px">We'll set up your ads, landing page, and AI follow-up in about 2 minutes.</p>
       <p id="wizardCompanyName" style="font-size:13px;color:#4797FF;margin:0 0 28px"></p>
       <button onclick="wizardGoTo(2)" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Let's go →</button>
     </div>
+
+    <!-- Step 2: Goals -->
     <div id="wizardStep2" style="display:none">
-      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Connect your Meta Business account.</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 24px">We need access to your Meta Business Assets to build and launch your ad campaigns. Takes about 60 seconds.</p>
-      <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box">Connect Meta Business →</a>
-      <a onclick="wizardGoTo(3)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:12px;cursor:pointer">I've connected my Meta account →</a>
-      <p style="font-size:12px;color:#666;text-align:center;margin-top:16px">Having trouble? Email contact@quoteleads.com.au</p>
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 20px">How many leads do you want per month?</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
+        <div onclick="wizardSelectLeadGoal(this,'10-20')" data-value="10-20" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:15px;font-weight:500;color:#f5f5f5">10–20</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Getting started</div>
+        </div>
+        <div onclick="wizardSelectLeadGoal(this,'20-50')" data-value="20-50" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:15px;font-weight:500;color:#f5f5f5">20–50</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Steady growth</div>
+        </div>
+        <div onclick="wizardSelectLeadGoal(this,'50-100')" data-value="50-100" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:15px;font-weight:500;color:#f5f5f5">50–100</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Scaling fast</div>
+        </div>
+        <div onclick="wizardSelectLeadGoal(this,'100+')" data-value="100+" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:15px;font-weight:500;color:#f5f5f5">100+</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Full throttle</div>
+        </div>
+      </div>
+      <div style="margin-bottom:24px">
+        <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:8px">Max daily ad spend (AUD)</label>
+        <input id="wizardAdSpend" type="number" min="1" placeholder="e.g. 50" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <p style="font-size:12px;color:#666;margin:6px 0 0">We split this evenly across Meta and Google</p>
+      </div>
+      <button onclick="wizardStep2Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
+
+    <!-- Step 3: Website -->
     <div id="wizardStep3" style="display:none">
-      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Add a payment method to Meta Ads Manager.</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your campaigns run on your Meta account and are billed directly to you — not to QuoteLeads. Add a payment method before ads can go live.</p>
-      <ol style="font-size:14px;color:#9a9a9a;line-height:2;margin:0 0 28px;padding-left:20px">
-        <li>Open Meta Ads Manager (ads.facebook.com)</li>
-        <li>Go to Billing &amp; Payments</li>
-        <li>Add your credit or debit card</li>
-      </ol>
-      <button onclick="wizardGoTo(4)" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">I've added my payment method →</button>
-      <a onclick="wizardGoTo(4)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:12px;cursor:pointer">I'll do this later →</a>
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">What's your business website?</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We'll scan it to write your ads and landing page automatically.</p>
+      <div id="wizardWebsiteField" style="margin-bottom:16px">
+        <input id="wizardWebsiteUrl" type="url" placeholder="https://yourcompany.com.au" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+      </div>
+      <div id="wizardNoWebsiteField" style="display:none;margin-bottom:16px">
+        <textarea id="wizardBusinessDesc" placeholder="Describe what you do in 2-3 sentences" rows="4" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"></textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9a9a9a;cursor:pointer;margin-bottom:24px">
+        <input id="wizardNoWebsite" type="checkbox" onchange="wizardToggleWebsite(this)" style="accent-color:#4797FF;width:15px;height:15px">
+        I don't have a website
+      </label>
+      <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
+
+    <!-- Step 4: Brand -->
     <div id="wizardStep4" style="display:none">
-      <h2 style="font-size:22px;font-weight:500;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">You're live.</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your system is configured. Campaigns are being built and your AI agent is ready. First leads typically arrive within 24–48 hours of launch.</p>
-      <ul style="list-style:none;padding:0;margin:0 0 28px;font-size:13px;color:#9a9a9a;line-height:2.2">
-        <li><span style="color:#22c55e">✓</span> AI SMS agent configured</li>
-        <li><span style="color:#22c55e">✓</span> CRM and pipeline ready</li>
-        <li><span style="color:#22c55e">✓</span> Quote automation enabled</li>
-        <li><span style="color:#22c55e">✓</span> Campaigns being built</li>
-      </ul>
-      <button id="wizardFinishBtn" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Go to my dashboard →</button>
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
+        <label id="wizardLogoUploadTile" onclick="wizardSelectLogoTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;display:block">
+          <div style="font-size:22px;margin-bottom:8px">↑</div>
+          <div style="font-size:13px;font-weight:500;color:#f5f5f5">Upload logo</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">PNG, JPG, SVG</div>
+          <input id="wizardLogoFile" type="file" accept=".png,.jpg,.jpeg,.svg" style="display:none" onchange="wizardLogoPreview(this)">
+          <div id="wizardLogoPreview" style="margin-top:12px;display:none"><img id="wizardLogoImg" style="max-width:80px;max-height:60px;border-radius:4px;object-fit:contain"></div>
+        </label>
+        <div id="wizardLogoStockTile" onclick="wizardSelectLogoTile('stock')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:22px;margin-bottom:8px">✦</div>
+          <div style="font-size:13px;font-weight:500;color:#f5f5f5">Use stock imagery</div>
+          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Let the system choose</div>
+        </div>
+      </div>
+      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+    </div>
+
+    <!-- Step 5: Connect Ad Accounts -->
+    <div id="wizardStep5" style="display:none">
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Connect your ad accounts</h2>
+      <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
+      <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 24px">This gives us access to run ads on your Meta and Google accounts. Takes 60 seconds.</p>
+      <p style="font-size:13px;color:#9a9a9a;margin:0 0 12px">Once connected, enter your account IDs:</p>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Meta Ad Account ID</label>
+        <input id="wizardMetaAccountId" type="text" placeholder="act_xxxxxxxxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Ads Manager → Account Overview</p>
+      </div>
+      <div style="margin-bottom:24px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Google Ads Customer ID</label>
+        <input id="wizardGoogleCustomerId" type="text" placeholder="xxx-xxx-xxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Google Ads → top-right corner</p>
+      </div>
+      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
+    </div>
+
+    <!-- Step 6: Generating -->
+    <div id="wizardStep6" style="display:none;text-align:center">
+      <div style="font-size:32px;margin-bottom:20px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Building your lead machine…</h2>
+      <p style="font-size:14px;color:#9a9a9a;margin:0 0 32px">This usually takes 30–60 seconds</p>
+      <div id="wizardProgressSteps" style="text-align:left;margin:0 auto;max-width:280px">
+        <div id="wps1" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span id="wps1i">○</span> Scanning your website…</div>
+        <div id="wps2" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span id="wps2i">○</span> Writing your ad copy…</div>
+        <div id="wps3" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span id="wps3i">○</span> Building your landing page…</div>
+        <div id="wps4" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span id="wps4i">○</span> Creating your campaigns…</div>
+      </div>
+      <style>@keyframes wizardSpin{to{transform:rotate(360deg)}}</style>
+    </div>
+
+    <!-- Step 7: Live -->
+    <div id="wizardStep7" style="display:none;text-align:center">
+      <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
+      <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
+      <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">
+        <a id="wizardLandingLink" href="#" target="_blank" rel="noopener" style="color:#4797FF;font-size:14px;word-break:break-all;text-decoration:underline"></a>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:28px">
+        <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500">Ad copy is ready</span>
+        <span style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500">AI agent is configured</span>
+      </div>
+      <button id="wizardFinishBtn" onclick="completeOnboarding()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Go to my dashboard →</button>
     </div>
   </div>
 </div>

@@ -927,7 +927,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, settings, plan, has_advertising_system")
+        .select("name, settings, plan, has_advertising_system, onboarding_completed")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -947,7 +947,7 @@ async function showApp() {
       const navBuyLeads = document.getElementById("navBuyLeads");
       if (navBuyLeads) navBuyLeads.style.display = '';
 
-      if (!company?.settings?.onboarding_complete) {
+      if (!company?.onboarding_completed) {
         showOnboardingWizard(company, currentUser);
       }
 
@@ -5668,30 +5668,216 @@ async function skipReviewRequest(requestId) {
 // Onboarding Wizard (managed plan only)
 // =============================================================================
 
+let wizardData = {};
+
 function showOnboardingWizard(company, user) {
   const wizard = document.getElementById('onboardingWizard');
   if (!wizard) return;
+  wizardData = {};
   wizard.style.display = 'flex';
   const nameEl = document.getElementById('wizardCompanyName');
   if (nameEl) nameEl.textContent = company?.name || '';
   wizardGoTo(1);
-
-  document.getElementById('wizardFinishBtn')?.addEventListener('click', completeOnboarding, { once: true });
 }
 
 function wizardGoTo(step) {
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 7; i++) {
     const el = document.getElementById(`wizardStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
   const dots = document.getElementById('wizardDots');
   if (dots) {
-    dots.innerHTML = [1,2,3,4].map(i =>
+    dots.innerHTML = [1,2,3,4,5,6,7].map(i =>
       i === step
         ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
+  if (step === 6) wizardGenerateStep();
+}
+
+function wizardSelectLeadGoal(tile, value) {
+  document.querySelectorAll('#wizardStep2 [data-value]').forEach(t => {
+    t.style.borderColor = 'rgba(255,255,255,0.12)';
+    t.style.background = '';
+  });
+  tile.style.borderColor = '#4797FF';
+  tile.style.background = 'rgba(71,151,255,0.08)';
+  wizardData.leadGoals = value;
+}
+
+function wizardStep2Next() {
+  const spend = document.getElementById('wizardAdSpend')?.value;
+  wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
+  wizardGoTo(3);
+}
+
+function wizardToggleWebsite(cb) {
+  const urlField = document.getElementById('wizardWebsiteField');
+  const descField = document.getElementById('wizardNoWebsiteField');
+  if (cb.checked) {
+    urlField.style.display = 'none';
+    descField.style.display = '';
+  } else {
+    urlField.style.display = '';
+    descField.style.display = 'none';
+  }
+}
+
+function wizardStep3Next() {
+  const noWebsite = document.getElementById('wizardNoWebsite')?.checked;
+  if (noWebsite) {
+    wizardData.websiteUrl = null;
+    wizardData.businessDesc = document.getElementById('wizardBusinessDesc')?.value || '';
+  } else {
+    wizardData.websiteUrl = document.getElementById('wizardWebsiteUrl')?.value || '';
+    wizardData.businessDesc = null;
+  }
+  wizardGoTo(4);
+}
+
+function wizardSelectLogoTile(type) {
+  const uploadTile = document.getElementById('wizardLogoUploadTile');
+  const stockTile = document.getElementById('wizardLogoStockTile');
+  uploadTile.style.borderColor = type === 'upload' ? '#4797FF' : 'rgba(255,255,255,0.12)';
+  uploadTile.style.background = type === 'upload' ? 'rgba(71,151,255,0.08)' : '';
+  stockTile.style.borderColor = type === 'stock' ? '#4797FF' : 'rgba(255,255,255,0.12)';
+  stockTile.style.background = type === 'stock' ? 'rgba(71,151,255,0.08)' : '';
+  wizardData.logoChoice = type;
+  if (type === 'upload') {
+    document.getElementById('wizardLogoFile').click();
+  }
+}
+
+function wizardLogoPreview(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  wizardData.logoFile = file;
+  const preview = document.getElementById('wizardLogoPreview');
+  const img = document.getElementById('wizardLogoImg');
+  const reader = new FileReader();
+  reader.onload = e => {
+    img.src = e.target.result;
+    preview.style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function wizardStep4Next() {
+  wizardGoTo(5);
+}
+
+function wizardStep5Next() {
+  const metaId = document.getElementById('wizardMetaAccountId')?.value?.trim();
+  const googleId = document.getElementById('wizardGoogleCustomerId')?.value?.trim();
+  wizardData.metaAccountId = metaId || null;
+  wizardData.googleCustomerId = googleId || null;
+  wizardGoTo(6);
+}
+
+async function wizardGenerateStep() {
+  const stepIds = ['wps1','wps2','wps3','wps4'];
+  stepIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.querySelector('span').textContent = '○';
+    if (el) el.style.color = '#9a9a9a';
+  });
+
+  const tick = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.querySelector('span').textContent = '✓';
+      el.style.color = '#22c55e';
+    }
+  };
+
+  await wizardSaveOnboardingData();
+
+  if (wizardData.logoFile) {
+    try {
+      const file = wizardData.logoFile;
+      const ext = file.name.split('.').pop().toLowerCase();
+      const { data: uploadData } = await sb.storage
+        .from('logos')
+        .upload(`${currentCompanyId}/logo.${ext}`, file, { upsert: true, contentType: file.type });
+      if (uploadData) {
+        const { data: { publicUrl } } = sb.storage.from('logos').getPublicUrl(`${currentCompanyId}/logo.${ext}`);
+        await sb.from('companies').update({ logo_url: publicUrl }).eq('id', currentCompanyId);
+      }
+    } catch (e) {
+      console.warn('Logo upload error:', e);
+    }
+  }
+
+  tick('wps1');
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-fulfillment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        company_id: currentCompanyId,
+        website_url: wizardData.websiteUrl,
+        business_desc: wizardData.businessDesc,
+        lead_goals: wizardData.leadGoals,
+        max_daily_ad_spend: wizardData.maxDailySpend,
+      }),
+      keepalive: true,
+    });
+
+    tick('wps2');
+    await new Promise(r => setTimeout(r, 800));
+    tick('wps3');
+    await new Promise(r => setTimeout(r, 800));
+    tick('wps4');
+
+    let landingUrl = null;
+    if (res.ok) {
+      const result = await res.json().catch(() => ({}));
+      landingUrl = result?.landing_page_url || null;
+    }
+
+    await new Promise(r => setTimeout(r, 600));
+
+    if (landingUrl) {
+      const urlWrap = document.getElementById('wizardLandingUrl');
+      const urlLink = document.getElementById('wizardLandingLink');
+      if (urlWrap && urlLink) {
+        urlLink.href = landingUrl;
+        urlLink.textContent = landingUrl;
+        urlWrap.style.display = '';
+      }
+    }
+
+    wizardGoTo(7);
+  } catch (err) {
+    console.error('wizardGenerateStep error:', err);
+    tick('wps2');
+    tick('wps3');
+    tick('wps4');
+    await new Promise(r => setTimeout(r, 600));
+    wizardGoTo(7);
+  }
+}
+
+async function wizardSaveOnboardingData() {
+  const { error } = await sb.from('companies')
+    .update({
+      website_url: wizardData.websiteUrl,
+      lead_goals: wizardData.leadGoals,
+      max_daily_ad_spend: wizardData.maxDailySpend,
+      meta_ad_account_id: wizardData.metaAccountId,
+      google_ads_customer_id: wizardData.googleCustomerId,
+    })
+    .eq('id', currentCompanyId);
+  if (error) console.warn('wizardSaveOnboardingData error:', error);
 }
 
 async function completeOnboarding() {
@@ -5715,7 +5901,6 @@ async function completeOnboarding() {
       .eq('id', currentCompanyId)
       .maybeSingle();
 
-    // Notify internal — fire and forget
     fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
       method: 'POST',
       headers: {
@@ -5729,13 +5914,12 @@ async function completeOnboarding() {
           <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
           <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
           <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
-          <p style="font-family:system-ui,sans-serif;color:#555">Meta connection and ad spend steps marked complete. Campaigns can now be built.</p>
+          <p style="font-family:system-ui,sans-serif;color:#555">Onboarding wizard completed. Campaigns and landing page generated.</p>
         `,
       }),
       keepalive: true,
     }).catch(e => console.warn('notify-internal error:', e));
 
-    // Provision Twilio — fire and forget
     fetch(`${SUPABASE_URL}/functions/v1/provision-twilio`, {
       method: 'POST',
       headers: {
