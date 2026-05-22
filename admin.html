@@ -364,6 +364,34 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Signup Attempts panel -->
+    <div class="card">
+      <div class="panel-h">
+        <div>
+          <h2>Signup Attempts</h2>
+          <p id="signupAttemptCountLabel">Loading…</p>
+        </div>
+        <div class="filter-bar">
+          <select id="signupAttemptTypeFilter" class="filter-select">
+            <option value="">All types</option>
+            <option value="ppl_signup">PPL Signup</option>
+            <option value="advertising_system">Advertising System</option>
+          </select>
+          <select id="signupAttemptStatusFilter" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="pending">Pending (abandoned)</option>
+            <option value="completed">Completed</option>
+          </select>
+          <button class="btn btn-sm" id="refreshSignupAttemptsBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="signupAttemptLoadingState" class="notice">Loading…</div>
+        <div id="signupAttemptList" class="hidden"></div>
+        <div id="signupAttemptEmptyState" class="notice hidden">No signup attempts found.</div>
+      </div>
+    </div>
+
     <!-- Lead Disputes panel -->
     <div class="card">
       <div class="panel-h">
@@ -1238,6 +1266,12 @@ h1{font-size:18px;font-weight:500}
 
     // 10. Load PPL Stripe orders panel
     await loadPplLeadOrders();
+
+    // 11. Load signup attempts panel
+    await loadSignupAttempts();
+    document.getElementById('refreshSignupAttemptsBtn').addEventListener('click', loadSignupAttempts);
+    document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
+    document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
   }
 
   // ── Companies ─────────────────────────────────────────────────────────────
@@ -1648,6 +1682,66 @@ h1{font-size:18px;font-weight:500}
     if (error) { toast(error.message, true); return; }
     toast('Pricing saved.');
   };
+
+  async function loadSignupAttempts() {
+    const loading = document.getElementById('signupAttemptLoadingState');
+    const list    = document.getElementById('signupAttemptList');
+    const empty   = document.getElementById('signupAttemptEmptyState');
+    const label   = document.getElementById('signupAttemptCountLabel');
+    loading.classList.remove('hidden'); list.classList.add('hidden'); empty.classList.add('hidden');
+
+    const typeFilter   = document.getElementById('signupAttemptTypeFilter').value;
+    const statusFilter = document.getElementById('signupAttemptStatusFilter').value;
+
+    let q = supabase.from('signup_attempts').select('*').order('created_at', { ascending: false }).limit(200);
+    if (typeFilter)   q = q.eq('type', typeFilter);
+    if (statusFilter) q = q.eq('status', statusFilter);
+
+    const { data, error } = await q;
+    loading.classList.add('hidden');
+
+    if (error) { list.innerHTML = `<div class="notice">Error: ${escapeHtml(error.message)}</div>`; list.classList.remove('hidden'); return; }
+    if (!data?.length) { empty.classList.remove('hidden'); label.textContent = '0 attempts'; return; }
+
+    const pending   = data.filter(r => r.status === 'pending').length;
+    const completed = data.filter(r => r.status === 'completed').length;
+    label.textContent = `${data.length} total · ${pending} abandoned · ${completed} completed`;
+
+    const fmt = d => new Date(d).toLocaleString('en-AU', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const statusBadge = s => s === 'completed'
+      ? `<span style="background:#22c55e22;color:#22c55e;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Completed</span>`
+      : `<span style="background:#f59e0b22;color:#f59e0b;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Abandoned</span>`;
+    const typeBadge = t => t === 'advertising_system'
+      ? `<span style="background:#4797FF22;color:#4797FF;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">Ad System</span>`
+      : `<span style="background:#a78bfa22;color:#a78bfa;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">PPL</span>`;
+
+    list.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted);text-align:left">
+        <th style="padding:8px 10px">Date</th>
+        <th style="padding:8px 10px">Type</th>
+        <th style="padding:8px 10px">Status</th>
+        <th style="padding:8px 10px">Name</th>
+        <th style="padding:8px 10px">Company</th>
+        <th style="padding:8px 10px">Email</th>
+        <th style="padding:8px 10px">Phone</th>
+        <th style="padding:8px 10px">Details</th>
+      </tr></thead>
+      <tbody>${data.map(r => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px;color:var(--muted);white-space:nowrap">${fmt(r.created_at)}</td>
+        <td style="padding:8px 10px">${typeBadge(r.type)}</td>
+        <td style="padding:8px 10px">${statusBadge(r.status)}</td>
+        <td style="padding:8px 10px">${escapeHtml((r.first_name || '') + ' ' + (r.last_name || ''))}</td>
+        <td style="padding:8px 10px;font-weight:500">${escapeHtml(r.company || '—')}</td>
+        <td style="padding:8px 10px"><a href="mailto:${escapeHtml(r.email || '')}" style="color:var(--accent)">${escapeHtml(r.email || '—')}</a></td>
+        <td style="padding:8px 10px">${escapeHtml(r.phone || '—')}</td>
+        <td style="padding:8px 10px;color:var(--muted)">${r.type === 'ppl_signup'
+          ? escapeHtml(`${r.niche || ''} · ${r.area_city || ''} · ${r.quantity || ''} leads`)
+          : escapeHtml(`${r.industry || ''} · ${r.service_location || ''} · ${r.service_radius || ''}`)
+        }</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+    list.classList.remove('hidden');
+  }
 
   // Run after scripts are ready
   if (document.readyState === 'loading') {
