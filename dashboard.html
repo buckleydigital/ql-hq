@@ -930,6 +930,30 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <div class="actions" style="margin-top:14px"><button id="saveAiSharingBtn" class="btn2" type="button">Save Preference</button></div>
           </div>
         </section>
+        <!-- Lead Delivery -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>Lead Delivery</h2><p>Choose how new leads are delivered to you. Leave a field blank to disable that channel.</p></div></div>
+          <div class="panel-b">
+            <form id="leadDeliveryForm" class="stack">
+              <div class="form2">
+                <div class="field">
+                  <label for="deliveryEmail">Notification Email</label>
+                  <input id="deliveryEmail" type="email" placeholder="e.g. leads@yourcompany.com.au">
+                </div>
+                <div class="field">
+                  <label for="deliverySms">Notification SMS Number</label>
+                  <input id="deliverySms" type="tel" placeholder="e.g. +61400000000">
+                </div>
+              </div>
+              <div class="field">
+                <label for="deliveryWebhook">Webhook URL</label>
+                <input id="deliveryWebhook" type="url" placeholder="https://your-system.com/webhook/leads">
+                <p style="font-size:11px;color:var(--muted);margin-top:4px">We'll POST lead data as JSON to this URL when a new lead is assigned to your account.</p>
+              </div>
+              <div class="actions"><button class="btn2" type="submit">Save Delivery Settings</button></div>
+            </form>
+          </div>
+        </section>
         <!-- Quote Defaults -->
         <section class="panel" style="margin-top:24px">
           <div class="panel-h"><div><h2>Quote Defaults</h2><p>Set default values for new quotes. These will be pre-filled when creating a new quote.</p></div></div>
