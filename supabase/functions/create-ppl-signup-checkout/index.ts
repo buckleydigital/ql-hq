@@ -59,6 +59,20 @@ serve(async (req) => {
     const validatedPrice = pricing.price_per_lead
     const totalCents = Math.round(validatedPrice * quantity * 100)
 
+    // Capture signup attempt before redirecting — persists even if checkout is abandoned
+    const { data: attempt } = await supabase
+      .from('signup_attempts')
+      .insert({
+        type: 'ppl_signup',
+        first_name, last_name, email, phone, company,
+        niche, area_city,
+        quantity,
+        price_per_lead: validatedPrice,
+        status: 'pending',
+      })
+      .select('id')
+      .single()
+
     const locationDesc = location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} — ${radius_km ?? 50}km radius`
@@ -97,6 +111,11 @@ serve(async (req) => {
       success_url: 'https://quoteleadshq.com/dashboard?welcome=ppl',
       cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',
     })
+
+    // Store session ID on the attempt for cross-referencing
+    if (attempt?.id) {
+      await supabase.from('signup_attempts').update({ stripe_session_id: session.id }).eq('id', attempt.id)
+    }
 
     return new Response(
       JSON.stringify({ url: session.url }),
