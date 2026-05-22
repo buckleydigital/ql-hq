@@ -1,6 +1,5 @@
 // Public endpoint — returns PPL price for a given niche + area (no auth required).
-// GET ?niche=solar&area=sydney  → { price_per_lead, min_quantity, max_quantity }
-// GET ?niche=solar              → default price for that niche (no area match)
+// GET ?niche=solar&area=Brisbane  → { price_per_lead }
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -28,40 +27,46 @@ serve(async (req) => {
     )
   }
 
-  // Try area-specific price first, fall back to niche default
-  let pricing = null
+  // Fetch all rows for this niche, match area in JS to avoid case/encoding issues
+  const { data: rows, error } = await supabase
+    .from('ppl_pricing')
+    .select('price_per_lead, area')
+    .eq('niche', niche)
 
-  if (area) {
-    const { data, error } = await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .ilike('niche', niche)
-      .ilike('area', area)
-      .maybeSingle()
-    if (error) console.error('area query error:', JSON.stringify(error))
-    pricing = data
+  if (error) {
+    console.error('ppl_pricing query error:', JSON.stringify(error))
+    return new Response(
+      JSON.stringify({ error: 'DB error', detail: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 
+  if (!rows || rows.length === 0) {
+    return new Response(
+      JSON.stringify({ error: `No pricing found for niche: ${niche}`, rows_checked: 0 }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  // Area-specific match (case-insensitive JS comparison)
+  let pricing = area
+    ? rows.find(r => r.area?.toLowerCase().trim() === area) ?? null
+    : null
+
+  // Fall back to default (null area)
   if (!pricing) {
-    const { data, error } = await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .ilike('niche', niche)
-      .is('area', null)
-      .maybeSingle()
-    if (error) console.error('default query error:', JSON.stringify(error))
-    pricing = data
+    pricing = rows.find(r => !r.area) ?? null
   }
 
   if (!pricing) {
     return new Response(
-      JSON.stringify({ error: `No pricing found for niche: ${niche}` }),
+      JSON.stringify({ error: `No pricing for area: ${area}`, available: rows.map(r => r.area) }),
       { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 
   return new Response(
-    JSON.stringify(pricing),
+    JSON.stringify({ price_per_lead: pricing.price_per_lead }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })
