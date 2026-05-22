@@ -170,6 +170,22 @@ h1{font-size:18px;font-weight:500}
       The target user will <em>not</em> receive any email or notification about the impersonation.
     </div>
 
+    <!-- Manual Tasks panel -->
+    <div class="card" style="margin-bottom:20px" id="manualTasksCard">
+      <div class="panel-h">
+        <div>
+          <h2>⚡ Manual Tasks</h2>
+          <p id="manualTaskCountLabel">Actions required by the QuoteLeadsHQ team.</p>
+        </div>
+        <button class="btn btn-sm" id="refreshManualTasksBtn" type="button">Refresh</button>
+      </div>
+      <div class="panel-b">
+        <div id="manualTaskLoadingState" class="notice">Loading…</div>
+        <div id="manualTaskList" class="hidden"></div>
+        <div id="manualTaskEmptyState" class="notice hidden">✓ No pending manual tasks.</div>
+      </div>
+    </div>
+
     <!-- Create Account panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -1272,6 +1288,108 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('refreshSignupAttemptsBtn').addEventListener('click', loadSignupAttempts);
     document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
     document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
+
+    // 12. Load manual tasks panel
+    await loadManualTasks();
+    document.getElementById('refreshManualTasksBtn').addEventListener('click', loadManualTasks);
+  }
+
+  // ── Manual Tasks ──────────────────────────────────────────────────────────
+  async function loadManualTasks() {
+    var loadingEl  = document.getElementById('manualTaskLoadingState');
+    var listEl     = document.getElementById('manualTaskList');
+    var emptyEl    = document.getElementById('manualTaskEmptyState');
+    var countLabel = document.getElementById('manualTaskCountLabel');
+    if (!loadingEl || !listEl || !emptyEl) return;
+
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+
+    // Companies with Google connected but no campaign created yet
+    var { data: googleTasks } = await sb
+      .from('companies')
+      .select('id, name, slug, google_ads_customer_id, google_campaign_id, generated_ad_copy, generated_page_url, onboarding_completed')
+      .not('google_ads_customer_id', 'is', null)
+      .is('google_campaign_id', null)
+      .eq('onboarding_completed', true)
+      .order('name');
+
+    var tasks = [];
+
+    (googleTasks || []).forEach(function(c) {
+      var adCopy = c.generated_ad_copy || {};
+      tasks.push({
+        type: 'google_campaign',
+        company_id: c.id,
+        company_name: c.name,
+        customer_id: c.google_ads_customer_id,
+        landing_url: c.generated_page_url || '—',
+        keywords: (adCopy.google_keywords || []).slice(0, 5).join(', ') || '—',
+        headlines_count: (adCopy.google_headlines || []).length,
+        niche: adCopy.niche || '—',
+      });
+    });
+
+    loadingEl.classList.add('hidden');
+    countLabel.textContent = tasks.length + ' pending task' + (tasks.length !== 1 ? 's' : '') + ' requiring manual action.';
+
+    if (tasks.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    listEl.innerHTML = tasks.map(function(t) {
+      if (t.type === 'google_campaign') {
+        return '<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface-2)">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+            '<div>' +
+              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+                '<span style="background:rgba(66,133,244,0.12);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:6px;font-size:11px;font-weight:600;padding:2px 8px">Google Ads</span>' +
+                '<span style="font-size:13px;font-weight:600">' + escHtml(t.company_name) + '</span>' +
+              '</div>' +
+              '<div style="font-size:12px;color:var(--muted);line-height:1.7">' +
+                '<div><strong>Customer ID:</strong> ' + escHtml(t.customer_id) + '</div>' +
+                '<div><strong>Niche:</strong> ' + escHtml(t.niche) + '</div>' +
+                '<div><strong>Landing page:</strong> <a href="' + escHtml(t.landing_url) + '" target="_blank" style="color:var(--accent)">' + escHtml(t.landing_url) + '</a></div>' +
+                '<div><strong>Sample keywords:</strong> ' + escHtml(t.keywords) + '</div>' +
+                '<div><strong>RSA headlines ready:</strong> ' + t.headlines_count + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
+              '<button onclick="adminMarkGoogleDone(\'' + t.company_id + '\', this)" class="btn2 btn-sm" style="white-space:nowrap">✓ Mark done</button>' +
+              '<span style="font-size:11px;color:var(--muted)">Set up in Google Ads UI</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }
+      return '';
+    }).join('');
+
+    listEl.classList.remove('hidden');
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function adminMarkGoogleDone(companyId, btn) {
+    var campaignId = prompt('Enter the Google Campaign ID you just created:');
+    if (!campaignId || !campaignId.trim()) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    var { error } = await sb
+      .from('companies')
+      .update({ google_campaign_id: campaignId.trim(), campaign_status: 'active' })
+      .eq('id', companyId);
+    if (error) {
+      alert('Error saving: ' + error.message);
+      btn.disabled = false;
+      btn.textContent = '✓ Mark done';
+    } else {
+      await loadManualTasks();
+    }
   }
 
   // ── Companies ─────────────────────────────────────────────────────────────

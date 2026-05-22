@@ -552,12 +552,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("appView")?.classList.toggle("collapsed");
   });
 
+  document.getElementById("inboxToggle")?.addEventListener("click", () => {
+    document.getElementById("inboxSubmenu")?.classList.toggle("closed");
+  });
+
+  document.getElementById("automationsToggle")?.addEventListener("click", () => {
+    document.getElementById("automationsSubmenu")?.classList.toggle("closed");
+  });
+
   document.getElementById("crmToggle")?.addEventListener("click", () => {
     document.getElementById("crmSubmenu")?.classList.toggle("closed");
   });
 
   document.getElementById("settingsToggle")?.addEventListener("click", () => {
     document.getElementById("settingsSubmenu")?.classList.toggle("closed");
+  });
+
+  document.getElementById("byTheNumbersToggle")?.addEventListener("click", () => {
+    const el = document.getElementById("byTheNumbers");
+    if (!el) return;
+    el.classList.toggle("hidden");
+    const sign = document.getElementById("byTheNumbersSign");
+    if (sign) sign.textContent = el.classList.contains("hidden") ? "+" : "−";
   });
 
   // ── Theme ─────────────────────────────────────────────────────────────────
@@ -911,7 +927,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, settings, plan, has_advertising_system")
+        .select("name, settings, plan, has_advertising_system, onboarding_completed")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -931,12 +947,12 @@ async function showApp() {
       const navBuyLeads = document.getElementById("navBuyLeads");
       if (navBuyLeads) navBuyLeads.style.display = '';
 
-      if (!company?.settings?.onboarding_complete) {
+      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
+      if (hasAdSystem && !company?.onboarding_completed) {
         showOnboardingWizard(company, currentUser);
       }
 
       // Gate features behind advertising system purchase
-      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
       applyAdvertisingSystemGating(hasAdSystem);
     }
 
@@ -989,11 +1005,13 @@ async function showApp() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
-const CRM_PAGES = ["pipeline","leads","quotes","appointments","sales"];
-const SETTINGS_PAGES = ["general-settings","ai-settings","ai-insights","reviews","team-members","bulk-sms","integrations"];
+const CRM_PAGES        = ["pipeline","leads","quotes","appointments","sales"];
+const INBOX_PAGES      = ["conversations","notifications"];
+const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights","campaigns"];
+const SETTINGS_PAGES   = ["general-settings","reviews","team-members","integrations","buy-leads"];
 
 const PAGE_META = {
-  dashboard:          ["Dashboard",         "A live view of your lead and pipeline workspace."],
+  dashboard:          ["Status",            "Your automation system at a glance."],
   leads:              ["Leads",             "Manage and capture your lead records."],
   pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
@@ -1009,6 +1027,7 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
+  "campaigns":        ["Campaigns",          "View and manage your Meta and Google ad campaigns."],
 };
 
 function isAdmin() {
@@ -1027,6 +1046,16 @@ function navigateTo(page) {
   );
   const crmToggle = document.getElementById("crmToggle");
   if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
+
+  const inboxToggle = document.getElementById("inboxToggle");
+  const inboxSubmenu = document.getElementById("inboxSubmenu");
+  if (inboxToggle) inboxToggle.classList.toggle("active", INBOX_PAGES.includes(page));
+  if (inboxSubmenu && INBOX_PAGES.includes(page)) inboxSubmenu.classList.remove("closed");
+
+  const automationsToggle = document.getElementById("automationsToggle");
+  const automationsSubmenu = document.getElementById("automationsSubmenu");
+  if (automationsToggle) automationsToggle.classList.toggle("active", AUTOMATIONS_PAGES.includes(page));
+  if (automationsSubmenu && AUTOMATIONS_PAGES.includes(page)) automationsSubmenu.classList.remove("closed");
 
   const settingsToggle = document.getElementById("settingsToggle");
   const settingsSubmenu = document.getElementById("settingsSubmenu");
@@ -1070,6 +1099,7 @@ function navigateTo(page) {
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
     "buy-leads":        loadBuyLeads,
+    "campaigns":        loadCampaigns,
   };
   loaders[page]?.();
 }
@@ -1113,10 +1143,11 @@ async function loadDashboard() {
   const rangeStart = getDashRangeStart();
 
   try {
-    const [{ data: leads }, { data: quotes }, { data: appointments }] = await Promise.all([
+    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
-      sb.from("appointments").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
+      sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
+      sb.from("sms_agent_config").select("ai_enabled").eq("company_id", currentCompanyId).maybeSingle(),
     ]);
 
     const all          = leads || [];
@@ -1176,6 +1207,65 @@ async function loadDashboard() {
     buildLeadVolumeChart(all);
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
     renderPipelineSnapshot(all);
+
+    // ── Status banner ──────────────────────────────────────────────────────
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const leadsToday = all.filter(l => new Date(l.created_at) >= todayStart).length;
+    const openAll    = all.filter(l => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
+    const quotesOut  = allQuotes.filter(q => q.status === "sent").length;
+    const aiOn       = aiCfg?.ai_enabled !== false;
+
+    const setText2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText2("statusLeadsToday", leadsToday);
+    setText2("statusOpenCount",  openAll);
+    setText2("statusQuotesSent", quotesOut);
+
+    const aiChip = document.getElementById("statusAiChip");
+    const aiNote = document.getElementById("statusAiNote");
+    if (aiChip) {
+      aiChip.textContent = aiOn ? "AI ON" : "AI OFF";
+      aiChip.style.color = aiOn ? "#16a34a" : "#dc2626";
+      aiChip.style.borderColor = aiOn ? "rgba(22,163,74,.3)" : "rgba(220,38,38,.3)";
+      aiChip.style.background  = aiOn ? "rgba(22,163,74,.08)" : "rgba(220,38,38,.08)";
+    }
+    if (aiNote) aiNote.textContent = aiOn ? "Your automation is running." : "AI agent is paused — go to Automations to enable it.";
+
+    // ── Exception queue ────────────────────────────────────────────────────
+    const exceptions = [];
+
+    const quotedLeadIdsSet = new Set(allQuotes.map(q => q.lead_id));
+    const unquoted = all.filter(l => ["new_lead","follow_up"].includes(l.pipeline_stage) && !quotedLeadIdsSet.has(l.id));
+    if (unquoted.length) exceptions.push({
+      icon: "⚠", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
+      action: "View Leads", page: "leads"
+    });
+
+    const threeDaysAgo = new Date(Date.now() - 3 * 864e5);
+    const staleQuotes = allQuotes.filter(q => q.status === "sent" && new Date(q.created_at) < threeDaysAgo);
+    if (staleQuotes.length) exceptions.push({
+      icon: "⚠", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
+      action: "Follow Up", page: "quotes"
+    });
+
+    const now48 = new Date(); const in48h = new Date(Date.now() + 48 * 3600e3);
+    const upcoming = allAppts.filter(a => a.start_time && a.status !== "cancelled" && new Date(a.start_time) >= now48 && new Date(a.start_time) <= in48h);
+    if (upcoming.length) exceptions.push({
+      icon: "ℹ", msg: `${upcoming.length} appointment${upcoming.length > 1 ? "s" : ""} coming up in the next 48 hours`,
+      action: "View", page: "appointments"
+    });
+
+    const queueEl = document.getElementById("exceptionQueue");
+    if (queueEl) {
+      if (!exceptions.length) {
+        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>Nothing needs your attention right now.</p></div>`;
+      } else {
+        queueEl.innerHTML = exceptions.map(ex => `
+          <div class="exception-card">
+            <div class="exception-body"><span style="font-size:16px">${ex.icon}</span><span>${ex.msg}</span></div>
+            <button class="btn" onclick="navigateTo('${ex.page}')" style="white-space:nowrap;font-size:12px">${ex.action} →</button>
+          </div>`).join("");
+      }
+    }
   } catch (err) {
     console.error("Dashboard load error:", err);
   }
@@ -4672,6 +4762,123 @@ async function approveAndSendQuote(quoteId) {
 }
 
 // =============================================================================
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+// =============================================================================
+
+async function loadCampaigns() {
+  if (!currentCompanyId) return;
+
+  const { data: company } = await sb
+    .from('companies')
+    .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at')
+    .eq('id', currentCompanyId)
+    .single();
+
+  if (!company) return;
+
+  // Connection status chips
+  const metaConnected = !!company.meta_ad_account_id;
+  const googleConnected = !!company.google_ads_customer_id;
+
+  const metaStatusEl = document.getElementById('campaignMetaStatus');
+  const googleStatusEl = document.getElementById('campaignGoogleStatus');
+
+  if (metaStatusEl) {
+    metaStatusEl.innerHTML = metaConnected
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Meta Connected</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Meta Not Connected</span>';
+  }
+
+  if (googleStatusEl) {
+    googleStatusEl.innerHTML = googleConnected
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Google Connected</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Google Not Connected</span>';
+  }
+
+  // Meta campaigns panel
+  const metaList = document.getElementById('campaignMetaList');
+  const metaActions = document.getElementById('campaignMetaActions');
+  if (metaList) {
+    if (company.meta_campaign_id) {
+      const isPaused = company.campaign_status === 'paused';
+      metaList.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500;color:var(--text)">Lead Generation Campaign</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.meta_campaign_id}</div>
+            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
+          </div>
+          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
+        </div>`;
+      if (metaActions) {
+        const label = isPaused ? 'Enable' : 'Pause';
+        const action = isPaused ? 'enable' : 'pause';
+        metaActions.innerHTML = `<button onclick="toggleCampaign('meta','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Meta</button>`;
+      }
+    } else {
+      metaList.innerHTML = metaConnected
+        ? '<p style="color:var(--muted);font-size:14px">No Meta campaign created yet. Complete onboarding to generate your campaign.</p>'
+        : '<p style="color:var(--muted);font-size:14px">Connect your Meta Ad Account to enable campaign creation.</p>';
+    }
+  }
+
+  // Google campaigns panel
+  const googleList = document.getElementById('campaignGoogleList');
+  const googleActions = document.getElementById('campaignGoogleActions');
+  if (googleList) {
+    if (company.google_campaign_id) {
+      const isPaused = company.campaign_status === 'paused';
+      googleList.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500;color:var(--text)">Search Campaign</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.google_campaign_id}</div>
+            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
+          </div>
+          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
+        </div>`;
+      if (googleActions) {
+        const label = isPaused ? 'Enable' : 'Pause';
+        const action = isPaused ? 'enable' : 'pause';
+        googleActions.innerHTML = `<button onclick="toggleCampaign('google','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Google</button>`;
+      }
+    } else {
+      googleList.innerHTML = googleConnected
+        ? '<p style="color:var(--muted);font-size:14px">No Google campaign created yet. Complete onboarding to generate your campaign.</p>'
+        : '<p style="color:var(--muted);font-size:14px">Connect your Google Ads account to enable campaign creation.</p>';
+    }
+  }
+}
+
+async function toggleCampaign(platform, action) {
+  if (!currentCompanyId) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-campaign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ platform, action, company_id: currentCompanyId }),
+    });
+    if (res.ok) {
+      await loadCampaigns();
+    } else {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      alert('Error: ' + (err.error ?? 'Failed to update campaign'));
+      if (btn) { btn.disabled = false; btn.textContent = (action === 'pause' ? 'Pause' : 'Enable') + ' ' + (platform === 'meta' ? 'Meta' : 'Google'); }
+    }
+  } catch (err) {
+    console.error('toggleCampaign error:', err);
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+// =============================================================================
 // ── AI Insights ───────────────────────────────────────────────────────────────
 // =============================================================================
 
@@ -5580,30 +5787,248 @@ async function skipReviewRequest(requestId) {
 // Onboarding Wizard (managed plan only)
 // =============================================================================
 
+let wizardData = {};
+
 function showOnboardingWizard(company, user) {
   const wizard = document.getElementById('onboardingWizard');
   if (!wizard) return;
+  wizardData = {};
   wizard.style.display = 'flex';
   const nameEl = document.getElementById('wizardCompanyName');
   if (nameEl) nameEl.textContent = company?.name || '';
   wizardGoTo(1);
-
-  document.getElementById('wizardFinishBtn')?.addEventListener('click', completeOnboarding, { once: true });
 }
 
 function wizardGoTo(step) {
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 7; i++) {
     const el = document.getElementById(`wizardStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
   const dots = document.getElementById('wizardDots');
   if (dots) {
-    dots.innerHTML = [1,2,3,4].map(i =>
+    dots.innerHTML = [1,2,3,4,5,6,7].map(i =>
       i === step
         ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
+  if (step === 5) {
+    const googleEnabled = wizardData.googleEnabled === true;
+    const googleSection = document.getElementById('wizardGoogleSection');
+    const googleLocked  = document.getElementById('wizardGoogleLocked');
+    const badge         = document.getElementById('wizardStep5PlatformBadge');
+    if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
+    if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
+    if (badge) {
+      badge.innerHTML = googleEnabled
+        ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">✓ Meta + Google enabled</span>'
+        : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
+    }
+  }
+  if (step === 6) wizardGenerateStep();
+}
+
+function wizardSelectLeadGoal(tile, value) {
+  document.querySelectorAll('#wizardStep2 [data-value]').forEach(t => {
+    t.style.borderColor = 'rgba(255,255,255,0.12)';
+    t.style.background = '';
+  });
+  tile.style.borderColor = '#4797FF';
+  tile.style.background = 'rgba(71,151,255,0.08)';
+  wizardData.leadGoals = value;
+}
+
+function wizardUpdateBudgetNote(val) {
+  const note = document.getElementById('wizardBudgetNote');
+  if (!note) return;
+  const n = parseFloat(val);
+  if (!val || isNaN(n) || n <= 0) {
+    note.style.color = '#9a9a9a';
+    note.textContent = 'Enter your budget to see which platforms are available.';
+  } else if (n < 100) {
+    note.style.color = '#f5a623';
+    note.innerHTML = '📘 <strong style="color:#f5a623">Meta only</strong> — reach $100/day to unlock Google Search ads.';
+  } else {
+    note.style.color = '#22c55e';
+    note.innerHTML = '✓ <strong style="color:#22c55e">Meta + Google</strong> both active at this budget.';
+  }
+}
+
+function wizardStep2Next() {
+  const spend = document.getElementById('wizardAdSpend')?.value;
+  wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
+  wizardData.googleEnabled = (wizardData.maxDailySpend ?? 0) >= 100;
+  wizardGoTo(3);
+}
+
+function wizardToggleWebsite(cb) {
+  const urlField = document.getElementById('wizardWebsiteField');
+  const descField = document.getElementById('wizardNoWebsiteField');
+  if (cb.checked) {
+    urlField.style.display = 'none';
+    descField.style.display = '';
+  } else {
+    urlField.style.display = '';
+    descField.style.display = 'none';
+  }
+}
+
+function wizardStep3Next() {
+  const noWebsite = document.getElementById('wizardNoWebsite')?.checked;
+  if (noWebsite) {
+    wizardData.websiteUrl = null;
+    wizardData.businessDesc = document.getElementById('wizardBusinessDesc')?.value || '';
+  } else {
+    wizardData.websiteUrl = document.getElementById('wizardWebsiteUrl')?.value || '';
+    wizardData.businessDesc = null;
+  }
+  wizardGoTo(4);
+}
+
+function wizardSelectLogoTile(type) {
+  const uploadTile = document.getElementById('wizardLogoUploadTile');
+  const stockTile = document.getElementById('wizardLogoStockTile');
+  uploadTile.style.borderColor = type === 'upload' ? '#4797FF' : 'rgba(255,255,255,0.12)';
+  uploadTile.style.background = type === 'upload' ? 'rgba(71,151,255,0.08)' : '';
+  stockTile.style.borderColor = type === 'stock' ? '#4797FF' : 'rgba(255,255,255,0.12)';
+  stockTile.style.background = type === 'stock' ? 'rgba(71,151,255,0.08)' : '';
+  wizardData.logoChoice = type;
+  if (type === 'upload') {
+    document.getElementById('wizardLogoFile').click();
+  }
+}
+
+function wizardLogoPreview(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  wizardData.logoFile = file;
+  const preview = document.getElementById('wizardLogoPreview');
+  const img = document.getElementById('wizardLogoImg');
+  const reader = new FileReader();
+  reader.onload = e => {
+    img.src = e.target.result;
+    preview.style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function wizardStep4Next() {
+  wizardGoTo(5);
+}
+
+function wizardStep5Next() {
+  wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
+  wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
+  wizardData.googleCustomerId = wizardData.googleEnabled
+    ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
+    : null;
+  wizardGoTo(6);
+}
+
+async function wizardGenerateStep() {
+  const stepIds = ['wps1','wps2','wps3','wps4'];
+  stepIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.querySelector('span').textContent = '○';
+    if (el) el.style.color = '#9a9a9a';
+  });
+
+  const tick = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.querySelector('span').textContent = '✓';
+      el.style.color = '#22c55e';
+    }
+  };
+
+  await wizardSaveOnboardingData();
+
+  if (wizardData.logoFile) {
+    try {
+      const file = wizardData.logoFile;
+      const ext = file.name.split('.').pop().toLowerCase();
+      const { data: uploadData } = await sb.storage
+        .from('logos')
+        .upload(`${currentCompanyId}/logo.${ext}`, file, { upsert: true, contentType: file.type });
+      if (uploadData) {
+        const { data: { publicUrl } } = sb.storage.from('logos').getPublicUrl(`${currentCompanyId}/logo.${ext}`);
+        await sb.from('companies').update({ logo_url: publicUrl }).eq('id', currentCompanyId);
+      }
+    } catch (e) {
+      console.warn('Logo upload error:', e);
+    }
+  }
+
+  tick('wps1');
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-fulfillment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        company_id: currentCompanyId,
+        website_url: wizardData.websiteUrl,
+        business_desc: wizardData.businessDesc,
+        lead_goals: wizardData.leadGoals,
+        max_daily_ad_spend: wizardData.maxDailySpend,
+      }),
+      keepalive: true,
+    });
+
+    tick('wps2');
+    await new Promise(r => setTimeout(r, 800));
+    tick('wps3');
+    await new Promise(r => setTimeout(r, 800));
+    tick('wps4');
+
+    let landingUrl = null;
+    if (res.ok) {
+      const result = await res.json().catch(() => ({}));
+      landingUrl = result?.landing_page_url || null;
+    }
+
+    await new Promise(r => setTimeout(r, 600));
+
+    if (landingUrl) {
+      const urlWrap = document.getElementById('wizardLandingUrl');
+      const urlLink = document.getElementById('wizardLandingLink');
+      if (urlWrap && urlLink) {
+        urlLink.href = landingUrl;
+        urlLink.textContent = landingUrl;
+        urlWrap.style.display = '';
+      }
+    }
+
+    wizardGoTo(7);
+  } catch (err) {
+    console.error('wizardGenerateStep error:', err);
+    tick('wps2');
+    tick('wps3');
+    tick('wps4');
+    await new Promise(r => setTimeout(r, 600));
+    wizardGoTo(7);
+  }
+}
+
+async function wizardSaveOnboardingData() {
+  const { error } = await sb.from('companies')
+    .update({
+      website_url: wizardData.websiteUrl,
+      lead_goals: wizardData.leadGoals,
+      max_daily_ad_spend: wizardData.maxDailySpend,
+      meta_ad_account_id: wizardData.metaAccountId,
+      google_ads_customer_id: wizardData.googleCustomerId,
+      meta_page_id: wizardData.fbPageId,
+    })
+    .eq('id', currentCompanyId);
+  if (error) console.warn('wizardSaveOnboardingData error:', error);
 }
 
 async function completeOnboarding() {
@@ -5627,7 +6052,6 @@ async function completeOnboarding() {
       .eq('id', currentCompanyId)
       .maybeSingle();
 
-    // Notify internal — fire and forget
     fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
       method: 'POST',
       headers: {
@@ -5641,13 +6065,12 @@ async function completeOnboarding() {
           <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
           <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
           <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
-          <p style="font-family:system-ui,sans-serif;color:#555">Meta connection and ad spend steps marked complete. Campaigns can now be built.</p>
+          <p style="font-family:system-ui,sans-serif;color:#555">Onboarding wizard completed. Campaigns and landing page generated.</p>
         `,
       }),
       keepalive: true,
     }).catch(e => console.warn('notify-internal error:', e));
 
-    // Provision Twilio — fire and forget
     fetch(`${SUPABASE_URL}/functions/v1/provision-twilio`, {
       method: 'POST',
       headers: {
