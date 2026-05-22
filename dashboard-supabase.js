@@ -4661,35 +4661,149 @@ async function loadAiInsights() {
     }
   }
 
-  // ── Industry insights ───────────────────────────────────────────────────
+  // ── Performance insights ────────────────────────────────────────────────
   const industryEl = document.getElementById("aiIndustryInsights");
   if (industryEl) {
-    const { data: insights } = await sb
-      .from("industry_insights")
-      .select("industry, insight, sample_size, confidence, updated_at")
-      .eq("is_active", true)
-      .order("confidence", { ascending: false })
-      .limit(10);
+    const { data: leads } = await sb
+      .from("leads")
+      .select("id, pipeline_stage, ai_enabled, created_at, value")
+      .eq("company_id", currentCompanyId);
 
-    if (!insights || insights.length === 0) {
-      industryEl.innerHTML = `<div class="notice">Industry insights will appear as more companies use the platform.</div>`;
+    const cards = generatePerformanceInsights(stats, leads || []);
+
+    if (!cards.length) {
+      industryEl.innerHTML = `<div class="notice">Add more leads to your pipeline to unlock performance insights.</div>`;
     } else {
-      industryEl.innerHTML = insights.map((i) => {
-        const confPct = Math.round((i.confidence || 0) * 100);
-        const ts = new Date(i.updated_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
-        return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">
-          <div style="flex:1">
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:capitalize">${esc(i.industry.replace(/_/g, " "))}</div>
-            <div style="font-size:13px;color:var(--text)">${esc(i.insight)}</div>
-            <div style="margin-top:4px;font-size:11px;color:var(--muted)">${i.sample_size} companies · ${confPct}% confidence</div>
+      const iconMap = { good: "✅", warn: "⚠️", alert: "🔴", info: "💡" };
+      const colorMap = {
+        good:  { bg: "#f0fdf4", border: "#86efac44", label: "#166534" },
+        warn:  { bg: "#fffbeb", border: "#fcd34d44", label: "#92400e" },
+        alert: { bg: "#fef2f2", border: "#fca5a544", label: "#991b1b" },
+        info:  { bg: "var(--surface-2)", border: "var(--border)", label: "var(--muted)" },
+      };
+      industryEl.innerHTML = cards.map(c => {
+        const col = colorMap[c.type] || colorMap.info;
+        return `<div style="display:flex;align-items:flex-start;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border);background:${col.bg}">
+          <div style="font-size:20px;flex-shrink:0;margin-top:2px">${iconMap[c.type] || "💡"}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(c.title)}</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.65">${esc(c.body)}</div>
+            ${c.action ? `<div style="margin-top:6px;font-size:12px;color:#4797FF;font-weight:500">→ ${esc(c.action)}</div>` : ""}
           </div>
-          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${ts}</div>
+          ${c.metric ? `<div style="text-align:right;flex-shrink:0;padding-left:8px"><div style="font-size:22px;font-weight:700;color:var(--text)">${esc(c.metric)}</div><div style="font-size:10px;color:var(--muted);white-space:nowrap">${esc(c.metricLabel || "")}</div></div>` : ""}
         </div>`;
       }).join("");
     }
   }
 
   renderIcons();
+}
+
+function generatePerformanceInsights(stats, leads) {
+  const cards = [];
+  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(v);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 864e5);
+
+  // 1. AI Coverage
+  if (stats && stats.total_leads >= 5) {
+    const pct = Math.round((stats.ai_handled_leads / stats.total_leads) * 100);
+    cards.push({
+      title: "AI Coverage",
+      body: pct >= 65
+        ? `Your AI is handling ${pct}% of leads — above the AU trade benchmark of 65%+. High coverage keeps response times fast and booking rates consistent.`
+        : pct >= 40
+        ? `Your AI is handling ${pct}% of leads. Top AU trade businesses target 65%+ coverage for faster response and higher booking rates.`
+        : `Your AI is handling only ${pct}% of leads. Enabling AI on more leads significantly reduces response time — a key driver of conversion.`,
+      action: pct < 40 ? "Enable AI on more leads via individual lead settings or your default AI toggle." : null,
+      type: pct >= 65 ? "good" : pct >= 40 ? "warn" : "alert",
+      metric: `${pct}%`,
+      metricLabel: "AI handled",
+    });
+  }
+
+  // 2. Callback booking rate
+  if (stats && stats.ai_handled_leads >= 5) {
+    const rate = parseFloat(((stats.callbacks_booked / stats.ai_handled_leads) * 100).toFixed(1));
+    cards.push({
+      title: "AI Callback Rate",
+      body: rate >= 35
+        ? `${rate}% of AI-handled leads book a callback — above the AU trade average of 25–35%. Your AI script and qualification flow are working well.`
+        : rate >= 20
+        ? `${rate}% callback rate from AI-handled leads. The AU trade average is 25–35%. Small tweaks to your AI prompt or follow-up timing can lift this.`
+        : `${rate}% callback rate is below the AU trade average of 25–35%. Review your AI knowledge base and consider A/B testing different opening messages.`,
+      action: rate < 20 ? "Go to AI Settings → System Prompt and review how your agent opens conversations." : null,
+      type: rate >= 35 ? "good" : rate >= 20 ? "warn" : "alert",
+      metric: `${rate}%`,
+      metricLabel: "callback rate",
+    });
+  }
+
+  // 3. Win rate
+  const won  = leads.filter(l => l.pipeline_stage === "closed_won").length;
+  const lost = leads.filter(l => l.pipeline_stage === "closed_lost").length;
+  if (won + lost >= 5) {
+    const winRate = Math.round((won / (won + lost)) * 100);
+    cards.push({
+      title: "Win Rate",
+      body: winRate >= 45
+        ? `You're closing ${winRate}% of qualified leads — above the AU trade average of 35–45%. Strong quote follow-up or competitive pricing is likely driving this.`
+        : winRate >= 30
+        ? `You're closing ${winRate}% of qualified leads. The AU trade average is 35–45%. Consistent follow-up after quoting is the #1 lever for improvement.`
+        : `A ${winRate}% win rate is below the AU trade average of 35–45%. Consider reviewing quote presentation, pricing, and how quickly you follow up after sending quotes.`,
+      action: winRate < 30 ? "Check how many sent quotes have no follow-up SMS — use Quotes → Send to trigger automated follow-ups." : null,
+      type: winRate >= 45 ? "good" : winRate >= 30 ? "warn" : "alert",
+      metric: `${winRate}%`,
+      metricLabel: `${won} of ${won + lost} closed`,
+    });
+  }
+
+  // 4. Stale new leads (7+ days, no progress)
+  const stale = leads.filter(l => l.pipeline_stage === "new_lead" && new Date(l.created_at) < sevenDaysAgo).length;
+  if (stale > 0) {
+    cards.push({
+      title: "Stale New Leads",
+      body: `${stale} lead${stale === 1 ? " has" : "s have"} been sitting in New Lead for 7+ days without progressing. Research shows leads contacted within 5 minutes are 21× more likely to convert than those left for 24+ hours.`,
+      action: "Open your pipeline and action or reassign these leads.",
+      type: stale >= 5 ? "alert" : "warn",
+      metric: String(stale),
+      metricLabel: "need action",
+    });
+  }
+
+  // 5. Avg AI lead quality score
+  if (stats && stats.avg_ai_score && stats.ai_handled_leads >= 5) {
+    const score = Math.round(stats.avg_ai_score);
+    cards.push({
+      title: "Lead Quality Score",
+      body: score >= 65
+        ? `Your leads are averaging ${score}/100 — strong quality. High-scoring leads (65+) convert at roughly 2× the rate of lower-scored leads.`
+        : score >= 40
+        ? `Your leads are averaging ${score}/100. Improving intake form clarity or ad targeting typically lifts average scores above 60.`
+        : `A score of ${score}/100 suggests leads may be low-intent or poorly qualified. Review your ad copy, landing page, and intake questions.`,
+      type: score >= 65 ? "good" : score >= 40 ? "warn" : "info",
+      metric: `${score}`,
+      metricLabel: "avg score /100",
+    });
+  }
+
+  // 6. Avg deal value
+  const wonWithValue = leads.filter(l => l.pipeline_stage === "closed_won" && Number(l.value) > 0);
+  if (wonWithValue.length >= 3) {
+    const avg = Math.round(wonWithValue.reduce((s, l) => s + Number(l.value), 0) / wonWithValue.length);
+    cards.push({
+      title: "Average Deal Value",
+      body: avg >= 8000
+        ? `Your average closed deal is ${fmt(avg)} — well above the AU trade mid-range of $2,500–$8,000. Ensure your quoting process reflects premium positioning.`
+        : avg >= 2500
+        ? `Your average closed deal is ${fmt(avg)}, within the typical AU trade range of $2,500–$8,000. Upselling add-ons at quote stage is the fastest way to increase this.`
+        : `Your average closed deal is ${fmt(avg)}. Consider whether bundling services or adjusting minimum job size could lift this number.`,
+      type: "info",
+      metric: fmt(avg),
+      metricLabel: `from ${wonWithValue.length} deals`,
+    });
+  }
+
+  return cards;
 }
 
 // =============================================================================
