@@ -552,12 +552,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("appView")?.classList.toggle("collapsed");
   });
 
+  document.getElementById("inboxToggle")?.addEventListener("click", () => {
+    document.getElementById("inboxSubmenu")?.classList.toggle("closed");
+  });
+
+  document.getElementById("automationsToggle")?.addEventListener("click", () => {
+    document.getElementById("automationsSubmenu")?.classList.toggle("closed");
+  });
+
   document.getElementById("crmToggle")?.addEventListener("click", () => {
     document.getElementById("crmSubmenu")?.classList.toggle("closed");
   });
 
   document.getElementById("settingsToggle")?.addEventListener("click", () => {
     document.getElementById("settingsSubmenu")?.classList.toggle("closed");
+  });
+
+  document.getElementById("byTheNumbersToggle")?.addEventListener("click", () => {
+    const el = document.getElementById("byTheNumbers");
+    if (!el) return;
+    el.classList.toggle("hidden");
+    const sign = document.getElementById("byTheNumbersSign");
+    if (sign) sign.textContent = el.classList.contains("hidden") ? "+" : "−";
   });
 
   // ── Theme ─────────────────────────────────────────────────────────────────
@@ -989,11 +1005,13 @@ async function showApp() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
-const CRM_PAGES = ["pipeline","leads","quotes","appointments","sales"];
-const SETTINGS_PAGES = ["general-settings","ai-settings","ai-insights","reviews","team-members","bulk-sms","integrations"];
+const CRM_PAGES        = ["pipeline","leads","quotes","appointments","sales"];
+const INBOX_PAGES      = ["conversations","notifications"];
+const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights"];
+const SETTINGS_PAGES   = ["general-settings","reviews","team-members","integrations","buy-leads"];
 
 const PAGE_META = {
-  dashboard:          ["Dashboard",         "A live view of your lead and pipeline workspace."],
+  dashboard:          ["Status",            "Your automation system at a glance."],
   leads:              ["Leads",             "Manage and capture your lead records."],
   pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
@@ -1027,6 +1045,16 @@ function navigateTo(page) {
   );
   const crmToggle = document.getElementById("crmToggle");
   if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
+
+  const inboxToggle = document.getElementById("inboxToggle");
+  const inboxSubmenu = document.getElementById("inboxSubmenu");
+  if (inboxToggle) inboxToggle.classList.toggle("active", INBOX_PAGES.includes(page));
+  if (inboxSubmenu && INBOX_PAGES.includes(page)) inboxSubmenu.classList.remove("closed");
+
+  const automationsToggle = document.getElementById("automationsToggle");
+  const automationsSubmenu = document.getElementById("automationsSubmenu");
+  if (automationsToggle) automationsToggle.classList.toggle("active", AUTOMATIONS_PAGES.includes(page));
+  if (automationsSubmenu && AUTOMATIONS_PAGES.includes(page)) automationsSubmenu.classList.remove("closed");
 
   const settingsToggle = document.getElementById("settingsToggle");
   const settingsSubmenu = document.getElementById("settingsSubmenu");
@@ -1113,10 +1141,11 @@ async function loadDashboard() {
   const rangeStart = getDashRangeStart();
 
   try {
-    const [{ data: leads }, { data: quotes }, { data: appointments }] = await Promise.all([
+    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
-      sb.from("appointments").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
+      sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
+      sb.from("sms_agent_config").select("ai_enabled").eq("company_id", currentCompanyId).maybeSingle(),
     ]);
 
     const all          = leads || [];
@@ -1176,6 +1205,65 @@ async function loadDashboard() {
     buildLeadVolumeChart(all);
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
     renderPipelineSnapshot(all);
+
+    // ── Status banner ──────────────────────────────────────────────────────
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const leadsToday = all.filter(l => new Date(l.created_at) >= todayStart).length;
+    const openAll    = all.filter(l => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
+    const quotesOut  = allQuotes.filter(q => q.status === "sent").length;
+    const aiOn       = aiCfg?.ai_enabled !== false;
+
+    const setText2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText2("statusLeadsToday", leadsToday);
+    setText2("statusOpenCount",  openAll);
+    setText2("statusQuotesSent", quotesOut);
+
+    const aiChip = document.getElementById("statusAiChip");
+    const aiNote = document.getElementById("statusAiNote");
+    if (aiChip) {
+      aiChip.textContent = aiOn ? "AI ON" : "AI OFF";
+      aiChip.style.color = aiOn ? "#16a34a" : "#dc2626";
+      aiChip.style.borderColor = aiOn ? "rgba(22,163,74,.3)" : "rgba(220,38,38,.3)";
+      aiChip.style.background  = aiOn ? "rgba(22,163,74,.08)" : "rgba(220,38,38,.08)";
+    }
+    if (aiNote) aiNote.textContent = aiOn ? "Your automation is running." : "AI agent is paused — go to Automations to enable it.";
+
+    // ── Exception queue ────────────────────────────────────────────────────
+    const exceptions = [];
+
+    const quotedLeadIdsSet = new Set(allQuotes.map(q => q.lead_id));
+    const unquoted = all.filter(l => ["new_lead","follow_up"].includes(l.pipeline_stage) && !quotedLeadIdsSet.has(l.id));
+    if (unquoted.length) exceptions.push({
+      icon: "⚠", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
+      action: "View Leads", page: "leads"
+    });
+
+    const threeDaysAgo = new Date(Date.now() - 3 * 864e5);
+    const staleQuotes = allQuotes.filter(q => q.status === "sent" && new Date(q.created_at) < threeDaysAgo);
+    if (staleQuotes.length) exceptions.push({
+      icon: "⚠", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
+      action: "Follow Up", page: "quotes"
+    });
+
+    const now48 = new Date(); const in48h = new Date(Date.now() + 48 * 3600e3);
+    const upcoming = allAppts.filter(a => a.start_time && a.status !== "cancelled" && new Date(a.start_time) >= now48 && new Date(a.start_time) <= in48h);
+    if (upcoming.length) exceptions.push({
+      icon: "ℹ", msg: `${upcoming.length} appointment${upcoming.length > 1 ? "s" : ""} coming up in the next 48 hours`,
+      action: "View", page: "appointments"
+    });
+
+    const queueEl = document.getElementById("exceptionQueue");
+    if (queueEl) {
+      if (!exceptions.length) {
+        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>Nothing needs your attention right now.</p></div>`;
+      } else {
+        queueEl.innerHTML = exceptions.map(ex => `
+          <div class="exception-card">
+            <div class="exception-body"><span style="font-size:16px">${ex.icon}</span><span>${ex.msg}</span></div>
+            <button class="btn" onclick="navigateTo('${ex.page}')" style="white-space:nowrap;font-size:12px">${ex.action} →</button>
+          </div>`).join("");
+      }
+    }
   } catch (err) {
     console.error("Dashboard load error:", err);
   }

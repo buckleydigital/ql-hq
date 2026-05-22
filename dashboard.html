@@ -289,6 +289,23 @@ textarea{min-height:100px;resize:vertical}
 /* Readonly textarea */
 textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
+/* ── Status Page ──────────────────────────────────── */
+.status-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.status-stats{display:flex;gap:28px;flex-wrap:wrap}
+.status-stat{display:flex;flex-direction:column;align-items:flex-end;min-width:60px}
+.status-stat b{font-size:22px;font-weight:500;line-height:1.1}
+.status-stat span{font-size:11px;color:var(--muted);margin-top:3px}
+.exception-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;padding:14px 18px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
+.exception-body{display:flex;align-items:center;gap:10px;font-size:13px}
+.quick-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.quick-tile{min-height:86px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:500;transition:background .15s,transform .1s}
+.quick-tile:hover{background:var(--side-hover);transform:translateY(-1px)}
+.quick-tile .icon{width:22px;height:22px}
+.by-numbers-btn{display:flex;align-items:center;gap:8px;width:100%;padding:12px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500;color:var(--muted);text-align:left;box-shadow:var(--shadow)}
+.by-numbers-btn:hover{background:var(--side-hover);color:var(--text)}
+#byTheNumbers{display:flex;flex-direction:column;gap:24px;margin-top:12px}
+@media(max-width:860px){.quick-tiles{grid-template-columns:repeat(2,1fr)}.status-stats{gap:16px}.status-stat b{font-size:18px}.status-banner{flex-direction:column;align-items:flex-start}.status-stats{width:100%;justify-content:space-between}}
+
 /* ── Range Toggle ──────────────────────────────── */
 .range-toggle{display:inline-flex;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
 .range-btn{padding:6px 14px;font-size:12px;font-weight:500;border:none;background:transparent;cursor:pointer;color:var(--muted);transition:all .15s}
@@ -412,13 +429,36 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     </div>
 
     <div class="nav">
-      <button class="nav-item" data-page="dashboard" type="button"><span class="icon" data-icon="dashboard"></span><span class="nav-text">Dashboard</span></button>
+      <button class="nav-item" data-page="dashboard" type="button"><span class="icon" data-icon="dashboard"></span><span class="nav-text">Status</span></button>
     </div>
 
     <div>
-      <div class="nav-sec">Jobs & Leads</div>
+      <div class="nav-sec">Inbox</div>
       <div class="nav">
-        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">Jobs & Leads</span><span class="icon chev" data-icon="chevron-right"></span></button>
+        <button class="nav-item" id="inboxToggle" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Inbox</span><span class="icon chev" data-icon="chevron-right"></span></button>
+        <div class="sub" id="inboxSubmenu">
+          <button class="sub-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
+          <button class="sub-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="nav-sec">Automate</div>
+      <div class="nav">
+        <button class="nav-item" id="automationsToggle" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Automations</span><span class="icon chev" data-icon="chevron-right"></span></button>
+        <div class="sub" id="automationsSubmenu">
+          <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Agent</span></button>
+          <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcasts</span></button>
+          <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="nav-sec">Results</div>
+      <div class="nav">
+        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">Results</span><span class="icon chev" data-icon="chevron-right"></span></button>
         <div class="sub" id="crmSubmenu">
           <button class="sub-item" data-page="pipeline" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Pipeline</span></button>
           <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
@@ -430,20 +470,15 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     </div>
 
     <div>
-      <div class="nav-sec">Workspace</div>
+      <div class="nav-sec">Setup</div>
       <div class="nav">
-        <button class="nav-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
-        <button class="nav-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
-        <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Buy Leads</span></button>
-        <button class="nav-item" id="settingsToggle" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Settings</span><span class="icon chev" data-icon="chevron-right"></span></button>
+        <button class="nav-item" id="settingsToggle" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Setup</span><span class="icon chev" data-icon="chevron-right"></span></button>
         <div class="sub" id="settingsSubmenu">
-          <button class="sub-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account</span></button>
-          <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Automation</span></button>
-          <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
+          <button id="navBuyLeads" class="sub-item" data-page="buy-leads" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Buy Leads</span></button>
           <button class="sub-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
           <button class="sub-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team</span></button>
-          <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcast</span></button>
           <button class="sub-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
+          <button class="sub-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account</span></button>
         </div>
       </div>
     </div>
@@ -467,33 +502,90 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
     <section class="content">
 
-      <!-- Dashboard -->
+      <!-- Dashboard / Status -->
       <div id="page-dashboard" class="page">
-        <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div id="dashRangeToggle" class="range-toggle">
-            <button class="range-btn active" data-range="today">Today</button>
-            <button class="range-btn" data-range="month">This Month</button>
-            <button class="range-btn" data-range="ytd">YTD</button>
-            <button class="range-btn" data-range="trailing12">Trailing 12 Months</button>
+
+        <!-- Machine status banner -->
+        <div class="status-banner">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span id="statusAiChip" class="chip" style="font-size:12px;padding:6px 12px;font-weight:600">AI —</span>
+            <span id="statusAiNote" class="muted" style="font-size:13px">Checking…</span>
+          </div>
+          <div class="status-stats">
+            <div class="status-stat">
+              <b id="statusLeadsToday">—</b>
+              <span>leads today</span>
+            </div>
+            <div class="status-stat">
+              <b id="statusOpenCount">—</b>
+              <span>open pipeline</span>
+            </div>
+            <div class="status-stat">
+              <b id="statusQuotesSent">—</b>
+              <span>quotes out</span>
+            </div>
           </div>
         </div>
-        <div class="grid4">
-          <article class="card"><div class="stat-top"><span class="muted">Total Leads</span><span class="icon" data-icon="users"></span></div><div class="stat-val" id="statLeadCount">0</div><div style="margin-top:8px"><span id="leadGrowthChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Open Pipeline</span><span class="icon" data-icon="kanban"></span></div><div class="stat-val" id="statOpenPipeline">0</div><div style="margin-top:8px"><span id="qualifyingChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Quotes</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statQuotes">0</div><div style="margin-top:8px"><span id="quoteChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Sales Conversion</span><span class="icon" data-icon="chart"></span></div><div class="stat-val" id="statSalesConversion">0%</div><div style="margin-top:8px"><span id="salesConversionChip" class="chip">—</span></div></article>
+
+        <!-- Exception queue -->
+        <section class="panel">
+          <div class="panel-h"><div><h2>Needs attention</h2><p>Items that may need a human decision.</p></div></div>
+          <div class="panel-b" id="exceptionQueue"><div class="notice">Loading…</div></div>
+        </section>
+
+        <!-- Quick actions -->
+        <div>
+          <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
+          <div class="quick-tiles">
+            <button class="quick-tile" type="button" onclick="resetLeadForm();openModal('leadModal')">
+              <span class="icon" data-icon="plus"></span><span>New Lead</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
+              <span class="icon" data-icon="file"></span><span>New Quote</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('buy-leads')">
+              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
+              <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
+            </button>
+          </div>
         </div>
-        <div class="grid4">
-          <article class="card"><div class="stat-top"><span class="muted">AI Appt. Rate</span><span class="icon" data-icon="spark"></span></div><div class="stat-val" id="statAiConversion">0%</div><div style="margin-top:8px"><span id="aiConversionChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Leads Quoted</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statLeadsQuoted">0%</div><div style="margin-top:8px"><span id="leadsQuotedChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Revenue</span><span class="icon" data-icon="briefcase"></span></div><div class="stat-val" id="statRevenue">$0</div><div style="margin-top:8px"><span id="revenueChip" class="chip">—</span></div></article>
-          <article class="card"><div class="stat-top"><span class="muted">Avg Deal Value</span><span class="icon" data-icon="chart"></span></div><div class="stat-val" id="statAvgDeal">$0</div><div style="margin-top:8px"><span id="avgDealChip" class="chip">—</span></div></article>
+
+        <!-- By the numbers (collapsible) -->
+        <div>
+          <button id="byTheNumbersToggle" class="by-numbers-btn" type="button">
+            By the numbers <span id="byTheNumbersSign" style="margin-left:auto;font-size:16px;line-height:1;font-weight:400">+</span>
+          </button>
+          <div id="byTheNumbers" class="hidden">
+            <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div id="dashRangeToggle" class="range-toggle">
+                <button class="range-btn active" data-range="today">Today</button>
+                <button class="range-btn" data-range="month">This Month</button>
+                <button class="range-btn" data-range="ytd">YTD</button>
+                <button class="range-btn" data-range="trailing12">Trailing 12 Months</button>
+              </div>
+            </div>
+            <div class="grid4">
+              <article class="card"><div class="stat-top"><span class="muted">Total Leads</span><span class="icon" data-icon="users"></span></div><div class="stat-val" id="statLeadCount">0</div><div style="margin-top:8px"><span id="leadGrowthChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Open Pipeline</span><span class="icon" data-icon="kanban"></span></div><div class="stat-val" id="statOpenPipeline">0</div><div style="margin-top:8px"><span id="qualifyingChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Quotes</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statQuotes">0</div><div style="margin-top:8px"><span id="quoteChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Sales Conversion</span><span class="icon" data-icon="chart"></span></div><div class="stat-val" id="statSalesConversion">0%</div><div style="margin-top:8px"><span id="salesConversionChip" class="chip">—</span></div></article>
+            </div>
+            <div class="grid4">
+              <article class="card"><div class="stat-top"><span class="muted">AI Appt. Rate</span><span class="icon" data-icon="spark"></span></div><div class="stat-val" id="statAiConversion">0%</div><div style="margin-top:8px"><span id="aiConversionChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Leads Quoted</span><span class="icon" data-icon="file"></span></div><div class="stat-val" id="statLeadsQuoted">0%</div><div style="margin-top:8px"><span id="leadsQuotedChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Revenue</span><span class="icon" data-icon="briefcase"></span></div><div class="stat-val" id="statRevenue">$0</div><div style="margin-top:8px"><span id="revenueChip" class="chip">—</span></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Avg Deal Value</span><span class="icon" data-icon="chart"></span></div><div class="stat-val" id="statAvgDeal">$0</div><div style="margin-top:8px"><span id="avgDealChip" class="chip">—</span></div></article>
+            </div>
+            <div class="grid2">
+              <section class="panel"><div class="panel-h"><div><h2>Lead Volume</h2><p>New leads added each day this week.</p></div></div><div class="panel-b"><div id="leadVolumeChart" class="bars"></div></div></section>
+              <section class="panel"><div class="panel-h"><div><h2>Recent Leads</h2><p>Last 5 leads by date created.</p></div></div><div class="panel-b"><div id="recentLeadsPanel" class="list"></div></div></section>
+            </div>
+            <section class="panel"><div class="panel-h"><div><h2>Pipeline Snapshot</h2><p>Opportunity stages update from live lead status.</p></div></div><div class="panel-b"><div id="pipelineSnapshotPanel" class="list"></div></div></section>
+          </div>
         </div>
-        <div class="grid2">
-          <section class="panel"><div class="panel-h"><div><h2>Lead Volume</h2><p>New leads added each day this week.</p></div></div><div class="panel-b"><div id="leadVolumeChart" class="bars"></div></div></section>
-          <section class="panel"><div class="panel-h"><div><h2>Recent Leads</h2><p>Last 5 leads by date created.</p></div></div><div class="panel-b"><div id="recentLeadsPanel" class="list"></div></div></section>
-        </div>
-        <section class="panel"><div class="panel-h"><div><h2>Pipeline Snapshot</h2><p>Opportunity stages update from live lead status.</p></div></div><div class="panel-b"><div id="pipelineSnapshotPanel" class="list"></div></div></section>
+
       </div>
 
       <!-- Leads -->
