@@ -4,6 +4,7 @@
 // Authenticated via Bearer token (company_api_tokens).
 // Routes:
 //   GET    /functions/v1/api/leads             – list leads
+//   POST   /functions/v1/api/leads             – create lead
 //   GET    /functions/v1/api/leads/:id          – get lead
 //   PATCH  /functions/v1/api/leads/:id          – update lead
 //   GET    /functions/v1/api/quotes             – list quotes
@@ -232,6 +233,55 @@ async function handleGetLead(
   if (error) return dbErr("db query", error);
   if (!data) return json({ error: "Lead not found" }, 404);
   return json({ data });
+}
+
+async function handleCreateLead(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  body: Record<string, unknown>,
+) {
+  const allowed = [
+    "name", "first_name", "last_name", "email", "phone",
+    "pipeline_stage", "source", "service_type", "value", "notes",
+    "custom_data", "metadata", "postcode", "address", "assigned_to",
+  ];
+  const row: Record<string, unknown> = { company_id: companyId };
+  for (const key of allowed) {
+    if (body[key] !== undefined) row[key] = body[key];
+  }
+
+  const validationError = validateLeadFields(body);
+  if (validationError) return json({ error: validationError }, 400);
+
+  if (!row.name && !row.phone) {
+    return json({ error: "At least 'name' or 'phone' is required" }, 400);
+  }
+
+  if (!row.assigned_to) {
+    const { data: routedRep } = await db.rpc("route_lead", {
+      p_company_id: companyId,
+      p_postcode: (row.postcode as string) || null,
+    });
+    if (routedRep) row.assigned_to = routedRep;
+  }
+
+  const { data, error } = await db
+    .from("leads")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) return dbErr("db query", error);
+
+  await fireWebhooks(db, companyId, "lead.created", data);
+
+  if (data.phone) {
+    sendWelcomeSmsIfEnabled(db, companyId, data).catch((err: unknown) =>
+      console.warn("Welcome SMS failed:", (err as Error).message)
+    );
+  }
+
+  return json({ data }, 201);
 }
 
 async function handleUpdateLead(
@@ -705,7 +755,9 @@ Deno.serve(async (req) => {
         return await handleGetLead(db, companyId, id);
       }
       if (method === "POST") {
-        return json({ error: "Creating leads via the API is not permitted. Leads are delivered by QuoteLeads." }, 405);
+        if (!hasScope(scopes, "leads:write")) return json({ error: "Insufficient scope: leads:write required" }, 403);
+        const body = await req.json();
+        return await handleCreateLead(db, companyId, body);
       }
       if (method === "PATCH" && id) {
         if (!hasScope(scopes, "leads:write")) return json({ error: "Insufficient scope: leads:write required" }, 403);
