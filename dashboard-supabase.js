@@ -4784,14 +4784,22 @@ async function loadCampaigns() {
   const googleStatusEl = document.getElementById('campaignGoogleStatus');
 
   if (metaStatusEl) {
-    metaStatusEl.innerHTML = metaConnected
-      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Meta Connected</span>'
+    const metaLive = metaConnected && !!company.meta_campaign_id;
+    const metaPending = metaConnected && !company.meta_campaign_id;
+    metaStatusEl.innerHTML = metaLive
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Meta Active</span>'
+      : metaPending
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(234,179,8,0.1);color:#eab308;border:1px solid rgba(234,179,8,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">⏳ Meta Pending</span>'
       : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Meta Not Connected</span>';
   }
 
   if (googleStatusEl) {
-    googleStatusEl.innerHTML = googleConnected
-      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Google Connected</span>'
+    const googleLive = googleConnected && !!company.google_campaign_id;
+    const googlePending = googleConnected && !company.google_campaign_id;
+    googleStatusEl.innerHTML = googleLive
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Google Active</span>'
+      : googlePending
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(234,179,8,0.1);color:#eab308;border:1px solid rgba(234,179,8,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">⏳ Google Pending</span>'
       : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Google Not Connected</span>';
   }
 
@@ -6007,12 +6015,24 @@ async function wizardGenerateStep() {
     }
 
     wizardGoTo(7);
+
+    // Mark onboarding done immediately — prevents wizard re-appearing on refresh
+    await sb.from('companies')
+      .update({ onboarding_completed: true })
+      .eq('id', currentCompanyId);
+
   } catch (err) {
     console.error('wizardGenerateStep error:', err);
     tick('wps2');
     tick('wps3');
     tick('wps4');
     await new Promise(r => setTimeout(r, 600));
+
+    // Still mark complete so the wizard doesn't loop even on failure
+    await sb.from('companies')
+      .update({ onboarding_completed: true })
+      .eq('id', currentCompanyId).catch(() => {});
+
     wizardGoTo(7);
   }
 }
@@ -6043,7 +6063,10 @@ async function completeOnboarding() {
       ...(existingCompany?.settings || {}),
       onboarding_complete: true,
     };
-    await sb.from('companies').update({ settings: updatedSettings }).eq('id', currentCompanyId);
+    await sb.from('companies').update({
+      settings: updatedSettings,
+      onboarding_completed: true,
+    }).eq('id', currentCompanyId);
 
     const { data: { session } } = await sb.auth.getSession();
     const { data: co } = await sb
