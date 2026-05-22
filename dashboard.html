@@ -451,6 +451,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Agent</span></button>
           <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcasts</span></button>
           <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
+          <button class="sub-item" data-page="campaigns" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Campaigns</span></button>
         </div>
       </div>
     </div>
@@ -1219,6 +1220,42 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               </div>
             </div>
           </section>
+
+        </div>
+      </div>
+
+      <!-- ── Campaigns Page ───────────────────────────────────────────────────── -->
+      <div id="page-campaigns" class="page hidden">
+        <div class="stack">
+
+          <!-- Connection Status Card -->
+          <div class="status-banner" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div id="campaignMetaStatus"><!-- filled by JS --></div>
+              <div id="campaignGoogleStatus"><!-- filled by JS --></div>
+            </div>
+            <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:13px;color:var(--text);text-decoration:none;white-space:nowrap">
+              🔗 Reconnect via Admatic
+            </a>
+          </div>
+
+          <!-- Meta Campaigns Card -->
+          <div class="card" style="margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <h3 style="margin:0;font-size:15px;font-weight:600">Meta Campaigns</h3>
+              <div id="campaignMetaActions"><!-- pause/enable btns injected --></div>
+            </div>
+            <div id="campaignMetaList"><p style="color:var(--muted);font-size:14px">No Meta campaigns yet.</p></div>
+          </div>
+
+          <!-- Google Campaigns Card -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <h3 style="margin:0;font-size:15px;font-weight:600">Google Campaigns</h3>
+              <div id="campaignGoogleActions"><!-- pause/enable btns injected --></div>
+            </div>
+            <div id="campaignGoogleList"><p style="color:var(--muted);font-size:14px">No Google campaigns yet.</p></div>
+          </div>
 
         </div>
       </div>
@@ -2127,10 +2164,15 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <input id="wizardMetaAccountId" type="text" placeholder="act_xxxxxxxxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
         <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Ads Manager → Account Overview</p>
       </div>
-      <div style="margin-bottom:24px">
+      <div style="margin-bottom:14px">
         <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Google Ads Customer ID</label>
         <input id="wizardGoogleCustomerId" type="text" placeholder="xxx-xxx-xxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
         <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Google Ads → top-right corner</p>
+      </div>
+      <div style="margin-bottom:24px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Facebook Page ID</label>
+        <input id="wizardFbPageId" type="text" placeholder="e.g. 123456789012345" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Business Suite → Settings → Pages</p>
       </div>
       <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
       <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>

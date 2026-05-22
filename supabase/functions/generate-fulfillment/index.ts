@@ -201,7 +201,7 @@ Return a JSON object with these exact keys:
 - faq_items: Array<{ q: string, a: string }> (6 FAQs)
 - page_title: string (SEO title, max 60 chars)
 - meta_description: string (SEO meta description, max 155 chars)
-- niche: string (one word: solar/roofing/hvac/plumbing/electrical/landscaping/etc)
+- niche: string (one word: solar/roofing/hvac/plumbing/electrical/landscaping/renovations/remodeling/painting/cleaning)
 
 Respond with ONLY valid JSON — no markdown fences, no commentary.`;
 
@@ -258,6 +258,12 @@ function getNicheIcon(niche: string): string {
     hvac: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16a4 4 0 0 1 8 0"/><path d="M12 3v1"/><path d="M3.05 11H4"/><path d="M20 11h.95"/><path d="M6.57 6.57l.71.71"/><path d="M16.72 6.57l.71-.71"/><path d="M12 12a4 4 0 0 1 4 4H8a4 4 0 0 1 4-4z"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>',
     landscaping:
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V12"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><path d="M6 6c0 4 3 7 6 8"/><path d="M18 6c0 4-3 7-6 8"/><path d="M13 2c0 2.5-1 5-1 5S11 4.5 11 2a1 1 0 0 1 2 0z"/></svg>',
+    renovations:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V8l7-5 7 5v12"/><path d="M9 20v-5h6v5"/><rect x="9" y="9" width="2" height="2"/><rect x="13" y="9" width="2" height="2"/></svg>',
+    painting:
+      '<svg xmlns="http://www.w3.org/2020/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 3H5c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/><path d="M12 12v9"/><path d="M8 21h8"/></svg>',
+    cleaning:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
   };
   return (
     icons[niche] ??
@@ -908,14 +914,16 @@ function buildLandingPageHtml(
 // ---------------------------------------------------------------------------
 
 const NICHE_BG_IMAGES: Record<string, string> = {
-  solar:       "https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1080&q=80",
-  roofing:     "https://images.unsplash.com/photo-1632207691143-643e2a9a9361?w=1080&q=80",
-  hvac:        "https://images.unsplash.com/photo-1631545806609-bbc5b4f7e86e?w=1080&q=80",
-  plumbing:    "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=1080&q=80",
-  electrical:  "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=1080&q=80",
-  landscaping: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=1080&q=80",
-  painting:    "https://images.unsplash.com/photo-1562259929-b4e1fd3aef09?w=1080&q=80",
-  cleaning:    "https://images.unsplash.com/photo-1563453392212-326f5e854473?w=1080&q=80",
+  solar:        "https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1080&q=80",
+  roofing:      "https://images.unsplash.com/photo-1632207691143-643e2a9a9361?w=1080&q=80",
+  hvac:         "https://images.unsplash.com/photo-1631545806609-bbc5b4f7e86e?w=1080&q=80",
+  plumbing:     "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=1080&q=80",
+  electrical:   "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=1080&q=80",
+  landscaping:  "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=1080&q=80",
+  painting:     "https://images.unsplash.com/photo-1562259929-b4e1fd3aef09?w=1080&q=80",
+  cleaning:     "https://images.unsplash.com/photo-1563453392212-326f5e854473?w=1080&q=80",
+  renovations:  "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1080&q=80",
+  remodeling:   "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1080&q=80",
 };
 
 const DEFAULT_BG_IMAGE =
@@ -1339,7 +1347,44 @@ Deno.serve(async (req) => {
     console.error("[generate-fulfillment] Step 8 (DB update) failed:", err);
   }
 
-  // ── Step 9: Return response ─────────────────────────────────────────────────
+  // ── Step 9: Kick off campaign creation (non-blocking, fire-and-forget) ───────
+  // Only fires if the company has ad account IDs stored — skip silently otherwise.
+  const selfBaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (selfBaseUrl && serviceKey) {
+    const { data: freshCompany } = await db
+      .from("companies")
+      .select("meta_ad_account_id, google_ads_customer_id")
+      .eq("id", companyId)
+      .single();
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceKey}`,
+    };
+    const body = JSON.stringify({ company_id: companyId });
+
+    if (freshCompany?.meta_ad_account_id) {
+      fetch(`${selfBaseUrl}/functions/v1/create-meta-campaign`, {
+        method: "POST", headers, body,
+      }).then(async (r) => {
+        if (!r.ok) console.warn("[generate-fulfillment] create-meta-campaign:", await r.text().catch(() => ""));
+        else console.log("[generate-fulfillment] Meta campaign creation triggered");
+      }).catch((e) => console.warn("[generate-fulfillment] Meta campaign trigger error:", e));
+    }
+
+    if (freshCompany?.google_ads_customer_id) {
+      fetch(`${selfBaseUrl}/functions/v1/create-google-campaign`, {
+        method: "POST", headers, body,
+      }).then(async (r) => {
+        if (!r.ok) console.warn("[generate-fulfillment] create-google-campaign:", await r.text().catch(() => ""));
+        else console.log("[generate-fulfillment] Google campaign creation triggered");
+      }).catch((e) => console.warn("[generate-fulfillment] Google campaign trigger error:", e));
+    }
+  }
+
+  // ── Step 10: Return response ────────────────────────────────────────────────
   const hasErrors = Object.keys(errors).length > 0;
   return json({
     success: true,

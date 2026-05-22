@@ -1007,7 +1007,7 @@ async function showApp() {
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const CRM_PAGES        = ["pipeline","leads","quotes","appointments","sales"];
 const INBOX_PAGES      = ["conversations","notifications"];
-const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights"];
+const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights","campaigns"];
 const SETTINGS_PAGES   = ["general-settings","reviews","team-members","integrations","buy-leads"];
 
 const PAGE_META = {
@@ -1027,6 +1027,7 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
+  "campaigns":        ["Campaigns",          "View and manage your Meta and Google ad campaigns."],
 };
 
 function isAdmin() {
@@ -1098,6 +1099,7 @@ function navigateTo(page) {
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
     "buy-leads":        loadBuyLeads,
+    "campaigns":        loadCampaigns,
   };
   loaders[page]?.();
 }
@@ -4756,6 +4758,123 @@ async function approveAndSendQuote(quoteId) {
   } catch (err) {
     toast(err.message || "Failed to approve and send quote.", true);
     console.error("approveAndSendQuote error:", err);
+  }
+}
+
+// =============================================================================
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+// =============================================================================
+
+async function loadCampaigns() {
+  if (!currentCompanyId) return;
+
+  const { data: company } = await supabase
+    .from('companies')
+    .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at')
+    .eq('id', currentCompanyId)
+    .single();
+
+  if (!company) return;
+
+  // Connection status chips
+  const metaConnected = !!company.meta_ad_account_id;
+  const googleConnected = !!company.google_ads_customer_id;
+
+  const metaStatusEl = document.getElementById('campaignMetaStatus');
+  const googleStatusEl = document.getElementById('campaignGoogleStatus');
+
+  if (metaStatusEl) {
+    metaStatusEl.innerHTML = metaConnected
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Meta Connected</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Meta Not Connected</span>';
+  }
+
+  if (googleStatusEl) {
+    googleStatusEl.innerHTML = googleConnected
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Google Connected</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Google Not Connected</span>';
+  }
+
+  // Meta campaigns panel
+  const metaList = document.getElementById('campaignMetaList');
+  const metaActions = document.getElementById('campaignMetaActions');
+  if (metaList) {
+    if (company.meta_campaign_id) {
+      const isPaused = company.campaign_status === 'paused';
+      metaList.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500;color:var(--text)">Lead Generation Campaign</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.meta_campaign_id}</div>
+            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
+          </div>
+          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
+        </div>`;
+      if (metaActions) {
+        const label = isPaused ? 'Enable' : 'Pause';
+        const action = isPaused ? 'enable' : 'pause';
+        metaActions.innerHTML = `<button onclick="toggleCampaign('meta','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Meta</button>`;
+      }
+    } else {
+      metaList.innerHTML = metaConnected
+        ? '<p style="color:var(--muted);font-size:14px">No Meta campaign created yet. Complete onboarding to generate your campaign.</p>'
+        : '<p style="color:var(--muted);font-size:14px">Connect your Meta Ad Account to enable campaign creation.</p>';
+    }
+  }
+
+  // Google campaigns panel
+  const googleList = document.getElementById('campaignGoogleList');
+  const googleActions = document.getElementById('campaignGoogleActions');
+  if (googleList) {
+    if (company.google_campaign_id) {
+      const isPaused = company.campaign_status === 'paused';
+      googleList.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500;color:var(--text)">Search Campaign</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.google_campaign_id}</div>
+            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
+          </div>
+          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
+        </div>`;
+      if (googleActions) {
+        const label = isPaused ? 'Enable' : 'Pause';
+        const action = isPaused ? 'enable' : 'pause';
+        googleActions.innerHTML = `<button onclick="toggleCampaign('google','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Google</button>`;
+      }
+    } else {
+      googleList.innerHTML = googleConnected
+        ? '<p style="color:var(--muted);font-size:14px">No Google campaign created yet. Complete onboarding to generate your campaign.</p>'
+        : '<p style="color:var(--muted);font-size:14px">Connect your Google Ads account to enable campaign creation.</p>';
+    }
+  }
+}
+
+async function toggleCampaign(platform, action) {
+  if (!currentCompanyId) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${supabaseUrl}/functions/v1/manage-campaign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ platform, action, company_id: currentCompanyId }),
+    });
+    if (res.ok) {
+      await loadCampaigns();
+    } else {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      alert('Error: ' + (err.error ?? 'Failed to update campaign'));
+      if (btn) { btn.disabled = false; btn.textContent = (action === 'pause' ? 'Pause' : 'Enable') + ' ' + (platform === 'meta' ? 'Meta' : 'Google'); }
+    }
+  } catch (err) {
+    console.error('toggleCampaign error:', err);
+    if (btn) { btn.disabled = false; }
   }
 }
 
