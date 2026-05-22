@@ -20,6 +20,7 @@ Thumbs.db
 
 # Supabase local dev
 .supabase/
+supabase/.temp/
 
 # Logs
 *.log
