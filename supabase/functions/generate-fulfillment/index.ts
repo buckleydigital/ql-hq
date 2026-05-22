@@ -1374,14 +1374,9 @@ Deno.serve(async (req) => {
       }).catch((e) => console.warn("[generate-fulfillment] Meta campaign trigger error:", e));
     }
 
-    if (freshCompany?.google_ads_customer_id) {
-      fetch(`${selfBaseUrl}/functions/v1/create-google-campaign`, {
-        method: "POST", headers, body,
-      }).then(async (r) => {
-        if (!r.ok) console.warn("[generate-fulfillment] create-google-campaign:", await r.text().catch(() => ""));
-        else console.log("[generate-fulfillment] Google campaign creation triggered");
-      }).catch((e) => console.warn("[generate-fulfillment] Google campaign trigger error:", e));
-    }
+    // Google Ads API requires developer token approval — Google campaigns are
+    // set up manually by the QuoteLeadsHQ team. A task appears in /admin when
+    // a company has google_ads_customer_id set but no google_campaign_id.
   }
 
   // ── Step 10: Return response ────────────────────────────────────────────────
