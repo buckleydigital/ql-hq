@@ -568,11 +568,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateThemeIcon();
   });
 
-  // ── Lead Modal ────────────────────────────────────────────────────────────
-  const doOpenLeadModal = () => { resetLeadForm(); openModal("leadModal"); };
-  ["openLeadModalDashboard","openLeadModal","openLeadModalEmpty","openLeadModalPipeline"].forEach((id) =>
-    document.getElementById(id)?.addEventListener("click", doOpenLeadModal)
-  );
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
