@@ -94,7 +94,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       `
         <h2 style="font-family:system-ui,sans-serif">${company?.name} purchased a lead pack.</h2>
         <p style="font-family:system-ui,sans-serif;color:#555"><strong>Niche:</strong> ${m.niche}</p>
-        <p style="font-family:system-ui,sans-serif;color:#555"><strong>Area:</strong> ${m.area}</p>
+        <p style="font-family:system-ui,sans-serif;color:#555"><strong>Area:</strong> ${m.area_city}</p>
         <p style="font-family:system-ui,sans-serif;color:#555"><strong>Quantity:</strong> ${m.quantity} leads</p>
         <p style="font-family:system-ui,sans-serif;color:#555"><strong>Total:</strong> $${(parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)} AUD</p>
         <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${company?.email}</p>
