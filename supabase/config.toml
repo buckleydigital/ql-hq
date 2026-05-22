@@ -76,3 +76,15 @@ verify_jwt = false
 
 [functions.create-user-silent]
 verify_jwt = false
+
+[functions.get-ppl-pricing]
+verify_jwt = false
+
+[functions.create-ppl-signup-checkout]
+verify_jwt = false
+
+[functions.create-advertising-checkout]
+verify_jwt = false
+
+[functions.get-magic-link]
+verify_jwt = false
