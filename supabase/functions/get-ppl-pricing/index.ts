@@ -32,22 +32,24 @@ serve(async (req) => {
   let pricing = null
 
   if (area) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('ppl_pricing')
-      .select('price_per_lead, min_quantity, max_quantity')
+      .select('price_per_lead')
       .ilike('niche', niche)
       .ilike('area', area)
       .maybeSingle()
+    if (error) console.error('area query error:', JSON.stringify(error))
     pricing = data
   }
 
   if (!pricing) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('ppl_pricing')
-      .select('price_per_lead, min_quantity, max_quantity')
+      .select('price_per_lead')
       .ilike('niche', niche)
       .is('area', null)
       .maybeSingle()
+    if (error) console.error('default query error:', JSON.stringify(error))
     pricing = data
   }
 
