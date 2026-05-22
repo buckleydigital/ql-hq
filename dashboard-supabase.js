@@ -4768,7 +4768,7 @@ async function approveAndSendQuote(quoteId) {
 async function loadCampaigns() {
   if (!currentCompanyId) return;
 
-  const { data: company } = await supabase
+  const { data: company } = await sb
     .from('companies')
     .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at')
     .eq('id', currentCompanyId)
@@ -4856,8 +4856,8 @@ async function toggleCampaign(platform, action) {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`${supabaseUrl}/functions/v1/manage-campaign`, {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-campaign`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5891,6 +5891,7 @@ function wizardStep5Next() {
   const googleId = document.getElementById('wizardGoogleCustomerId')?.value?.trim();
   wizardData.metaAccountId = metaId || null;
   wizardData.googleCustomerId = googleId || null;
+  wizardData.fbPageId = document.getElementById('wizardFbPageId')?.value?.trim() || null;
   wizardGoTo(6);
 }
 
@@ -5994,6 +5995,7 @@ async function wizardSaveOnboardingData() {
       max_daily_ad_spend: wizardData.maxDailySpend,
       meta_ad_account_id: wizardData.metaAccountId,
       google_ads_customer_id: wizardData.googleCustomerId,
+      meta_page_id: wizardData.fbPageId,
     })
     .eq('id', currentCompanyId);
   if (error) console.warn('wizardSaveOnboardingData error:', error);
