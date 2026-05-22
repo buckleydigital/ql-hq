@@ -87,26 +87,6 @@ insert into ppl_pricing (niche, area, price_per_lead) values
   ('renovation','Port Augusta',95.00),
   ('renovation','Canberra',95.00),
   ('renovation','Hobart',95.00),('renovation','Launceston',95.00),('renovation','Devonport',95.00),('renovation','Burnie',95.00),
-  ('renovation','Darwin',95.00),('renovation','Alice Springs',95.00),
-
-  -- Landscaping ($80)
-  ('landscaping','Brisbane',80.00),('landscaping','Gold Coast',80.00),('landscaping','Sunshine Coast',80.00),
-  ('landscaping','Toowoomba',80.00),('landscaping','Townsville',80.00),('landscaping','Cairns',80.00),
-  ('landscaping','Rockhampton',80.00),('landscaping','Bundaberg',80.00),('landscaping','Mackay',80.00),
-  ('landscaping','Hervey Bay',80.00),
-  ('landscaping','Sydney',80.00),('landscaping','Newcastle',80.00),('landscaping','Wollongong',80.00),
-  ('landscaping','Central Coast',80.00),('landscaping','Coffs Harbour',80.00),('landscaping','Port Macquarie',80.00),
-  ('landscaping','Tamworth',80.00),('landscaping','Wagga Wagga',80.00),('landscaping','Albury',80.00),
-  ('landscaping','Dubbo',80.00),('landscaping','Bathurst',80.00),('landscaping','Orange',80.00),
-  ('landscaping','Melbourne',80.00),('landscaping','Geelong',80.00),('landscaping','Ballarat',80.00),
-  ('landscaping','Bendigo',80.00),('landscaping','Shepparton',80.00),('landscaping','Mildura',80.00),
-  ('landscaping','Warrnambool',80.00),('landscaping','Wodonga',80.00),
-  ('landscaping','Perth',80.00),('landscaping','Mandurah',80.00),('landscaping','Bunbury',80.00),
-  ('landscaping','Geraldton',80.00),('landscaping','Kalgoorlie',80.00),
-  ('landscaping','Adelaide',80.00),('landscaping','Mount Gambier',80.00),('landscaping','Whyalla',80.00),
-  ('landscaping','Port Augusta',80.00),
-  ('landscaping','Canberra',80.00),
-  ('landscaping','Hobart',80.00),('landscaping','Launceston',80.00),('landscaping','Devonport',80.00),('landscaping','Burnie',80.00),
-  ('landscaping','Darwin',80.00),('landscaping','Alice Springs',80.00)
+  ('renovation','Darwin',95.00),('renovation','Alice Springs',95.00)
 
 on conflict do nothing;
