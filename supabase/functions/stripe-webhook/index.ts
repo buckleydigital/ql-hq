@@ -253,6 +253,10 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
        <p><strong>Area:</strong> ${m.area_city}</p>
        <p><strong>Quantity:</strong> ${m.quantity} leads</p>`
     )
+    // Mark signup attempt as completed
+    await supabase.from('signup_attempts').update({ status: 'completed' })
+      .eq('stripe_session_id', session.id)
+
     console.log('PPL signup provisioned:', companyId)
   } catch (err) {
     console.error('handlePplSignupPayment error:', err)
@@ -323,6 +327,10 @@ async function handleAdvertisingSystemPayment(session: Stripe.Checkout.Session, 
        <p><strong>Industry:</strong> ${m.industry}</p>
        <p><strong>Location:</strong> ${m.service_location} (${m.service_radius})</p>`
     )
+    // Mark signup attempt as completed
+    await supabase.from('signup_attempts').update({ status: 'completed' })
+      .eq('stripe_session_id', session.id)
+
     console.log('Advertising system client provisioned:', companyId)
   } catch (err) {
     console.error('handleAdvertisingSystemPayment error:', err)
