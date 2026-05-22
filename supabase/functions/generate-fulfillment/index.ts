@@ -1180,19 +1180,31 @@ Deno.serve(async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  // ── Auth: require service role key as Bearer token ──────────────────────────
+  // ── Auth: accept service role key OR a valid user JWT ──────────────────────
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
   const keyBytes = new TextEncoder().encode(callerToken);
   const expectedBytes = new TextEncoder().encode(serviceRoleKey);
-  let isMatch = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
+  let isServiceRole = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
   const len = Math.max(keyBytes.length, expectedBytes.length);
   for (let i = 0; i < len; i++) {
-    if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
+    if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isServiceRole = false;
   }
-  if (!isMatch) {
-    return json({ error: "Unauthorized" }, 401);
+
+  // If not service role, verify it's a valid user JWT via Supabase auth
+  if (!isServiceRole) {
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      supabaseAnonKey,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user }, error: authErr } = await anonClient.auth.getUser();
+    if (authErr || !user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -1212,10 +1224,7 @@ Deno.serve(async (req) => {
 
   const db = createClient(supabaseUrl, serviceRoleKey);
 
-  // Accumulated errors (non-fatal steps continue)
-  const errors: Record<string, string> = {};
-
-  // ── Step 1: Load company ────────────────────────────────────────────────────
+  // ── Step 1: Load company (sync — needed to return the predicted URL) ─────────
   let company: Company;
   try {
     const result = await loadCompany(db, companyId);
@@ -1225,6 +1234,43 @@ Deno.serve(async (req) => {
     console.error("[generate-fulfillment] Step 1 failed:", err);
     return json({ error: `Company load failed: ${String(err)}` }, 500);
   }
+
+  // Pre-compute the GitHub Pages URL so the wizard can show it immediately
+  const ghOwner = Deno.env.get("GITHUB_OWNER");
+  const ghRepo  = Deno.env.get("GITHUB_PAGES_REPO");
+  const predictedPageUrl = ghOwner && ghRepo && company.slug
+    ? `https://${ghOwner}.github.io/${ghRepo}/${company.slug}/`
+    : null;
+
+  // ── Run the rest of the pipeline in the background ───────────────────────────
+  // Returns immediately so the wizard doesn't time out waiting.
+  const pipeline = runPipeline(db, company, companyId, supabaseUrl);
+  try {
+    // @ts-ignore — EdgeRuntime is available in Supabase edge functions
+    EdgeRuntime.waitUntil(pipeline);
+  } catch {
+    // Not in edge runtime (local dev) — fire and forget
+    pipeline.catch((e) => console.error("[generate-fulfillment] pipeline error:", e));
+  }
+
+  return json({
+    success: true,
+    landing_page_url: predictedPageUrl,
+    message: "Generation started in background",
+  });
+});
+
+// =============================================================================
+// Pipeline — all the heavy work, runs after response is sent
+// =============================================================================
+async function runPipeline(
+  db: ReturnType<typeof createClient>,
+  company: Company,
+  companyId: string,
+  supabaseUrl: string,
+): Promise<void> {
+  // Accumulated errors (non-fatal steps continue)
+  const errors: Record<string, string> = {};
 
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
@@ -1379,14 +1425,10 @@ Deno.serve(async (req) => {
     // a company has google_ads_customer_id set but no google_campaign_id.
   }
 
-  // ── Step 10: Return response ────────────────────────────────────────────────
   const hasErrors = Object.keys(errors).length > 0;
-  return json({
-    success: true,
-    landing_page_url: githubPagesUrl,
-    ad_image_feed_url: adImageFeedUrl,
-    ad_image_story_url: adImageStoryUrl,
-    ad_copy: adCopyPayload,
-    ...(hasErrors ? { partial_errors: errors } : {}),
-  });
-});
+  if (hasErrors) {
+    console.warn("[generate-fulfillment] Pipeline completed with errors:", errors);
+  } else {
+    console.log("[generate-fulfillment] Pipeline completed successfully");
+  }
+}
