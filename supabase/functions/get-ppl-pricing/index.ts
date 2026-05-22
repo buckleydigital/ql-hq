@@ -36,7 +36,7 @@ serve(async (req) => {
       .from('ppl_pricing')
       .select('price_per_lead, min_quantity, max_quantity')
       .eq('niche', niche)
-      .eq('area', area)
+      .ilike('area', area)
       .maybeSingle()
     pricing = data
   }
