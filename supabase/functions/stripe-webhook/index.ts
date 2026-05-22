@@ -42,6 +42,9 @@ serve(async (req) => {
     case 'advertising_system_upgrade':
       await handleAdvertisingSystemUpgrade(session, m)
       break
+    case 'sms_credits':
+      await handleSmsCreditsTopUp(session, m)
+      break
     default:
       await handleManagedPayment(session, m)
   }
@@ -405,6 +408,32 @@ async function handleAdvertisingSystemUpgrade(session: Stripe.Checkout.Session, 
     await sendInternalEmail(
       `⚠️ Advertising system upgrade failed — company ${m.company_id}`,
       `<p>Error: ${String(err)}</p><p>Stripe Session: ${session.id}</p>`
+    )
+  }
+}
+
+// ── SMS credits top-up (existing dashboard company) ───────────────────────────
+async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record<string, string>) {
+  console.log('SMS credits top-up for company:', m.company_id, 'credits:', m.credits)
+  try {
+    const credits = parseInt(m.credits)
+    if (!credits || credits <= 0) throw new Error('Invalid credits value')
+
+    await supabase.rpc('add_sms_credits', { p_company_id: m.company_id, p_amount: credits })
+
+    const { data: company } = await supabase
+      .from('companies').select('name, email').eq('id', m.company_id).maybeSingle()
+
+    await sendInternalEmail(
+      `📱 SMS credits top-up — ${company?.name}`,
+      `<p>${company?.name} purchased ${credits} SMS credits.</p><p><strong>Email:</strong> ${company?.email}</p>`
+    )
+    console.log('SMS credits added:', credits, 'to', m.company_id)
+  } catch (err) {
+    console.error('handleSmsCreditsTopUp error:', err)
+    await sendInternalEmail(
+      `⚠️ SMS credits top-up failed — company ${m.company_id}`,
+      `<p>Error: ${String(err)}</p><p>Credits: ${m.credits}</p><p>Stripe Session: ${session.id}</p>`
     )
   }
 }
