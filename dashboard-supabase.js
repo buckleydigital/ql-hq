@@ -2837,6 +2837,37 @@ async function loadSettings() {
       if (error) { toast("Failed to save preference.", true); return; }
       toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
     }, { once: true });
+
+    // Lead Delivery — load
+    const delivery = company?.settings?.lead_delivery || {};
+    const deliveryEmailEl   = document.getElementById("deliveryEmail");
+    const deliverySmsEl     = document.getElementById("deliverySms");
+    const deliveryWebhookEl = document.getElementById("deliveryWebhook");
+    if (deliveryEmailEl)   deliveryEmailEl.value   = delivery.email       || "";
+    if (deliverySmsEl)     deliverySmsEl.value     = delivery.sms_number  || "";
+    if (deliveryWebhookEl) deliveryWebhookEl.value = delivery.webhook_url || "";
+
+    document.getElementById("leadDeliveryForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email       = deliveryEmailEl?.value.trim()   || null;
+      const sms_number  = deliverySmsEl?.value.trim()     || null;
+      const webhook_url = deliveryWebhookEl?.value.trim() || null;
+
+      // Save to companies.settings
+      const { data: cur } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
+      const merged = { ...(cur?.settings || {}), lead_delivery: { email, sms_number, webhook_url } };
+      const { error } = await sb.from("companies").update({ settings: merged }).eq("id", currentCompanyId);
+      if (error) { toast("Failed to save delivery settings.", true); return; }
+
+      // Push to ql-mc (fire and forget — don't block on failure)
+      const { data: { session } } = await sb.auth.getSession();
+      fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+      }).catch(err => console.warn("sync-delivery-config:", err));
+
+      toast("Delivery settings saved.");
+    }, { once: true });
   } catch (err) {
     toast("Failed to load settings.", true);
   }
