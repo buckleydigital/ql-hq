@@ -912,7 +912,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, settings")
+        .select("name, settings, plan, has_advertising_system")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -935,6 +935,10 @@ async function showApp() {
       if (!company?.settings?.onboarding_complete) {
         showOnboardingWizard(company, currentUser);
       }
+
+      // Gate features behind advertising system purchase
+      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
+      applyAdvertisingSystemGating(hasAdSystem);
     }
 
     // Fetch current user's permissions from sales_reps
@@ -5918,6 +5922,79 @@ async function deletePendingOrderFromSettings(orderId) {
   });
 }
 window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
+
+// =============================================================================
+// Advertising System Gating
+// =============================================================================
+
+function applyAdvertisingSystemGating(hasAdSystem) {
+  // Gate the AI Settings nav item
+  const navAi = document.getElementById("navAiSettings");
+  if (navAi) {
+    if (!hasAdSystem) {
+      navAi.setAttribute("data-locked", "true");
+      navAi.title = "Requires Advertising System";
+    } else {
+      navAi.removeAttribute("data-locked");
+      navAi.title = "";
+    }
+  }
+
+  // Inject upsell banner into the AI settings page if not unlocked
+  const aiPage = document.getElementById("page-ai-settings");
+  if (aiPage && !hasAdSystem) {
+    const existing = document.getElementById("adSystemUpsell");
+    if (!existing) {
+      const banner = document.createElement("div");
+      banner.id = "adSystemUpsell";
+      banner.style.cssText = "margin:24px;padding:28px 32px;background:linear-gradient(135deg,#0a0b0f 0%,#1a1d2e 100%);border-radius:16px;color:#fff;text-align:center";
+      banner.innerHTML = `
+        <div style="font-size:28px;margin-bottom:12px">🚀</div>
+        <h2 style="font-size:20px;font-weight:700;margin:0 0 8px">Unlock the Advertising System</h2>
+        <p style="color:#aaa;font-size:14px;line-height:1.6;margin:0 0 24px;max-width:420px;margin-left:auto;margin-right:auto">
+          Get a dedicated Twilio number, AI SMS lead qualification, Meta &amp; Google ad campaign management, and landing pages — all in one place.
+        </p>
+        <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+          ${["AI SMS Agent", "Twilio Number", "Meta & Google Ads", "Landing Pages"].map(f =>
+            `<span style="background:#ffffff18;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:500">${f}</span>`
+          ).join("")}
+        </div>
+        <button id="unlockAdSystemBtn" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:14px 32px;font-size:15px;font-weight:600;cursor:pointer">
+          Unlock for $2,500 + GST →
+        </button>
+        <p style="color:#555;font-size:11px;margin-top:12px">One-time payment. Yours forever.</p>
+      `;
+      aiPage.insertBefore(banner, aiPage.firstChild);
+
+      document.getElementById("unlockAdSystemBtn")?.addEventListener("click", async () => {
+        const btn = document.getElementById("unlockAdSystemBtn");
+        if (btn) { btn.disabled = true; btn.textContent = "Redirecting…"; }
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/create-advert-upgrade-checkout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}`,
+              "apikey": SUPABASE_ANON_KEY,
+            },
+          });
+          const data = await res.json();
+          if (!res.ok || !data.url) throw new Error(data.error || "No checkout URL");
+          window.location.href = data.url;
+        } catch (err) {
+          toast(err.message || "Failed to start checkout.", true);
+          if (btn) { btn.disabled = false; btn.textContent = "Unlock for $2,500 + GST →"; }
+        }
+      });
+    }
+
+    // Hide the rest of the AI settings content behind the upsell
+    const aiContent = aiPage.querySelector(".panel-b, .panel");
+    if (aiContent) aiContent.style.filter = "blur(4px) opacity(0.3)";
+    if (aiContent) aiContent.style.pointerEvents = "none";
+  }
+}
 
 // =============================================================================
 // PPL Admin (super admin only)
