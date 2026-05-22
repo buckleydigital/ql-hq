@@ -947,12 +947,12 @@ async function showApp() {
       const navBuyLeads = document.getElementById("navBuyLeads");
       if (navBuyLeads) navBuyLeads.style.display = '';
 
-      if (!company?.onboarding_completed) {
+      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
+      if (hasAdSystem && !company?.onboarding_completed) {
         showOnboardingWizard(company, currentUser);
       }
 
       // Gate features behind advertising system purchase
-      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
       applyAdvertisingSystemGating(hasAdSystem);
     }
 
@@ -5812,6 +5812,19 @@ function wizardGoTo(step) {
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
+  if (step === 5) {
+    const googleEnabled = wizardData.googleEnabled === true;
+    const googleSection = document.getElementById('wizardGoogleSection');
+    const googleLocked  = document.getElementById('wizardGoogleLocked');
+    const badge         = document.getElementById('wizardStep5PlatformBadge');
+    if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
+    if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
+    if (badge) {
+      badge.innerHTML = googleEnabled
+        ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">✓ Meta + Google enabled</span>'
+        : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
+    }
+  }
   if (step === 6) wizardGenerateStep();
 }
 
@@ -5825,9 +5838,26 @@ function wizardSelectLeadGoal(tile, value) {
   wizardData.leadGoals = value;
 }
 
+function wizardUpdateBudgetNote(val) {
+  const note = document.getElementById('wizardBudgetNote');
+  if (!note) return;
+  const n = parseFloat(val);
+  if (!val || isNaN(n) || n <= 0) {
+    note.style.color = '#9a9a9a';
+    note.textContent = 'Enter your budget to see which platforms are available.';
+  } else if (n < 100) {
+    note.style.color = '#f5a623';
+    note.innerHTML = '📘 <strong style="color:#f5a623">Meta only</strong> — reach $100/day to unlock Google Search ads.';
+  } else {
+    note.style.color = '#22c55e';
+    note.innerHTML = '✓ <strong style="color:#22c55e">Meta + Google</strong> both active at this budget.';
+  }
+}
+
 function wizardStep2Next() {
   const spend = document.getElementById('wizardAdSpend')?.value;
   wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
+  wizardData.googleEnabled = (wizardData.maxDailySpend ?? 0) >= 100;
   wizardGoTo(3);
 }
 
@@ -5887,11 +5917,11 @@ function wizardStep4Next() {
 }
 
 function wizardStep5Next() {
-  const metaId = document.getElementById('wizardMetaAccountId')?.value?.trim();
-  const googleId = document.getElementById('wizardGoogleCustomerId')?.value?.trim();
-  wizardData.metaAccountId = metaId || null;
-  wizardData.googleCustomerId = googleId || null;
-  wizardData.fbPageId = document.getElementById('wizardFbPageId')?.value?.trim() || null;
+  wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
+  wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
+  wizardData.googleCustomerId = wizardData.googleEnabled
+    ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
+    : null;
   wizardGoTo(6);
 }
 

@@ -2109,8 +2109,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
       <div style="margin-bottom:24px">
         <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:8px">Max daily ad spend (AUD)</label>
-        <input id="wizardAdSpend" type="number" min="1" placeholder="e.g. 50" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <p style="font-size:12px;color:#666;margin:6px 0 0">We split this evenly across Meta and Google</p>
+        <input id="wizardAdSpend" type="number" min="1" placeholder="e.g. 50" oninput="wizardUpdateBudgetNote(this.value)" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <div id="wizardBudgetNote" style="margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#9a9a9a">Enter your budget to see which platforms are available.</div>
       </div>
       <button onclick="wizardStep2Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
@@ -2155,25 +2155,40 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
     <!-- Step 5: Connect Ad Accounts -->
     <div id="wizardStep5" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Connect your ad accounts</h2>
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 6px">Connect your ad accounts</h2>
+      <div id="wizardStep5PlatformBadge" style="margin-bottom:16px"></div>
       <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
-      <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 24px">This gives us access to run ads on your Meta and Google accounts. Takes 60 seconds.</p>
-      <p style="font-size:13px;color:#9a9a9a;margin:0 0 12px">Once connected, enter your account IDs:</p>
+      <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 20px">This grants us access to run ads in your accounts. Takes 60 seconds.</p>
+
+      <!-- Meta fields — always shown -->
       <div style="margin-bottom:14px">
         <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Meta Ad Account ID</label>
         <input id="wizardMetaAccountId" type="text" placeholder="act_xxxxxxxxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
         <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Ads Manager → Account Overview</p>
       </div>
-      <div style="margin-bottom:14px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Google Ads Customer ID</label>
-        <input id="wizardGoogleCustomerId" type="text" placeholder="xxx-xxx-xxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Google Ads → top-right corner</p>
-      </div>
-      <div style="margin-bottom:24px">
+      <div style="margin-bottom:20px">
         <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Facebook Page ID</label>
         <input id="wizardFbPageId" type="text" placeholder="e.g. 123456789012345" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
         <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Business Suite → Settings → Pages</p>
       </div>
+
+      <!-- Google fields — only shown if budget ≥ $100 -->
+      <div id="wizardGoogleSection" style="display:none">
+        <div style="border-top:1px solid rgba(255,255,255,0.08);margin-bottom:18px;padding-top:18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <span style="font-size:11px;font-weight:600;background:rgba(66,133,244,0.15);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:4px;padding:2px 7px">GOOGLE UNLOCKED</span>
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Google Ads Customer ID</label>
+            <input id="wizardGoogleCustomerId" type="text" placeholder="xxx-xxx-xxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+            <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Google Ads → top-right corner</p>
+          </div>
+        </div>
+      </div>
+      <div id="wizardGoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
+        <p style="font-size:12px;color:#555;margin:0">🔒 Google Search unlocks at <strong style="color:#9a9a9a">$100/day</strong> — upgrade your budget to add Google campaigns.</p>
+      </div>
+
       <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
       <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
     </div>
