@@ -1004,7 +1004,7 @@ const PAGE_META = {
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
-  "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your niche and area."],
+  "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
 function isAdmin() {
