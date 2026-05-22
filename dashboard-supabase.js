@@ -556,6 +556,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("crmSubmenu")?.classList.toggle("closed");
   });
 
+  document.getElementById("settingsToggle")?.addEventListener("click", () => {
+    document.getElementById("settingsSubmenu")?.classList.toggle("closed");
+  });
+
   // ── Theme ─────────────────────────────────────────────────────────────────
   document.getElementById("themeToggle")?.addEventListener("click", () => {
     const dark = document.documentElement.dataset.theme === "dark";
@@ -991,6 +995,7 @@ async function showApp() {
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const CRM_PAGES = ["pipeline","leads","quotes","appointments","sales"];
+const SETTINGS_PAGES = ["general-settings","ai-settings","ai-insights","reviews","team-members","bulk-sms","integrations"];
 
 const PAGE_META = {
   dashboard:          ["Dashboard",         "A live view of your lead and pipeline workspace."],
@@ -1001,11 +1006,11 @@ const PAGE_META = {
   sales:              ["Sales",             "Closed won and lost performance summary."],
   notifications:      ["Notifications",    "AI activity and goal completions."],
   conversations:      ["Conversations",     "SMS threads with leads."],
-  "bulk-sms":         ["Bulk SMS",           "Database reactivation — send personalized SMS to multiple leads."],
-  "general-settings": ["Account & Company", "Manage your company and personal profile."],
-  "ai-settings":      ["AI Settings",       "Configure your SMS agent and AI SMS number."],
-  "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
-  "team-members":     ["Team Members",      "Invite and manage your team."],
+  "bulk-sms":         ["Broadcast",          "Database reactivation — send personalized SMS to multiple leads."],
+  "general-settings": ["Account",           "Manage your company and personal profile."],
+  "ai-settings":      ["Automation",        "Configure your SMS agent and AI SMS number."],
+  "ai-insights":      ["Performance",       "See how your AI agents are improving over time."],
+  "team-members":     ["Team",              "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
@@ -1027,6 +1032,11 @@ function navigateTo(page) {
   );
   const crmToggle = document.getElementById("crmToggle");
   if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
+
+  const settingsToggle = document.getElementById("settingsToggle");
+  const settingsSubmenu = document.getElementById("settingsSubmenu");
+  if (settingsToggle) settingsToggle.classList.toggle("active", SETTINGS_PAGES.includes(page));
+  if (settingsSubmenu && SETTINGS_PAGES.includes(page)) settingsSubmenu.classList.remove("closed");
 
   document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = document.getElementById(`page-${page}`);
