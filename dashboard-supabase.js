@@ -1003,7 +1003,7 @@ const PAGE_META = {
   conversations:      ["Conversations",     "SMS threads with leads."],
   "bulk-sms":         ["Bulk SMS",           "Database reactivation — send personalized SMS to multiple leads."],
   "general-settings": ["Account & Company", "Manage your company and personal profile."],
-  "ai-settings":      ["AI Settings",       "Configure your SMS agent and Twilio numbers."],
+  "ai-settings":      ["AI Settings",       "Configure your SMS agent and AI SMS number."],
   "ai-insights":      ["AI Insights",       "See how your AI agents are improving over time."],
   "team-members":     ["Team Members",      "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
@@ -3400,12 +3400,51 @@ async function loadAiSettings() {
         }
       });
     }
-    
+
+    // Load SMS credits balance
+    const { data: credits } = await sb
+      .from("sms_credits")
+      .select("balance")
+      .eq("company_id", currentCompanyId)
+      .maybeSingle();
+    const balanceEl = document.getElementById("smsCreditsBalance");
+    if (balanceEl) {
+      const b = credits?.balance ?? 0;
+      balanceEl.textContent = `${b} credit${b !== 1 ? "s" : ""}`;
+      balanceEl.style.color = b < 20 ? "#ef4444" : b < 50 ? "#f59e0b" : "var(--text)";
+    }
+
+    // Show success toast if returning from credits purchase
+    if (new URLSearchParams(location.search).get("sms_credits_success")) {
+      toast("SMS credits added to your account.");
+      history.replaceState({}, "", location.pathname);
+    }
+
   } catch (err) {
     console.error("Load AI settings error:", err);
     toast("Failed to load AI settings.", true);
   }
 }
+
+async function buySmsCredits(pack) {
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = "Redirecting…"; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-sms-credits-checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+      body: JSON.stringify({ pack }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || "No checkout URL");
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || "Failed to start checkout.", true);
+    if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
+  }
+}
+window.buySmsCredits = buySmsCredits;
 
 // Helper functions for form population
 function setInputValue(id, value) {
@@ -5949,13 +5988,17 @@ function applyAdvertisingSystemGating(hasAdSystem) {
       banner.id = "adSystemUpsell";
       banner.style.cssText = "margin:24px;padding:28px 32px;background:linear-gradient(135deg,#0a0b0f 0%,#1a1d2e 100%);border-radius:16px;color:#fff;text-align:center";
       banner.innerHTML = `
-        <div style="font-size:28px;margin-bottom:12px">🚀</div>
+        <div style="margin-bottom:16px;display:flex;justify-content:center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4797FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
         <h2 style="font-size:20px;font-weight:700;margin:0 0 8px">Unlock the Advertising System</h2>
         <p style="color:#aaa;font-size:14px;line-height:1.6;margin:0 0 24px;max-width:420px;margin-left:auto;margin-right:auto">
-          Get a dedicated Twilio number, AI SMS lead qualification, Meta &amp; Google ad campaign management, and landing pages — all in one place.
+          Get a dedicated AI SMS number, AI lead qualification, Meta &amp; Google ad campaign management, and landing pages — all in one place.
         </p>
         <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-          ${["AI SMS Agent", "Twilio Number", "Meta & Google Ads", "Landing Pages"].map(f =>
+          ${["AI SMS Agent", "AI SMS Number", "Meta & Google Ads", "Landing Pages"].map(f =>
             `<span style="background:#ffffff18;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:500">${f}</span>`
           ).join("")}
         </div>

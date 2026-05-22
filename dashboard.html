@@ -497,10 +497,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Leads -->
       <div id="page-leads" class="page hidden">
         <section class="panel">
-          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button><button id="openLeadModal" class="btn2" type="button">New Lead</button></div></div>
+          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button></div></div>
           <div class="panel-b">
             <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
-            <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Add your first lead to start filling the CRM with real records.</p><button id="openLeadModalEmpty" class="btn2" type="button">Add First Lead</button></div>
+            <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Leads will appear here automatically as they're delivered to your pipeline.</p></div>
             <div id="leadsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
           </div>
         </section>
@@ -686,7 +686,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                       </select>
                     </div>
                     <div class="field">
-                      <label for="aiTwilioNumber">Twilio Number</label>
+                      <label for="aiTwilioNumber">AI SMS Number</label>
                       <input id="aiTwilioNumber" type="text" readonly style="background:var(--surface-2);color:var(--muted);cursor:default">
                       <span class="field-hint">Assigned by QuoteLeads — contact support to change</span>
                     </div>
@@ -766,7 +766,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <div class="field settings-full">
                       <label for="aiWelcomeMessage">Welcome Message</label>
                       <textarea id="aiWelcomeMessage" rows="2" placeholder="Hi {{first_name}}, thanks for reaching out!">Hi {{first_name}}, thanks for reaching out!</textarea>
-                      <span class="field-hint">Use {{first_name}} to insert the lead's name. This is the first message leads receive from your Twilio number.</span>
+                      <span class="field-hint">Use {{first_name}} to insert the lead's name. This is the first message leads receive from your AI SMS number.</span>
                     </div>
                   </div>
                 </div>
@@ -865,6 +865,38 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <button class="btn2" type="submit">Save AI Settings</button>
                 </div>
               </form>
+            </div>
+          </section>
+
+          <!-- SMS Credits -->
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>SMS Credits</h2><p>Each inbound and outbound SMS uses 1 credit. Credits never expire.</p></div>
+              <div id="smsCreditsBalance" style="font-size:22px;font-weight:700;color:var(--text)">—</div>
+            </div>
+            <div class="panel-b">
+              <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Top up your credits below. GST is added at checkout.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+                  <div style="font-size:18px;font-weight:700;margin-bottom:2px">100</div>
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$10 AUD</div>
+                  <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('100')">Buy</button>
+                </div>
+                <div style="flex:1;min-width:140px;border:2px solid var(--accent,#4797FF);border-radius:10px;padding:16px;text-align:center;position:relative">
+                  <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent,#4797FF);color:#fff;font-size:10px;font-weight:700;padding:2px 10px;border-radius:10px">POPULAR</div>
+                  <div style="font-size:18px;font-weight:700;margin-bottom:2px">500</div>
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$45 AUD</div>
+                  <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('500')">Buy</button>
+                </div>
+                <div style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+                  <div style="font-size:18px;font-weight:700;margin-bottom:2px">1,000</div>
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$80 AUD</div>
+                  <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('1000')">Buy</button>
+                </div>
+              </div>
             </div>
           </section>
 
