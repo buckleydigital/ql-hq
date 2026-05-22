@@ -74,14 +74,22 @@ async function hasTwilioNumber(companyId: string): Promise<boolean> {
   return !!data
 }
 
-async function createMagicLink(email: string): Promise<string> {
+async function createMagicLink(email: string, sessionId: string): Promise<string> {
   const { data, error } = await supabase.auth.admin.generateLink({
     type: 'magiclink',
     email,
     options: { redirectTo: 'https://quoteleadshq.com/dashboard', expiresIn: 86400 },
   })
   if (error) throw new Error(`Magic link: ${error.message}`)
-  return data.properties.action_link
+  const magicLink = data.properties.action_link
+
+  // Store for seamless post-payment redirect (one-time, 1hr TTL)
+  await supabase.from('pending_magic_links').insert({
+    stripe_session_id: sessionId,
+    magic_link:        magicLink,
+  }).catch(err => console.error('pending_magic_links insert error:', err))
+
+  return magicLink
 }
 
 function buildSystemPrompt(m: Record<string, string>): string {
@@ -240,7 +248,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
     }
 
-    const magicLink = await createMagicLink(m.email)
+    const magicLink = await createMagicLink(m.email, session.id)
     await sendPplWelcomeEmail(m.email, m.first_name, m.company, m.niche, m.area_city, m.quantity, magicLink)
 
     await sendInternalEmail(
@@ -315,7 +323,7 @@ async function handleAdvertisingSystemPayment(session: Stripe.Checkout.Session, 
     await insertSmsAgentConfig(companyId, m)
     await provisionTwilio(companyId)
 
-    const magicLink = await createMagicLink(m.email)
+    const magicLink = await createMagicLink(m.email, session.id)
     await sendAdvertisingWelcomeEmail(m.email, m.first_name, m.company, magicLink)
 
     await sendInternalEmail(
@@ -448,7 +456,7 @@ async function handleManagedPayment(session: Stripe.Checkout.Session, m: Record<
 
     await insertSmsAgentConfig(companyId, m)
 
-    const magicLink = await createMagicLink(m.email)
+    const magicLink = await createMagicLink(m.email, session.id)
     await sendAdvertisingWelcomeEmail(m.email, m.first_name, m.company, magicLink)
 
     await sendInternalEmail(

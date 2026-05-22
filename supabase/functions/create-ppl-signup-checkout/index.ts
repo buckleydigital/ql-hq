@@ -108,7 +108,7 @@ serve(async (req) => {
         quantity:      String(quantity),
         price_per_lead: String(validatedPrice),
       },
-      success_url: 'https://quoteleadshq.com/dashboard?welcome=ppl',
+      success_url: 'https://quoteleads.com.au/welcome?session_id={CHECKOUT_SESSION_ID}&type=ppl',
       cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',
     })
 

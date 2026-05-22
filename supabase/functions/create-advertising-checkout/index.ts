@@ -78,7 +78,7 @@ serve(async (req) => {
         special_offers:   special_offers  || '',
         products_brands:  products_brands || '',
       },
-      success_url: 'https://quoteleadshq.com/dashboard?welcome=advertising',
+      success_url: 'https://quoteleads.com.au/welcome?session_id={CHECKOUT_SESSION_ID}&type=advertising',
       cancel_url:  'https://quoteleads.com.au/advertising-system?cancelled=true',
     })
 
