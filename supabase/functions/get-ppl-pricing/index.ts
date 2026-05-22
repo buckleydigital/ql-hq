@@ -35,7 +35,7 @@ serve(async (req) => {
     const { data } = await supabase
       .from('ppl_pricing')
       .select('price_per_lead, min_quantity, max_quantity')
-      .eq('niche', niche)
+      .ilike('niche', niche)
       .ilike('area', area)
       .maybeSingle()
     pricing = data
@@ -45,7 +45,7 @@ serve(async (req) => {
     const { data } = await supabase
       .from('ppl_pricing')
       .select('price_per_lead, min_quantity, max_quantity')
-      .eq('niche', niche)
+      .ilike('niche', niche)
       .is('area', null)
       .maybeSingle()
     pricing = data
