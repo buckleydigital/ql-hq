@@ -3061,13 +3061,40 @@ async function loadPplOrdersUI() {
   const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
   const statusColor = s => ({ pending:"#9a9a9a", paid:"#4797FF", active:"#22c55e", fulfilled:"#22c55e", cancelled:"#ef4444" }[s] || "#9a9a9a");
 
-  const totalSpend = orders.filter(o => o.status !== "cancelled").reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  // Populate cache so retryPplOrder works from this panel too
+  orders.forEach(o => _pplOrdersCache.set(o.id, o));
+
+  const totalSpend = orders.filter(o => o.status !== "cancelled" && o.status !== "pending").reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   container.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:14px">${orders.length} order${orders.length === 1 ? "" : "s"} · Total spend: <strong style="color:var(--text)">${fmt(totalSpend)}</strong></div>`
     + orders.map((o) => {
+    const isPending = o.status === "pending";
     const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
     const colour = o.status === "cancelled" ? "#9e9e9e" : pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
     const city   = o.area_city || o.area || "—";
     const statusBadge = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
+
+    if (isPending) {
+      return `
+      <div style="border:1px solid #f59e0b55;border-radius:12px;padding:16px;margin-bottom:12px;background:#f59e0b0a">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              ${statusBadge}
+              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">
+              ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
+            </div>
+            <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">⚠️ Payment not completed</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn2" style="font-size:12px;padding:6px 14px" onclick="retryPplOrder('${o.id}')">Complete Payment</button>
+            <button class="btn btn-danger" style="font-size:12px;padding:6px 12px" onclick="deletePendingOrderFromSettings('${o.id}')">Delete</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
     const cancelBtn = ["paid","active"].includes(o.status) && currentUserIsSuperAdmin
       ? `<button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="cancelPplOrder('${o.id}')">Cancel</button>`
       : "";
@@ -5845,6 +5872,21 @@ async function deletePendingOrder(orderId) {
   });
 }
 window.deletePendingOrder = deletePendingOrder;
+
+async function deletePendingOrderFromSettings(orderId) {
+  confirmAction('Delete this pending order? This cannot be undone.', async () => {
+    try {
+      const { error } = await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+      if (error) { toast(error.message, true); return; }
+      toast('Pending order deleted.');
+      _pplOrdersCache.delete(orderId);
+      await loadPplOrdersUI();
+    } catch (err) {
+      toast('Failed to delete order.', true);
+    }
+  });
+}
+window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
 
 // =============================================================================
 // PPL Admin (super admin only)
