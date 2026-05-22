@@ -46,7 +46,7 @@ serve(async (req) => {
     const delivery = company.settings?.lead_delivery || {}
 
     // Push to ql-mc
-    const res = await fetch(`${QL_MC_API_URL}/api/delivery-config`, {
+    const res = await fetch(`${QL_MC_API_URL}/delivery-config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
