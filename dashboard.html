@@ -917,6 +917,19 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             <section class="panel"><div class="panel-h"><div><h2>Custom Lead Fields</h2><p>Adding a field updates the Supabase schema used by lead records.</p></div></div><div class="panel-b"><div id="settingsCustomFields"></div><div class="actions" style="margin-top:14px"><button id="openCustomFieldModalSettings" class="btn" type="button">Create Custom Field</button></div></div></section>
           </div>
         </div>
+        <!-- AI Data Sharing -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>AI Data Sharing</h2><p>Contribute anonymised, aggregated performance data to power niche benchmarks in AI Insights. No individual data is ever shared — only statistical averages across 10+ businesses.</p></div></div>
+          <div class="panel-b">
+            <div class="toggle-group">
+              <label class="toggle-item">
+                <input id="settingsAllowAiTraining" type="checkbox">
+                <div><span class="toggle-label">Contribute to QuoteLeads industry benchmarks</span><span style="display:block;font-size:11px;color:var(--muted);margin-top:2px">Your callback rates, win rates, and deal values are included in anonymised niche averages once 10+ businesses in your niche have opted in. You can opt out at any time.</span></div>
+              </label>
+            </div>
+            <div class="actions" style="margin-top:14px"><button id="saveAiSharingBtn" class="btn2" type="button">Save Preference</button></div>
+          </div>
+        </section>
         <!-- Quote Defaults -->
         <section class="panel" style="margin-top:24px">
           <div class="panel-h"><div><h2>Quote Defaults</h2><p>Set default values for new quotes. These will be pre-filled when creating a new quote.</p></div></div>
