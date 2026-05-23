@@ -951,16 +951,20 @@ async function showApp() {
       if (navBuyLeads) navBuyLeads.style.display = '';
 
       const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
+      // Onboarding is done if either the boolean column is true OR the settings JSON
+      // key is true — completeOnboarding() writes to settings.onboarding_complete, while
+      // the fulfillment edge function sets the boolean column.
+      const onboardingDone = company?.onboarding_completed === true || company?.settings?.onboarding_complete === true;
       _cachedCompany       = company || null;
       _hasAdSystem         = hasAdSystem;
-      _onboardingCompleted = company?.onboarding_completed ?? null;
+      _onboardingCompleted = onboardingDone;
 
-      if (hasAdSystem && !company?.onboarding_completed) {
+      if (hasAdSystem && !onboardingDone) {
         showOnboardingWizard(company, currentUser);
       }
 
       // Gate features behind advertising system purchase
-      applyAdvertisingSystemGating(hasAdSystem, company?.onboarding_completed);
+      applyAdvertisingSystemGating(hasAdSystem, onboardingDone);
     }
 
     // Fetch current user's permissions from sales_reps
