@@ -51,7 +51,7 @@ async function scrapeWebsiteBrief(websiteUrl: string): Promise<string> {
     }
 
     const text = await res.text();
-    return text.slice(0, 2000);
+    return text.slice(0, 4000);
   } catch (err) {
     console.warn("Website scrape error:", err);
     return "";
@@ -60,24 +60,29 @@ async function scrapeWebsiteBrief(websiteUrl: string): Promise<string> {
 
 async function generateHooks(
   companyName: string,
-  niche: string,
   context: string,
 ): Promise<Hook[]> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
   const prompt =
-    `Generate 5 distinct, proven hook/angle strategies for ${companyName} in the ${niche} industry.
+    `You are writing ad hooks for ${companyName}.
 
-Business context: ${context || "(not provided)"}
+Website content scraped from their site:
+---
+${context || "(no website content — infer a generic service business)"}
+---
 
-Each hook should use a different emotional or rational appeal (e.g. fear of loss, social proof, urgency, curiosity gap, authority, before/after transformation).
+First, identify exactly what this business does and their specific industry from the content above.
+Then generate 5 distinct hook/angle strategies tailored specifically to THAT business and industry — not generic home services hooks.
+
+Each hook must use a different emotional or rational appeal (e.g. fear of loss, social proof, urgency, curiosity gap, authority, before/after transformation).
 
 For each hook provide:
 - angle: the angle category name (e.g. "Fear of Missing Out", "Urgency", "Social Proof", "Authority", "Before/After Transformation", "Curiosity Gap")
-- headline: a 3-5 word scroll-stopping headline using this angle (e.g. "Stop Losing Money Now" or "Join 2,400 Happy Clients")
-- body: a supporting one-liner, max 8 words (e.g. "No obligation. Results guaranteed.")
-- why: one sentence explaining why this angle works for their niche
+- headline: a 3-5 word scroll-stopping headline using this angle, specific to what they actually sell
+- body: a supporting one-liner, max 8 words
+- why: one sentence explaining why this angle works for their specific industry and customer
 
 Return a JSON object with key "hooks" containing an array of exactly 5 hook objects.
 Respond with ONLY valid JSON — no markdown fences, no commentary.`;
@@ -175,9 +180,6 @@ Deno.serve(async (req) => {
     return json({ error: "Company not found or access denied" }, 404);
   }
 
-  // Determine niche from settings or default
-  const niche = (company.settings as Record<string, string>)?.niche ?? "home services";
-
   // Get context: scrape website or use business_desc
   let context = businessDesc ?? "";
   const urlToScrape = websiteUrl ?? company.website_url;
@@ -186,7 +188,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const hooks = await generateHooks(company.name, niche, context);
+    const hooks = await generateHooks(company.name, context);
     return json({ hooks });
   } catch (err) {
     console.error("[generate-hooks] Error:", err);
