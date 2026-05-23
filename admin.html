@@ -467,10 +467,29 @@ h1{font-size:18px;font-weight:500}
       <label class="form-label" for="editUserEmail">Email</label>
       <input class="form-input" id="editUserEmail" type="email" placeholder="email@example.com">
     </div>
-    <div class="form-row" style="margin-bottom:16px">
+    <div class="form-row" style="margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
         <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
         <span style="font-size:12px;font-weight:500">Super Admin access</span>
+      </label>
+    </div>
+    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Advertising System</div>
+    <div class="form-row" style="margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
+        <input type="checkbox" id="editUserHasAdSystem" style="accent-color:#4797FF;width:16px;height:16px;flex-shrink:0">
+        <div>
+          <div style="font-size:12px;font-weight:500">Has advertising system</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Unlocks the ad onboarding wizard and campaign tools</div>
+        </div>
+      </label>
+    </div>
+    <div class="form-row" style="margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
+        <input type="checkbox" id="editUserOnboardingDone" style="accent-color:#22c55e;width:16px;height:16px;flex-shrink:0">
+        <div>
+          <div style="font-size:12px;font-weight:500">Onboarding completed</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Marks the wizard as finished — uncheck to force re-onboarding</div>
+        </div>
       </label>
     </div>
     <div class="modal-actions">
@@ -812,7 +831,9 @@ h1{font-size:18px;font-weight:500}
     editingUserId = u.id;
     document.getElementById('editUserName').value  = u.full_name || '';
     document.getElementById('editUserEmail').value = u.email || '';
-    document.getElementById('editUserIsAdmin').checked = !!u.is_admin;
+    document.getElementById('editUserIsAdmin').checked      = !!u.is_admin;
+    document.getElementById('editUserHasAdSystem').checked  = !!u.has_advertising_system;
+    document.getElementById('editUserOnboardingDone').checked = !!u.onboarding_completed;
     document.getElementById('editUserModal').classList.remove('hidden');
   }
 
@@ -831,9 +852,11 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('editUserSaveBtn').addEventListener('click', async function () {
     if (!editingUserId) return;
     var btn = this;
-    var full_name = document.getElementById('editUserName').value.trim();
-    var email     = document.getElementById('editUserEmail').value.trim().toLowerCase();
-    var is_admin  = document.getElementById('editUserIsAdmin').checked;
+    var full_name             = document.getElementById('editUserName').value.trim();
+    var email                 = document.getElementById('editUserEmail').value.trim().toLowerCase();
+    var is_admin              = document.getElementById('editUserIsAdmin').checked;
+    var has_advertising_system = document.getElementById('editUserHasAdSystem').checked;
+    var onboarding_completed  = document.getElementById('editUserOnboardingDone').checked;
 
     if (!full_name) { toast('Full name is required.', true); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Valid email required.', true); return; }
@@ -842,9 +865,9 @@ h1{font-size:18px;font-weight:500}
     btn.textContent = 'Saving…';
 
     try {
-      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin });
+      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin, has_advertising_system, onboarding_completed });
       var u = allUsers.find(function (x) { return x.id === editingUserId; });
-      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; }
+      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; u.has_advertising_system = has_advertising_system; u.onboarding_completed = onboarding_completed; }
       document.getElementById('editUserModal').classList.add('hidden');
       editingUserId = null;
       applyFilter(document.getElementById('searchInput').value);

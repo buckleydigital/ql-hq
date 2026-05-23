@@ -538,9 +538,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <div>
           <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
           <div class="quick-tiles">
-            <button class="quick-tile" type="button" onclick="resetLeadForm();openModal('leadModal')">
-              <span class="icon" data-icon="plus"></span><span>New Lead</span>
-            </button>
             <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
               <span class="icon" data-icon="file"></span><span>New Quote</span>
             </button>
