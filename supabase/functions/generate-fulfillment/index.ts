@@ -98,6 +98,7 @@ interface Company {
   slug: string;
   logo_url: string | null;
   website_url: string | null;
+  service_area?: string | null;
   lead_goals: number | null;
   max_daily_ad_spend: number | null;
   meta_ad_account_id: string | null;
@@ -801,6 +802,7 @@ ${reviewsHtml ? `<!-- Reviews -->
 <!-- Footer -->
 <footer class="footer">
   <p>&copy; ${new Date().getFullYear()} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
 </footer>
 
 <script>
@@ -1104,10 +1106,11 @@ async function htmlToPng(
 }
 
 // ---------------------------------------------------------------------------
-// Step 7: Push landing page to GitHub Pages
+// Step 7: Push files to GitHub Pages
 // ---------------------------------------------------------------------------
 async function pushToGitHub(
   slug: string,
+  filename: string,
   companyName: string,
   html: string,
 ): Promise<string> {
@@ -1119,7 +1122,7 @@ async function pushToGitHub(
     throw new Error("GITHUB_TOKEN, GITHUB_OWNER or GITHUB_PAGES_REPO not set");
   }
 
-  const path = `${slug}/index.html`;
+  const path = `${slug}/${filename}`;
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
 
   // Check if file already exists (need its SHA for updates)
@@ -1147,7 +1150,7 @@ async function pushToGitHub(
   );
 
   const body: Record<string, string> = {
-    message: `Generate landing page for ${companyName}`,
+    message: `Generate ${filename} for ${companyName}`,
     content,
     branch: "main",
   };
@@ -1173,6 +1176,161 @@ async function pushToGitHub(
 }
 
 // ---------------------------------------------------------------------------
+// Privacy Policy HTML builder
+// ---------------------------------------------------------------------------
+function buildPrivacyPolicyHtml(company: Company): string {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — ${escapeHtml(company.name)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif; color: #1a1a1a; background: #fff; }
+    .navbar { background: #0f2d1f; padding: 0 24px; display: flex; align-items: center; height: 64px; }
+    .navbar a { color: #fff; text-decoration: none; font-size: 1.1rem; font-weight: 700; }
+    .navbar a em { font-style: normal; color: #22c55e; }
+    .content { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; color: #0f2d1f; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 36px; }
+    h2 { font-size: 1.1rem; font-weight: 700; color: #0f2d1f; margin: 28px 0 10px; }
+    p { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 12px; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 6px; }
+    .footer { background: #0f2d1f; color: rgba(255,255,255,0.5); padding: 32px 24px; text-align: center; font-size: 0.8rem; }
+    .footer a { color: #22c55e; text-decoration: none; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="./">${escapeHtml(company.name)}</a>
+</nav>
+<div class="content">
+  <h1>Privacy Policy</h1>
+  <p class="subtitle">Last updated: ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</p>
+
+  <h2>1. Who We Are</h2>
+  <p>${escapeHtml(company.name)} ("we", "us", "our") is committed to protecting your personal information. This Privacy Policy explains how we collect, use, and safeguard data you provide when requesting a quote or contacting us.</p>
+
+  <h2>2. Information We Collect</h2>
+  <p>When you submit a quote request or contact form on our website, we may collect:</p>
+  <ul>
+    <li>Your name (first and last)</li>
+    <li>Email address</li>
+    <li>Phone number</li>
+    <li>Postcode and suburb</li>
+    <li>Details about your service requirements</li>
+  </ul>
+
+  <h2>3. How We Use Your Information</h2>
+  <p>We use the information you provide to:</p>
+  <ul>
+    <li>Prepare and deliver your free quote</li>
+    <li>Contact you regarding your enquiry via phone, email, or SMS</li>
+    <li>Improve our services and customer experience</li>
+  </ul>
+  <p>We will not sell, rent, or share your personal information with third parties for marketing purposes without your consent.</p>
+
+  <h2>4. Third-Party Services</h2>
+  <p>Our website uses the Meta Pixel (Facebook Pixel), a tool that helps us measure the effectiveness of our advertising. The Meta Pixel may collect data about your visits to our website in accordance with <a href="https://www.facebook.com/privacy/policy" target="_blank" rel="noopener">Meta's Privacy Policy</a>. You may opt out of Meta's data collection via your Facebook settings.</p>
+
+  <h2>5. Data Retention</h2>
+  <p>We retain your personal information only for as long as necessary to provide the services you have requested or as required by applicable law.</p>
+
+  <h2>6. Your Rights</h2>
+  <p>Under the Australian Privacy Act 1988 (and, where applicable, the GDPR), you have the right to:</p>
+  <ul>
+    <li>Access the personal information we hold about you</li>
+    <li>Request correction of inaccurate information</li>
+    <li>Request deletion of your information (subject to legal obligations)</li>
+    <li>Withdraw consent to being contacted at any time</li>
+  </ul>
+
+  <h2>7. Contact Us</h2>
+  <p>If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us directly. We will respond to all enquiries within a reasonable timeframe.</p>
+</div>
+<footer class="footer">
+  <p>&copy; ${year} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
+</footer>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Terms of Service HTML builder
+// ---------------------------------------------------------------------------
+function buildTermsHtml(company: Company): string {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — ${escapeHtml(company.name)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif; color: #1a1a1a; background: #fff; }
+    .navbar { background: #0f2d1f; padding: 0 24px; display: flex; align-items: center; height: 64px; }
+    .navbar a { color: #fff; text-decoration: none; font-size: 1.1rem; font-weight: 700; }
+    .navbar a em { font-style: normal; color: #22c55e; }
+    .content { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; color: #0f2d1f; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 36px; }
+    h2 { font-size: 1.1rem; font-weight: 700; color: #0f2d1f; margin: 28px 0 10px; }
+    p { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 12px; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 6px; }
+    .footer { background: #0f2d1f; color: rgba(255,255,255,0.5); padding: 32px 24px; text-align: center; font-size: 0.8rem; }
+    .footer a { color: #22c55e; text-decoration: none; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="./">${escapeHtml(company.name)}</a>
+</nav>
+<div class="content">
+  <h1>Terms of Service</h1>
+  <p class="subtitle">Last updated: ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</p>
+
+  <h2>1. Acceptance of Terms</h2>
+  <p>By submitting a quote request or contacting ${escapeHtml(company.name)} ("we", "us", "our") through this website, you agree to be bound by these Terms of Service. If you do not agree, please do not submit your information.</p>
+
+  <h2>2. Quote Requests and the Service Process</h2>
+  <p>When you submit a quote request via our website, you are expressing interest in receiving a quotation for our services. Submitting a request does not constitute a binding contract or guarantee of service provision. A formal quote will be provided following a consultation or site inspection as required.</p>
+
+  <h2>3. No Guarantee of Pricing</h2>
+  <p>Any indicative pricing, estimates, or ranges displayed on this website are for informational purposes only and do not constitute a binding offer. Final pricing may vary based on the specific requirements of your project, site conditions, materials, and other factors assessed at the time of quotation. We reserve the right to adjust pricing prior to entering into a formal agreement.</p>
+
+  <h2>4. Consent to Be Contacted</h2>
+  <p>By submitting your contact details, you expressly consent to ${escapeHtml(company.name)} contacting you via phone, email, or SMS to discuss your enquiry, provide your quote, and follow up on your request. You may withdraw this consent at any time by contacting us directly or unsubscribing from communications.</p>
+
+  <h2>5. Accuracy of Information</h2>
+  <p>You agree to provide accurate, current, and complete information when submitting a quote request. Inaccurate information may affect the accuracy of the quote provided and our ability to deliver services.</p>
+
+  <h2>6. Limitation of Liability</h2>
+  <p>To the maximum extent permitted by applicable law, ${escapeHtml(company.name)} shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of this website or reliance on information provided herein. Our total liability to you in connection with any claim shall not exceed the amount paid (if any) for the specific service giving rise to the claim.</p>
+
+  <h2>7. Intellectual Property</h2>
+  <p>All content on this website, including text, images, and branding, is the property of ${escapeHtml(company.name)} and is protected by applicable intellectual property laws. You may not reproduce or distribute any content without our prior written consent.</p>
+
+  <h2>8. Governing Law</h2>
+  <p>These Terms of Service are governed by the laws of Australia. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts of Australia.</p>
+
+  <h2>9. Changes to These Terms</h2>
+  <p>We reserve the right to update these Terms of Service at any time. The most current version will always be available on this page. Continued use of our website following any changes constitutes your acceptance of the revised terms.</p>
+</div>
+<footer class="footer">
+  <p>&copy; ${year} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
+</footer>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
 // Step 8: Update company record
 // ---------------------------------------------------------------------------
 async function updateCompany(
@@ -1191,6 +1349,7 @@ async function updateCompany(
   const patch: Record<string, unknown> = {
     onboarding_completed: true,
     generated_ad_copy: adCopy,
+    campaign_status: "preview",
   };
 
   if (pageUrl) patch.generated_page_url = pageUrl;
@@ -1239,6 +1398,10 @@ Deno.serve(async (req) => {
   let bodyWebsiteUrl: string | null = null;
   let bodyServiceArea: string | null = null;
   let bodyTestimonials: Testimonial[] | null = null;
+  let bodySelectedHook: { angle?: string; headline?: string; body?: string; why?: string } | null = null;
+  let bodyBrandColor: string | null = null;
+  let bodyFontStyle: string | null = null;
+  let bodyBrandNotes: string | null = null;
   try {
     const body = await req.json();
     companyId = body?.company_id;
@@ -1254,6 +1417,18 @@ Deno.serve(async (req) => {
     }
     if (Array.isArray(body?.testimonials) && body.testimonials.length > 0) {
       bodyTestimonials = body.testimonials as Testimonial[];
+    }
+    if (body?.selected_hook && typeof body.selected_hook === "object") {
+      bodySelectedHook = body.selected_hook as { angle?: string; headline?: string; body?: string; why?: string };
+    }
+    if (typeof body?.brand_color === "string" && body.brand_color.trim()) {
+      bodyBrandColor = body.brand_color.trim();
+    }
+    if (typeof body?.font_style === "string" && body.font_style.trim()) {
+      bodyFontStyle = body.font_style.trim();
+    }
+    if (typeof body?.brand_notes === "string") {
+      bodyBrandNotes = body.brand_notes.trim();
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -1290,6 +1465,10 @@ Deno.serve(async (req) => {
     websiteUrl: bodyWebsiteUrl,
     serviceArea: bodyServiceArea,
     testimonials: bodyTestimonials,
+    selectedHook: bodySelectedHook,
+    brandColor: bodyBrandColor,
+    fontStyle: bodyFontStyle,
+    brandNotes: bodyBrandNotes,
   });
   try {
     // @ts-ignore — EdgeRuntime is available in Supabase edge functions
@@ -1318,6 +1497,10 @@ async function runPipeline(
     websiteUrl?: string | null;
     serviceArea?: string | null;
     testimonials?: Testimonial[] | null;
+    selectedHook?: { angle?: string; headline?: string; body?: string; why?: string } | null;
+    brandColor?: string | null;
+    fontStyle?: string | null;
+    brandNotes?: string | null;
   } = {},
 ): Promise<void> {
   // Accumulated errors (non-fatal steps continue)
@@ -1325,8 +1508,12 @@ async function runPipeline(
 
   // Prefer values passed from wizard body (avoids race condition with DB write)
   const websiteUrl = overrides.websiteUrl ?? company.website_url;
-  const serviceArea = overrides.serviceArea ?? company.service_area ?? "Australia";
+  const serviceArea = overrides.serviceArea ?? (company.service_area ?? "Australia");
   const testimonials = overrides.testimonials ?? company.testimonials ?? null;
+  const selectedHook = overrides.selectedHook ?? null;
+  const brandColor = overrides.brandColor ?? "#16a34a";
+  const fontStyle = overrides.fontStyle ?? "system";
+  const brandNotes = overrides.brandNotes ?? "";
 
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
@@ -1343,7 +1530,7 @@ async function runPipeline(
   // ── Step 3: Generate copy ───────────────────────────────────────────────────
   let copy: GeneratedCopy;
   try {
-    copy = await generateCopy(company.name, scrapedContent, serviceArea);
+    copy = await generateCopy(company.name, scrapedContent, serviceArea, selectedHook, brandNotes);
     console.log(`[generate-fulfillment] Copy generated. Niche: ${copy.niche}`);
   } catch (err) {
     console.error("[generate-fulfillment] Step 3 (Claude) failed:", err);
@@ -1371,8 +1558,8 @@ async function runPipeline(
   let storyAdHtml = "";
   try {
     [feedAdHtml, storyAdHtml] = await Promise.all([
-      generateAdCreativeHtml(company, copy, "square"),
-      generateAdCreativeHtml(company, copy, "story"),
+      generateAdCreativeHtml(company, copy, "square", brandColor, fontStyle, brandNotes),
+      generateAdCreativeHtml(company, copy, "story", brandColor, fontStyle, brandNotes),
     ]);
     console.log("[generate-fulfillment] Ad creative HTML generated by Claude");
   } catch (err) {
@@ -1413,14 +1600,34 @@ async function runPipeline(
     const ghRepo = Deno.env.get("GITHUB_PAGES_REPO");
 
     try {
-      githubPagesUrl = await pushToGitHub(company.slug, company.name, landingPageHtml);
+      githubPagesUrl = await pushToGitHub(company.slug, "index.html", company.name, landingPageHtml);
       if (ghOwner && ghRepo) {
         githubRepo = `${ghOwner}/${ghRepo}/${company.slug}/index.html`;
       }
-      console.log(`[generate-fulfillment] Deployed to GitHub Pages: ${githubPagesUrl}`);
+      console.log(`[generate-fulfillment] Deployed landing page to GitHub Pages: ${githubPagesUrl}`);
     } catch (err) {
       errors.github_push = String(err);
       console.warn("[generate-fulfillment] Step 7 (GitHub push) failed:", err);
+    }
+
+    // Push privacy policy
+    try {
+      const privacyHtml = buildPrivacyPolicyHtml(company);
+      await pushToGitHub(company.slug, "privacy-policy.html", company.name, privacyHtml);
+      console.log(`[generate-fulfillment] Deployed privacy-policy.html`);
+    } catch (err) {
+      errors.github_push_privacy = String(err);
+      console.warn("[generate-fulfillment] Privacy policy push failed:", err);
+    }
+
+    // Push terms of service
+    try {
+      const termsHtml = buildTermsHtml(company);
+      await pushToGitHub(company.slug, "terms.html", company.name, termsHtml);
+      console.log(`[generate-fulfillment] Deployed terms.html`);
+    } catch (err) {
+      errors.github_push_terms = String(err);
+      console.warn("[generate-fulfillment] Terms push failed:", err);
     }
   }
 

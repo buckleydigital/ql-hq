@@ -1228,6 +1228,67 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div id="page-campaigns" class="page hidden">
         <div class="stack">
 
+          <!-- Campaign Preview Card — shown when campaign_status === 'preview' -->
+          <div id="campaignPreviewCard" class="panel" style="display:none;border:1px solid rgba(71,151,255,0.3);background:rgba(71,151,255,0.04)">
+            <div class="panel-h">
+              <div>
+                <h2 style="font-size:14px;font-weight:500">Campaign Preview</h2>
+                <p>Review your creatives and copy before we go live. Approve when you're happy.</p>
+              </div>
+              <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600">AWAITING APPROVAL</span>
+            </div>
+            <div class="panel-b">
+              <!-- Ad creative previews -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+                <div>
+                  <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Feed Ad (1:1)</p>
+                  <div id="previewFeedImg" style="background:var(--surface-2);border-radius:10px;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center">
+                    <span style="color:var(--muted);font-size:12px">Loading...</span>
+                  </div>
+                </div>
+                <div>
+                  <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Story Ad (9:16)</p>
+                  <div id="previewStoryImg" style="background:var(--surface-2);border-radius:10px;overflow:hidden;aspect-ratio:9/16;display:flex;align-items:center;justify-content:center">
+                    <span style="color:var(--muted);font-size:12px">Loading...</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Ad copy preview -->
+              <div id="previewCopySection" style="margin-bottom:20px;display:none">
+                <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Ad Headlines</p>
+                <div id="previewHeadlines" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+                <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Primary Text</p>
+                <div id="previewPrimaryTexts" style="display:flex;flex-direction:column;gap:8px"></div>
+              </div>
+
+              <!-- Regenerate section -->
+              <div style="background:var(--surface-2);border-radius:12px;padding:14px;margin-bottom:16px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                  <span style="font-size:13px;font-weight:500">Not quite right?</span>
+                  <span id="previewRegenCount" style="font-size:11px;color:var(--muted)">10 regenerations remaining today</span>
+                </div>
+                <input id="previewRegenPrompt" type="text" placeholder="Tell us what to change — e.g. 'Make it more urgent' or 'Change the colour to blue'" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:8px;color:var(--text)">
+                <button onclick="regenerateCreatives()" class="btn" style="width:100%">⟳ Regenerate Creatives</button>
+              </div>
+
+              <!-- Approve button -->
+              <button onclick="approveCampaign()" class="btn2" style="width:100%;min-height:44px;font-size:14px;font-weight:600">✓ Approve — I'm happy with this</button>
+              <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">Once approved, your account manager will set everything live within 24 hours.</p>
+            </div>
+          </div>
+
+          <!-- Preparing Card — shown when campaign_status === 'preparing' -->
+          <div id="campaignPreparingCard" class="panel" style="display:none;border:1px solid rgba(234,179,8,0.3);background:rgba(234,179,8,0.04)">
+            <div class="panel-h">
+              <div>
+                <h2 style="font-size:14px;font-weight:500">Campaign Approved</h2>
+                <p>Your account manager is setting everything live. You'll hear from us within 24 hours.</p>
+              </div>
+              <span style="background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600">PREPARING</span>
+            </div>
+          </div>
+
           <!-- Connection Status Card -->
           <div class="status-banner" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -2132,8 +2193,27 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 5: Brand -->
-    <div id="wizardStep5" style="display:none">
+    <!-- Step 4: Hooks & Angles -->
+    <div id="wizardStep4" style="display:none">
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Choose your winning angle</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We've analysed your niche and business. Pick the hook that resonates most — your entire campaign will be built around it.</p>
+
+      <!-- Loading state -->
+      <div id="wizardHooksLoading" style="text-align:center;padding:40px 0">
+        <div style="font-size:24px;margin-bottom:12px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
+        <p style="font-size:14px;color:#9a9a9a">Analysing your niche…</p>
+      </div>
+
+      <!-- Hook cards (populated by JS) -->
+      <div id="wizardHookCards" style="display:none;display:flex;flex-direction:column;gap:10px;margin-bottom:20px"></div>
+
+      <!-- Use this angle button (shown after selection) -->
+      <button id="wizardHookNextBtn" onclick="wizardStep4Next()" style="display:none;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Use this angle →</button>
+      <a id="wizardHookSkipBtn" onclick="wizardStep4Skip()" style="display:none;font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Let AI decide →</a>
+    </div>
+
+    <!-- Step 6: Brand -->
+    <div id="wizardStep6" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
@@ -2150,11 +2230,38 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Let the system choose</div>
         </div>
       </div>
-      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+
+      <!-- Brand Colors -->
+      <div style="margin-top:16px;margin-bottom:16px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Primary brand colour</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input id="wizardBrandColor" type="color" value="#16a34a" oninput="document.getElementById('wizardBrandColorHex').textContent=this.value" style="width:40px;height:40px;border:none;border-radius:8px;cursor:pointer;background:none;padding:0">
+          <span id="wizardBrandColorHex" style="font-size:13px;color:#9a9a9a">#16a34a</span>
+        </div>
+      </div>
+
+      <!-- Font Style -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Font style</label>
+        <select id="wizardFontStyle" style="width:100%;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none">
+          <option value="system">System (Default)</option>
+          <option value="modern">Modern — Clean &amp; minimal</option>
+          <option value="bold">Bold — High impact</option>
+          <option value="classic">Classic — Professional serif</option>
+        </select>
+      </div>
+
+      <!-- Optional: Style prompt -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Any specific branding notes? <span style="color:#444">(optional)</span></label>
+        <input id="wizardBrandNotes" type="text" placeholder="e.g. We use dark green and white, very premium feel" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+      </div>
+
+      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 4: Testimonials -->
-    <div id="wizardStep4" style="display:none">
+    <!-- Step 5: Testimonials -->
+    <div id="wizardStep5" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Add customer testimonials</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">These appear on your landing page. Add 2–3 real reviews — no fabricated quotes.</p>
 
@@ -2189,14 +2296,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
 
       <button id="wizardAddT3Btn" onclick="document.getElementById('wizardT3Wrap').style.display='';this.style.display='none'" style="background:transparent;color:#9a9a9a;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;padding:9px 16px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;margin-bottom:14px">+ Add a third review</button>
-      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(5)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
+      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
     </div>
 
-    <!-- Step 6: Connect Ad Accounts -->
-    <div id="wizardStep6" style="display:none">
+    <!-- Step 7: Connect Ad Accounts -->
+    <div id="wizardStep7" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 6px">Connect your ad accounts</h2>
-      <div id="wizardStep6PlatformBadge" style="margin-bottom:16px"></div>
+      <div id="wizardStep7PlatformBadge" style="margin-bottom:16px"></div>
       <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
       <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 20px">This grants us access to run ads in your accounts. Takes 60 seconds.</p>
 
@@ -2213,7 +2320,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
 
       <!-- Google fields — only shown if budget ≥ $100 -->
-      <div id="wizardStep6GoogleSection" style="display:none">
+      <div id="wizardStep7GoogleSection" style="display:none">
         <div style="border-top:1px solid rgba(255,255,255,0.08);margin-bottom:18px;padding-top:18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
             <span style="font-size:11px;font-weight:600;background:rgba(66,133,244,0.15);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:4px;padding:2px 7px">GOOGLE UNLOCKED</span>
@@ -2225,16 +2332,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           </div>
         </div>
       </div>
-      <div id="wizardStep6GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
+      <div id="wizardStep7GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
         <p style="font-size:12px;color:#555;margin:0">🔒 Google Search unlocks at <strong style="color:#9a9a9a">$100/day</strong> — upgrade your budget to add Google campaigns.</p>
       </div>
 
-      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(7)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
+      <button onclick="wizardStep7Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(8)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
     </div>
 
-    <!-- Step 7: Generating -->
-    <div id="wizardStep7" style="display:none;text-align:center">
+    <!-- Step 8: Generating -->
+    <div id="wizardStep8" style="display:none;text-align:center">
       <div style="font-size:32px;margin-bottom:20px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Building your lead machine…</h2>
       <p style="font-size:14px;color:#9a9a9a;margin:0 0 32px">This usually takes 30–60 seconds</p>
@@ -2247,8 +2354,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <style>@keyframes wizardSpin{to{transform:rotate(360deg)}}</style>
     </div>
 
-    <!-- Step 8: Live -->
-    <div id="wizardStep8" style="display:none;text-align:center">
+    <!-- Step 9: Live -->
+    <div id="wizardStep9" style="display:none;text-align:center">
       <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
       <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
       <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">

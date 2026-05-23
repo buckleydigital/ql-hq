@@ -4770,11 +4770,78 @@ async function loadCampaigns() {
 
   const { data: company } = await sb
     .from('companies')
-    .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at')
+    .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at, generated_ad_copy, creative_regeneration_count, creative_last_regenerated_at')
     .eq('id', currentCompanyId)
     .single();
 
   if (!company) return;
+
+  // Campaign Preview card
+  const previewCard = document.getElementById('campaignPreviewCard');
+  const preparingCard = document.getElementById('campaignPreparingCard');
+
+  if (previewCard) previewCard.style.display = 'none';
+  if (preparingCard) preparingCard.style.display = 'none';
+
+  if (company.campaign_status === 'preview') {
+    if (previewCard) {
+      previewCard.style.display = '';
+      const adCopy = company.generated_ad_copy || {};
+
+      // Feed image
+      const feedContainer = document.getElementById('previewFeedImg');
+      if (feedContainer) {
+        if (adCopy.ad_image_feed_url) {
+          feedContainer.innerHTML = `<img src="${adCopy.ad_image_feed_url}" style="width:100%;height:100%;object-fit:cover" alt="Feed ad">`;
+        } else {
+          feedContainer.innerHTML = '<span style="color:var(--muted);font-size:12px">Not yet generated</span>';
+        }
+      }
+
+      // Story image
+      const storyContainer = document.getElementById('previewStoryImg');
+      if (storyContainer) {
+        if (adCopy.ad_image_story_url) {
+          storyContainer.innerHTML = `<img src="${adCopy.ad_image_story_url}" style="width:100%;height:100%;object-fit:cover" alt="Story ad">`;
+        } else {
+          storyContainer.innerHTML = '<span style="color:var(--muted);font-size:12px">Not yet generated</span>';
+        }
+      }
+
+      // Ad copy section
+      const copySection = document.getElementById('previewCopySection');
+      const headlinesEl = document.getElementById('previewHeadlines');
+      const primaryTextsEl = document.getElementById('previewPrimaryTexts');
+      if (copySection && (adCopy.meta_headlines?.length || adCopy.meta_primary_texts?.length)) {
+        copySection.style.display = '';
+        if (headlinesEl && adCopy.meta_headlines) {
+          headlinesEl.innerHTML = adCopy.meta_headlines.map(h =>
+            `<span style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--text)">${escapeHtmlJs(h)}</span>`
+          ).join('');
+        }
+        if (primaryTextsEl && adCopy.meta_primary_texts) {
+          primaryTextsEl.innerHTML = adCopy.meta_primary_texts.map(t =>
+            `<p style="font-size:13px;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0">${escapeHtmlJs(t)}</p>`
+          ).join('');
+        }
+      }
+
+      // Regen count
+      const regenCountEl = document.getElementById('previewRegenCount');
+      if (regenCountEl) {
+        const now = Date.now();
+        const lastRegen = company.creative_last_regenerated_at
+          ? new Date(company.creative_last_regenerated_at).getTime()
+          : 0;
+        const withinWindow = (now - lastRegen) < 24 * 60 * 60 * 1000;
+        const used = withinWindow ? (company.creative_regeneration_count || 0) : 0;
+        const remaining = Math.max(0, 10 - used);
+        regenCountEl.textContent = `${remaining} regeneration${remaining !== 1 ? 's' : ''} remaining today`;
+      }
+    }
+  } else if (company.campaign_status === 'preparing') {
+    if (preparingCard) preparingCard.style.display = '';
+  }
 
   // Connection status chips
   const metaConnected = !!company.meta_ad_account_id;
@@ -4875,6 +4942,90 @@ async function toggleCampaign(platform, action) {
   } catch (err) {
     console.error('toggleCampaign error:', err);
     if (btn) { btn.disabled = false; }
+  }
+}
+
+// =============================================================================
+// ── Campaign Preview: Approve & Regenerate ────────────────────────────────────
+// =============================================================================
+
+async function approveCampaign() {
+  if (!currentCompanyId) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/approve-campaign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ company_id: currentCompanyId }),
+    });
+
+    if (res.ok) {
+      await loadCampaigns();
+    } else {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      alert('Error: ' + (err.error ?? 'Failed to approve campaign'));
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Approve — I\'m happy with this'; }
+    }
+  } catch (err) {
+    console.error('approveCampaign error:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve — I\'m happy with this'; }
+  }
+}
+
+async function regenerateCreatives() {
+  if (!currentCompanyId) return;
+  const btn = event?.target;
+  const prompt = document.getElementById('previewRegenPrompt')?.value?.trim() || '';
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Regenerating…'; }
+
+  const regenCountEl = document.getElementById('previewRegenCount');
+  if (regenCountEl) regenCountEl.textContent = 'Regenerating…';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/regenerate-creatives`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ company_id: currentCompanyId, prompt }),
+    });
+
+    if (res.status === 429) {
+      if (regenCountEl) regenCountEl.textContent = '0 regenerations remaining today';
+      alert('You\'ve reached your daily regeneration limit. Please try again tomorrow.');
+      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
+      return;
+    }
+
+    if (res.ok) {
+      const result = await res.json();
+      const remaining = result?.remaining ?? 0;
+      if (regenCountEl) regenCountEl.textContent = `${remaining} regeneration${remaining !== 1 ? 's' : ''} remaining today — regeneration started, images will update shortly`;
+      // Clear prompt
+      const promptEl = document.getElementById('previewRegenPrompt');
+      if (promptEl) promptEl.value = '';
+      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
+      // Reload after a short delay to pick up new images
+      setTimeout(() => loadCampaigns(), 5000);
+    } else {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      alert('Error: ' + (err.error ?? 'Failed to regenerate'));
+      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
+      if (regenCountEl) regenCountEl.textContent = '';
+    }
+  } catch (err) {
+    console.error('regenerateCreatives error:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
   }
 }
 
@@ -5800,23 +5951,26 @@ function showOnboardingWizard(company, user) {
 }
 
 function wizardGoTo(step) {
-  for (let i = 1; i <= 8; i++) {
+  for (let i = 1; i <= 9; i++) {
     const el = document.getElementById(`wizardStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
   const dots = document.getElementById('wizardDots');
   if (dots) {
-    dots.innerHTML = [1,2,3,4,5,6,7,8].map(i =>
+    dots.innerHTML = [1,2,3,4,5,6,7,8,9].map(i =>
       i === step
         ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
-  if (step === 6) {
+  if (step === 4) {
+    fetchHooks();
+  }
+  if (step === 7) {
     const googleEnabled = wizardData.googleEnabled === true;
-    const googleSection = document.getElementById('wizardStep6GoogleSection');
-    const googleLocked  = document.getElementById('wizardStep6GoogleLocked');
-    const badge         = document.getElementById('wizardStep6PlatformBadge');
+    const googleSection = document.getElementById('wizardStep7GoogleSection');
+    const googleLocked  = document.getElementById('wizardStep7GoogleLocked');
+    const badge         = document.getElementById('wizardStep7PlatformBadge');
     if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
     if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
     if (badge) {
@@ -5825,7 +5979,7 @@ function wizardGoTo(step) {
         : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
     }
   }
-  if (step === 7) wizardGenerateStep();
+  if (step === 8) wizardGenerateStep();
 }
 
 function wizardSelectLeadGoal(tile, value) {
@@ -5883,6 +6037,7 @@ function wizardStep3Next() {
     wizardData.businessDesc = null;
   }
   wizardGoTo(4);
+  // fetchHooks() is triggered inside wizardGoTo when step === 4
 }
 
 function wizardSelectLogoTile(type) {
@@ -5912,7 +6067,116 @@ function wizardLogoPreview(input) {
   reader.readAsDataURL(file);
 }
 
+async function fetchHooks() {
+  const loadingEl = document.getElementById('wizardHooksLoading');
+  const cardsEl = document.getElementById('wizardHookCards');
+  const nextBtn = document.getElementById('wizardHookNextBtn');
+  const skipBtn = document.getElementById('wizardHookSkipBtn');
+
+  if (loadingEl) loadingEl.style.display = '';
+  if (cardsEl) { cardsEl.style.display = 'none'; cardsEl.innerHTML = ''; }
+  if (nextBtn) nextBtn.style.display = 'none';
+  if (skipBtn) skipBtn.style.display = 'none';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-hooks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        company_id: currentCompanyId,
+        website_url: wizardData.websiteUrl || null,
+        business_desc: wizardData.businessDesc || null,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const result = await res.json();
+    const hooks = result?.hooks ?? [];
+
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    if (hooks.length === 0) {
+      if (skipBtn) { skipBtn.style.display = 'block'; }
+      return;
+    }
+
+    if (cardsEl) {
+      cardsEl.style.display = 'flex';
+      cardsEl.innerHTML = hooks.map((hook, idx) => `
+        <div class="wizard-hook-card" data-idx="${idx}" onclick="wizardSelectHook(this, ${idx})" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:10px;font-weight:700;background:rgba(234,179,8,0.15);color:#eab308;border:1px solid rgba(234,179,8,0.3);border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:0.05em">${escapeHtmlJs(hook.angle || '')}</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;color:#f5f5f5;margin-bottom:4px">${escapeHtmlJs(hook.headline || '')}</div>
+          <div style="font-size:13px;color:#9a9a9a;margin-bottom:8px">${escapeHtmlJs(hook.body || '')}</div>
+          <div style="font-size:12px;color:#555;font-style:italic">Why this works: ${escapeHtmlJs(hook.why || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    if (skipBtn) skipBtn.style.display = 'block';
+
+    // Store all hooks for reference
+    wizardData._hooks = hooks;
+
+  } catch (err) {
+    console.warn('fetchHooks error:', err);
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (skipBtn) skipBtn.style.display = 'block';
+  }
+}
+
+function escapeHtmlJs(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function wizardSelectHook(card, idx) {
+  document.querySelectorAll('.wizard-hook-card').forEach(c => {
+    c.style.borderColor = 'rgba(255,255,255,0.12)';
+    c.style.background = '';
+  });
+  card.style.borderColor = '#4797FF';
+  card.style.background = 'rgba(71,151,255,0.08)';
+  wizardData.selectedHookIdx = idx;
+
+  const nextBtn = document.getElementById('wizardHookNextBtn');
+  if (nextBtn) nextBtn.style.display = '';
+}
+
 function wizardStep4Next() {
+  // Store selected hook
+  if (wizardData._hooks && wizardData.selectedHookIdx != null) {
+    wizardData.selectedHook = wizardData._hooks[wizardData.selectedHookIdx] || null;
+  } else {
+    wizardData.selectedHook = null;
+  }
+  wizardGoTo(5);
+}
+
+function wizardStep4Skip() {
+  // Use first hook automatically (let AI decide)
+  if (wizardData._hooks && wizardData._hooks.length > 0) {
+    wizardData.selectedHook = wizardData._hooks[0];
+  } else {
+    wizardData.selectedHook = null;
+  }
+  wizardGoTo(5);
+}
+
+function wizardStep5Next() {
   // Collect testimonials (min 1, max 3)
   const t1name   = document.getElementById('wizardT1Name')?.value?.trim() || '';
   const t1suburb = document.getElementById('wizardT1Suburb')?.value?.trim() || '';
@@ -5929,20 +6193,23 @@ function wizardStep4Next() {
   if (t2name || t2quote) testimonials.push({ name: t2name, suburb: t2suburb, quote: t2quote });
   if (t3name || t3quote) testimonials.push({ name: t3name, suburb: t3suburb, quote: t3quote });
   wizardData.testimonials = testimonials.length > 0 ? testimonials : null;
-  wizardGoTo(5);
-}
-
-function wizardStep5Next() {
   wizardGoTo(6);
 }
 
 function wizardStep6Next() {
+  wizardData.brandColor = document.getElementById('wizardBrandColor')?.value || '#16a34a';
+  wizardData.fontStyle = document.getElementById('wizardFontStyle')?.value || 'system';
+  wizardData.brandNotes = document.getElementById('wizardBrandNotes')?.value?.trim() || '';
+  wizardGoTo(7);
+}
+
+function wizardStep7Next() {
   wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
   wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
   wizardData.googleCustomerId = wizardData.googleEnabled
     ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
     : null;
-  wizardGoTo(7);
+  wizardGoTo(8);
 }
 
 async function wizardGenerateStep() {
@@ -6000,6 +6267,10 @@ async function wizardGenerateStep() {
         max_daily_ad_spend: wizardData.maxDailySpend,
         service_area:      wizardData.serviceArea,
         testimonials:      wizardData.testimonials || [],
+        selected_hook:     wizardData.selectedHook || null,
+        brand_color:       wizardData.brandColor || '#16a34a',
+        font_style:        wizardData.fontStyle || 'system',
+        brand_notes:       wizardData.brandNotes || '',
       }),
       keepalive: true,
     });
@@ -6028,7 +6299,7 @@ async function wizardGenerateStep() {
       }
     }
 
-    wizardGoTo(8);
+    wizardGoTo(9);
 
     // Mark onboarding done immediately — prevents wizard re-appearing on refresh
     await sb.from('companies')
@@ -6047,7 +6318,7 @@ async function wizardGenerateStep() {
       .update({ onboarding_completed: true })
       .eq('id', currentCompanyId).catch(() => {});
 
-    wizardGoTo(8);
+    wizardGoTo(9);
   }
 }
 
@@ -6066,6 +6337,7 @@ async function wizardSaveOnboardingData() {
     .eq('id', currentCompanyId);
   if (error) console.warn('wizardSaveOnboardingData error:', error);
 }
+
 
 async function completeOnboarding() {
   try {
