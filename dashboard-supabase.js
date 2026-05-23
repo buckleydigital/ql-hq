@@ -3561,15 +3561,25 @@ async function loadAiSettings() {
     // Load SMS credits balance
     const { data: credits } = await sb
       .from("sms_credits")
-      .select("balance")
+      .select("balance, next_reset_at")
       .eq("company_id", currentCompanyId)
       .maybeSingle();
+    const b = credits?.balance ?? 0;
+
     const balanceEl = document.getElementById("smsCreditsBalance");
     if (balanceEl) {
-      const b = credits?.balance ?? 0;
       balanceEl.textContent = `${b} credit${b !== 1 ? "s" : ""}`;
       balanceEl.style.color = b < 20 ? "#ef4444" : b < 50 ? "#f59e0b" : "var(--text)";
     }
+
+    const resetLabel = document.getElementById("smsCreditsResetLabel");
+    if (resetLabel && credits?.next_reset_at) {
+      const resetDate = new Date(credits.next_reset_at);
+      const formatted = resetDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+      resetLabel.textContent = `Next 500 free credits: ${formatted}`;
+    }
+
+    _updateSmsCreditsUi(b);
 
     // Show success toast if returning from credits purchase
     if (new URLSearchParams(location.search).get("sms_credits_success")) {
@@ -4111,9 +4121,24 @@ async function loadNotificationBadge() {
   }
 }
 
+function _updateSmsCreditsUi(balance) {
+  const colorClass = balance < 20 ? "#ef4444" : balance < 50 ? "#f59e0b" : null;
+  ['convSmsCreditsCount', 'convSmsCreditsBadgeCount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = balance;
+    if (colorClass) el.style.color = colorClass;
+  });
+}
+
 // ─── Conversations ────────────────────────────────────────────────────────────
 async function loadConversations() {
   if (!currentCompanyId) return;
+  // Refresh credit count whenever conversations page opens
+  try {
+    const { data: cr } = await sb.from("sms_credits").select("balance").eq("company_id", currentCompanyId).maybeSingle();
+    if (cr != null) _updateSmsCreditsUi(cr.balance ?? 0);
+  } catch (_) {}
   try {
     const from = conversationsPage * PER_PAGE;
     const to = from + PER_PAGE - 1;
