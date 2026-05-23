@@ -75,15 +75,18 @@ Website content for additional context:
 ${context || "(no website content provided)"}
 ---
 
-Generate hooks that are highly specific to the ${niche} industry and the typical ${market} customer of a ${niche} business — not generic hooks.
-
-Each hook must use a different emotional or rational appeal (e.g. fear of loss, social proof, urgency, curiosity gap, authority, before/after transformation).
+CRITICAL RULES — follow these exactly:
+1. Every headline, body line, and "why" explanation MUST be specific to the ${niche} industry. Use real ${niche} terminology, pain points, and outcomes.
+2. NEVER use generic phrases like "home services", "contractors", or "neighbors across your community" — always use language a ${niche} customer would immediately recognise as being about ${niche}.
+3. The "why" explanation must name the specific ${niche} customer situation, NOT a generic industry category.
+4. Each of the 5 hooks must use a completely different emotional or rational appeal: choose from fear of loss, social proof, urgency/scarcity, before/after transformation, curiosity gap, authority/expertise, ROI/savings.
+5. Headlines must be 3–6 words, punchy, and immediately signal ${niche} — no vague filler words.
 
 For each hook provide:
-- angle: the angle category name (e.g. "Fear of Missing Out", "Urgency", "Social Proof", "Authority", "Before/After Transformation", "Curiosity Gap")
-- headline: a 3-5 word scroll-stopping headline using this angle, specific to ${niche}
-- body: a supporting one-liner, max 8 words
-- why: one sentence explaining why this angle works for ${niche} ${market} customers
+- angle: the angle category name (e.g. "Fear of Loss", "Urgency", "Social Proof", "Before/After", "Curiosity Gap")
+- headline: a scroll-stopping headline specific to ${niche} ${market} customers
+- body: a supporting one-liner, max 10 words, using ${niche}-specific language
+- why: one sentence explaining why this angle works specifically for ${niche} ${market} customers — must mention ${niche} by name
 
 Return a JSON object with key "hooks" containing an array of exactly 5 hook objects.
 Respond with ONLY valid JSON — no markdown fences, no commentary.`;

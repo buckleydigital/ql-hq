@@ -228,6 +228,7 @@ let currentPageId    = null;  // Track which page is currently displayed
 let _cachedCompany       = null;   // company record cached for wizard re-open
 let _hasAdSystem         = false;  // whether company has advertising system
 let _onboardingCompleted = null;   // whether onboarding wizard has been completed
+let _campaignStatus      = null;   // campaign_status from companies table
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
 let conversationsPage  = 0;
@@ -930,7 +931,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, settings, plan, has_advertising_system, onboarding_completed")
+        .select("name, settings, plan, has_advertising_system, onboarding_completed, campaign_status")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -958,6 +959,8 @@ async function showApp() {
       _cachedCompany       = company || null;
       _hasAdSystem         = hasAdSystem;
       _onboardingCompleted = onboardingDone;
+      _campaignStatus      = company?.campaign_status ?? null;
+      updateCampaignNavBadge();
 
       if (hasAdSystem && !onboardingDone) {
         showOnboardingWizard(company, currentUser);
@@ -1153,10 +1156,14 @@ async function loadDashboard() {
 
   const rangeStart = getDashRangeStart();
 
-  // Show or remove the advertising setup banner
+  // Show or remove the advertising setup banner / campaign preview banner
   const dashPage = document.getElementById("page-dashboard");
   const existingSetupBanner = document.getElementById("adSetupDashBanner");
+  const existingPreviewBanner = document.getElementById("campaignPreviewDashBanner");
+
   if (dashPage && _hasAdSystem && !_onboardingCompleted) {
+    // Setup not finished — prompt to complete
+    if (existingPreviewBanner) existingPreviewBanner.remove();
     if (!existingSetupBanner) {
       const banner = document.createElement("div");
       banner.id = "adSetupDashBanner";
@@ -1173,8 +1180,28 @@ async function loadDashboard() {
       `;
       dashPage.insertBefore(banner, dashPage.firstChild);
     }
-  } else if (existingSetupBanner) {
-    existingSetupBanner.remove();
+  } else if (dashPage && _hasAdSystem && _onboardingCompleted && _campaignStatus === 'preview') {
+    // Onboarding done, campaign preview is ready and waiting for approval
+    if (existingSetupBanner) existingSetupBanner.remove();
+    if (!existingPreviewBanner) {
+      const banner = document.createElement("div");
+      banner.id = "campaignPreviewDashBanner";
+      banner.style.cssText = "margin-bottom:16px;padding:18px 24px;background:linear-gradient(135deg,rgba(34,197,94,0.12),rgba(71,151,255,0.08));border:1.5px solid rgba(34,197,94,0.4);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">🎉</div>
+          <div>
+            <div style="font-weight:700;color:#f5f5f5;font-size:15px">Your campaign preview is ready!</div>
+            <div style="font-size:13px;color:#9a9a9a;margin-top:2px">Review your ads and landing page, then approve to go live.</div>
+          </div>
+        </div>
+        <button onclick="navigateTo('campaigns')" style="background:#22c55e;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">Review & Approve →</button>
+      `;
+      dashPage.insertBefore(banner, dashPage.firstChild);
+    }
+  } else {
+    if (existingSetupBanner) existingSetupBanner.remove();
+    if (existingPreviewBanner) existingPreviewBanner.remove();
   }
 
   try {
@@ -5002,6 +5029,10 @@ async function approveCampaign() {
     });
 
     if (res.ok) {
+      _campaignStatus = 'preparing';
+      updateCampaignNavBadge();
+      // Remove preview banner from dashboard if visible
+      document.getElementById('campaignPreviewDashBanner')?.remove();
       await loadCampaigns();
     } else {
       const err = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -5988,6 +6019,16 @@ function showOnboardingWizard(company, user) {
 function resumeAdSetup() {
   if (_cachedCompany) {
     showOnboardingWizard(_cachedCompany, currentUser);
+  }
+}
+
+function updateCampaignNavBadge() {
+  const badge = document.getElementById('campaignNavBadge');
+  if (!badge) return;
+  if (_campaignStatus === 'preview') {
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
   }
 }
 
