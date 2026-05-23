@@ -102,7 +102,6 @@ interface Company {
   lead_goals: number | null;
   max_daily_ad_spend: number | null;
   meta_ad_account_id: string | null;
-  testimonials: Testimonial[] | null;
   settings: Record<string, unknown>;
 }
 
@@ -116,7 +115,7 @@ async function loadCompany(
   const { data: company, error } = await db
     .from("companies")
     .select(
-      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, testimonials, settings",
+      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, settings",
     )
     .eq("id", companyId)
     .single();
@@ -1535,7 +1534,7 @@ async function runPipeline(
   // Prefer values passed from wizard body (avoids race condition with DB write)
   const websiteUrl = overrides.websiteUrl ?? company.website_url;
   const serviceArea = overrides.serviceArea ?? (company.service_area ?? "Australia");
-  const testimonials = overrides.testimonials ?? company.testimonials ?? null;
+  const testimonials = overrides.testimonials ?? null;
   const selectedHook = overrides.selectedHook ?? null;
   const brandColor = overrides.brandColor ?? "#16a34a";
   const fontStyle = overrides.fontStyle ?? "system";
