@@ -1540,7 +1540,7 @@ async function runPipeline(
       pageRepo: null,
       adCopy: {},
     });
-    return json({ error: `Copy generation failed: ${String(err)}`, errors }, 500);
+    return;
   }
 
   // ── Step 4: Build landing page HTML ────────────────────────────────────────
@@ -1688,14 +1688,7 @@ async function runPipeline(
     // a company has google_ads_customer_id set but no google_campaign_id.
   }
 
-  // ── Step 10: Return response ────────────────────────────────────────────────
+  // ── Step 10: Log completion ─────────────────────────────────────────────────
   const hasErrors = Object.keys(errors).length > 0;
-  return json({
-    success: true,
-    landing_page_url: githubPagesUrl,
-    ad_image_feed_url: adImageFeedUrl,
-    ad_image_story_url: adImageStoryUrl,
-    ad_copy: adCopyPayload,
-    ...(hasErrors ? { partial_errors: errors } : {}),
-  });
-});
+  console.log("[generate-fulfillment] Pipeline complete", hasErrors ? { partial_errors: errors } : "");
+}
