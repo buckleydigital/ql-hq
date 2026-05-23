@@ -177,6 +177,9 @@ async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
 async function generateCopy(
   companyName: string,
   scrapedContent: string,
+  serviceArea?: string,
+  selectedHook?: { angle?: string; headline?: string; body?: string; why?: string } | null,
+  brandNotes?: string,
 ): Promise<GeneratedCopy> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -186,10 +189,19 @@ async function generateCopy(
     "Generate compelling, specific, conversion-focused copy. Always use the actual business name and service. " +
     "Never use placeholder text.";
 
+  const hookInstruction = selectedHook
+    ? `\n\nIMPORTANT — Use this proven hook angle as the foundation for ALL copy:\nAngle: ${selectedHook.angle ?? ""}\nHeadline: ${selectedHook.headline ?? ""}\nBody: ${selectedHook.body ?? ""}\nWhy it works: ${selectedHook.why ?? ""}\n\nThe body copy, ad headlines, hero headline, and creative direction must be consistent with this hook angle.`
+    : "";
+
+  const brandInstruction = brandNotes
+    ? `\n\nBrand notes from client: "${brandNotes}" — incorporate this into the tone and copy where relevant.`
+    : "";
+
   const userPrompt = `Generate landing page and ad copy for this business.
 
 Business name: ${companyName}
-Website content: ${scrapedContent || "(no website content available)"}
+Service area: ${serviceArea || "Australia"}
+Website content: ${scrapedContent || "(no website content available)"}${hookInstruction}${brandInstruction}
 
 Return a JSON object with these exact keys:
 - hero_headline: string (3 lines, ~60-72px display, frames a problem/missed opportunity, no more than 12 words per line)
@@ -924,6 +936,9 @@ async function generateAdCreativeHtml(
   company: Company,
   copy: GeneratedCopy,
   format: "square" | "story",
+  brandColor = "#16a34a",
+  fontStyle = "system",
+  brandNotes = "",
 ): Promise<string> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -936,54 +951,86 @@ async function generateAdCreativeHtml(
     ? "9:16 Instagram/Facebook Story (1080×1920px)"
     : "1:1 Facebook/Instagram Feed (1080×1080px)";
 
+  const headlineFontSize = format === "story" ? "180px" : "130px";
+
+  // Pick font stack based on style setting
+  const fontStack = fontStyle === "modern"
+    ? "'Inter', 'Helvetica Neue', Arial, sans-serif"
+    : fontStyle === "bold"
+    ? "Impact, 'Arial Black', Arial, sans-serif"
+    : fontStyle === "classic"
+    ? "Georgia, 'Times New Roman', serif"
+    : "system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
+
+  // Best social proof stat for bottom strip
   const sp1 = copy.social_proof_1;
-  const sp2 = copy.social_proof_2;
-  const sp3 = copy.social_proof_3;
+
+  const brandInstruction = brandNotes
+    ? `\n\nBrand notes: "${brandNotes}" — use the brand colour ${brandColor} throughout.`
+    : `\n\nBrand colour: ${brandColor}.`;
 
   const prompt =
-    `You are an expert HTML/CSS ad creative designer. Generate a complete, pixel-perfect, self-contained HTML ad creative.
+    `You are an expert Meta ad creative designer. Generate a complete, pixel-perfect, self-contained HTML ad creative optimised for MAXIMUM SCROLL-STOPPING VISUAL IMPACT.
 
 FORMAT: ${formatLabel}
-CANVAS: exactly ${width}px wide × ${height}px tall — body must have overflow:hidden, no scroll
+CANVAS: exactly ${width}px wide × ${height}px tall — body must have width:${width}px, height:${height}px, overflow:hidden, margin:0, padding:0
 
 BUSINESS: ${company.name}
 NICHE: ${niche}
+BRAND COLOUR: ${brandColor}
+FONT: ${fontStack}
+${brandInstruction}
 
-COPY TO USE (use these exact strings — do not alter them):
-• Trust badge:  ${copy.trust_badge}
-• Location pill: ${copy.location_pill}
-• Headline (split across 2–3 lines): ${copy.hero_headline}
-• Subheadline (italic contrast block): ${copy.hero_subheadline}
-• Body text: ${copy.hero_body}
-• CTA button: ${copy.cta_text}
-• Social proof 1: ${sp1.icon}  ${sp1.label} / ${sp1.descriptor}
-• Social proof 2: ${sp2.icon}  ${sp2.label} / ${sp2.descriptor}
-• Social proof 3: ${sp3.icon}  ${sp3.label} / ${sp3.descriptor}
+THIS IS A PAID SOCIAL AD — NOT A LANDING PAGE.
+CRITICAL RULE: MINIMISE TEXT. The image must stop the scroll VISUALLY, not with words.
+Maximum 3 text elements total: (1) huge headline, (2) one subline, (3) CTA button.
+NO navbar. NO header bar. NO body paragraphs. NO bullet lists. NO long text blocks.
 
-PROVEN LAYOUT (implement this structure exactly, top to bottom):
+LAYOUT (implement exactly, no deviations):
 
-1. NAVBAR — full width, dark green (#0f2d1f) background, ${format === "story" ? "120px" : "88px"} tall, flex row space-between, 52px side padding
-   • Left: company name in white (heavy weight, letter-spacing -0.02em), ${format === "story" ? "44px" : "32px"} font
-   • Right: location pill — pill shape, white border (2px rgba(255,255,255,0.5)), white text, ${format === "story" ? "32px" : "22px"} font
+1. FULL-BLEED BACKGROUND
+   • background-image: url('${bgImage}'), cover, center center, no-repeat
+   • Dark overlay on top: position:absolute, inset:0, background:rgba(0,0,0,0.68)
+   • This is the ENTIRE canvas — no sections, no bars at top
 
-2. HERO — fills remaining space, position:relative, flex column justify-center, ${format === "story" ? "80px 72px" : "64px 72px"} padding
-   • Background: full-cover image url('${bgImage}') with a dark overlay (linear-gradient rgba(0,0,0,0.55) to rgba(0,0,0,0.45) or filter:brightness(0.3) on a pseudo-element)
-   • All content sits above overlay (z-index:1, position:relative)
-   • Trust badge: pill shape, background #16a34a, white text, ${format === "story" ? "34px" : "26px"} bold, margin-bottom ${format === "story" ? "48px" : "36px"}
-   • Headline: ${format === "story" ? "80px" : "64px"} font-size, font-weight:900, white, line-height:1.08, letter-spacing:-0.03em, split across multiple <div> or <br> — each line a separate block
-   • Contrast block: inline-block, background:#16a34a, white italic text, ${format === "story" ? "42px" : "30px"}, font-weight:700, border-radius:8px, padding ${format === "story" ? "16px 40px" : "12px 28px"}, margin-bottom ${format === "story" ? "48px" : "32px"}
-   • Body: rgba(255,255,255,0.88), ${format === "story" ? "38px" : "26px"}, line-height:1.55, margin-bottom ${format === "story" ? "64px" : "44px"}
-   • CTA button: background:#16a34a, white, ${format === "story" ? "44px" : "32px"} font, font-weight:800, border-radius:999px, padding ${format === "story" ? "28px 80px" : "20px 56px"}
+2. BRAND WATERMARK (top-left corner, z-index:2, position:absolute, top:${format === "story" ? "60px" : "40px"}, left:${format === "story" ? "72px" : "52px"})
+   • Company name only: "${company.name}"
+   • Font: ${format === "story" ? "36px" : "24px"}, font-weight:600, color:rgba(255,255,255,0.55), letter-spacing:0.02em
+   • NO pill, NO background, just subtle watermark text
 
-3. SOCIAL PROOF BAR — dark green (#0f2d1f ~97% opacity), flex-shrink:0, 3-column CSS grid, padding ${format === "story" ? "48px 52px" : "32px 52px"}
-   • Each column: center-aligned, icon emoji on top (${format === "story" ? "52px" : "38px"}), bold green (#22c55e) label (${format === "story" ? "40px" : "28px"} font-weight:900), then grey descriptor (rgba(255,255,255,0.6), ${format === "story" ? "26px" : "18px"})
+3. HEADLINE (the hero — centre of the canvas, position:absolute, z-index:2)
+   • Centred both horizontally and vertically (transform:translate(-50%,-50%), top:45%, left:50%)
+   • Text: generate a 2–4 word scroll-stopping headline based on the niche (e.g. "Save Thousands Today" or "Free Quote. Fast.")
+   • Font-size: ${headlineFontSize}, font-weight:900, color:#ffffff, line-height:1.0, letter-spacing:-0.04em
+   • text-align:center, text-transform:uppercase
+   • max-width:${width - 80}px
+   • The headline DOMINATES the creative — it should fill 40–50% of the vertical space
 
-DESIGN RULES:
-• Font: system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif
-• No external resources except the one bg image URL above
-• All text must be fully visible — no clipping, no overflow
-• No interactivity (no JS, no hover states)
-• No lorem ipsum, no placeholder text
+4. SUBTEXT (just below headline, position:absolute, z-index:2)
+   • 1 line only — max 8 words: a punchy supporting line (e.g. "No obligation. Results guaranteed.")
+   • Font-size: ${format === "story" ? "52px" : "34px"}, color:rgba(255,255,255,0.75), font-weight:400
+   • text-align:center, centred horizontally (left:50%, transform:translateX(-50%))
+   • top: calc(45% + ${format === "story" ? "230px" : "160px"})
+
+5. CTA BUTTON (position:absolute, z-index:2)
+   • 2–3 words: action-oriented (e.g. "Get Free Quote")
+   • Background: ${brandColor}, color:#ffffff, border-radius:999px
+   • Font-size: ${format === "story" ? "46px" : "32px"}, font-weight:700, padding:${format === "story" ? "30px 90px" : "20px 60px"}
+   • Centred horizontally (left:50%, transform:translateX(-50%))
+   • top: calc(45% + ${format === "story" ? "360px" : "250px"})
+
+6. BOTTOM SOCIAL PROOF STRIP (position:absolute, bottom:0, left:0, right:0, z-index:2)
+   • Background: rgba(0,0,0,0.72)
+   • Height: ${format === "story" ? "160px" : "110px"}, display:flex, align-items:center, justify-content:center, gap:${format === "story" ? "24px" : "16px"}
+   • ONE stat only: icon "${sp1.icon}" at ${format === "story" ? "52px" : "36px"} + bold number/label "${sp1.label}" in ${brandColor} at ${format === "story" ? "44px" : "28px"} font-weight:800 + descriptor "${sp1.descriptor}" in rgba(255,255,255,0.65) at ${format === "story" ? "30px" : "20px"}
+
+ABSOLUTE RULES:
+• NO navbar, header, or top bar of any kind
+• NO more than 3 text zones (headline + subtext + CTA) plus the watermark and bottom stat
+• Headline font-size MUST be ${headlineFontSize} — do not reduce it
+• No external resources except the background image URL above
+• No interactivity (no JS, no :hover)
+• No lorem ipsum, no placeholder text — generate real copy for the ${niche} niche
 
 Return ONLY the complete HTML document — no markdown fences, no explanation, nothing before <!DOCTYPE html> or after </html>.`;
 
