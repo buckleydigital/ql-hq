@@ -1668,6 +1668,10 @@ async function runPipeline(
   };
   if (adImageFeedUrl) adCopyPayload.ad_image_feed_url = adImageFeedUrl;
   if (adImageStoryUrl) adCopyPayload.ad_image_story_url = adImageStoryUrl;
+  if (Object.keys(errors).length > 0) {
+    adCopyPayload.fulfillment_errors = errors;
+    console.error("[generate-fulfillment] Pipeline completed with errors:", JSON.stringify(errors));
+  }
 
   try {
     await updateCompany(db, companyId, {

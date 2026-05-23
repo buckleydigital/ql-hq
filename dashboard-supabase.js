@@ -4827,6 +4827,27 @@ async function approveAndSendQuote(quoteId) {
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 // =============================================================================
 
+let _campaignPollTimer = null;
+
+function _startCampaignPolling() {
+  if (_campaignPollTimer) return; // already polling
+  _campaignPollTimer = setInterval(async () => {
+    if (currentPageId !== 'campaigns') {
+      clearInterval(_campaignPollTimer);
+      _campaignPollTimer = null;
+      return;
+    }
+    await loadCampaigns();
+  }, 5000);
+}
+
+function _stopCampaignPolling() {
+  if (_campaignPollTimer) {
+    clearInterval(_campaignPollTimer);
+    _campaignPollTimer = null;
+  }
+}
+
 async function loadCampaigns() {
   if (!currentCompanyId) return;
 
@@ -4838,14 +4859,30 @@ async function loadCampaigns() {
 
   if (!company) return;
 
-  // Campaign Preview card
+  // Campaign state cards
+  const generatingCard = document.getElementById('campaignGeneratingCard');
   const previewCard = document.getElementById('campaignPreviewCard');
   const preparingCard = document.getElementById('campaignPreparingCard');
 
+  if (generatingCard) generatingCard.style.display = 'none';
   if (previewCard) previewCard.style.display = 'none';
   if (preparingCard) preparingCard.style.display = 'none';
 
+  // Show generating state if onboarding is done but pipeline hasn't produced a preview yet
+  const noStatus = !company.campaign_status || company.campaign_status === 'none';
+  if (noStatus && _hasAdSystem && _onboardingCompleted) {
+    if (generatingCard) generatingCard.style.display = '';
+    _startCampaignPolling();
+    return;
+  }
+
   if (company.campaign_status === 'preview') {
+    // Pipeline finished — stop polling and update global state
+    _stopCampaignPolling();
+    if (_campaignStatus !== 'preview') {
+      _campaignStatus = 'preview';
+      updateCampaignNavBadge();
+    }
     if (previewCard) {
       previewCard.style.display = '';
       const adCopy = company.generated_ad_copy || {};

@@ -1228,6 +1228,26 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div id="page-campaigns" class="page hidden">
         <div class="stack">
 
+          <!-- Generating Card — shown while background pipeline is still running -->
+          <div id="campaignGeneratingCard" class="panel" style="display:none;border:1px solid rgba(71,151,255,0.2);background:rgba(71,151,255,0.04)">
+            <div class="panel-h">
+              <div>
+                <h2 style="font-size:14px;font-weight:500">Building Your Campaign</h2>
+                <p>We're generating your ad creatives, copy, and landing page. This usually takes 1–2 minutes.</p>
+              </div>
+              <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600">GENERATING</span>
+            </div>
+            <div class="panel-b">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div id="genStep1" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)"><span style="font-size:16px">⟳</span> Writing ad copy &amp; headlines</div>
+                <div id="genStep2" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)"><span style="font-size:16px">⟳</span> Building your landing page</div>
+                <div id="genStep3" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)"><span style="font-size:16px">⟳</span> Generating ad creative images</div>
+                <div id="genStep4" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)"><span style="font-size:16px">⟳</span> Deploying landing page</div>
+              </div>
+              <p style="font-size:11px;color:var(--muted);margin-top:16px">This page will update automatically when your preview is ready.</p>
+            </div>
+          </div>
+
           <!-- Campaign Preview Card — shown when campaign_status === 'preview' -->
           <div id="campaignPreviewCard" class="panel" style="display:none;border:1px solid rgba(71,151,255,0.3);background:rgba(71,151,255,0.04)">
             <div class="panel-h">
