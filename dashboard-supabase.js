@@ -6439,10 +6439,7 @@ async function wizardGenerateStep() {
     updateCampaignNavBadge();
     document.getElementById('adSetupDashBanner')?.remove();
 
-    await sb.from('companies')
-      .update({ onboarding_completed: true })
-      .eq('id', currentCompanyId)
-      .catch(() => {});
+    try { await sb.from('companies').update({ onboarding_completed: true }).eq('id', currentCompanyId); } catch (_) {}
 
     if (landingUrl) {
       const urlWrap = document.getElementById('wizardLandingUrl');
@@ -6465,9 +6462,7 @@ async function wizardGenerateStep() {
       errEl.style.display = '';
     }
     // Mark complete so wizard doesn't loop if they refresh
-    await sb.from('companies')
-      .update({ onboarding_completed: true })
-      .eq('id', currentCompanyId).catch(() => {});
+    try { await sb.from('companies').update({ onboarding_completed: true }).eq('id', currentCompanyId); } catch (_) {}
   }
 }
 
