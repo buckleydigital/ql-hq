@@ -326,12 +326,14 @@ function buildLandingPageHtml(
   copy: GeneratedCopy,
   supabaseUrl: string,
   testimonials?: Testimonial[] | null,
+  brandColor = "#16a34a",
 ): string {
   const intakeUrl = `${supabaseUrl}/functions/v1/intake-lead`;
   const companyId = company.id;
   const niche = copy.niche ?? "general";
   const nicheIcon = getNicheIcon(niche);
   const logoHtml = buildLogoHtml(company.name);
+  const heroBgImage = NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE;
 
   // Headline: split on newlines or | or — treat as 3 separate lines
   const headlineLines = copy.hero_headline
@@ -437,10 +439,10 @@ function buildLandingPageHtml(
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --green: #16a34a;
-      --green-light: #22c55e;
-      --dark: #0f2d1f;
-      --dark-soft: #1a3a2a;
+      --green: ${brandColor};
+      --green-light: ${brandColor};
+      --dark: #1a1a2e;
+      --dark-soft: #2a2a3e;
       --text: #1a1a1a;
       --text-muted: #6b7280;
       --border: #e5e7eb;
@@ -662,7 +664,7 @@ function buildLandingPageHtml(
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-bg" style="background-image:url('https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1200&q=80')"></div>
+  <div class="hero-bg" style="background-image:url('${heroBgImage}')"></div>
   <div class="hero-content">
     <div class="trust-badge">${escapeHtml(copy.trust_badge)}</div>
     <h1>${headlineHtml}</h1>
@@ -924,20 +926,42 @@ ${reviewsHtml ? `<!-- Reviews -->
 // ---------------------------------------------------------------------------
 
 const NICHE_BG_IMAGES: Record<string, string> = {
-  solar:        "https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1080&q=80",
-  roofing:      "https://images.unsplash.com/photo-1632207691143-643e2a9a9361?w=1080&q=80",
-  hvac:         "https://images.unsplash.com/photo-1631545806609-bbc5b4f7e86e?w=1080&q=80",
-  plumbing:     "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=1080&q=80",
-  electrical:   "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=1080&q=80",
-  landscaping:  "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=1080&q=80",
-  painting:     "https://images.unsplash.com/photo-1562259929-b4e1fd3aef09?w=1080&q=80",
-  cleaning:     "https://images.unsplash.com/photo-1563453392212-326f5e854473?w=1080&q=80",
-  renovations:  "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1080&q=80",
-  remodeling:   "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1080&q=80",
+  // Residential exterior — large suburban home, solar panels visible
+  solar:        "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1920&q=90&fit=crop&crop=edges",
+  // Beautiful Australian / US residential roof close-up with blue sky
+  roofing:      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=1920&q=90&fit=crop&crop=edges",
+  // Comfortable lounge with HVAC unit — warm residential interior
+  hvac:         "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1920&q=90&fit=crop&crop=edges",
+  // Bright modern bathroom — plumber's natural environment
+  plumbing:     "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=1920&q=90&fit=crop&crop=edges",
+  // Warm lit suburban kitchen — electrical work's home
+  electrical:   "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&q=90&fit=crop&crop=edges",
+  // Lush manicured residential backyard / garden
+  landscaping:  "https://images.unsplash.com/photo-1558904541-efa843a96f01?w=1920&q=90&fit=crop&crop=edges",
+  // Fresh white painted house exterior, bright and appealing
+  painting:     "https://images.unsplash.com/photo-1562259929-b4e1fd3aef09?w=1920&q=90&fit=crop&crop=edges",
+  // Gleaming clean modern kitchen — aspirational clean home
+  cleaning:     "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&q=90&fit=crop&crop=top",
+  // Mid-renovation open-plan living room, bright and premium
+  renovations:  "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1920&q=90&fit=crop&crop=edges",
+  remodeling:   "https://images.unsplash.com/photo-1600210491892-03d54b158bfb?w=1920&q=90&fit=crop&crop=edges",
+  // Pest control — clean suburban home exterior
+  "pest control": "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1920&q=90&fit=crop&crop=edges",
+  pest_control:   "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1920&q=90&fit=crop&crop=edges",
+  // Concrete / flooring — polished interior
+  concrete:     "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1920&q=90&fit=crop&crop=edges",
+  flooring:     "https://images.unsplash.com/photo-1600210491892-03d54b158bfb?w=1920&q=90&fit=crop&crop=edges",
+  // Fencing — residential fence in green yard
+  fencing:      "https://images.unsplash.com/photo-1558904541-efa843a96f01?w=1920&q=90&fit=crop&crop=edges",
+  // Tiling — beautiful bathroom or kitchen tile
+  tiling:       "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=1920&q=90&fit=crop&crop=edges",
+  // Pool — residential pool in backyard
+  pool:         "https://images.unsplash.com/photo-1575429198097-0414ec08e8cd?w=1920&q=90&fit=crop&crop=edges",
 };
 
+// Premium residential home exterior as universal fallback
 const DEFAULT_BG_IMAGE =
-  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
+  "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1920&q=90&fit=crop&crop=edges";
 
 async function generateAdCreativeHtml(
   company: Company,
@@ -1573,7 +1597,7 @@ async function runPipeline(
   // ── Step 4: Build landing page HTML ────────────────────────────────────────
   let landingPageHtml = "";
   try {
-    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials);
+    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials, brandColor);
     console.log(`[generate-fulfillment] Landing page HTML built (${landingPageHtml.length} chars)`);
   } catch (err) {
     errors.landing_page_build = String(err);
