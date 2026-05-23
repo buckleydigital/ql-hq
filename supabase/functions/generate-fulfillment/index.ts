@@ -92,6 +92,7 @@ interface Company {
   slug: string;
   logo_url: string | null;
   website_url: string | null;
+  service_area: string | null;
   lead_goals: number | null;
   max_daily_ad_spend: number | null;
   meta_ad_account_id: string | null;
@@ -108,7 +109,7 @@ async function loadCompany(
   const { data: company, error } = await db
     .from("companies")
     .select(
-      "id, name, slug, logo_url, website_url, lead_goals, max_daily_ad_spend, meta_ad_account_id, settings",
+      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, settings",
     )
     .eq("id", companyId)
     .single();
@@ -162,6 +163,7 @@ async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
 async function generateCopy(
   companyName: string,
   scrapedContent: string,
+  serviceArea: string,
 ): Promise<GeneratedCopy> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -174,6 +176,7 @@ async function generateCopy(
   const userPrompt = `Generate landing page and ad copy for this business.
 
 Business name: ${companyName}
+Service area: ${serviceArea || "Australia"}
 Website content: ${scrapedContent || "(no website content available)"}
 
 Return a JSON object with these exact keys:
@@ -1287,7 +1290,7 @@ async function runPipeline(
   // ── Step 3: Generate copy ───────────────────────────────────────────────────
   let copy: GeneratedCopy;
   try {
-    copy = await generateCopy(company.name, scrapedContent);
+    copy = await generateCopy(company.name, scrapedContent, company.service_area ?? "Australia");
     console.log(`[generate-fulfillment] Copy generated. Niche: ${copy.niche}`);
   } catch (err) {
     console.error("[generate-fulfillment] Step 3 (Claude) failed:", err);

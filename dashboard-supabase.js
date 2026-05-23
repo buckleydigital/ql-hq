@@ -5863,6 +5863,7 @@ function wizardUpdateBudgetNote(val) {
 }
 
 function wizardStep2Next() {
+  wizardData.serviceArea   = document.getElementById('wizardServiceArea')?.value?.trim() || null;
   const spend = document.getElementById('wizardAdSpend')?.value;
   wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
   wizardData.googleEnabled = (wizardData.maxDailySpend ?? 0) >= 100;
@@ -5981,11 +5982,12 @@ async function wizardGenerateStep() {
         'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        company_id: currentCompanyId,
-        website_url: wizardData.websiteUrl,
-        business_desc: wizardData.businessDesc,
-        lead_goals: wizardData.leadGoals,
+        company_id:        currentCompanyId,
+        website_url:       wizardData.websiteUrl,
+        business_desc:     wizardData.businessDesc,
+        lead_goals:        wizardData.leadGoals,
         max_daily_ad_spend: wizardData.maxDailySpend,
+        service_area:      wizardData.serviceArea,
       }),
       keepalive: true,
     });
@@ -6040,12 +6042,13 @@ async function wizardGenerateStep() {
 async function wizardSaveOnboardingData() {
   const { error } = await sb.from('companies')
     .update({
-      website_url: wizardData.websiteUrl,
-      lead_goals: wizardData.leadGoals,
-      max_daily_ad_spend: wizardData.maxDailySpend,
-      meta_ad_account_id: wizardData.metaAccountId,
+      website_url:            wizardData.websiteUrl,
+      lead_goals:             wizardData.leadGoals,
+      max_daily_ad_spend:     wizardData.maxDailySpend,
+      service_area:           wizardData.serviceArea,
+      meta_ad_account_id:     wizardData.metaAccountId,
       google_ads_customer_id: wizardData.googleCustomerId,
-      meta_page_id: wizardData.fbPageId,
+      meta_page_id:           wizardData.fbPageId,
     })
     .eq('id', currentCompanyId);
   if (error) console.warn('wizardSaveOnboardingData error:', error);
