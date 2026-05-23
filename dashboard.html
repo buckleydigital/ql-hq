@@ -436,7 +436,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav-sec">Inbox</div>
       <div class="nav">
         <button class="nav-item" id="inboxToggle" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Inbox</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub" id="inboxSubmenu">
+        <div class="sub closed" id="inboxSubmenu">
           <button class="sub-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
           <button class="sub-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
         </div>
@@ -447,7 +447,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav-sec">Automate</div>
       <div class="nav">
         <button class="nav-item" id="automationsToggle" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Automations</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub" id="automationsSubmenu">
+        <div class="sub closed" id="automationsSubmenu">
           <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Agent</span></button>
           <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcasts</span></button>
           <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
@@ -460,7 +460,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav-sec">Results</div>
       <div class="nav">
         <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">Results</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub" id="crmSubmenu">
+        <div class="sub closed" id="crmSubmenu">
           <button class="sub-item" data-page="pipeline" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Pipeline</span></button>
           <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
           <button class="sub-item" data-page="quotes" type="button"><span class="icon" data-icon="file"></span><span class="nav-text">Quotes</span></button>
@@ -474,7 +474,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div class="nav-sec">Setup</div>
       <div class="nav">
         <button class="nav-item" id="settingsToggle" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Setup</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub" id="settingsSubmenu">
+        <div class="sub closed" id="settingsSubmenu">
           <button id="navBuyLeads" class="sub-item" data-page="buy-leads" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Buy Leads</span></button>
           <button class="sub-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
           <button class="sub-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team</span></button>
