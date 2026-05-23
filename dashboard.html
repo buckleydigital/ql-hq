@@ -2181,8 +2181,37 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <button onclick="wizardStep2Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 3: Website -->
+    <!-- Step 3: Niche Selection -->
     <div id="wizardStep3" style="display:none">
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">What industry are you in?</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We'll tailor your hooks, ad copy, and landing page to your specific trade.</p>
+      <div id="wizardNicheGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div onclick="wizardSelectNiche(this,'Solar')" data-niche="Solar" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">☀️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Solar</div></div>
+        <div onclick="wizardSelectNiche(this,'Roofing')" data-niche="Roofing" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🏠</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Roofing</div></div>
+        <div onclick="wizardSelectNiche(this,'Electrical')" data-niche="Electrical" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">⚡</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Electrical</div></div>
+        <div onclick="wizardSelectNiche(this,'Plumbing')" data-niche="Plumbing" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🔧</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Plumbing</div></div>
+        <div onclick="wizardSelectNiche(this,'HVAC / Air Con')" data-niche="HVAC / Air Con" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">❄️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">HVAC / Air Con</div></div>
+        <div onclick="wizardSelectNiche(this,'Landscaping')" data-niche="Landscaping" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🌿</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Landscaping</div></div>
+        <div onclick="wizardSelectNiche(this,'Cleaning')" data-niche="Cleaning" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🧹</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Cleaning</div></div>
+        <div onclick="wizardSelectNiche(this,'Painting')" data-niche="Painting" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🎨</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Painting</div></div>
+        <div onclick="wizardSelectNiche(this,'Pest Control')" data-niche="Pest Control" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🐛</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Pest Control</div></div>
+        <div onclick="wizardSelectNiche(this,'other')" data-niche="other" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">✏️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Other</div></div>
+      </div>
+      <div id="wizardNicheOtherField" style="display:none;margin-bottom:16px">
+        <input id="wizardNicheOther" type="text" placeholder="e.g. Pool Services, Fencing, Concreting…" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:10px">Who do you primarily serve?</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div id="wizardMarketResidential" onclick="wizardSelectMarket('residential')" style="border:1.5px solid #4797FF;background:rgba(71,151,255,0.08);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:13px;font-weight:500;color:#f5f5f5">🏘️ Residential</div></div>
+          <div id="wizardMarketCommercial" onclick="wizardSelectMarket('commercial')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:13px;font-weight:500;color:#f5f5f5">🏢 Commercial</div></div>
+        </div>
+      </div>
+      <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+    </div>
+
+    <!-- Step 4: Website -->
+    <div id="wizardStep4" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">What's your business website?</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We'll scan it to write your ads and landing page automatically.</p>
       <div id="wizardWebsiteField" style="margin-bottom:16px">
@@ -2195,11 +2224,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <input id="wizardNoWebsite" type="checkbox" onchange="wizardToggleWebsite(this)" style="accent-color:#4797FF;width:15px;height:15px">
         I don't have a website
       </label>
-      <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 4: Hooks & Angles -->
-    <div id="wizardStep4" style="display:none">
+    <!-- Step 5: Hooks & Angles -->
+    <div id="wizardStep5" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Choose your winning angle</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We've analysed your niche and business. Pick the hook that resonates most — your entire campaign will be built around it.</p>
 
@@ -2213,12 +2242,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div id="wizardHookCards" style="display:none;display:flex;flex-direction:column;gap:10px;margin-bottom:20px"></div>
 
       <!-- Use this angle button (shown after selection) -->
-      <button id="wizardHookNextBtn" onclick="wizardStep4Next()" style="display:none;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Use this angle →</button>
-      <a id="wizardHookSkipBtn" onclick="wizardStep4Skip()" style="display:none;font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Let AI decide →</a>
+      <button id="wizardHookNextBtn" onclick="wizardStep5Next()" style="display:none;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Use this angle →</button>
+      <a id="wizardHookSkipBtn" onclick="wizardStep5Skip()" style="display:none;font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Let AI decide →</a>
     </div>
 
-    <!-- Step 6: Brand -->
-    <div id="wizardStep6" style="display:none">
+    <!-- Step 7: Brand -->
+    <div id="wizardStep7" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
@@ -2262,11 +2291,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <input id="wizardBrandNotes" type="text" placeholder="e.g. We use dark green and white, very premium feel" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
       </div>
 
-      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <button onclick="wizardStep7Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 5: Testimonials -->
-    <div id="wizardStep5" style="display:none">
+    <!-- Step 6: Testimonials -->
+    <div id="wizardStep6" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Add customer testimonials</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">These appear on your landing page. Add 2–3 real reviews — no fabricated quotes.</p>
 
@@ -2301,14 +2330,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
 
       <button id="wizardAddT3Btn" onclick="document.getElementById('wizardT3Wrap').style.display='';this.style.display='none'" style="background:transparent;color:#9a9a9a;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;padding:9px 16px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;margin-bottom:14px">+ Add a third review</button>
-      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
+      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(7)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
     </div>
 
-    <!-- Step 7: Connect Ad Accounts -->
-    <div id="wizardStep7" style="display:none">
+    <!-- Step 8: Connect Ad Accounts -->
+    <div id="wizardStep8" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 6px">Connect your ad accounts</h2>
-      <div id="wizardStep7PlatformBadge" style="margin-bottom:16px"></div>
+      <div id="wizardStep8PlatformBadge" style="margin-bottom:16px"></div>
       <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
       <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 20px">This grants us access to run ads in your accounts. Takes 60 seconds.</p>
 
@@ -2325,7 +2354,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
 
       <!-- Google fields — only shown if budget ≥ $100 -->
-      <div id="wizardStep7GoogleSection" style="display:none">
+      <div id="wizardStep8GoogleSection" style="display:none">
         <div style="border-top:1px solid rgba(255,255,255,0.08);margin-bottom:18px;padding-top:18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
             <span style="font-size:11px;font-weight:600;background:rgba(66,133,244,0.15);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:4px;padding:2px 7px">GOOGLE UNLOCKED</span>
@@ -2337,16 +2366,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           </div>
         </div>
       </div>
-      <div id="wizardStep7GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
+      <div id="wizardStep8GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
         <p style="font-size:12px;color:#555;margin:0">🔒 Google Search unlocks at <strong style="color:#9a9a9a">$100/day</strong> — upgrade your budget to add Google campaigns.</p>
       </div>
 
-      <button onclick="wizardStep7Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(8)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
+      <button onclick="wizardStep8Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(9)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
     </div>
 
-    <!-- Step 8: Generating -->
-    <div id="wizardStep8" style="display:none;text-align:center">
+    <!-- Step 9: Generating -->
+    <div id="wizardStep9" style="display:none;text-align:center">
       <div style="font-size:32px;margin-bottom:20px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Building your lead machine…</h2>
       <p style="font-size:14px;color:#9a9a9a;margin:0 0 32px">This usually takes 30–60 seconds</p>
@@ -2359,8 +2388,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <style>@keyframes wizardSpin{to{transform:rotate(360deg)}}</style>
     </div>
 
-    <!-- Step 9: Live -->
-    <div id="wizardStep9" style="display:none;text-align:center">
+    <!-- Step 10: Live -->
+    <div id="wizardStep10" style="display:none;text-align:center">
       <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
       <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
       <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">

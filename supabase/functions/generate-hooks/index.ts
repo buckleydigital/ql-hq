@@ -60,29 +60,30 @@ async function scrapeWebsiteBrief(websiteUrl: string): Promise<string> {
 
 async function generateHooks(
   companyName: string,
+  niche: string,
+  market: string,
   context: string,
 ): Promise<Hook[]> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
   const prompt =
-    `You are writing ad hooks for ${companyName}.
+    `Generate 5 distinct, proven hook/angle strategies for ${companyName}, a ${niche} business targeting ${market} customers.
 
-Website content scraped from their site:
+Website content for additional context:
 ---
-${context || "(no website content — infer a generic service business)"}
+${context || "(no website content provided)"}
 ---
 
-First, identify exactly what this business does and their specific industry from the content above.
-Then generate 5 distinct hook/angle strategies tailored specifically to THAT business and industry — not generic home services hooks.
+Generate hooks that are highly specific to the ${niche} industry and the typical ${market} customer of a ${niche} business — not generic hooks.
 
 Each hook must use a different emotional or rational appeal (e.g. fear of loss, social proof, urgency, curiosity gap, authority, before/after transformation).
 
 For each hook provide:
 - angle: the angle category name (e.g. "Fear of Missing Out", "Urgency", "Social Proof", "Authority", "Before/After Transformation", "Curiosity Gap")
-- headline: a 3-5 word scroll-stopping headline using this angle, specific to what they actually sell
+- headline: a 3-5 word scroll-stopping headline using this angle, specific to ${niche}
 - body: a supporting one-liner, max 8 words
-- why: one sentence explaining why this angle works for their specific industry and customer
+- why: one sentence explaining why this angle works for ${niche} ${market} customers
 
 Return a JSON object with key "hooks" containing an array of exactly 5 hook objects.
 Respond with ONLY valid JSON — no markdown fences, no commentary.`;
@@ -152,6 +153,8 @@ Deno.serve(async (req) => {
   let companyId: string;
   let websiteUrl: string | null = null;
   let businessDesc: string | null = null;
+  let niche: string | null = null;
+  let market = "residential";
 
   try {
     const body = await req.json();
@@ -164,6 +167,12 @@ Deno.serve(async (req) => {
     }
     if (typeof body?.business_desc === "string" && body.business_desc.trim()) {
       businessDesc = body.business_desc.trim();
+    }
+    if (typeof body?.niche === "string" && body.niche.trim()) {
+      niche = body.niche.trim();
+    }
+    if (body?.market === "commercial") {
+      market = "commercial";
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -180,6 +189,9 @@ Deno.serve(async (req) => {
     return json({ error: "Company not found or access denied" }, 404);
   }
 
+  // Resolve niche — request body takes priority, fall back to settings
+  const resolvedNiche = niche ?? (company.settings as Record<string, string>)?.niche ?? "General Services";
+
   // Get context: scrape website or use business_desc
   let context = businessDesc ?? "";
   const urlToScrape = websiteUrl ?? company.website_url;
@@ -188,7 +200,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const hooks = await generateHooks(company.name, context);
+    const hooks = await generateHooks(company.name, resolvedNiche, market, context);
     return json({ hooks });
   } catch (err) {
     console.error("[generate-hooks] Error:", err);

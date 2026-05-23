@@ -5992,26 +5992,26 @@ function resumeAdSetup() {
 }
 
 function wizardGoTo(step) {
-  for (let i = 1; i <= 9; i++) {
+  for (let i = 1; i <= 10; i++) {
     const el = document.getElementById(`wizardStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
   const dots = document.getElementById('wizardDots');
   if (dots) {
-    dots.innerHTML = [1,2,3,4,5,6,7,8,9].map(i =>
+    dots.innerHTML = [1,2,3,4,5,6,7,8,9,10].map(i =>
       i === step
         ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
-  if (step === 4) {
+  if (step === 5) {
     fetchHooks();
   }
-  if (step === 7) {
+  if (step === 8) {
     const googleEnabled = wizardData.googleEnabled === true;
-    const googleSection = document.getElementById('wizardStep7GoogleSection');
-    const googleLocked  = document.getElementById('wizardStep7GoogleLocked');
-    const badge         = document.getElementById('wizardStep7PlatformBadge');
+    const googleSection = document.getElementById('wizardStep8GoogleSection');
+    const googleLocked  = document.getElementById('wizardStep8GoogleLocked');
+    const badge         = document.getElementById('wizardStep8PlatformBadge');
     if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
     if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
     if (badge) {
@@ -6020,7 +6020,7 @@ function wizardGoTo(step) {
         : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
     }
   }
-  if (step === 8) wizardGenerateStep();
+  if (step === 9) wizardGenerateStep();
 }
 
 function wizardSelectLeadGoal(tile, value) {
@@ -6049,11 +6049,45 @@ function wizardUpdateBudgetNote(val) {
   }
 }
 
+function wizardSelectNiche(tile, value) {
+  document.querySelectorAll('#wizardNicheGrid [data-niche]').forEach(t => {
+    t.style.borderColor = 'rgba(255,255,255,0.12)';
+    t.style.background = '';
+  });
+  tile.style.borderColor = '#4797FF';
+  tile.style.background = 'rgba(71,151,255,0.08)';
+  const otherField = document.getElementById('wizardNicheOtherField');
+  if (value === 'other') {
+    wizardData.niche = null;
+    if (otherField) otherField.style.display = '';
+  } else {
+    wizardData.niche = value;
+    if (otherField) otherField.style.display = 'none';
+  }
+}
+
+function wizardSelectMarket(type) {
+  const res = document.getElementById('wizardMarketResidential');
+  const com = document.getElementById('wizardMarketCommercial');
+  if (res) { res.style.borderColor = type === 'residential' ? '#4797FF' : 'rgba(255,255,255,0.12)'; res.style.background = type === 'residential' ? 'rgba(71,151,255,0.08)' : ''; }
+  if (com) { com.style.borderColor = type === 'commercial'  ? '#4797FF' : 'rgba(255,255,255,0.12)'; com.style.background = type === 'commercial'  ? 'rgba(71,151,255,0.08)' : ''; }
+  wizardData.market = type;
+}
+
 function wizardStep2Next() {
   const spend = document.getElementById('wizardAdSpend')?.value;
   wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
   wizardData.googleEnabled = (wizardData.maxDailySpend ?? 0) >= 100;
   wizardGoTo(3);
+}
+
+function wizardStep3Next() {
+  // Resolve niche — either tile selection or free-text "other"
+  const otherVal = document.getElementById('wizardNicheOther')?.value?.trim();
+  if (!wizardData.niche && otherVal) wizardData.niche = otherVal;
+  if (!wizardData.niche) wizardData.niche = 'General Services';
+  if (!wizardData.market) wizardData.market = 'residential';
+  wizardGoTo(4);
 }
 
 function wizardToggleWebsite(cb) {
@@ -6068,7 +6102,7 @@ function wizardToggleWebsite(cb) {
   }
 }
 
-function wizardStep3Next() {
+function wizardStep4Next() {
   const noWebsite = document.getElementById('wizardNoWebsite')?.checked;
   if (noWebsite) {
     wizardData.websiteUrl = null;
@@ -6077,8 +6111,8 @@ function wizardStep3Next() {
     wizardData.websiteUrl = document.getElementById('wizardWebsiteUrl')?.value || '';
     wizardData.businessDesc = null;
   }
-  wizardGoTo(4);
-  // fetchHooks() is triggered inside wizardGoTo when step === 4
+  wizardGoTo(5);
+  // fetchHooks() is triggered inside wizardGoTo when step === 5
 }
 
 function wizardSelectLogoTile(type) {
@@ -6134,6 +6168,8 @@ async function fetchHooks() {
         company_id: currentCompanyId,
         website_url: wizardData.websiteUrl || null,
         business_desc: wizardData.businessDesc || null,
+        niche: wizardData.niche || null,
+        market: wizardData.market || 'residential',
       }),
     });
 
@@ -6197,27 +6233,27 @@ function wizardSelectHook(card, idx) {
   if (nextBtn) nextBtn.style.display = '';
 }
 
-function wizardStep4Next() {
+function wizardStep5Next() {
   // Store selected hook
   if (wizardData._hooks && wizardData.selectedHookIdx != null) {
     wizardData.selectedHook = wizardData._hooks[wizardData.selectedHookIdx] || null;
   } else {
     wizardData.selectedHook = null;
   }
-  wizardGoTo(5);
+  wizardGoTo(6);
 }
 
-function wizardStep4Skip() {
+function wizardStep5Skip() {
   // Use first hook automatically (let AI decide)
   if (wizardData._hooks && wizardData._hooks.length > 0) {
     wizardData.selectedHook = wizardData._hooks[0];
   } else {
     wizardData.selectedHook = null;
   }
-  wizardGoTo(5);
+  wizardGoTo(6);
 }
 
-function wizardStep5Next() {
+function wizardStep6Next() {
   // Collect testimonials (min 1, max 3)
   const t1name   = document.getElementById('wizardT1Name')?.value?.trim() || '';
   const t1suburb = document.getElementById('wizardT1Suburb')?.value?.trim() || '';
@@ -6234,23 +6270,23 @@ function wizardStep5Next() {
   if (t2name || t2quote) testimonials.push({ name: t2name, suburb: t2suburb, quote: t2quote });
   if (t3name || t3quote) testimonials.push({ name: t3name, suburb: t3suburb, quote: t3quote });
   wizardData.testimonials = testimonials.length > 0 ? testimonials : null;
-  wizardGoTo(6);
-}
-
-function wizardStep6Next() {
-  wizardData.brandColor = document.getElementById('wizardBrandColor')?.value || '#16a34a';
-  wizardData.fontStyle = document.getElementById('wizardFontStyle')?.value || 'system';
-  wizardData.brandNotes = document.getElementById('wizardBrandNotes')?.value?.trim() || '';
   wizardGoTo(7);
 }
 
 function wizardStep7Next() {
+  wizardData.brandColor = document.getElementById('wizardBrandColor')?.value || '#16a34a';
+  wizardData.fontStyle = document.getElementById('wizardFontStyle')?.value || 'system';
+  wizardData.brandNotes = document.getElementById('wizardBrandNotes')?.value?.trim() || '';
+  wizardGoTo(8);
+}
+
+function wizardStep8Next() {
   wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
   wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
   wizardData.googleCustomerId = wizardData.googleEnabled
     ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
     : null;
-  wizardGoTo(8);
+  wizardGoTo(9);
 }
 
 async function wizardGenerateStep() {
@@ -6312,6 +6348,8 @@ async function wizardGenerateStep() {
         brand_color:       wizardData.brandColor || '#16a34a',
         font_style:        wizardData.fontStyle || 'system',
         brand_notes:       wizardData.brandNotes || '',
+        niche:             wizardData.niche || null,
+        market:            wizardData.market || 'residential',
       }),
       keepalive: true,
     });
@@ -6340,7 +6378,7 @@ async function wizardGenerateStep() {
       }
     }
 
-    wizardGoTo(9);
+    wizardGoTo(10);
 
     // Mark onboarding done immediately — prevents wizard re-appearing on refresh
     await sb.from('companies')
@@ -6359,7 +6397,7 @@ async function wizardGenerateStep() {
       .update({ onboarding_completed: true })
       .eq('id', currentCompanyId).catch(() => {});
 
-    wizardGoTo(9);
+    wizardGoTo(10);
   }
 }
 
@@ -6401,24 +6439,26 @@ async function completeOnboarding() {
       .eq('id', currentCompanyId)
       .maybeSingle();
 
-    fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        subject: `🚀 New managed client onboarded — ${co.name}`,
-        body: `
-          <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
-          <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
-          <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
-          <p style="font-family:system-ui,sans-serif;color:#555">Onboarding wizard completed. Campaigns and landing page generated.</p>
-        `,
-      }),
-      keepalive: true,
-    }).catch(e => console.warn('notify-internal error:', e));
+    if (co) {
+      fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          subject: `🚀 New managed client onboarded — ${co.name}`,
+          body: `
+            <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
+            <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
+            <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
+            <p style="font-family:system-ui,sans-serif;color:#555">Onboarding wizard completed. Campaigns and landing page generated.</p>
+          `,
+        }),
+        keepalive: true,
+      }).catch(e => console.warn('notify-internal error:', e));
+    }
 
     fetch(`${SUPABASE_URL}/functions/v1/provision-twilio`, {
       method: 'POST',
