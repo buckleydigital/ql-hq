@@ -619,6 +619,22 @@ Deno.serve(async (req) => {
           if (has_advertising_system !== undefined) companyUpdate.has_advertising_system = !!has_advertising_system;
           if (onboarding_completed    !== undefined) companyUpdate.onboarding_completed    = !!onboarding_completed;
 
+          // When resetting onboarding, also clear the legacy settings JSON key so
+          // the dashboard's OR-check doesn't keep treating them as onboarded.
+          if (onboarding_completed === false) {
+            const { data: co } = await adminClient
+              .from('companies')
+              .select('settings')
+              .eq('id', prof.company_id)
+              .maybeSingle();
+
+            const existingSettings = (co?.settings as Record<string, unknown>) ?? {};
+            if (existingSettings.onboarding_complete) {
+              const { onboarding_complete: _removed, ...cleanedSettings } = existingSettings;
+              companyUpdate.settings = cleanedSettings;
+            }
+          }
+
           const { error: coErr } = await adminClient
             .from('companies')
             .update(companyUpdate)
