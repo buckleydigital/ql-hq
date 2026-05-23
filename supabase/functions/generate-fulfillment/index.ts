@@ -58,6 +58,12 @@ interface FaqItem {
   a: string;
 }
 
+interface Testimonial {
+  name: string;
+  suburb: string;
+  quote: string;
+}
+
 interface GeneratedCopy {
   hero_headline: string;
   hero_subheadline: string;
@@ -92,10 +98,11 @@ interface Company {
   slug: string;
   logo_url: string | null;
   website_url: string | null;
-  service_area: string | null;
+  service_area?: string | null;
   lead_goals: number | null;
   max_daily_ad_spend: number | null;
   meta_ad_account_id: string | null;
+  testimonials: Testimonial[] | null;
   settings: Record<string, unknown>;
 }
 
@@ -109,7 +116,7 @@ async function loadCompany(
   const { data: company, error } = await db
     .from("companies")
     .select(
-      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, settings",
+      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, testimonials, settings",
     )
     .eq("id", companyId)
     .single();
@@ -135,8 +142,14 @@ async function loadCompany(
 async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
   if (!websiteUrl) return "";
 
+  // Normalize URL — add https:// if no protocol present
+  let normalizedUrl = websiteUrl.trim();
+  if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) {
+    normalizedUrl = `https://${normalizedUrl}`;
+  }
+
   try {
-    const jinaUrl = `https://r.jina.ai/${websiteUrl}`;
+    const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
     const res = await fetch(jinaUrl, {
       headers: {
         Accept: "text/plain",
@@ -145,12 +158,14 @@ async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
     });
 
     if (!res.ok) {
-      console.warn(`Jina scrape failed: ${res.status} for ${websiteUrl}`);
+      console.warn(`Jina scrape failed: ${res.status} for ${normalizedUrl}`);
       return "";
     }
 
     const text = await res.text();
-    return text.slice(0, 3000);
+    const excerpt = text.slice(0, 6000);
+    console.log(`[scrapeWebsite] Got ${text.length} chars from ${normalizedUrl}, passing ${excerpt.length} to Claude`);
+    return excerpt;
   } catch (err) {
     console.warn("Website scrape error:", err);
     return "";
@@ -163,7 +178,9 @@ async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
 async function generateCopy(
   companyName: string,
   scrapedContent: string,
-  serviceArea: string,
+  serviceArea?: string,
+  selectedHook?: { angle?: string; headline?: string; body?: string; why?: string } | null,
+  brandNotes?: string,
 ): Promise<GeneratedCopy> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -173,11 +190,19 @@ async function generateCopy(
     "Generate compelling, specific, conversion-focused copy. Always use the actual business name and service. " +
     "Never use placeholder text.";
 
+  const hookInstruction = selectedHook
+    ? `\n\nIMPORTANT — Use this proven hook angle as the foundation for ALL copy:\nAngle: ${selectedHook.angle ?? ""}\nHeadline: ${selectedHook.headline ?? ""}\nBody: ${selectedHook.body ?? ""}\nWhy it works: ${selectedHook.why ?? ""}\n\nThe body copy, ad headlines, hero headline, and creative direction must be consistent with this hook angle.`
+    : "";
+
+  const brandInstruction = brandNotes
+    ? `\n\nBrand notes from client: "${brandNotes}" — incorporate this into the tone and copy where relevant.`
+    : "";
+
   const userPrompt = `Generate landing page and ad copy for this business.
 
 Business name: ${companyName}
 Service area: ${serviceArea || "Australia"}
-Website content: ${scrapedContent || "(no website content available)"}
+Website content: ${scrapedContent || "(no website content available)"}${hookInstruction}${brandInstruction}
 
 Return a JSON object with these exact keys:
 - hero_headline: string (3 lines, ~60-72px display, frames a problem/missed opportunity, no more than 12 words per line)
@@ -295,6 +320,7 @@ function buildLandingPageHtml(
   company: Company,
   copy: GeneratedCopy,
   supabaseUrl: string,
+  testimonials?: Testimonial[] | null,
 ): string {
   const intakeUrl = `${supabaseUrl}/functions/v1/intake-lead`;
   const companyId = company.id;
@@ -365,47 +391,22 @@ function buildLandingPageHtml(
     )
     .join("\n");
 
-  // Reviews (niche-adapted placeholder names)
-  const reviewNames: Record<string, Array<{ name: string; loc: string; stat: string }>> = {
-    solar: [
-      { name: "Sarah M.", loc: "Brisbane, QLD", stat: "Saving $310/month" },
-      { name: "James T.", loc: "Sydney, NSW", stat: "ROI in 4.2 years" },
-      { name: "Emma L.", loc: "Melbourne, VIC", stat: "Saving $280/month" },
-      { name: "David K.", loc: "Perth, WA", stat: "Saving $350/month" },
-      { name: "Lisa R.", loc: "Adelaide, SA", stat: "ROI in 5.1 years" },
-      { name: "Mark W.", loc: "Gold Coast, QLD", stat: "Saving $290/month" },
-    ],
-    roofing: [
-      { name: "Paul H.", loc: "Brisbane, QLD", stat: "No leak in 3 years" },
-      { name: "Sue K.", loc: "Sydney, NSW", stat: "Done in 2 days" },
-      { name: "Tom B.", loc: "Melbourne, VIC", stat: "10 yr warranty" },
-      { name: "Jen A.", loc: "Perth, WA", stat: "On budget" },
-      { name: "Rob C.", loc: "Adelaide, SA", stat: "Immaculate finish" },
-      { name: "Fiona D.", loc: "Gold Coast, QLD", stat: "Highly recommend" },
-    ],
-  };
-  const reviews = reviewNames[niche] ?? [
-    { name: "Sarah M.", loc: "Local Area", stat: "Great result" },
-    { name: "James T.", loc: "Local Area", stat: "Fast & professional" },
-    { name: "Emma L.", loc: "Local Area", stat: "Will use again" },
-    { name: "David K.", loc: "Local Area", stat: "Excellent service" },
-    { name: "Lisa R.", loc: "Local Area", stat: "Top quality work" },
-    { name: "Mark W.", loc: "Local Area", stat: "Highly recommend" },
-  ];
-
-  const reviewsHtml = reviews
-    .map(
-      (r) => `
+  // Reviews — use real testimonials if provided, otherwise omit
+  const reviewsHtml = (testimonials && testimonials.length > 0)
+    ? testimonials
+        .map(
+          (t) => `
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
-        <p>"${company.name} was outstanding — professional, fast and transparent on pricing. ${r.stat}."</p>
+        <p>"${escapeHtml(t.quote)}"</p>
         <div class="review-author">
-          <strong>${r.name}</strong>
-          <span>${r.loc}</span>
+          <strong>${escapeHtml(t.name)}</strong>
+          <span>${escapeHtml(t.suburb)}</span>
         </div>
       </div>`,
-    )
-    .join("\n");
+        )
+        .join("\n")
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -778,7 +779,7 @@ function buildLandingPageHtml(
   </div>
 </section>
 
-<!-- Reviews -->
+${reviewsHtml ? `<!-- Reviews -->
 <section class="reviews-section">
   <div class="reviews-inner">
     <h2 class="section-title">What Our Customers Say</h2>
@@ -786,7 +787,7 @@ function buildLandingPageHtml(
       ${reviewsHtml}
     </div>
   </div>
-</section>
+</section>` : ""}
 
 <!-- FAQ -->
 <section class="faq-section">
@@ -801,6 +802,7 @@ function buildLandingPageHtml(
 <!-- Footer -->
 <footer class="footer">
   <p>&copy; ${new Date().getFullYear()} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
 </footer>
 
 <script>
@@ -936,6 +938,9 @@ async function generateAdCreativeHtml(
   company: Company,
   copy: GeneratedCopy,
   format: "square" | "story",
+  brandColor = "#16a34a",
+  fontStyle = "system",
+  brandNotes = "",
 ): Promise<string> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -948,54 +953,86 @@ async function generateAdCreativeHtml(
     ? "9:16 Instagram/Facebook Story (1080×1920px)"
     : "1:1 Facebook/Instagram Feed (1080×1080px)";
 
+  const headlineFontSize = format === "story" ? "180px" : "130px";
+
+  // Pick font stack based on style setting
+  const fontStack = fontStyle === "modern"
+    ? "'Inter', 'Helvetica Neue', Arial, sans-serif"
+    : fontStyle === "bold"
+    ? "Impact, 'Arial Black', Arial, sans-serif"
+    : fontStyle === "classic"
+    ? "Georgia, 'Times New Roman', serif"
+    : "system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
+
+  // Best social proof stat for bottom strip
   const sp1 = copy.social_proof_1;
-  const sp2 = copy.social_proof_2;
-  const sp3 = copy.social_proof_3;
+
+  const brandInstruction = brandNotes
+    ? `\n\nBrand notes: "${brandNotes}" — use the brand colour ${brandColor} throughout.`
+    : `\n\nBrand colour: ${brandColor}.`;
 
   const prompt =
-    `You are an expert HTML/CSS ad creative designer. Generate a complete, pixel-perfect, self-contained HTML ad creative.
+    `You are an expert Meta ad creative designer. Generate a complete, pixel-perfect, self-contained HTML ad creative optimised for MAXIMUM SCROLL-STOPPING VISUAL IMPACT.
 
 FORMAT: ${formatLabel}
-CANVAS: exactly ${width}px wide × ${height}px tall — body must have overflow:hidden, no scroll
+CANVAS: exactly ${width}px wide × ${height}px tall — body must have width:${width}px, height:${height}px, overflow:hidden, margin:0, padding:0
 
 BUSINESS: ${company.name}
 NICHE: ${niche}
+BRAND COLOUR: ${brandColor}
+FONT: ${fontStack}
+${brandInstruction}
 
-COPY TO USE (use these exact strings — do not alter them):
-• Trust badge:  ${copy.trust_badge}
-• Location pill: ${copy.location_pill}
-• Headline (split across 2–3 lines): ${copy.hero_headline}
-• Subheadline (italic contrast block): ${copy.hero_subheadline}
-• Body text: ${copy.hero_body}
-• CTA button: ${copy.cta_text}
-• Social proof 1: ${sp1.icon}  ${sp1.label} / ${sp1.descriptor}
-• Social proof 2: ${sp2.icon}  ${sp2.label} / ${sp2.descriptor}
-• Social proof 3: ${sp3.icon}  ${sp3.label} / ${sp3.descriptor}
+THIS IS A PAID SOCIAL AD — NOT A LANDING PAGE.
+CRITICAL RULE: MINIMISE TEXT. The image must stop the scroll VISUALLY, not with words.
+Maximum 3 text elements total: (1) huge headline, (2) one subline, (3) CTA button.
+NO navbar. NO header bar. NO body paragraphs. NO bullet lists. NO long text blocks.
 
-PROVEN LAYOUT (implement this structure exactly, top to bottom):
+LAYOUT (implement exactly, no deviations):
 
-1. NAVBAR — full width, dark green (#0f2d1f) background, ${format === "story" ? "120px" : "88px"} tall, flex row space-between, 52px side padding
-   • Left: company name in white (heavy weight, letter-spacing -0.02em), ${format === "story" ? "44px" : "32px"} font
-   • Right: location pill — pill shape, white border (2px rgba(255,255,255,0.5)), white text, ${format === "story" ? "32px" : "22px"} font
+1. FULL-BLEED BACKGROUND
+   • background-image: url('${bgImage}'), cover, center center, no-repeat
+   • Dark overlay on top: position:absolute, inset:0, background:rgba(0,0,0,0.68)
+   • This is the ENTIRE canvas — no sections, no bars at top
 
-2. HERO — fills remaining space, position:relative, flex column justify-center, ${format === "story" ? "80px 72px" : "64px 72px"} padding
-   • Background: full-cover image url('${bgImage}') with a dark overlay (linear-gradient rgba(0,0,0,0.55) to rgba(0,0,0,0.45) or filter:brightness(0.3) on a pseudo-element)
-   • All content sits above overlay (z-index:1, position:relative)
-   • Trust badge: pill shape, background #16a34a, white text, ${format === "story" ? "34px" : "26px"} bold, margin-bottom ${format === "story" ? "48px" : "36px"}
-   • Headline: ${format === "story" ? "80px" : "64px"} font-size, font-weight:900, white, line-height:1.08, letter-spacing:-0.03em, split across multiple <div> or <br> — each line a separate block
-   • Contrast block: inline-block, background:#16a34a, white italic text, ${format === "story" ? "42px" : "30px"}, font-weight:700, border-radius:8px, padding ${format === "story" ? "16px 40px" : "12px 28px"}, margin-bottom ${format === "story" ? "48px" : "32px"}
-   • Body: rgba(255,255,255,0.88), ${format === "story" ? "38px" : "26px"}, line-height:1.55, margin-bottom ${format === "story" ? "64px" : "44px"}
-   • CTA button: background:#16a34a, white, ${format === "story" ? "44px" : "32px"} font, font-weight:800, border-radius:999px, padding ${format === "story" ? "28px 80px" : "20px 56px"}
+2. BRAND WATERMARK (top-left corner, z-index:2, position:absolute, top:${format === "story" ? "60px" : "40px"}, left:${format === "story" ? "72px" : "52px"})
+   • Company name only: "${company.name}"
+   • Font: ${format === "story" ? "36px" : "24px"}, font-weight:600, color:rgba(255,255,255,0.55), letter-spacing:0.02em
+   • NO pill, NO background, just subtle watermark text
 
-3. SOCIAL PROOF BAR — dark green (#0f2d1f ~97% opacity), flex-shrink:0, 3-column CSS grid, padding ${format === "story" ? "48px 52px" : "32px 52px"}
-   • Each column: center-aligned, icon emoji on top (${format === "story" ? "52px" : "38px"}), bold green (#22c55e) label (${format === "story" ? "40px" : "28px"} font-weight:900), then grey descriptor (rgba(255,255,255,0.6), ${format === "story" ? "26px" : "18px"})
+3. HEADLINE (the hero — centre of the canvas, position:absolute, z-index:2)
+   • Centred both horizontally and vertically (transform:translate(-50%,-50%), top:45%, left:50%)
+   • Text: generate a 2–4 word scroll-stopping headline based on the niche (e.g. "Save Thousands Today" or "Free Quote. Fast.")
+   • Font-size: ${headlineFontSize}, font-weight:900, color:#ffffff, line-height:1.0, letter-spacing:-0.04em
+   • text-align:center, text-transform:uppercase
+   • max-width:${width - 80}px
+   • The headline DOMINATES the creative — it should fill 40–50% of the vertical space
 
-DESIGN RULES:
-• Font: system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif
-• No external resources except the one bg image URL above
-• All text must be fully visible — no clipping, no overflow
-• No interactivity (no JS, no hover states)
-• No lorem ipsum, no placeholder text
+4. SUBTEXT (just below headline, position:absolute, z-index:2)
+   • 1 line only — max 8 words: a punchy supporting line (e.g. "No obligation. Results guaranteed.")
+   • Font-size: ${format === "story" ? "52px" : "34px"}, color:rgba(255,255,255,0.75), font-weight:400
+   • text-align:center, centred horizontally (left:50%, transform:translateX(-50%))
+   • top: calc(45% + ${format === "story" ? "230px" : "160px"})
+
+5. CTA BUTTON (position:absolute, z-index:2)
+   • 2–3 words: action-oriented (e.g. "Get Free Quote")
+   • Background: ${brandColor}, color:#ffffff, border-radius:999px
+   • Font-size: ${format === "story" ? "46px" : "32px"}, font-weight:700, padding:${format === "story" ? "30px 90px" : "20px 60px"}
+   • Centred horizontally (left:50%, transform:translateX(-50%))
+   • top: calc(45% + ${format === "story" ? "360px" : "250px"})
+
+6. BOTTOM SOCIAL PROOF STRIP (position:absolute, bottom:0, left:0, right:0, z-index:2)
+   • Background: rgba(0,0,0,0.72)
+   • Height: ${format === "story" ? "160px" : "110px"}, display:flex, align-items:center, justify-content:center, gap:${format === "story" ? "24px" : "16px"}
+   • ONE stat only: icon "${sp1.icon}" at ${format === "story" ? "52px" : "36px"} + bold number/label "${sp1.label}" in ${brandColor} at ${format === "story" ? "44px" : "28px"} font-weight:800 + descriptor "${sp1.descriptor}" in rgba(255,255,255,0.65) at ${format === "story" ? "30px" : "20px"}
+
+ABSOLUTE RULES:
+• NO navbar, header, or top bar of any kind
+• NO more than 3 text zones (headline + subtext + CTA) plus the watermark and bottom stat
+• Headline font-size MUST be ${headlineFontSize} — do not reduce it
+• No external resources except the background image URL above
+• No interactivity (no JS, no :hover)
+• No lorem ipsum, no placeholder text — generate real copy for the ${niche} niche
 
 Return ONLY the complete HTML document — no markdown fences, no explanation, nothing before <!DOCTYPE html> or after </html>.`;
 
@@ -1069,10 +1106,11 @@ async function htmlToPng(
 }
 
 // ---------------------------------------------------------------------------
-// Step 7: Push landing page to GitHub Pages
+// Step 7: Push files to GitHub Pages
 // ---------------------------------------------------------------------------
 async function pushToGitHub(
   slug: string,
+  filename: string,
   companyName: string,
   html: string,
 ): Promise<string> {
@@ -1084,7 +1122,7 @@ async function pushToGitHub(
     throw new Error("GITHUB_TOKEN, GITHUB_OWNER or GITHUB_PAGES_REPO not set");
   }
 
-  const path = `${slug}/index.html`;
+  const path = `${slug}/${filename}`;
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
 
   // Check if file already exists (need its SHA for updates)
@@ -1112,7 +1150,7 @@ async function pushToGitHub(
   );
 
   const body: Record<string, string> = {
-    message: `Generate landing page for ${companyName}`,
+    message: `Generate ${filename} for ${companyName}`,
     content,
     branch: "main",
   };
@@ -1138,6 +1176,161 @@ async function pushToGitHub(
 }
 
 // ---------------------------------------------------------------------------
+// Privacy Policy HTML builder
+// ---------------------------------------------------------------------------
+function buildPrivacyPolicyHtml(company: Company): string {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — ${escapeHtml(company.name)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif; color: #1a1a1a; background: #fff; }
+    .navbar { background: #0f2d1f; padding: 0 24px; display: flex; align-items: center; height: 64px; }
+    .navbar a { color: #fff; text-decoration: none; font-size: 1.1rem; font-weight: 700; }
+    .navbar a em { font-style: normal; color: #22c55e; }
+    .content { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; color: #0f2d1f; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 36px; }
+    h2 { font-size: 1.1rem; font-weight: 700; color: #0f2d1f; margin: 28px 0 10px; }
+    p { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 12px; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 6px; }
+    .footer { background: #0f2d1f; color: rgba(255,255,255,0.5); padding: 32px 24px; text-align: center; font-size: 0.8rem; }
+    .footer a { color: #22c55e; text-decoration: none; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="./">${escapeHtml(company.name)}</a>
+</nav>
+<div class="content">
+  <h1>Privacy Policy</h1>
+  <p class="subtitle">Last updated: ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</p>
+
+  <h2>1. Who We Are</h2>
+  <p>${escapeHtml(company.name)} ("we", "us", "our") is committed to protecting your personal information. This Privacy Policy explains how we collect, use, and safeguard data you provide when requesting a quote or contacting us.</p>
+
+  <h2>2. Information We Collect</h2>
+  <p>When you submit a quote request or contact form on our website, we may collect:</p>
+  <ul>
+    <li>Your name (first and last)</li>
+    <li>Email address</li>
+    <li>Phone number</li>
+    <li>Postcode and suburb</li>
+    <li>Details about your service requirements</li>
+  </ul>
+
+  <h2>3. How We Use Your Information</h2>
+  <p>We use the information you provide to:</p>
+  <ul>
+    <li>Prepare and deliver your free quote</li>
+    <li>Contact you regarding your enquiry via phone, email, or SMS</li>
+    <li>Improve our services and customer experience</li>
+  </ul>
+  <p>We will not sell, rent, or share your personal information with third parties for marketing purposes without your consent.</p>
+
+  <h2>4. Third-Party Services</h2>
+  <p>Our website uses the Meta Pixel (Facebook Pixel), a tool that helps us measure the effectiveness of our advertising. The Meta Pixel may collect data about your visits to our website in accordance with <a href="https://www.facebook.com/privacy/policy" target="_blank" rel="noopener">Meta's Privacy Policy</a>. You may opt out of Meta's data collection via your Facebook settings.</p>
+
+  <h2>5. Data Retention</h2>
+  <p>We retain your personal information only for as long as necessary to provide the services you have requested or as required by applicable law.</p>
+
+  <h2>6. Your Rights</h2>
+  <p>Under the Australian Privacy Act 1988 (and, where applicable, the GDPR), you have the right to:</p>
+  <ul>
+    <li>Access the personal information we hold about you</li>
+    <li>Request correction of inaccurate information</li>
+    <li>Request deletion of your information (subject to legal obligations)</li>
+    <li>Withdraw consent to being contacted at any time</li>
+  </ul>
+
+  <h2>7. Contact Us</h2>
+  <p>If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us directly. We will respond to all enquiries within a reasonable timeframe.</p>
+</div>
+<footer class="footer">
+  <p>&copy; ${year} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
+</footer>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Terms of Service HTML builder
+// ---------------------------------------------------------------------------
+function buildTermsHtml(company: Company): string {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — ${escapeHtml(company.name)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif; color: #1a1a1a; background: #fff; }
+    .navbar { background: #0f2d1f; padding: 0 24px; display: flex; align-items: center; height: 64px; }
+    .navbar a { color: #fff; text-decoration: none; font-size: 1.1rem; font-weight: 700; }
+    .navbar a em { font-style: normal; color: #22c55e; }
+    .content { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; color: #0f2d1f; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 36px; }
+    h2 { font-size: 1.1rem; font-weight: 700; color: #0f2d1f; margin: 28px 0 10px; }
+    p { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 12px; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 0.93rem; line-height: 1.75; color: #374151; margin-bottom: 6px; }
+    .footer { background: #0f2d1f; color: rgba(255,255,255,0.5); padding: 32px 24px; text-align: center; font-size: 0.8rem; }
+    .footer a { color: #22c55e; text-decoration: none; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="./">${escapeHtml(company.name)}</a>
+</nav>
+<div class="content">
+  <h1>Terms of Service</h1>
+  <p class="subtitle">Last updated: ${new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</p>
+
+  <h2>1. Acceptance of Terms</h2>
+  <p>By submitting a quote request or contacting ${escapeHtml(company.name)} ("we", "us", "our") through this website, you agree to be bound by these Terms of Service. If you do not agree, please do not submit your information.</p>
+
+  <h2>2. Quote Requests and the Service Process</h2>
+  <p>When you submit a quote request via our website, you are expressing interest in receiving a quotation for our services. Submitting a request does not constitute a binding contract or guarantee of service provision. A formal quote will be provided following a consultation or site inspection as required.</p>
+
+  <h2>3. No Guarantee of Pricing</h2>
+  <p>Any indicative pricing, estimates, or ranges displayed on this website are for informational purposes only and do not constitute a binding offer. Final pricing may vary based on the specific requirements of your project, site conditions, materials, and other factors assessed at the time of quotation. We reserve the right to adjust pricing prior to entering into a formal agreement.</p>
+
+  <h2>4. Consent to Be Contacted</h2>
+  <p>By submitting your contact details, you expressly consent to ${escapeHtml(company.name)} contacting you via phone, email, or SMS to discuss your enquiry, provide your quote, and follow up on your request. You may withdraw this consent at any time by contacting us directly or unsubscribing from communications.</p>
+
+  <h2>5. Accuracy of Information</h2>
+  <p>You agree to provide accurate, current, and complete information when submitting a quote request. Inaccurate information may affect the accuracy of the quote provided and our ability to deliver services.</p>
+
+  <h2>6. Limitation of Liability</h2>
+  <p>To the maximum extent permitted by applicable law, ${escapeHtml(company.name)} shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of this website or reliance on information provided herein. Our total liability to you in connection with any claim shall not exceed the amount paid (if any) for the specific service giving rise to the claim.</p>
+
+  <h2>7. Intellectual Property</h2>
+  <p>All content on this website, including text, images, and branding, is the property of ${escapeHtml(company.name)} and is protected by applicable intellectual property laws. You may not reproduce or distribute any content without our prior written consent.</p>
+
+  <h2>8. Governing Law</h2>
+  <p>These Terms of Service are governed by the laws of Australia. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts of Australia.</p>
+
+  <h2>9. Changes to These Terms</h2>
+  <p>We reserve the right to update these Terms of Service at any time. The most current version will always be available on this page. Continued use of our website following any changes constitutes your acceptance of the revised terms.</p>
+</div>
+<footer class="footer">
+  <p>&copy; ${year} ${escapeHtml(company.name)}. All rights reserved.</p>
+  <p style="margin-top:8px"><a href="./privacy-policy.html">Privacy Policy</a> · <a href="./terms.html">Terms of Service</a></p>
+</footer>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
 // Step 8: Update company record
 // ---------------------------------------------------------------------------
 async function updateCompany(
@@ -1156,6 +1349,7 @@ async function updateCompany(
   const patch: Record<string, unknown> = {
     onboarding_completed: true,
     generated_ad_copy: adCopy,
+    campaign_status: "preview",
   };
 
   if (pageUrl) patch.generated_page_url = pageUrl;
@@ -1183,41 +1377,58 @@ Deno.serve(async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  // ── Auth: accept service role key OR a valid user JWT ──────────────────────
+  // ── Auth: require service role key as Bearer token ──────────────────────────
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
-
   const keyBytes = new TextEncoder().encode(callerToken);
   const expectedBytes = new TextEncoder().encode(serviceRoleKey);
-  let isServiceRole = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
+  let isMatch = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
   const len = Math.max(keyBytes.length, expectedBytes.length);
   for (let i = 0; i < len; i++) {
-    if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isServiceRole = false;
+    if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
   }
-
-  // If not service role, verify it's a valid user JWT via Supabase auth
-  if (!isServiceRole) {
-    const anonClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      supabaseAnonKey,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: { user }, error: authErr } = await anonClient.auth.getUser();
-    if (authErr || !user) {
-      return json({ error: "Unauthorized" }, 401);
-    }
+  if (!isMatch) {
+    return json({ error: "Unauthorized" }, 401);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 
   let companyId: string;
+  let bodyWebsiteUrl: string | null = null;
+  let bodyServiceArea: string | null = null;
+  let bodyTestimonials: Testimonial[] | null = null;
+  let bodySelectedHook: { angle?: string; headline?: string; body?: string; why?: string } | null = null;
+  let bodyBrandColor: string | null = null;
+  let bodyFontStyle: string | null = null;
+  let bodyBrandNotes: string | null = null;
   try {
     const body = await req.json();
     companyId = body?.company_id;
     if (!companyId || typeof companyId !== "string") {
       return json({ error: "company_id is required" }, 400);
+    }
+    // Use request body values to avoid race condition with DB write
+    if (typeof body?.website_url === "string" && body.website_url.trim()) {
+      bodyWebsiteUrl = body.website_url.trim();
+    }
+    if (typeof body?.service_area === "string" && body.service_area.trim()) {
+      bodyServiceArea = body.service_area.trim();
+    }
+    if (Array.isArray(body?.testimonials) && body.testimonials.length > 0) {
+      bodyTestimonials = body.testimonials as Testimonial[];
+    }
+    if (body?.selected_hook && typeof body.selected_hook === "object") {
+      bodySelectedHook = body.selected_hook as { angle?: string; headline?: string; body?: string; why?: string };
+    }
+    if (typeof body?.brand_color === "string" && body.brand_color.trim()) {
+      bodyBrandColor = body.brand_color.trim();
+    }
+    if (typeof body?.font_style === "string" && body.font_style.trim()) {
+      bodyFontStyle = body.font_style.trim();
+    }
+    if (typeof body?.brand_notes === "string") {
+      bodyBrandNotes = body.brand_notes.trim();
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -1227,7 +1438,10 @@ Deno.serve(async (req) => {
 
   const db = createClient(supabaseUrl, serviceRoleKey);
 
-  // ── Step 1: Load company (sync — needed to return the predicted URL) ─────────
+  // Accumulated errors (non-fatal steps continue)
+  const errors: Record<string, string> = {};
+
+  // ── Step 1: Load company ────────────────────────────────────────────────────
   let company: Company;
   try {
     const result = await loadCompany(db, companyId);
@@ -1247,7 +1461,15 @@ Deno.serve(async (req) => {
 
   // ── Run the rest of the pipeline in the background ───────────────────────────
   // Returns immediately so the wizard doesn't time out waiting.
-  const pipeline = runPipeline(db, company, companyId, supabaseUrl);
+  const pipeline = runPipeline(db, company, companyId, supabaseUrl, {
+    websiteUrl: bodyWebsiteUrl,
+    serviceArea: bodyServiceArea,
+    testimonials: bodyTestimonials,
+    selectedHook: bodySelectedHook,
+    brandColor: bodyBrandColor,
+    fontStyle: bodyFontStyle,
+    brandNotes: bodyBrandNotes,
+  });
   try {
     // @ts-ignore — EdgeRuntime is available in Supabase edge functions
     EdgeRuntime.waitUntil(pipeline);
@@ -1271,16 +1493,34 @@ async function runPipeline(
   company: Company,
   companyId: string,
   supabaseUrl: string,
+  overrides: {
+    websiteUrl?: string | null;
+    serviceArea?: string | null;
+    testimonials?: Testimonial[] | null;
+    selectedHook?: { angle?: string; headline?: string; body?: string; why?: string } | null;
+    brandColor?: string | null;
+    fontStyle?: string | null;
+    brandNotes?: string | null;
+  } = {},
 ): Promise<void> {
   // Accumulated errors (non-fatal steps continue)
   const errors: Record<string, string> = {};
 
+  // Prefer values passed from wizard body (avoids race condition with DB write)
+  const websiteUrl = overrides.websiteUrl ?? company.website_url;
+  const serviceArea = overrides.serviceArea ?? (company.service_area ?? "Australia");
+  const testimonials = overrides.testimonials ?? company.testimonials ?? null;
+  const selectedHook = overrides.selectedHook ?? null;
+  const brandColor = overrides.brandColor ?? "#16a34a";
+  const fontStyle = overrides.fontStyle ?? "system";
+  const brandNotes = overrides.brandNotes ?? "";
+
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
   try {
-    scrapedContent = await scrapeWebsite(company.website_url);
+    scrapedContent = await scrapeWebsite(websiteUrl);
     console.log(
-      `[generate-fulfillment] Scraped ${scrapedContent.length} chars from ${company.website_url}`,
+      `[generate-fulfillment] Scraped ${scrapedContent.length} chars from ${websiteUrl}`,
     );
   } catch (err) {
     errors.scrape = String(err);
@@ -1290,7 +1530,7 @@ async function runPipeline(
   // ── Step 3: Generate copy ───────────────────────────────────────────────────
   let copy: GeneratedCopy;
   try {
-    copy = await generateCopy(company.name, scrapedContent, company.service_area ?? "Australia");
+    copy = await generateCopy(company.name, scrapedContent, serviceArea, selectedHook, brandNotes);
     console.log(`[generate-fulfillment] Copy generated. Niche: ${copy.niche}`);
   } catch (err) {
     console.error("[generate-fulfillment] Step 3 (Claude) failed:", err);
@@ -1306,7 +1546,7 @@ async function runPipeline(
   // ── Step 4: Build landing page HTML ────────────────────────────────────────
   let landingPageHtml = "";
   try {
-    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl);
+    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials);
     console.log(`[generate-fulfillment] Landing page HTML built (${landingPageHtml.length} chars)`);
   } catch (err) {
     errors.landing_page_build = String(err);
@@ -1318,8 +1558,8 @@ async function runPipeline(
   let storyAdHtml = "";
   try {
     [feedAdHtml, storyAdHtml] = await Promise.all([
-      generateAdCreativeHtml(company, copy, "square"),
-      generateAdCreativeHtml(company, copy, "story"),
+      generateAdCreativeHtml(company, copy, "square", brandColor, fontStyle, brandNotes),
+      generateAdCreativeHtml(company, copy, "story", brandColor, fontStyle, brandNotes),
     ]);
     console.log("[generate-fulfillment] Ad creative HTML generated by Claude");
   } catch (err) {
@@ -1360,14 +1600,34 @@ async function runPipeline(
     const ghRepo = Deno.env.get("GITHUB_PAGES_REPO");
 
     try {
-      githubPagesUrl = await pushToGitHub(company.slug, company.name, landingPageHtml);
+      githubPagesUrl = await pushToGitHub(company.slug, "index.html", company.name, landingPageHtml);
       if (ghOwner && ghRepo) {
         githubRepo = `${ghOwner}/${ghRepo}/${company.slug}/index.html`;
       }
-      console.log(`[generate-fulfillment] Deployed to GitHub Pages: ${githubPagesUrl}`);
+      console.log(`[generate-fulfillment] Deployed landing page to GitHub Pages: ${githubPagesUrl}`);
     } catch (err) {
       errors.github_push = String(err);
       console.warn("[generate-fulfillment] Step 7 (GitHub push) failed:", err);
+    }
+
+    // Push privacy policy
+    try {
+      const privacyHtml = buildPrivacyPolicyHtml(company);
+      await pushToGitHub(company.slug, "privacy-policy.html", company.name, privacyHtml);
+      console.log(`[generate-fulfillment] Deployed privacy-policy.html`);
+    } catch (err) {
+      errors.github_push_privacy = String(err);
+      console.warn("[generate-fulfillment] Privacy policy push failed:", err);
+    }
+
+    // Push terms of service
+    try {
+      const termsHtml = buildTermsHtml(company);
+      await pushToGitHub(company.slug, "terms.html", company.name, termsHtml);
+      console.log(`[generate-fulfillment] Deployed terms.html`);
+    } catch (err) {
+      errors.github_push_terms = String(err);
+      console.warn("[generate-fulfillment] Terms push failed:", err);
     }
   }
 
@@ -1428,10 +1688,14 @@ async function runPipeline(
     // a company has google_ads_customer_id set but no google_campaign_id.
   }
 
+  // ── Step 10: Return response ────────────────────────────────────────────────
   const hasErrors = Object.keys(errors).length > 0;
-  if (hasErrors) {
-    console.warn("[generate-fulfillment] Pipeline completed with errors:", errors);
-  } else {
-    console.log("[generate-fulfillment] Pipeline completed successfully");
-  }
-}
+  return json({
+    success: true,
+    landing_page_url: githubPagesUrl,
+    ad_image_feed_url: adImageFeedUrl,
+    ad_image_story_url: adImageStoryUrl,
+    ad_copy: adCopyPayload,
+    ...(hasErrors ? { partial_errors: errors } : {}),
+  });
+});
