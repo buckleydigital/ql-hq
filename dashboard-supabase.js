@@ -6418,7 +6418,7 @@ async function wizardSaveOnboardingData() {
 }
 
 
-async function completeOnboarding() {
+async function completeOnboarding(destination = 'dashboard') {
   try {
     const { data: existingCompany } = await sb
       .from('companies')
@@ -6475,7 +6475,7 @@ async function completeOnboarding() {
     _onboardingCompleted = true;
     document.getElementById('adSetupDashBanner')?.remove();
     document.getElementById('adSetupResumeBanner')?.remove();
-    navigateTo('dashboard');
+    navigateTo(destination);
   } catch (err) {
     console.error('completeOnboarding error:', err);
     toast('Error saving progress. Please try again.', true);
