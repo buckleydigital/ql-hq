@@ -225,6 +225,9 @@ let currentUserIsSuperAdmin = false; // platform-level super-admin (is_admin col
 let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
+let _cachedCompany       = null;   // company record cached for wizard re-open
+let _hasAdSystem         = false;  // whether company has advertising system
+let _onboardingCompleted = null;   // whether onboarding wizard has been completed
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
 let conversationsPage  = 0;
@@ -948,12 +951,16 @@ async function showApp() {
       if (navBuyLeads) navBuyLeads.style.display = '';
 
       const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
+      _cachedCompany       = company || null;
+      _hasAdSystem         = hasAdSystem;
+      _onboardingCompleted = company?.onboarding_completed ?? null;
+
       if (hasAdSystem && !company?.onboarding_completed) {
         showOnboardingWizard(company, currentUser);
       }
 
       // Gate features behind advertising system purchase
-      applyAdvertisingSystemGating(hasAdSystem);
+      applyAdvertisingSystemGating(hasAdSystem, company?.onboarding_completed);
     }
 
     // Fetch current user's permissions from sales_reps
@@ -1141,6 +1148,30 @@ async function loadDashboard() {
   }
 
   const rangeStart = getDashRangeStart();
+
+  // Show or remove the advertising setup banner
+  const dashPage = document.getElementById("page-dashboard");
+  const existingSetupBanner = document.getElementById("adSetupDashBanner");
+  if (dashPage && _hasAdSystem && !_onboardingCompleted) {
+    if (!existingSetupBanner) {
+      const banner = document.createElement("div");
+      banner.id = "adSetupDashBanner";
+      banner.style.cssText = "margin-bottom:16px;padding:14px 20px;background:rgba(71,151,255,0.08);border:1px solid rgba(71,151,255,0.25);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:8px;height:8px;background:#4797FF;border-radius:50%;flex-shrink:0"></div>
+          <div>
+            <span style="font-weight:600;color:#f5f5f5;font-size:14px">Advertising system setup pending</span>
+            <span style="font-size:13px;color:#9a9a9a;margin-left:8px">Your ads and landing page aren't live yet.</span>
+          </div>
+        </div>
+        <button onclick="resumeAdSetup()" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:inherit">Complete Setup →</button>
+      `;
+      dashPage.insertBefore(banner, dashPage.firstChild);
+    }
+  } else if (existingSetupBanner) {
+    existingSetupBanner.remove();
+  }
 
   try {
     const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
@@ -5950,6 +5981,12 @@ function showOnboardingWizard(company, user) {
   wizardGoTo(1);
 }
 
+function resumeAdSetup() {
+  if (_cachedCompany) {
+    showOnboardingWizard(_cachedCompany, currentUser);
+  }
+}
+
 function wizardGoTo(step) {
   for (let i = 1; i <= 9; i++) {
     const el = document.getElementById(`wizardStep${i}`);
@@ -6391,6 +6428,9 @@ async function completeOnboarding() {
     }).catch(e => console.warn('provision-twilio error:', e));
 
     document.getElementById('onboardingWizard').style.display = 'none';
+    _onboardingCompleted = true;
+    document.getElementById('adSetupDashBanner')?.remove();
+    document.getElementById('adSetupResumeBanner')?.remove();
     navigateTo('dashboard');
   } catch (err) {
     console.error('completeOnboarding error:', err);
@@ -6702,7 +6742,7 @@ window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
 // Advertising System Gating
 // =============================================================================
 
-function applyAdvertisingSystemGating(hasAdSystem) {
+function applyAdvertisingSystemGating(hasAdSystem, onboardingCompleted) {
   // Gate the AI Settings nav item
   const navAi = document.getElementById("navAiSettings");
   if (navAi) {
@@ -6772,6 +6812,25 @@ function applyAdvertisingSystemGating(hasAdSystem) {
     const aiContent = aiPage.querySelector(".panel-b, .panel");
     if (aiContent) aiContent.style.filter = "blur(4px) opacity(0.3)";
     if (aiContent) aiContent.style.pointerEvents = "none";
+  }
+
+  // When ad system is active but onboarding not finished, show a resume button
+  // in the AI Agent page so users can reopen the wizard at any time
+  if (aiPage && hasAdSystem && !onboardingCompleted) {
+    const existing = document.getElementById("adSetupResumeBanner");
+    if (!existing) {
+      const banner = document.createElement("div");
+      banner.id = "adSetupResumeBanner";
+      banner.style.cssText = "margin:24px 24px 0;padding:16px 20px;background:rgba(71,151,255,0.08);border:1px solid rgba(71,151,255,0.25);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
+      banner.innerHTML = `
+        <div>
+          <div style="font-weight:600;color:#f5f5f5;font-size:14px;margin-bottom:3px">Setup not complete</div>
+          <div style="font-size:13px;color:#9a9a9a">Your ads and landing page aren't live yet — finish the setup wizard to go live.</div>
+        </div>
+        <button onclick="resumeAdSetup()" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:inherit">Resume Setup →</button>
+      `;
+      aiPage.insertBefore(banner, aiPage.firstChild);
+    }
   }
 }
 
