@@ -181,6 +181,8 @@ async function generateCopy(
   serviceArea?: string,
   selectedHook?: { angle?: string; headline?: string; body?: string; why?: string } | null,
   brandNotes?: string,
+  wizardNiche?: string | null,
+  market?: string,
 ): Promise<GeneratedCopy> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -198,11 +200,15 @@ async function generateCopy(
     ? `\n\nBrand notes from client: "${brandNotes}" — incorporate this into the tone and copy where relevant.`
     : "";
 
+  const nicheInstruction = wizardNiche
+    ? `\n\nINDUSTRY: This is a ${wizardNiche} business targeting ${market ?? "residential"} customers. All copy must be specific to the ${wizardNiche} industry — do NOT write generic home services copy.`
+    : "";
+
   const userPrompt = `Generate landing page and ad copy for this business.
 
 Business name: ${companyName}
 Service area: ${serviceArea || "Australia"}
-Website content: ${scrapedContent || "(no website content available)"}${hookInstruction}${brandInstruction}
+Website content: ${scrapedContent || "(no website content available)"}${hookInstruction}${brandInstruction}${nicheInstruction}
 
 Return a JSON object with these exact keys:
 - hero_headline: string (3 lines, ~60-72px display, frames a problem/missed opportunity, no more than 12 words per line)
@@ -948,7 +954,7 @@ async function generateAdCreativeHtml(
   const width = 1080;
   const height = format === "story" ? 1920 : 1080;
   const niche = copy.niche ?? "general";
-  const bgImage = NICHE_BG_IMAGES[niche] ?? DEFAULT_BG_IMAGE;
+  const bgImage = NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE;
   const formatLabel = format === "story"
     ? "9:16 Instagram/Facebook Story (1080×1920px)"
     : "1:1 Facebook/Instagram Feed (1080×1080px)";
@@ -1058,6 +1064,11 @@ Return ONLY the complete HTML document — no markdown fences, no explanation, n
   const claudeResponse = await res.json();
   const rawHtml: string = claudeResponse.content?.[0]?.text?.trim() ?? "";
 
+  const htmlStart = rawHtml.indexOf("<!DOCTYPE html>");
+  const htmlEnd = rawHtml.lastIndexOf("</html>");
+  if (htmlStart !== -1 && htmlEnd !== -1) {
+    return rawHtml.slice(htmlStart, htmlEnd + 7);
+  }
   return rawHtml
     .replace(/^```(?:html)?\s*/i, "")
     .replace(/\s*```\s*$/i, "")
@@ -1402,6 +1413,8 @@ Deno.serve(async (req) => {
   let bodyBrandColor: string | null = null;
   let bodyFontStyle: string | null = null;
   let bodyBrandNotes: string | null = null;
+  let bodyNiche: string | null = null;
+  let bodyMarket = "residential";
   try {
     const body = await req.json();
     companyId = body?.company_id;
@@ -1429,6 +1442,12 @@ Deno.serve(async (req) => {
     }
     if (typeof body?.brand_notes === "string") {
       bodyBrandNotes = body.brand_notes.trim();
+    }
+    if (typeof body?.niche === "string" && body.niche.trim()) {
+      bodyNiche = body.niche.trim();
+    }
+    if (body?.market === "commercial") {
+      bodyMarket = "commercial";
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -1469,6 +1488,8 @@ Deno.serve(async (req) => {
     brandColor: bodyBrandColor,
     fontStyle: bodyFontStyle,
     brandNotes: bodyBrandNotes,
+    niche: bodyNiche,
+    market: bodyMarket,
   });
   try {
     // @ts-ignore — EdgeRuntime is available in Supabase edge functions
@@ -1501,6 +1522,8 @@ async function runPipeline(
     brandColor?: string | null;
     fontStyle?: string | null;
     brandNotes?: string | null;
+    niche?: string | null;
+    market?: string;
   } = {},
 ): Promise<void> {
   // Accumulated errors (non-fatal steps continue)
@@ -1514,6 +1537,8 @@ async function runPipeline(
   const brandColor = overrides.brandColor ?? "#16a34a";
   const fontStyle = overrides.fontStyle ?? "system";
   const brandNotes = overrides.brandNotes ?? "";
+  const wizardNiche = overrides.niche ?? null;
+  const market = overrides.market ?? "residential";
 
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
@@ -1530,7 +1555,7 @@ async function runPipeline(
   // ── Step 3: Generate copy ───────────────────────────────────────────────────
   let copy: GeneratedCopy;
   try {
-    copy = await generateCopy(company.name, scrapedContent, serviceArea, selectedHook, brandNotes);
+    copy = await generateCopy(company.name, scrapedContent, serviceArea, selectedHook, brandNotes, wizardNiche, market);
     console.log(`[generate-fulfillment] Copy generated. Niche: ${copy.niche}`);
   } catch (err) {
     console.error("[generate-fulfillment] Step 3 (Claude) failed:", err);
