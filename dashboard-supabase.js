@@ -4827,27 +4827,6 @@ async function approveAndSendQuote(quoteId) {
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 // =============================================================================
 
-let _campaignPollTimer = null;
-
-function _startCampaignPolling() {
-  if (_campaignPollTimer) return; // already polling
-  _campaignPollTimer = setInterval(async () => {
-    if (currentPageId !== 'campaigns') {
-      clearInterval(_campaignPollTimer);
-      _campaignPollTimer = null;
-      return;
-    }
-    await loadCampaigns();
-  }, 5000);
-}
-
-function _stopCampaignPolling() {
-  if (_campaignPollTimer) {
-    clearInterval(_campaignPollTimer);
-    _campaignPollTimer = null;
-  }
-}
-
 async function loadCampaigns() {
   if (!currentCompanyId) return;
 
@@ -4859,30 +4838,13 @@ async function loadCampaigns() {
 
   if (!company) return;
 
-  // Campaign state cards
-  const generatingCard = document.getElementById('campaignGeneratingCard');
   const previewCard = document.getElementById('campaignPreviewCard');
   const preparingCard = document.getElementById('campaignPreparingCard');
 
-  if (generatingCard) generatingCard.style.display = 'none';
   if (previewCard) previewCard.style.display = 'none';
   if (preparingCard) preparingCard.style.display = 'none';
 
-  // Show generating state if onboarding is done but pipeline hasn't produced a preview yet
-  const noStatus = !company.campaign_status || company.campaign_status === 'none';
-  if (noStatus && _hasAdSystem && _onboardingCompleted) {
-    if (generatingCard) generatingCard.style.display = '';
-    _startCampaignPolling();
-    return;
-  }
-
   if (company.campaign_status === 'preview') {
-    // Pipeline finished — stop polling and update global state
-    _stopCampaignPolling();
-    if (_campaignStatus !== 'preview') {
-      _campaignStatus = 'preview';
-      updateCampaignNavBadge();
-    }
     if (previewCard) {
       previewCard.style.display = '';
       const adCopy = company.generated_ad_copy || {};
@@ -6368,21 +6330,23 @@ function wizardStep8Next() {
 }
 
 async function wizardGenerateStep() {
-  const stepIds = ['wps1','wps2','wps3','wps4'];
-  stepIds.forEach(id => {
+  // Reset all steps to pending
+  ['wps1','wps2','wps3','wps4'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.querySelector('span').textContent = '○';
-    if (el) el.style.color = '#9a9a9a';
+    if (el) { el.querySelector('span').textContent = '○'; el.style.color = '#9a9a9a'; }
   });
 
   const tick = (id) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.querySelector('span').textContent = '✓';
-      el.style.color = '#22c55e';
-    }
+    if (el) { el.querySelector('span').textContent = '✓'; el.style.color = '#22c55e'; }
+  };
+  const setActive = (id) => {
+    const el = document.getElementById(id);
+    if (el) { el.querySelector('span').textContent = '…'; el.style.color = '#4797FF'; }
   };
 
+  // Step 1: Save data + upload logo
+  setActive('wps1');
   await wizardSaveOnboardingData();
 
   if (wizardData.logoFile) {
@@ -6400,9 +6364,10 @@ async function wizardGenerateStep() {
       console.warn('Logo upload error:', e);
     }
   }
-
   tick('wps1');
 
+  // Step 2: Fire the pipeline
+  setActive('wps2');
   try {
     const { data: { session } } = await sb.auth.getSession();
     const token = session?.access_token;
@@ -6415,10 +6380,10 @@ async function wizardGenerateStep() {
         'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        company_id: currentCompanyId,
-        website_url: wizardData.websiteUrl,
-        business_desc: wizardData.businessDesc,
-        lead_goals: wizardData.leadGoals,
+        company_id:        currentCompanyId,
+        website_url:       wizardData.websiteUrl,
+        business_desc:     wizardData.businessDesc,
+        lead_goals:        wizardData.leadGoals,
         max_daily_ad_spend: wizardData.maxDailySpend,
         service_area:      wizardData.serviceArea,
         testimonials:      wizardData.testimonials || [],
@@ -6429,22 +6394,55 @@ async function wizardGenerateStep() {
         niche:             wizardData.niche || null,
         market:            wizardData.market || 'residential',
       }),
-      keepalive: true,
     });
 
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `HTTP ${res.status}`);
+    }
     tick('wps2');
-    await new Promise(r => setTimeout(r, 800));
-    tick('wps3');
-    await new Promise(r => setTimeout(r, 800));
-    tick('wps4');
 
+    // Steps 3 + 4: Poll DB every 3s until campaign_status = 'preview' (max 3 min)
+    setActive('wps3');
+    const maxPolls = 60;
+    let polls = 0;
     let landingUrl = null;
-    if (res.ok) {
-      const result = await res.json().catch(() => ({}));
-      landingUrl = result?.landing_page_url || null;
+
+    while (polls < maxPolls) {
+      await new Promise(r => setTimeout(r, 3000));
+      polls++;
+
+      // Advance visual ticks based on elapsed time (copy ~15s, images ~30s, deploy ~45s)
+      if (polls === 5)  { tick('wps3'); setActive('wps4'); }
+      if (polls === 10) { tick('wps4'); }
+
+      const { data: co } = await sb.from('companies')
+        .select('campaign_status, generated_page_url')
+        .eq('id', currentCompanyId)
+        .single();
+
+      if (co?.campaign_status === 'preview') {
+        tick('wps3');
+        tick('wps4');
+        landingUrl = co?.generated_page_url || null;
+        break;
+      }
     }
 
-    await new Promise(r => setTimeout(r, 600));
+    if (polls >= maxPolls) {
+      throw new Error('Generation is taking longer than expected. Check back in a few minutes — your preview will appear in the Campaigns tab.');
+    }
+
+    // Everything is ready — update local state
+    _onboardingCompleted = true;
+    _campaignStatus = 'preview';
+    updateCampaignNavBadge();
+    document.getElementById('adSetupDashBanner')?.remove();
+
+    await sb.from('companies')
+      .update({ onboarding_completed: true })
+      .eq('id', currentCompanyId)
+      .catch(() => {});
 
     if (landingUrl) {
       const urlWrap = document.getElementById('wizardLandingUrl');
@@ -6458,24 +6456,18 @@ async function wizardGenerateStep() {
 
     wizardGoTo(10);
 
-    // Mark onboarding done immediately — prevents wizard re-appearing on refresh
-    await sb.from('companies')
-      .update({ onboarding_completed: true })
-      .eq('id', currentCompanyId);
-
   } catch (err) {
     console.error('wizardGenerateStep error:', err);
-    tick('wps2');
-    tick('wps3');
-    tick('wps4');
-    await new Promise(r => setTimeout(r, 600));
-
-    // Still mark complete so the wizard doesn't loop even on failure
+    // Show the error on step 9 so the user knows what happened
+    const errEl = document.getElementById('wizardGenerateError');
+    if (errEl) {
+      errEl.textContent = String(err.message || err);
+      errEl.style.display = '';
+    }
+    // Mark complete so wizard doesn't loop if they refresh
     await sb.from('companies')
       .update({ onboarding_completed: true })
       .eq('id', currentCompanyId).catch(() => {});
-
-    wizardGoTo(10);
   }
 }
 

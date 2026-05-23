@@ -1388,22 +1388,27 @@ Deno.serve(async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  // ── Auth: require service role key as Bearer token ──────────────────────────
+  // ── Auth: user JWT ─────────────────────────────────────────────────────────
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
   const authHeader = req.headers.get("Authorization") ?? "";
-  const callerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
-  const keyBytes = new TextEncoder().encode(callerToken);
-  const expectedBytes = new TextEncoder().encode(serviceRoleKey);
-  let isMatch = keyBytes.length === expectedBytes.length && keyBytes.length > 0;
-  const len = Math.max(keyBytes.length, expectedBytes.length);
-  for (let i = 0; i < len; i++) {
-    if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
-  }
-  if (!isMatch) {
+  if (!authHeader.startsWith("Bearer ")) {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  // Verify user identity with their JWT
+  const userDb = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: authError } = await userDb.auth.getUser();
+  if (authError || !user) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  // Service-role client for all DB operations (bypasses RLS for writes)
+  const db = createClient(supabaseUrl, serviceRoleKey);
 
   let companyId: string;
   let bodyWebsiteUrl: string | null = null;
@@ -1453,9 +1458,7 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  console.log(`[generate-fulfillment] Starting pipeline for company: ${companyId}`);
-
-  const db = createClient(supabaseUrl, serviceRoleKey);
+  console.log(`[generate-fulfillment] Starting pipeline for company: ${companyId}, user: ${user.id}`);
 
   // Accumulated errors (non-fatal steps continue)
   const errors: Record<string, string> = {};
