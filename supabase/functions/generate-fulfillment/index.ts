@@ -327,13 +327,14 @@ function buildLandingPageHtml(
   supabaseUrl: string,
   testimonials?: Testimonial[] | null,
   brandColor = "#16a34a",
+  heroImageUrl?: string | null,
 ): string {
   const intakeUrl = `${supabaseUrl}/functions/v1/intake-lead`;
   const companyId = company.id;
   const niche = copy.niche ?? "general";
   const nicheIcon = getNicheIcon(niche);
   const logoHtml = buildLogoHtml(company.name);
-  const heroBgImage = NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE;
+  const heroBgImage = heroImageUrl ?? (NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE);
 
   // Headline: split on newlines or | or — treat as 3 separate lines
   const headlineLines = copy.hero_headline
@@ -970,6 +971,7 @@ async function generateAdCreativeHtml(
   brandColor = "#16a34a",
   fontStyle = "system",
   brandNotes = "",
+  heroImageUrl?: string | null,
 ): Promise<string> {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -977,7 +979,7 @@ async function generateAdCreativeHtml(
   const width = 1080;
   const height = format === "story" ? 1920 : 1080;
   const niche = copy.niche ?? "general";
-  const bgImage = NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE;
+  const bgImage = heroImageUrl ?? (NICHE_BG_IMAGES[niche.toLowerCase()] ?? DEFAULT_BG_IMAGE);
   const formatLabel = format === "story"
     ? "9:16 Instagram/Facebook Story (1080×1920px)"
     : "1:1 Facebook/Instagram Feed (1080×1080px)";
@@ -1443,6 +1445,8 @@ Deno.serve(async (req) => {
   let bodyBrandNotes: string | null = null;
   let bodyNiche: string | null = null;
   let bodyMarket = "residential";
+  let bodyHeroImageUrl: string | null = null;
+  let bodyHeroPrompt: string | null = null;
   try {
     const body = await req.json();
     companyId = body?.company_id;
@@ -1476,6 +1480,12 @@ Deno.serve(async (req) => {
     }
     if (body?.market === "commercial") {
       bodyMarket = "commercial";
+    }
+    if (typeof body?.hero_image_url === "string" && body.hero_image_url.trim()) {
+      bodyHeroImageUrl = body.hero_image_url.trim();
+    }
+    if (typeof body?.hero_prompt === "string" && body.hero_prompt.trim()) {
+      bodyHeroPrompt = body.hero_prompt.trim();
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -1516,6 +1526,8 @@ Deno.serve(async (req) => {
     brandNotes: bodyBrandNotes,
     niche: bodyNiche,
     market: bodyMarket,
+    heroImageUrl: bodyHeroImageUrl,
+    heroPrompt: bodyHeroPrompt,
   });
   try {
     // @ts-ignore — EdgeRuntime is available in Supabase edge functions
@@ -1535,6 +1547,90 @@ Deno.serve(async (req) => {
 // =============================================================================
 // Pipeline — all the heavy work, runs after response is sent
 // =============================================================================
+async function generateHeroImageWithAI(
+  prompt: string,
+  niche: string,
+  companyId: string,
+  db: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+): Promise<string | null> {
+  const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
+  if (!replicateToken) {
+    console.warn("[generate-fulfillment] REPLICATE_API_TOKEN not set — skipping AI image generation");
+    return null;
+  }
+
+  const imagePrompt = prompt ||
+    `Professional ${niche} work on a residential home, high quality photorealistic, bright natural daylight, suburban neighbourhood, wide angle, sharp focus, magazine quality`;
+
+  try {
+    // Create a FLUX Schnell prediction
+    const createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${replicateToken}`,
+        "Content-Type": "application/json",
+        "Prefer": "wait=30",
+      },
+      body: JSON.stringify({
+        input: {
+          prompt: imagePrompt,
+          width: 1440,
+          height: 960,
+          num_outputs: 1,
+          output_format: "webp",
+          output_quality: 90,
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text().catch(() => "");
+      throw new Error(`Replicate create failed ${createRes.status}: ${errText}`);
+    }
+
+    let prediction = await createRes.json();
+
+    // Poll until succeeded (max 60s)
+    let polls = 0;
+    while (prediction.status !== "succeeded" && prediction.status !== "failed" && polls < 20) {
+      await new Promise((r) => setTimeout(r, 3000));
+      polls++;
+      const pollRes = await fetch(prediction.urls.get, {
+        headers: { "Authorization": `Token ${replicateToken}` },
+      });
+      if (pollRes.ok) prediction = await pollRes.json();
+    }
+
+    if (prediction.status !== "succeeded" || !prediction.output?.[0]) {
+      throw new Error(`Replicate prediction ${prediction.status}`);
+    }
+
+    const tempUrl: string = prediction.output[0];
+
+    // Download image and upload to Supabase Storage for permanent URL
+    const imgRes = await fetch(tempUrl);
+    if (!imgRes.ok) throw new Error(`Failed to download generated image: ${imgRes.status}`);
+    const imgBytes = await imgRes.arrayBuffer();
+
+    const { data: uploadData, error: uploadError } = await db.storage
+      .from("logos")
+      .upload(`${companyId}/hero-ai.webp`, imgBytes, {
+        upsert: true,
+        contentType: "image/webp",
+      });
+
+    if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+    const { data: { publicUrl } } = db.storage.from("logos").getPublicUrl(`${companyId}/hero-ai.webp`);
+    console.log(`[generate-fulfillment] AI hero image generated: ${publicUrl}`);
+    return publicUrl;
+  } catch (err) {
+    console.warn("[generate-fulfillment] AI hero image generation failed:", err);
+    return null;
+  }
+}
+
 async function runPipeline(
   db: ReturnType<typeof createClient>,
   company: Company,
@@ -1550,6 +1646,8 @@ async function runPipeline(
     brandNotes?: string | null;
     niche?: string | null;
     market?: string;
+    heroImageUrl?: string | null;
+    heroPrompt?: string | null;
   } = {},
 ): Promise<void> {
   // Accumulated errors (non-fatal steps continue)
@@ -1565,6 +1663,8 @@ async function runPipeline(
   const brandNotes = overrides.brandNotes ?? "";
   const wizardNiche = overrides.niche ?? null;
   const market = overrides.market ?? "residential";
+  let heroImageUrl: string | null = overrides.heroImageUrl ?? null;
+  const heroPrompt: string | null = overrides.heroPrompt ?? null;
 
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
@@ -1594,10 +1694,26 @@ async function runPipeline(
     return;
   }
 
+  // ── Step 3b: Resolve hero image (AI generation if requested) ───────────────
+  if (!heroImageUrl && heroPrompt) {
+    try {
+      heroImageUrl = await generateHeroImageWithAI(
+        heroPrompt,
+        copy.niche ?? wizardNiche ?? "home services",
+        companyId,
+        db,
+        supabaseUrl,
+      );
+    } catch (err) {
+      errors.hero_image_ai = String(err);
+      console.warn("[generate-fulfillment] Step 3b (AI hero image) failed:", err);
+    }
+  }
+
   // ── Step 4: Build landing page HTML ────────────────────────────────────────
   let landingPageHtml = "";
   try {
-    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials, brandColor);
+    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials, brandColor, heroImageUrl);
     console.log(`[generate-fulfillment] Landing page HTML built (${landingPageHtml.length} chars)`);
   } catch (err) {
     errors.landing_page_build = String(err);
@@ -1609,8 +1725,8 @@ async function runPipeline(
   let storyAdHtml = "";
   try {
     [feedAdHtml, storyAdHtml] = await Promise.all([
-      generateAdCreativeHtml(company, copy, "square", brandColor, fontStyle, brandNotes),
-      generateAdCreativeHtml(company, copy, "story", brandColor, fontStyle, brandNotes),
+      generateAdCreativeHtml(company, copy, "square", brandColor, fontStyle, brandNotes, heroImageUrl),
+      generateAdCreativeHtml(company, copy, "story", brandColor, fontStyle, brandNotes, heroImageUrl),
     ]);
     console.log("[generate-fulfillment] Ad creative HTML generated by Claude");
   } catch (err) {

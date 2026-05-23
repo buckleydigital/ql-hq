@@ -6182,6 +6182,40 @@ function wizardLogoPreview(input) {
   reader.readAsDataURL(file);
 }
 
+function wizardSelectHeroTile(type) {
+  const ids = ['wizardHeroUploadTile', 'wizardHeroAiTile', 'wizardHeroNicheTile'];
+  const types = ['upload', 'ai', 'niche'];
+  ids.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const active = types[i] === type;
+    el.style.borderColor = active ? '#4797FF' : 'rgba(255,255,255,0.12)';
+    el.style.background = active ? 'rgba(71,151,255,0.08)' : '';
+  });
+  wizardData.heroChoice = type;
+  document.getElementById('wizardHeroAiBox').style.display = type === 'ai' ? '' : 'none';
+  if (type === 'upload') {
+    document.getElementById('wizardHeroFile').click();
+  }
+  if (type !== 'upload') {
+    document.getElementById('wizardHeroPreviewBox').style.display = 'none';
+  }
+}
+
+function wizardHeroPreview(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  wizardData.heroFile = file;
+  const box = document.getElementById('wizardHeroPreviewBox');
+  const img = document.getElementById('wizardHeroImg');
+  const reader = new FileReader();
+  reader.onload = e => {
+    img.src = e.target.result;
+    box.style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
 async function fetchHooks() {
   const loadingEl = document.getElementById('wizardHooksLoading');
   const cardsEl = document.getElementById('wizardHookCards');
@@ -6317,6 +6351,8 @@ function wizardStep7Next() {
   wizardData.brandColor = document.getElementById('wizardBrandColor')?.value || '#16a34a';
   wizardData.fontStyle = document.getElementById('wizardFontStyle')?.value || 'system';
   wizardData.brandNotes = document.getElementById('wizardBrandNotes')?.value?.trim() || '';
+  wizardData.heroChoice = wizardData.heroChoice || 'niche';
+  wizardData.heroPrompt = document.getElementById('wizardHeroPrompt')?.value?.trim() || '';
   wizardGoTo(8);
 }
 
@@ -6364,6 +6400,22 @@ async function wizardGenerateStep() {
       console.warn('Logo upload error:', e);
     }
   }
+
+  if (wizardData.heroChoice === 'upload' && wizardData.heroFile) {
+    try {
+      const file = wizardData.heroFile;
+      const ext = file.name.split('.').pop().toLowerCase() || 'jpg';
+      const { data: uploadData } = await sb.storage
+        .from('logos')
+        .upload(`${currentCompanyId}/hero.${ext}`, file, { upsert: true, contentType: file.type });
+      if (uploadData) {
+        const { data: { publicUrl } } = sb.storage.from('logos').getPublicUrl(`${currentCompanyId}/hero.${ext}`);
+        wizardData.heroImageUrl = publicUrl;
+      }
+    } catch (e) {
+      console.warn('Hero image upload error:', e);
+    }
+  }
   tick('wps1');
 
   // Step 2: Fire the pipeline
@@ -6393,6 +6445,8 @@ async function wizardGenerateStep() {
         brand_notes:       wizardData.brandNotes || '',
         niche:             wizardData.niche || null,
         market:            wizardData.market || 'residential',
+        hero_image_url:    wizardData.heroImageUrl || null,
+        hero_prompt:       (wizardData.heroChoice === 'ai' ? (wizardData.heroPrompt || null) : null),
       }),
     });
 
@@ -6444,9 +6498,11 @@ async function wizardGenerateStep() {
     if (landingUrl) {
       const urlWrap = document.getElementById('wizardLandingUrl');
       const urlLink = document.getElementById('wizardLandingLink');
+      const urlBtn  = document.getElementById('wizardLandingBtn');
       if (urlWrap && urlLink) {
         urlLink.href = landingUrl;
         urlLink.textContent = landingUrl;
+        if (urlBtn) urlBtn.href = landingUrl;
         urlWrap.style.display = '';
       }
     }

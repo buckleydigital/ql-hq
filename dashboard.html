@@ -2248,18 +2248,47 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
-        <label id="wizardLogoUploadTile" onclick="wizardSelectLogoTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;display:block">
+        <div id="wizardLogoUploadTile" onclick="wizardSelectLogoTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
           <div style="font-size:22px;margin-bottom:8px">↑</div>
           <div style="font-size:13px;font-weight:500;color:#f5f5f5">Upload logo</div>
           <div style="font-size:12px;color:#9a9a9a;margin-top:4px">PNG, JPG, SVG</div>
           <input id="wizardLogoFile" type="file" accept=".png,.jpg,.jpeg,.svg" style="display:none" onchange="wizardLogoPreview(this)">
           <div id="wizardLogoPreview" style="margin-top:12px;display:none"><img id="wizardLogoImg" style="max-width:80px;max-height:60px;border-radius:4px;object-fit:contain"></div>
-        </label>
+        </div>
         <div id="wizardLogoStockTile" onclick="wizardSelectLogoTile('stock')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
           <div style="font-size:22px;margin-bottom:8px">✦</div>
           <div style="font-size:13px;font-weight:500;color:#f5f5f5">Use stock imagery</div>
           <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Let the system choose</div>
         </div>
+      </div>
+
+      <!-- Hero Background Image -->
+      <h3 style="font-size:15px;font-weight:600;color:#f5f5f5;margin:0 0 8px">Background image for ads &amp; landing page</h3>
+      <p style="font-size:13px;color:#9a9a9a;margin:0 0 14px">This appears behind your ad creative and hero section.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div id="wizardHeroUploadTile" onclick="wizardSelectHeroTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:20px;margin-bottom:6px">📷</div>
+          <div style="font-size:12px;font-weight:500;color:#f5f5f5">Upload photo</div>
+          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Your own image</div>
+        </div>
+        <div id="wizardHeroAiTile" onclick="wizardSelectHeroTile('ai')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:20px;margin-bottom:6px">✨</div>
+          <div style="font-size:12px;font-weight:500;color:#f5f5f5">AI generate</div>
+          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Create with AI</div>
+        </div>
+        <div id="wizardHeroNicheTile" onclick="wizardSelectHeroTile('niche')" style="border:1.5px solid #4797FF;background:rgba(71,151,255,0.08);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
+          <div style="font-size:20px;margin-bottom:6px">🔍</div>
+          <div style="font-size:12px;font-weight:500;color:#f5f5f5">Niche default</div>
+          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Auto-matched</div>
+        </div>
+      </div>
+      <input id="wizardHeroFile" type="file" accept="image/*" style="display:none" onchange="wizardHeroPreview(this)">
+      <div id="wizardHeroPreviewBox" style="display:none;margin-bottom:14px;border-radius:8px;overflow:hidden;max-height:140px">
+        <img id="wizardHeroImg" style="width:100%;height:140px;object-fit:cover;border-radius:8px;display:block">
+      </div>
+      <div id="wizardHeroAiBox" style="display:none;margin-bottom:14px">
+        <input id="wizardHeroPrompt" type="text" placeholder="Describe your ideal image (e.g. Professional roofing team on residential home, bright day)" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+        <div style="font-size:11px;color:#555;margin-top:6px">AI image generated during campaign creation. Leave blank for an auto-generated prompt.</div>
       </div>
 
       <!-- Brand Colors -->
@@ -2391,7 +2420,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
       <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
       <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">
-        <a id="wizardLandingLink" href="#" target="_blank" rel="noopener" style="color:#4797FF;font-size:14px;word-break:break-all;text-decoration:underline"></a>
+        <div style="background:rgba(71,151,255,0.08);border:1.5px solid rgba(71,151,255,0.3);border-radius:10px;padding:14px 16px;text-align:left">
+          <div style="font-size:11px;font-weight:600;color:#4797FF;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:6px">Your landing page is live</div>
+          <a id="wizardLandingLink" href="#" target="_blank" rel="noopener" style="color:#f5f5f5;font-size:13px;word-break:break-all;text-decoration:none;display:block;margin-bottom:10px"></a>
+          <a id="wizardLandingBtn" href="#" target="_blank" rel="noopener" style="display:inline-block;background:#4797FF;color:#fff;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600;text-decoration:none">Open landing page ↗</a>
+        </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:28px">
         <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500">Ad copy is ready</span>
