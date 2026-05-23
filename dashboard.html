@@ -2132,8 +2132,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 4: Brand -->
-    <div id="wizardStep4" style="display:none">
+    <!-- Step 5: Brand -->
+    <div id="wizardStep5" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
       <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
@@ -2150,13 +2150,53 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Let the system choose</div>
         </div>
       </div>
-      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
     </div>
 
-    <!-- Step 5: Connect Ad Accounts -->
-    <div id="wizardStep5" style="display:none">
+    <!-- Step 4: Testimonials -->
+    <div id="wizardStep4" style="display:none">
+      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Add customer testimonials</h2>
+      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">These appear on your landing page. Add 2–3 real reviews — no fabricated quotes.</p>
+
+      <!-- Testimonial 1 -->
+      <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 1</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="wizardT1Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          <input id="wizardT1Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+        <textarea id="wizardT1Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
+      </div>
+
+      <!-- Testimonial 2 -->
+      <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 2</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="wizardT2Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          <input id="wizardT2Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+        <textarea id="wizardT2Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
+      </div>
+
+      <!-- Testimonial 3 (optional) -->
+      <div id="wizardT3Wrap" style="display:none;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 3</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="wizardT3Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          <input id="wizardT3Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+        <textarea id="wizardT3Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
+      </div>
+
+      <button id="wizardAddT3Btn" onclick="document.getElementById('wizardT3Wrap').style.display='';this.style.display='none'" style="background:transparent;color:#9a9a9a;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;padding:9px 16px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;margin-bottom:14px">+ Add a third review</button>
+      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(5)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
+    </div>
+
+    <!-- Step 6: Connect Ad Accounts -->
+    <div id="wizardStep6" style="display:none">
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 6px">Connect your ad accounts</h2>
-      <div id="wizardStep5PlatformBadge" style="margin-bottom:16px"></div>
+      <div id="wizardStep6PlatformBadge" style="margin-bottom:16px"></div>
       <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
       <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 20px">This grants us access to run ads in your accounts. Takes 60 seconds.</p>
 
@@ -2173,7 +2213,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       </div>
 
       <!-- Google fields — only shown if budget ≥ $100 -->
-      <div id="wizardGoogleSection" style="display:none">
+      <div id="wizardStep6GoogleSection" style="display:none">
         <div style="border-top:1px solid rgba(255,255,255,0.08);margin-bottom:18px;padding-top:18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
             <span style="font-size:11px;font-weight:600;background:rgba(66,133,244,0.15);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:4px;padding:2px 7px">GOOGLE UNLOCKED</span>
@@ -2185,16 +2225,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
           </div>
         </div>
       </div>
-      <div id="wizardGoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
+      <div id="wizardStep6GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
         <p style="font-size:12px;color:#555;margin:0">🔒 Google Search unlocks at <strong style="color:#9a9a9a">$100/day</strong> — upgrade your budget to add Google campaigns.</p>
       </div>
 
-      <button onclick="wizardStep5Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(6)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
+      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
+      <a onclick="wizardGoTo(7)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
     </div>
 
-    <!-- Step 6: Generating -->
-    <div id="wizardStep6" style="display:none;text-align:center">
+    <!-- Step 7: Generating -->
+    <div id="wizardStep7" style="display:none;text-align:center">
       <div style="font-size:32px;margin-bottom:20px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
       <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Building your lead machine…</h2>
       <p style="font-size:14px;color:#9a9a9a;margin:0 0 32px">This usually takes 30–60 seconds</p>
@@ -2207,8 +2247,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <style>@keyframes wizardSpin{to{transform:rotate(360deg)}}</style>
     </div>
 
-    <!-- Step 7: Live -->
-    <div id="wizardStep7" style="display:none;text-align:center">
+    <!-- Step 8: Live -->
+    <div id="wizardStep8" style="display:none;text-align:center">
       <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
       <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
       <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">

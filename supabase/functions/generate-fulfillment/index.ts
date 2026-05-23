@@ -58,6 +58,12 @@ interface FaqItem {
   a: string;
 }
 
+interface Testimonial {
+  name: string;
+  suburb: string;
+  quote: string;
+}
+
 interface GeneratedCopy {
   hero_headline: string;
   hero_subheadline: string;
@@ -95,6 +101,7 @@ interface Company {
   lead_goals: number | null;
   max_daily_ad_spend: number | null;
   meta_ad_account_id: string | null;
+  testimonials: Testimonial[] | null;
   settings: Record<string, unknown>;
 }
 
@@ -108,7 +115,7 @@ async function loadCompany(
   const { data: company, error } = await db
     .from("companies")
     .select(
-      "id, name, slug, logo_url, website_url, lead_goals, max_daily_ad_spend, meta_ad_account_id, settings",
+      "id, name, slug, logo_url, website_url, service_area, lead_goals, max_daily_ad_spend, meta_ad_account_id, testimonials, settings",
     )
     .eq("id", companyId)
     .single();
@@ -134,8 +141,14 @@ async function loadCompany(
 async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
   if (!websiteUrl) return "";
 
+  // Normalize URL — add https:// if no protocol present
+  let normalizedUrl = websiteUrl.trim();
+  if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) {
+    normalizedUrl = `https://${normalizedUrl}`;
+  }
+
   try {
-    const jinaUrl = `https://r.jina.ai/${websiteUrl}`;
+    const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
     const res = await fetch(jinaUrl, {
       headers: {
         Accept: "text/plain",
@@ -144,12 +157,14 @@ async function scrapeWebsite(websiteUrl: string | null): Promise<string> {
     });
 
     if (!res.ok) {
-      console.warn(`Jina scrape failed: ${res.status} for ${websiteUrl}`);
+      console.warn(`Jina scrape failed: ${res.status} for ${normalizedUrl}`);
       return "";
     }
 
     const text = await res.text();
-    return text.slice(0, 3000);
+    const excerpt = text.slice(0, 6000);
+    console.log(`[scrapeWebsite] Got ${text.length} chars from ${normalizedUrl}, passing ${excerpt.length} to Claude`);
+    return excerpt;
   } catch (err) {
     console.warn("Website scrape error:", err);
     return "";
@@ -292,6 +307,7 @@ function buildLandingPageHtml(
   company: Company,
   copy: GeneratedCopy,
   supabaseUrl: string,
+  testimonials?: Testimonial[] | null,
 ): string {
   const intakeUrl = `${supabaseUrl}/functions/v1/intake-lead`;
   const companyId = company.id;
@@ -362,47 +378,22 @@ function buildLandingPageHtml(
     )
     .join("\n");
 
-  // Reviews (niche-adapted placeholder names)
-  const reviewNames: Record<string, Array<{ name: string; loc: string; stat: string }>> = {
-    solar: [
-      { name: "Sarah M.", loc: "Brisbane, QLD", stat: "Saving $310/month" },
-      { name: "James T.", loc: "Sydney, NSW", stat: "ROI in 4.2 years" },
-      { name: "Emma L.", loc: "Melbourne, VIC", stat: "Saving $280/month" },
-      { name: "David K.", loc: "Perth, WA", stat: "Saving $350/month" },
-      { name: "Lisa R.", loc: "Adelaide, SA", stat: "ROI in 5.1 years" },
-      { name: "Mark W.", loc: "Gold Coast, QLD", stat: "Saving $290/month" },
-    ],
-    roofing: [
-      { name: "Paul H.", loc: "Brisbane, QLD", stat: "No leak in 3 years" },
-      { name: "Sue K.", loc: "Sydney, NSW", stat: "Done in 2 days" },
-      { name: "Tom B.", loc: "Melbourne, VIC", stat: "10 yr warranty" },
-      { name: "Jen A.", loc: "Perth, WA", stat: "On budget" },
-      { name: "Rob C.", loc: "Adelaide, SA", stat: "Immaculate finish" },
-      { name: "Fiona D.", loc: "Gold Coast, QLD", stat: "Highly recommend" },
-    ],
-  };
-  const reviews = reviewNames[niche] ?? [
-    { name: "Sarah M.", loc: "Local Area", stat: "Great result" },
-    { name: "James T.", loc: "Local Area", stat: "Fast & professional" },
-    { name: "Emma L.", loc: "Local Area", stat: "Will use again" },
-    { name: "David K.", loc: "Local Area", stat: "Excellent service" },
-    { name: "Lisa R.", loc: "Local Area", stat: "Top quality work" },
-    { name: "Mark W.", loc: "Local Area", stat: "Highly recommend" },
-  ];
-
-  const reviewsHtml = reviews
-    .map(
-      (r) => `
+  // Reviews — use real testimonials if provided, otherwise omit
+  const reviewsHtml = (testimonials && testimonials.length > 0)
+    ? testimonials
+        .map(
+          (t) => `
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
-        <p>"${company.name} was outstanding — professional, fast and transparent on pricing. ${r.stat}."</p>
+        <p>"${escapeHtml(t.quote)}"</p>
         <div class="review-author">
-          <strong>${r.name}</strong>
-          <span>${r.loc}</span>
+          <strong>${escapeHtml(t.name)}</strong>
+          <span>${escapeHtml(t.suburb)}</span>
         </div>
       </div>`,
-    )
-    .join("\n");
+        )
+        .join("\n")
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -775,7 +766,7 @@ function buildLandingPageHtml(
   </div>
 </section>
 
-<!-- Reviews -->
+${reviewsHtml ? `<!-- Reviews -->
 <section class="reviews-section">
   <div class="reviews-inner">
     <h2 class="section-title">What Our Customers Say</h2>
@@ -783,7 +774,7 @@ function buildLandingPageHtml(
       ${reviewsHtml}
     </div>
   </div>
-</section>
+</section>` : ""}
 
 <!-- FAQ -->
 <section class="faq-section">
@@ -1198,11 +1189,24 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 
   let companyId: string;
+  let bodyWebsiteUrl: string | null = null;
+  let bodyServiceArea: string | null = null;
+  let bodyTestimonials: Testimonial[] | null = null;
   try {
     const body = await req.json();
     companyId = body?.company_id;
     if (!companyId || typeof companyId !== "string") {
       return json({ error: "company_id is required" }, 400);
+    }
+    // Use request body values to avoid race condition with DB write
+    if (typeof body?.website_url === "string" && body.website_url.trim()) {
+      bodyWebsiteUrl = body.website_url.trim();
+    }
+    if (typeof body?.service_area === "string" && body.service_area.trim()) {
+      bodyServiceArea = body.service_area.trim();
+    }
+    if (Array.isArray(body?.testimonials) && body.testimonials.length > 0) {
+      bodyTestimonials = body.testimonials as Testimonial[];
     }
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
@@ -1226,12 +1230,63 @@ Deno.serve(async (req) => {
     return json({ error: `Company load failed: ${String(err)}` }, 500);
   }
 
+  // Pre-compute the GitHub Pages URL so the wizard can show it immediately
+  const ghOwner = Deno.env.get("GITHUB_OWNER");
+  const ghRepo  = Deno.env.get("GITHUB_PAGES_REPO");
+  const predictedPageUrl = ghOwner && ghRepo && company.slug
+    ? `https://${ghOwner}.github.io/${ghRepo}/${company.slug}/`
+    : null;
+
+  // ── Run the rest of the pipeline in the background ───────────────────────────
+  // Returns immediately so the wizard doesn't time out waiting.
+  const pipeline = runPipeline(db, company, companyId, supabaseUrl, {
+    websiteUrl: bodyWebsiteUrl,
+    serviceArea: bodyServiceArea,
+    testimonials: bodyTestimonials,
+  });
+  try {
+    // @ts-ignore — EdgeRuntime is available in Supabase edge functions
+    EdgeRuntime.waitUntil(pipeline);
+  } catch {
+    // Not in edge runtime (local dev) — fire and forget
+    pipeline.catch((e) => console.error("[generate-fulfillment] pipeline error:", e));
+  }
+
+  return json({
+    success: true,
+    landing_page_url: predictedPageUrl,
+    message: "Generation started in background",
+  });
+});
+
+// =============================================================================
+// Pipeline — all the heavy work, runs after response is sent
+// =============================================================================
+async function runPipeline(
+  db: ReturnType<typeof createClient>,
+  company: Company,
+  companyId: string,
+  supabaseUrl: string,
+  overrides: {
+    websiteUrl?: string | null;
+    serviceArea?: string | null;
+    testimonials?: Testimonial[] | null;
+  } = {},
+): Promise<void> {
+  // Accumulated errors (non-fatal steps continue)
+  const errors: Record<string, string> = {};
+
+  // Prefer values passed from wizard body (avoids race condition with DB write)
+  const websiteUrl = overrides.websiteUrl ?? company.website_url;
+  const serviceArea = overrides.serviceArea ?? company.service_area ?? "Australia";
+  const testimonials = overrides.testimonials ?? company.testimonials ?? null;
+
   // ── Step 2: Scrape website ──────────────────────────────────────────────────
   let scrapedContent = "";
   try {
-    scrapedContent = await scrapeWebsite(company.website_url);
+    scrapedContent = await scrapeWebsite(websiteUrl);
     console.log(
-      `[generate-fulfillment] Scraped ${scrapedContent.length} chars from ${company.website_url}`,
+      `[generate-fulfillment] Scraped ${scrapedContent.length} chars from ${websiteUrl}`,
     );
   } catch (err) {
     errors.scrape = String(err);
@@ -1241,7 +1296,7 @@ Deno.serve(async (req) => {
   // ── Step 3: Generate copy ───────────────────────────────────────────────────
   let copy: GeneratedCopy;
   try {
-    copy = await generateCopy(company.name, scrapedContent);
+    copy = await generateCopy(company.name, scrapedContent, serviceArea);
     console.log(`[generate-fulfillment] Copy generated. Niche: ${copy.niche}`);
   } catch (err) {
     console.error("[generate-fulfillment] Step 3 (Claude) failed:", err);
@@ -1257,7 +1312,7 @@ Deno.serve(async (req) => {
   // ── Step 4: Build landing page HTML ────────────────────────────────────────
   let landingPageHtml = "";
   try {
-    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl);
+    landingPageHtml = buildLandingPageHtml(company, copy, supabaseUrl, testimonials);
     console.log(`[generate-fulfillment] Landing page HTML built (${landingPageHtml.length} chars)`);
   } catch (err) {
     errors.landing_page_build = String(err);

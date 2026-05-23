@@ -5800,23 +5800,23 @@ function showOnboardingWizard(company, user) {
 }
 
 function wizardGoTo(step) {
-  for (let i = 1; i <= 7; i++) {
+  for (let i = 1; i <= 8; i++) {
     const el = document.getElementById(`wizardStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
   const dots = document.getElementById('wizardDots');
   if (dots) {
-    dots.innerHTML = [1,2,3,4,5,6,7].map(i =>
+    dots.innerHTML = [1,2,3,4,5,6,7,8].map(i =>
       i === step
         ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
         : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
     ).join('');
   }
-  if (step === 5) {
+  if (step === 6) {
     const googleEnabled = wizardData.googleEnabled === true;
-    const googleSection = document.getElementById('wizardGoogleSection');
-    const googleLocked  = document.getElementById('wizardGoogleLocked');
-    const badge         = document.getElementById('wizardStep5PlatformBadge');
+    const googleSection = document.getElementById('wizardStep6GoogleSection');
+    const googleLocked  = document.getElementById('wizardStep6GoogleLocked');
+    const badge         = document.getElementById('wizardStep6PlatformBadge');
     if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
     if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
     if (badge) {
@@ -5825,7 +5825,7 @@ function wizardGoTo(step) {
         : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
     }
   }
-  if (step === 6) wizardGenerateStep();
+  if (step === 7) wizardGenerateStep();
 }
 
 function wizardSelectLeadGoal(tile, value) {
@@ -5913,16 +5913,36 @@ function wizardLogoPreview(input) {
 }
 
 function wizardStep4Next() {
+  // Collect testimonials (min 1, max 3)
+  const t1name   = document.getElementById('wizardT1Name')?.value?.trim() || '';
+  const t1suburb = document.getElementById('wizardT1Suburb')?.value?.trim() || '';
+  const t1quote  = document.getElementById('wizardT1Quote')?.value?.trim() || '';
+  const t2name   = document.getElementById('wizardT2Name')?.value?.trim() || '';
+  const t2suburb = document.getElementById('wizardT2Suburb')?.value?.trim() || '';
+  const t2quote  = document.getElementById('wizardT2Quote')?.value?.trim() || '';
+  const t3name   = document.getElementById('wizardT3Name')?.value?.trim() || '';
+  const t3suburb = document.getElementById('wizardT3Suburb')?.value?.trim() || '';
+  const t3quote  = document.getElementById('wizardT3Quote')?.value?.trim() || '';
+
+  const testimonials = [];
+  if (t1name || t1quote) testimonials.push({ name: t1name, suburb: t1suburb, quote: t1quote });
+  if (t2name || t2quote) testimonials.push({ name: t2name, suburb: t2suburb, quote: t2quote });
+  if (t3name || t3quote) testimonials.push({ name: t3name, suburb: t3suburb, quote: t3quote });
+  wizardData.testimonials = testimonials.length > 0 ? testimonials : null;
   wizardGoTo(5);
 }
 
 function wizardStep5Next() {
+  wizardGoTo(6);
+}
+
+function wizardStep6Next() {
   wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
   wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
   wizardData.googleCustomerId = wizardData.googleEnabled
     ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
     : null;
-  wizardGoTo(6);
+  wizardGoTo(7);
 }
 
 async function wizardGenerateStep() {
@@ -5978,6 +5998,8 @@ async function wizardGenerateStep() {
         business_desc: wizardData.businessDesc,
         lead_goals: wizardData.leadGoals,
         max_daily_ad_spend: wizardData.maxDailySpend,
+        service_area:      wizardData.serviceArea,
+        testimonials:      wizardData.testimonials || [],
       }),
       keepalive: true,
     });
@@ -6006,26 +6028,40 @@ async function wizardGenerateStep() {
       }
     }
 
-    wizardGoTo(7);
+    wizardGoTo(8);
+
+    // Mark onboarding done immediately — prevents wizard re-appearing on refresh
+    await sb.from('companies')
+      .update({ onboarding_completed: true })
+      .eq('id', currentCompanyId);
+
   } catch (err) {
     console.error('wizardGenerateStep error:', err);
     tick('wps2');
     tick('wps3');
     tick('wps4');
     await new Promise(r => setTimeout(r, 600));
-    wizardGoTo(7);
+
+    // Still mark complete so the wizard doesn't loop even on failure
+    await sb.from('companies')
+      .update({ onboarding_completed: true })
+      .eq('id', currentCompanyId).catch(() => {});
+
+    wizardGoTo(8);
   }
 }
 
 async function wizardSaveOnboardingData() {
   const { error } = await sb.from('companies')
     .update({
-      website_url: wizardData.websiteUrl,
-      lead_goals: wizardData.leadGoals,
-      max_daily_ad_spend: wizardData.maxDailySpend,
-      meta_ad_account_id: wizardData.metaAccountId,
+      website_url:            wizardData.websiteUrl,
+      lead_goals:             wizardData.leadGoals,
+      max_daily_ad_spend:     wizardData.maxDailySpend,
+      service_area:           wizardData.serviceArea,
+      testimonials:           wizardData.testimonials || null,
+      meta_ad_account_id:     wizardData.metaAccountId,
       google_ads_customer_id: wizardData.googleCustomerId,
-      meta_page_id: wizardData.fbPageId,
+      meta_page_id:           wizardData.fbPageId,
     })
     .eq('id', currentCompanyId);
   if (error) console.warn('wizardSaveOnboardingData error:', error);
