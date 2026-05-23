@@ -170,21 +170,6 @@ h1{font-size:18px;font-weight:500}
       The target user will <em>not</em> receive any email or notification about the impersonation.
     </div>
 
-    <!-- Manual Tasks panel -->
-    <div class="card" style="margin-bottom:20px" id="manualTasksCard">
-      <div class="panel-h">
-        <div>
-          <h2>⚡ Manual Tasks</h2>
-          <p id="manualTaskCountLabel">Actions required by the QuoteLeadsHQ team.</p>
-        </div>
-        <button class="btn btn-sm" id="refreshManualTasksBtn" type="button">Refresh</button>
-      </div>
-      <div class="panel-b">
-        <div id="manualTaskLoadingState" class="notice">Loading…</div>
-        <div id="manualTaskList" class="hidden"></div>
-        <div id="manualTaskEmptyState" class="notice hidden">✓ No pending manual tasks.</div>
-      </div>
-    </div>
 
     <!-- Create Account panel -->
     <div class="card" style="margin-bottom:20px">
@@ -391,7 +376,6 @@ h1{font-size:18px;font-weight:500}
           <select id="signupAttemptTypeFilter" class="filter-select">
             <option value="">All types</option>
             <option value="ppl_signup">PPL Signup</option>
-            <option value="advertising_system">Advertising System</option>
           </select>
           <select id="signupAttemptStatusFilter" class="filter-select">
             <option value="">All statuses</option>
@@ -471,25 +455,6 @@ h1{font-size:18px;font-weight:500}
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
         <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
         <span style="font-size:12px;font-weight:500">Super Admin access</span>
-      </label>
-    </div>
-    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Advertising System</div>
-    <div class="form-row" style="margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
-        <input type="checkbox" id="editUserHasAdSystem" style="accent-color:#4797FF;width:16px;height:16px;flex-shrink:0">
-        <div>
-          <div style="font-size:12px;font-weight:500">Has advertising system</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">Unlocks the ad onboarding wizard and campaign tools</div>
-        </div>
-      </label>
-    </div>
-    <div class="form-row" style="margin-bottom:16px">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
-        <input type="checkbox" id="editUserOnboardingDone" style="accent-color:#22c55e;width:16px;height:16px;flex-shrink:0">
-        <div>
-          <div style="font-size:12px;font-weight:500">Onboarding completed</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">Marks the wizard as finished — uncheck to force re-onboarding</div>
-        </div>
       </label>
     </div>
     <div class="modal-actions">
@@ -832,8 +797,6 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('editUserName').value  = u.full_name || '';
     document.getElementById('editUserEmail').value = u.email || '';
     document.getElementById('editUserIsAdmin').checked      = !!u.is_admin;
-    document.getElementById('editUserHasAdSystem').checked  = !!u.has_advertising_system;
-    document.getElementById('editUserOnboardingDone').checked = !!u.onboarding_completed;
     document.getElementById('editUserModal').classList.remove('hidden');
   }
 
@@ -855,8 +818,6 @@ h1{font-size:18px;font-weight:500}
     var full_name             = document.getElementById('editUserName').value.trim();
     var email                 = document.getElementById('editUserEmail').value.trim().toLowerCase();
     var is_admin              = document.getElementById('editUserIsAdmin').checked;
-    var has_advertising_system = document.getElementById('editUserHasAdSystem').checked;
-    var onboarding_completed  = document.getElementById('editUserOnboardingDone').checked;
 
     if (!full_name) { toast('Full name is required.', true); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Valid email required.', true); return; }
@@ -865,9 +826,9 @@ h1{font-size:18px;font-weight:500}
     btn.textContent = 'Saving…';
 
     try {
-      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin, has_advertising_system, onboarding_completed });
+      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin });
       var u = allUsers.find(function (x) { return x.id === editingUserId; });
-      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; u.has_advertising_system = has_advertising_system; u.onboarding_completed = onboarding_completed; }
+      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; }
       document.getElementById('editUserModal').classList.add('hidden');
       editingUserId = null;
       applyFilter(document.getElementById('searchInput').value);
@@ -1312,109 +1273,6 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
     document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
 
-    // 12. Load manual tasks panel
-    await loadManualTasks();
-    document.getElementById('refreshManualTasksBtn').addEventListener('click', loadManualTasks);
-  }
-
-  // ── Manual Tasks ──────────────────────────────────────────────────────────
-  async function loadManualTasks() {
-    var loadingEl  = document.getElementById('manualTaskLoadingState');
-    var listEl     = document.getElementById('manualTaskList');
-    var emptyEl    = document.getElementById('manualTaskEmptyState');
-    var countLabel = document.getElementById('manualTaskCountLabel');
-    if (!loadingEl || !listEl || !emptyEl) return;
-
-    loadingEl.classList.remove('hidden');
-    listEl.classList.add('hidden');
-    emptyEl.classList.add('hidden');
-
-    // Companies with Google connected but no campaign created yet
-    var { data: googleTasks } = await sb
-      .from('companies')
-      .select('id, name, slug, google_ads_customer_id, google_campaign_id, generated_ad_copy, generated_page_url, onboarding_completed')
-      .not('google_ads_customer_id', 'is', null)
-      .is('google_campaign_id', null)
-      .eq('onboarding_completed', true)
-      .order('name');
-
-    var tasks = [];
-
-    (googleTasks || []).forEach(function(c) {
-      var adCopy = c.generated_ad_copy || {};
-      tasks.push({
-        type: 'google_campaign',
-        company_id: c.id,
-        company_name: c.name,
-        customer_id: c.google_ads_customer_id,
-        landing_url: c.generated_page_url || '—',
-        keywords: (adCopy.google_keywords || []).slice(0, 5).join(', ') || '—',
-        headlines_count: (adCopy.google_headlines || []).length,
-        niche: adCopy.niche || '—',
-      });
-    });
-
-    loadingEl.classList.add('hidden');
-    countLabel.textContent = tasks.length + ' pending task' + (tasks.length !== 1 ? 's' : '') + ' requiring manual action.';
-
-    if (tasks.length === 0) {
-      emptyEl.classList.remove('hidden');
-      return;
-    }
-
-    listEl.innerHTML = tasks.map(function(t) {
-      if (t.type === 'google_campaign') {
-        return '<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface-2)">' +
-          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
-            '<div>' +
-              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-                '<span style="background:rgba(66,133,244,0.12);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:6px;font-size:11px;font-weight:600;padding:2px 8px">Google Ads</span>' +
-                '<span style="font-size:13px;font-weight:600">' + escHtml(t.company_name) + '</span>' +
-              '</div>' +
-              '<div style="font-size:12px;color:var(--muted);line-height:1.7">' +
-                '<div><strong>Customer ID:</strong> ' + escHtml(t.customer_id) + '</div>' +
-                '<div><strong>Niche:</strong> ' + escHtml(t.niche) + '</div>' +
-                '<div><strong>Landing page:</strong> <a href="' + escHtml(t.landing_url) + '" target="_blank" style="color:var(--accent)">' + escHtml(t.landing_url) + '</a></div>' +
-                '<div><strong>Sample keywords:</strong> ' + escHtml(t.keywords) + '</div>' +
-                '<div><strong>RSA headlines ready:</strong> ' + t.headlines_count + '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
-              '<button onclick="adminMarkGoogleDone(\'' + t.company_id + '\', this)" class="btn2 btn-sm" style="white-space:nowrap">✓ Mark done</button>' +
-              '<span style="font-size:11px;color:var(--muted)">Set up in Google Ads UI</span>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      }
-      return '';
-    }).join('');
-
-    listEl.classList.remove('hidden');
-  }
-
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  async function adminMarkGoogleDone(companyId, btn) {
-    var campaignId = prompt('Enter the Google Campaign ID you just created:');
-    if (!campaignId || !campaignId.trim()) return;
-    btn.disabled = true;
-    btn.textContent = '…';
-    var { error } = await sb
-      .from('companies')
-      .update({ google_campaign_id: campaignId.trim(), campaign_status: 'active' })
-      .eq('id', companyId);
-    if (error) {
-      alert('Error saving: ' + error.message);
-      btn.disabled = false;
-      btn.textContent = '✓ Mark done';
-    } else {
-      await loadManualTasks();
-    }
-  }
-
   // ── Companies ─────────────────────────────────────────────────────────────
   var allCompaniesPanel = [];
 
@@ -1852,9 +1710,8 @@ h1{font-size:18px;font-weight:500}
     const statusBadge = s => s === 'completed'
       ? `<span style="background:#22c55e22;color:#22c55e;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Completed</span>`
       : `<span style="background:#f59e0b22;color:#f59e0b;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Abandoned</span>`;
-    const typeBadge = t => t === 'advertising_system'
-      ? `<span style="background:#4797FF22;color:#4797FF;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">Ad System</span>`
-      : `<span style="background:#a78bfa22;color:#a78bfa;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">PPL</span>`;
+    const typeBadge = t =>
+      `<span style="background:#a78bfa22;color:#a78bfa;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">${t}</span>`;
 
     list.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted);text-align:left">

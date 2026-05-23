@@ -59,9 +59,9 @@ ALTER TABLE public.companies
 
 ---
 
-## Supabase Edge Functions to delete
+## Supabase Edge Functions — already deleted from repo
 
-These functions are no longer called from the dashboard:
+These directories have been removed from `supabase/functions/`:
 
 - `manage-campaign`
 - `approve-campaign`
@@ -69,6 +69,12 @@ These functions are no longer called from the dashboard:
 - `generate-hooks`
 - `generate-fulfillment`
 - `create-advert-upgrade-checkout`
+- `create-advertising-checkout`
+- `create-google-campaign`
+- `create-meta-campaign`
+
+You will need to **delete them from the Supabase Dashboard** (Functions → select each → Delete)
+if they have been previously deployed there.
 
 The `notify-internal` and `provision-twilio` functions are still used by other features
 (AI SMS) — do NOT delete them.
