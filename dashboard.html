@@ -49,6 +49,13 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .top-side{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .top-side-actions{display:flex;gap:4px}
 .nav-sec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 10px}
+details.nav-group{margin-top:8px}
+details.nav-group>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding-right:10px;user-select:none}
+details.nav-group>summary::-webkit-details-marker{display:none}
+details.nav-group>summary::after{content:'›';font-size:14px;color:var(--muted);display:inline-block;transform:rotate(90deg);transition:transform .15s}
+details.nav-group[open]>summary::after{transform:rotate(-90deg)}
+.app.collapsed details.nav-group>summary::after{display:none}
+.app.collapsed details.nav-group>.nav{display:flex!important}
 .nav,.sub{display:flex;flex-direction:column;gap:3px}
 .nav-item,.sub-item,.account{min-height:42px;padding:0 10px;border-radius:12px;display:flex;align-items:center;gap:10px;color:var(--text);border:1px solid transparent;text-align:left;transition:background .15s}
 .nav-item:hover,.sub-item:hover,.account:hover{background:var(--side-hover)}
@@ -502,8 +509,8 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       </button>
     </div>
 
-    <div style="margin-top:8px">
-      <div class="nav-sec">Automate</div>
+    <details class="nav-group" open>
+      <summary class="nav-sec">Automate</summary>
       <div class="nav">
         <button class="nav-item" data-page="ai-settings" type="button">
           <span class="icon" data-icon="spark"></span>
@@ -514,10 +521,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <span class="nav-text">Broadcasts</span>
         </button>
       </div>
-    </div>
+    </details>
 
-    <div style="margin-top:8px">
-      <div class="nav-sec">Grow</div>
+    <details class="nav-group" open>
+      <summary class="nav-sec">Grow</summary>
       <div class="nav">
         <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button">
           <span class="icon" data-icon="spark"></span>
@@ -528,10 +535,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <span class="nav-text">Performance</span>
         </button>
       </div>
-    </div>
+    </details>
 
-    <div style="margin-top:8px">
-      <div class="nav-sec">Admin</div>
+    <details class="nav-group">
+      <summary class="nav-sec">Admin</summary>
       <div class="nav">
         <button class="nav-item" data-page="sales" type="button">
           <span class="icon" data-icon="briefcase"></span>
@@ -558,7 +565,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <span class="nav-text">Notifications</span>
         </button>
       </div>
-    </div>
+    </details>
 
     <div class="foot">
       <button id="sidebarAccountButton" class="account" type="button">
