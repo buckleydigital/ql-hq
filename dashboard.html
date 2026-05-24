@@ -420,12 +420,12 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:none;box-sh
 /* ── Mobile bottom nav ──────────────────────────────── */
 .mobile-nav{display:none}
 @media(max-width:860px){
-  .mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:200;padding:4px 0 env(safe-area-inset-bottom,0px)}
-  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 4px;border:none;background:none;color:var(--muted);font-size:10px;font-weight:500;cursor:pointer;position:relative;transition:color .15s;-webkit-tap-highlight-color:transparent}
+  .mobile-nav{display:flex;position:fixed!important;bottom:0;left:0;right:0;height:calc(54px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--border);z-index:200;padding-bottom:env(safe-area-inset-bottom,0px);overflow:hidden}
+  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;border:none;background:none;color:var(--muted);font-size:10px;font-weight:500;cursor:pointer;position:relative;transition:color .15s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden}
   .mobile-nav-item.active,.mobile-nav-item:active{color:var(--accent,#1f6fff)}
-  .mobile-nav-item .icon{width:22px;height:22px}
-  .mobile-badge{position:absolute;top:4px;right:calc(50% - 20px);min-width:16px;height:16px;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;padding:0 4px;pointer-events:none}
-  .main{padding-bottom:70px!important}
+  .mobile-nav-item .icon{width:20px;height:20px;flex-shrink:0}
+  .mobile-badge{position:absolute;top:2px;right:calc(50% - 18px);min-width:14px;height:14px;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;padding:0 3px;pointer-events:none}
+  .main{padding-bottom:calc(58px + env(safe-area-inset-bottom,0px))!important}
 }
 tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .chip{transition:all .1s}
@@ -1759,7 +1759,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
   <nav class="mobile-nav" id="mobileNav">
     <button class="mobile-nav-item" data-page="dashboard" type="button">
       <span class="icon" data-icon="dashboard"></span>
-      <span>Today</span>
+      <span>Status</span>
     </button>
     <button class="mobile-nav-item" data-page="pipeline" type="button">
       <span class="icon" data-icon="kanban"></span>
