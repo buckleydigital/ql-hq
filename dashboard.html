@@ -417,6 +417,16 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:none;box-sh
 .modal.open .modal-card{animation:scaleIn .15s ease}
 @keyframes scaleIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.modal.open .modal-card{animation:none}}
+/* ── Mobile bottom nav ──────────────────────────────── */
+.mobile-nav{display:none}
+@media(max-width:860px){
+  .mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:200;padding:4px 0 env(safe-area-inset-bottom,0px)}
+  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 4px;border:none;background:none;color:var(--muted);font-size:10px;font-weight:500;cursor:pointer;position:relative;transition:color .15s;-webkit-tap-highlight-color:transparent}
+  .mobile-nav-item.active,.mobile-nav-item:active{color:var(--accent,#1f6fff)}
+  .mobile-nav-item .icon{width:22px;height:22px}
+  .mobile-badge{position:absolute;top:4px;right:calc(50% - 20px);min-width:16px;height:16px;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;padding:0 4px;pointer-events:none}
+  .main{padding-bottom:70px!important}
+}
 tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .chip{transition:all .1s}
 .empty{gap:12px}
@@ -493,7 +503,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       <button class="nav-item" data-page="conversations" type="button">
         <span class="icon" data-icon="message"></span>
         <span class="nav-text">Conversations</span>
-        <span id="notifBadge" class="count" style="display:none">0</span>
+        <span id="notifBadge" class="count" style="display:none;cursor:pointer" onclick="event.stopPropagation();navigateTo('notifications')" title="View notifications">0</span>
       </button>
       <button class="nav-item" data-page="leads" type="button">
         <span class="icon" data-icon="users"></span>
@@ -559,10 +569,6 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         <button class="nav-item" data-page="general-settings" type="button">
           <span class="icon" data-icon="settings"></span>
           <span class="nav-text">Account</span>
-        </button>
-        <button class="nav-item" data-page="notifications" type="button">
-          <span class="icon" data-icon="bell"></span>
-          <span class="nav-text">Notifications</span>
         </button>
       </div>
     </details>
@@ -914,48 +920,6 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             </div>
           </div>
 
-          <!-- Quick Setup Card (Change 4) -->
-          <section class="panel" style="border:2px solid var(--accent,#1f6fff)">
-            <div class="panel-h">
-              <div>
-                <h2 style="display:flex;align-items:center;gap:8px">
-                  <span class="icon" data-icon="spark" style="color:var(--accent,#1f6fff)"></span>
-                  Quick Setup
-                </h2>
-                <p>Three settings are all you need to go live.</p>
-              </div>
-              <div id="quickSetupStatus" style="font-size:12px;color:var(--muted)">Loading…</div>
-            </div>
-            <div class="panel-b">
-              <form id="quickSetupForm" class="stack">
-                <div class="form2">
-                  <div class="field">
-                    <label for="qsAgentName">Agent name (shown in SMS)</label>
-                    <input id="qsAgentName" type="text" placeholder="e.g., Sarah from ABC Solar">
-                    <span class="field-hint">Leads see this name when the AI books callbacks.</span>
-                  </div>
-                  <div class="field">
-                    <label for="qsTwilioNumber">Your SMS number</label>
-                    <input id="qsTwilioNumber" type="text" readonly style="background:var(--surface-2);cursor:default">
-                    <span class="field-hint">Assigned by QuoteLeads — contact support to change.</span>
-                  </div>
-                </div>
-                <label class="toggle-item" style="border:2px solid var(--accent,#1f6fff)">
-                  <input id="qsAiEnabled" type="checkbox" checked>
-                  <div>
-                    <span class="toggle-label" style="font-size:14px">AI Agent Active</span>
-                    <span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">
-                      When on, the AI replies to inbound SMS leads automatically 24/7.
-                    </span>
-                  </div>
-                </label>
-                <div class="actions">
-                  <button class="btn2" type="submit">Save and go live</button>
-                </div>
-              </form>
-            </div>
-          </section>
-
           <!-- Overview Cards -->
           <section class="panel">
             <div class="panel-h">
@@ -972,20 +936,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             </div>
           </section>
 
-          <!-- Advanced Settings Accordion (Change 4) -->
           <section class="panel">
-            <button type="button" id="advancedSettingsToggle"
-                    onclick="document.getElementById('advancedSettingsBody').classList.toggle('hidden');this.querySelector('.chev-icon').style.transform=document.getElementById('advancedSettingsBody').classList.contains('hidden')?'':'rotate(90deg)'"
-                    style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left">
-              <div>
-                <span style="font-size:14px;font-weight:500">Advanced Settings</span>
-                <span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">
-                  Reply delay, on-site scheduling, quote automation, pricing config, system prompt
-                </span>
-              </div>
-              <span class="icon chev-icon" data-icon="chevron-right" style="transition:transform .2s;flex-shrink:0"></span>
-            </button>
-            <div id="advancedSettingsBody" class="hidden">
             <div class="panel-b">
               <form id="aiSettingsForm" class="stack">
                 
@@ -1181,7 +1132,6 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                   <button class="btn2" type="submit">Save advanced settings</button>
                 </div>
               </form>
-            </div>
             </div>
           </section>
 
@@ -1812,6 +1762,30 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 
     </section>
   </main>
+
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item" data-page="dashboard" type="button">
+      <span class="icon" data-icon="dashboard"></span>
+      <span>Today</span>
+    </button>
+    <button class="mobile-nav-item" data-page="pipeline" type="button">
+      <span class="icon" data-icon="kanban"></span>
+      <span>Pipeline</span>
+    </button>
+    <button class="mobile-nav-item" data-page="conversations" type="button">
+      <span class="icon" data-icon="message"></span>
+      <span>Inbox</span>
+      <span id="mobileNotifBadge" class="mobile-badge" style="display:none">0</span>
+    </button>
+    <button class="mobile-nav-item" data-page="leads" type="button">
+      <span class="icon" data-icon="users"></span>
+      <span>Leads</span>
+    </button>
+    <button class="mobile-nav-item" data-page="quotes" type="button">
+      <span class="icon" data-icon="file"></span>
+      <span>Quotes</span>
+    </button>
+  </nav>
 </div>
 
 <!-- ── Lead Modal ──────────────────────────────────────────────────────────── -->
@@ -2284,6 +2258,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
   });
 })();
 </script>
+
 
 </body>
 </html>

@@ -610,25 +610,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
 
-  // ── Quick Setup Form (Change 4) ──────────────────────────────────────────
-  document.getElementById("quickSetupForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      company_id:       currentCompanyId,
-      agent_name:       document.getElementById("qsAgentName")?.value || "Sales Team",
-      is_active:        document.getElementById("qsAiEnabled")?.checked ?? true,
-      callback_enabled: document.getElementById("qsAiEnabled")?.checked ?? true,
-    };
-    try {
-      const { error } = await sb.from("sms_agent_config")
-        .upsert(payload, { onConflict: "company_id" });
-      if (error) { toast(error.message, true); return; }
-      toast("AI agent settings saved. You're live!");
-      setInputValue("aiAgentName", payload.agent_name);
-      setCheckboxValue("aiEnabled", payload.is_active);
-      updateQuickSetupStatus(payload.is_active);
-    } catch (err) { toast("Failed to save.", true); }
-  });
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
   document.getElementById("addPricingItemBtn")?.addEventListener("click", addPricingItemRow);
 
@@ -709,18 +690,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     this.value = formatPhoneE164(this.value);
   });
 
-  // ── Global keyboard shortcuts (Change 10) ────────────────────────────────
   document.addEventListener('keydown', (e) => {
     if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
     if (document.querySelector('.modal.open')) return;
-    switch(e.key) {
-      case 'l': navigateTo('leads'); break;
-      case 'p': navigateTo('pipeline'); break;
-      case 'c': navigateTo('conversations'); break;
-      case 'n': if (currentPageId==='leads') { openModal('leadModal'); resetLeadForm(); } break;
-      case 'q': if (currentPageId==='quotes') { document.getElementById('openQuoteModal')?.click(); } break;
-      case '?': toast('Shortcuts: L=Leads, P=Pipeline, C=Conversations, N=New lead (Leads page), Q=New quote (Quotes page)'); break;
-    }
+    if (e.key === 'n') { openModal('leadModal'); resetLeadForm(); }
+    if (e.key === 'q') { document.getElementById('openQuoteModal')?.click(); }
   });
 });
 
@@ -1016,11 +990,6 @@ async function showApp() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
-const CRM_PAGES        = ["pipeline","leads","quotes","appointments","sales"];
-const INBOX_PAGES      = ["conversations","notifications"];
-const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights"];
-const SETTINGS_PAGES   = ["general-settings","reviews","team-members","integrations","buy-leads"];
-
 const PAGE_META = {
   dashboard:          ["Status",            "Your automation system at a glance."],
   leads:              ["Leads",             "Manage and capture your lead records."],
@@ -1136,11 +1105,12 @@ async function loadDashboard() {
 
 
   try {
-    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
+    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }, { count: orderCount }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
       sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
-      sb.from("sms_agent_config").select("ai_enabled").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("sms_agent_config").select("ai_enabled, is_active, agent_name").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("ppl_lead_orders").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId).not("status", "eq", "pending"),
     ]);
 
     const all          = leads || [];
@@ -1201,9 +1171,8 @@ async function loadDashboard() {
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
     renderPipelineSnapshot(all);
 
-    // Load hot leads and onboarding checklist
     loadHotLeads();
-    loadOnboardingChecklist();
+    loadOnboardingChecklist(aiCfg, all.length, orderCount || 0);
 
     // ── Status banner ──────────────────────────────────────────────────────
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -1424,42 +1393,28 @@ async function openConversationForLead(leadId) {
 }
 
 // ─── Onboarding Checklist (Change 7) ─────────────────────────────────────────
-async function loadOnboardingChecklist() {
-  if (!currentCompanyId) return;
+function loadOnboardingChecklist(aiCfg, leadCount, orderCount) {
   if (localStorage.getItem('onboarding_dismissed')) return;
   const el = document.getElementById('onboardingChecklist');
   if (!el) return;
-  try {
-    const [
-      { data: aiConfig },
-      { count: leadCount },
-      { count: orderCount },
-    ] = await Promise.all([
-      sb.from('sms_agent_config').select('is_active, agent_name').eq('company_id', currentCompanyId).maybeSingle(),
-      sb.from('leads').select('id', { count: 'exact', head: true }).eq('company_id', currentCompanyId),
-      sb.from('ppl_lead_orders').select('id', { count: 'exact', head: true }).eq('company_id', currentCompanyId).not('status','eq','pending'),
-    ]);
-    const step1Done = aiConfig?.is_active === true && !!aiConfig?.agent_name;
-    const step2Done = (leadCount || 0) > 0;
-    const step3Done = (orderCount || 0) > 0;
-    const doneCount = [step1Done, step2Done, step3Done].filter(Boolean).length;
-    if (doneCount === 3) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    const setStep = (id, done) => {
-      const row  = document.getElementById(id);
-      const icon = document.getElementById(id + '_icon');
-      if (!row || !icon) return;
-      if (done) { icon.textContent = '✓'; icon.style.color = '#16a34a'; row.style.opacity = '0.6'; }
-      else { icon.textContent = '○'; icon.style.color = ''; row.style.opacity = ''; }
-    };
-    setStep('oc_step1', step1Done);
-    setStep('oc_step2', step2Done);
-    setStep('oc_step3', step3Done);
-    const prog = document.getElementById('onboardingProgress');
-    if (prog) prog.textContent = `${doneCount} of 3 complete`;
-  } catch (err) {
-    console.warn('loadOnboardingChecklist error:', err);
-  }
+  const step1Done = aiCfg?.is_active === true && !!aiCfg?.agent_name;
+  const step2Done = (leadCount || 0) > 0;
+  const step3Done = (orderCount || 0) > 0;
+  const doneCount = [step1Done, step2Done, step3Done].filter(Boolean).length;
+  if (doneCount === 3) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const setStep = (id, done) => {
+    const row  = document.getElementById(id);
+    const icon = document.getElementById(id + '_icon');
+    if (!row || !icon) return;
+    if (done) { icon.textContent = '✓'; icon.style.color = '#16a34a'; row.style.opacity = '0.6'; }
+    else      { icon.textContent = '○'; icon.style.color = ''; row.style.opacity = ''; }
+  };
+  setStep('oc_step1', step1Done);
+  setStep('oc_step2', step2Done);
+  setStep('oc_step3', step3Done);
+  const prog = document.getElementById('onboardingProgress');
+  if (prog) prog.textContent = `${doneCount} of 3 complete`;
 }
 
 // ─── Custom Fields ────────────────────────────────────────────────────────────
@@ -3605,14 +3560,6 @@ async function handlePasswordChange(e) {
 // AI SETTINGS — UPDATED WITH ALL REQUIRED FIELDS
 // =============================================================================
 
-function updateQuickSetupStatus(isActive) {
-  const el = document.getElementById("quickSetupStatus");
-  if (!el) return;
-  el.innerHTML = isActive
-    ? `<span style="color:#16a34a;font-weight:600">● Live</span>`
-    : `<span style="color:#dc2626;font-weight:600">● Paused</span>`;
-}
-
 async function loadAiSettings() {
   if (!currentCompanyId) return;
   
@@ -3675,11 +3622,6 @@ async function loadAiSettings() {
         promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
       }
 
-      // Populate quick setup fields (Change 4)
-      setInputValue("qsAgentName", data.agent_name);
-      setInputValue("qsTwilioNumber", data.twilio_number);
-      setCheckboxValue("qsAiEnabled", data.is_active);
-      updateQuickSetupStatus(data.is_active ?? false);
     }
     
     // Load Twilio numbers count
@@ -4194,13 +4136,10 @@ async function loadNotifications() {
     const el = document.getElementById("notificationsPanel");
     if (!el) return;
 
-    // Update unread badge count
     const unread = (notifications || []).filter((n) => !n.is_read).length;
-    const badge = document.getElementById("notifBadge");
-    if (badge) {
-      badge.textContent = unread;
-      badge.style.display = unread > 0 ? "inline-flex" : "none";
-    }
+    [document.getElementById("notifBadge"), document.getElementById("mobileNotifBadge")].forEach(b => {
+      if (b) { b.textContent = unread; b.style.display = unread > 0 ? "inline-flex" : "none"; }
+    });
 
     if (!notifications?.length) {
       el.innerHTML = `<div class="empty"><h3>No notifications yet</h3><p>When AI books appointments, triggers quotes, or completes goals, notifications will appear here.</p></div>`;
