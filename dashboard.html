@@ -290,7 +290,7 @@ textarea{min-height:100px;resize:vertical}
 textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
 /* ── Status Page ──────────────────────────────────── */
-.status-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.status-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .status-stats{display:flex;gap:28px;flex-wrap:wrap}
 .status-stat{display:flex;flex-direction:column;align-items:flex-end;min-width:60px}
 .status-stat b{font-size:22px;font-weight:500;line-height:1.1}
@@ -370,6 +370,52 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 .opp-tab:hover{color:var(--text)}
 .opp-tab-content{display:block}
 .opp-tab-content.hidden{display:none}
+
+/* ── Change 2: Lead row urgency ──────────────────────────────── */
+tr.lead-hot td:first-child{border-left:3px solid #ef4444}
+tr.lead-warm td:first-child{border-left:3px solid #3b82f6}
+tr.lead-cold td:first-child{border-left:3px solid transparent}
+tr.lead-hot{background:rgba(239,68,68,.03)}
+tr.lead-warm{background:rgba(59,130,246,.03)}
+[data-theme=dark] tr.lead-hot{background:rgba(239,68,68,.06)}
+[data-theme=dark] tr.lead-warm{background:rgba(59,130,246,.06)}
+.stale-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(197,53,53,.12);color:#c53535;margin-left:4px}
+[data-theme=dark] .stale-badge{background:rgba(239,100,100,.2);color:#f87171}
+
+/* ── Change 9: Mobile lead card layout ───────────────────────── */
+@media(max-width:860px){
+  #leadsTableBody tr{display:grid;grid-template-columns:1fr auto;gap:6px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:8px}
+  #leadsTableBody td:nth-child(2),#leadsTableBody td:nth-child(3),#leadsTableBody td:nth-child(4),#leadsTableBody td:nth-child(6),#leadsTableBody td:nth-child(8),#leadsTableBody td:nth-child(9){display:none}
+  #leadsTableBody td:nth-child(1){grid-column:1}
+  #leadsTableBody td:nth-child(5){grid-column:1}
+  #leadsTableBody td:nth-child(7){grid-column:1}
+  #leadsTableBody td:nth-child(10){grid-column:2;grid-row:1/4;display:flex;flex-direction:column;justify-content:center}
+  #leadsTable thead th:nth-child(3),#leadsTable thead th:nth-child(4),#leadsTable thead th:nth-child(6),#leadsTable thead th:nth-child(8),#leadsTable thead th:nth-child(9){display:none}
+}
+
+/* ── Change 10: Panel-header actions + kbd ───────────────────── */
+.panel-h .actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.panel-h .actions .btn,.panel-h .actions .btn2{white-space:nowrap;font-size:12px;padding:6px 14px;min-height:36px}
+.kbd{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-family:monospace;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);margin-left:4px}
+
+/* ── Change 11: Larger status stats ─────────────────────────── */
+.status-stat b{font-size:28px!important;font-weight:500;line-height:1;display:block}
+.status-stat span{font-size:11px;color:var(--muted);margin-top:4px;display:block;white-space:nowrap}
+
+/* ── Change 14: Polish ───────────────────────────────────────── */
+.page{animation:fadeIn .15s ease}
+@keyframes fadeIn{from{opacity:.7;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.page{animation:none}}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--accent,#1f6fff)}
+.modal.open .modal-card{animation:scaleIn .15s ease}
+@keyframes scaleIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.modal.open .modal-card{animation:none}}
+tbody tr:hover{background:var(--side-hover);transition:background .1s}
+.chip{transition:all .1s}
+.empty{gap:12px}
+.empty .icon{width:36px;height:36px;color:var(--muted);opacity:.5}
+.empty h3{font-size:15px;font-weight:500}
+.empty p{max-width:340px;text-align:center;line-height:1.6}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="./dashboard-supabase.js"></script>
@@ -429,57 +475,88 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     </div>
 
     <div class="nav">
-      <button class="nav-item" data-page="dashboard" type="button"><span class="icon" data-icon="dashboard"></span><span class="nav-text">Status</span></button>
+      <button class="nav-item" data-page="dashboard" type="button">
+        <span class="icon" data-icon="dashboard"></span>
+        <span class="nav-text">Today</span>
+      </button>
+      <button class="nav-item" data-page="pipeline" type="button">
+        <span class="icon" data-icon="kanban"></span>
+        <span class="nav-text">Pipeline</span>
+      </button>
+      <button class="nav-item" data-page="conversations" type="button">
+        <span class="icon" data-icon="message"></span>
+        <span class="nav-text">Conversations</span>
+        <span id="notifBadge" class="count" style="display:none">0</span>
+      </button>
+      <button class="nav-item" data-page="leads" type="button">
+        <span class="icon" data-icon="users"></span>
+        <span class="nav-text">Leads</span>
+      </button>
+      <button class="nav-item" data-page="quotes" type="button">
+        <span class="icon" data-icon="file"></span>
+        <span class="nav-text">Quotes</span>
+      </button>
+      <button class="nav-item" data-page="appointments" type="button">
+        <span class="icon" data-icon="calendar"></span>
+        <span class="nav-text">Appointments</span>
+      </button>
     </div>
 
-    <div>
-      <div class="nav-sec">Inbox</div>
-      <div class="nav">
-        <button class="nav-item" id="inboxToggle" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Inbox</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="inboxSubmenu">
-          <button class="sub-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
-          <button class="sub-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
-        </div>
-      </div>
-    </div>
-
-    <div>
+    <div style="margin-top:8px">
       <div class="nav-sec">Automate</div>
       <div class="nav">
-        <button class="nav-item" id="automationsToggle" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Automations</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="automationsSubmenu">
-          <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Agent</span></button>
-          <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcasts</span></button>
-          <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
-        </div>
+        <button class="nav-item" data-page="ai-settings" type="button">
+          <span class="icon" data-icon="spark"></span>
+          <span class="nav-text">AI Agent</span>
+        </button>
+        <button class="nav-item" data-page="bulk-sms" type="button">
+          <span class="icon" data-icon="mail"></span>
+          <span class="nav-text">Broadcasts</span>
+        </button>
       </div>
     </div>
 
-    <div>
-      <div class="nav-sec">Results</div>
+    <div style="margin-top:8px">
+      <div class="nav-sec">Grow</div>
       <div class="nav">
-        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">Results</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="crmSubmenu">
-          <button class="sub-item" data-page="pipeline" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Pipeline</span></button>
-          <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
-          <button class="sub-item" data-page="quotes" type="button"><span class="icon" data-icon="file"></span><span class="nav-text">Quotes</span></button>
-          <button class="sub-item" data-page="appointments" type="button"><span class="icon" data-icon="calendar"></span><span class="nav-text">Appointments</span></button>
-          <button class="sub-item" data-page="sales" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Sales</span></button>
-        </div>
+        <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button">
+          <span class="icon" data-icon="spark"></span>
+          <span class="nav-text">Buy Leads</span>
+        </button>
+        <button class="nav-item" data-page="ai-insights" type="button">
+          <span class="icon" data-icon="chart"></span>
+          <span class="nav-text">Performance</span>
+        </button>
       </div>
     </div>
 
-    <div>
-      <div class="nav-sec">Setup</div>
+    <div style="margin-top:8px">
+      <div class="nav-sec">Admin</div>
       <div class="nav">
-        <button class="nav-item" id="settingsToggle" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Setup</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="settingsSubmenu">
-          <button id="navBuyLeads" class="sub-item" data-page="buy-leads" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Buy Leads</span></button>
-          <button class="sub-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
-          <button class="sub-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team</span></button>
-          <button class="sub-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
-          <button class="sub-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account</span></button>
-        </div>
+        <button class="nav-item" data-page="sales" type="button">
+          <span class="icon" data-icon="briefcase"></span>
+          <span class="nav-text">Sales</span>
+        </button>
+        <button class="nav-item" data-page="team-members" type="button">
+          <span class="icon" data-icon="team"></span>
+          <span class="nav-text">Team</span>
+        </button>
+        <button class="nav-item" data-page="reviews" type="button">
+          <span class="icon" data-icon="star"></span>
+          <span class="nav-text">Reviews</span>
+        </button>
+        <button class="nav-item" data-page="integrations" type="button">
+          <span class="icon" data-icon="external-link"></span>
+          <span class="nav-text">Integrations</span>
+        </button>
+        <button class="nav-item" data-page="general-settings" type="button">
+          <span class="icon" data-icon="settings"></span>
+          <span class="nav-text">Account</span>
+        </button>
+        <button class="nav-item" data-page="notifications" type="button">
+          <span class="icon" data-icon="bell"></span>
+          <span class="nav-text">Notifications</span>
+        </button>
       </div>
     </div>
 
@@ -505,6 +582,46 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Dashboard / Status -->
       <div id="page-dashboard" class="page">
 
+        <!-- Onboarding checklist (Change 7) -->
+        <section class="panel" id="onboardingChecklist" style="border:1.5px solid var(--accent,#1f6fff);display:none">
+          <div class="panel-h">
+            <div>
+              <h2>Get started — 3 steps to your first booked job</h2>
+              <p id="onboardingProgress" style="font-size:13px;color:var(--muted)">0 of 3 complete</p>
+            </div>
+            <button type="button" onclick="document.getElementById('onboardingChecklist').style.display='none';localStorage.setItem('onboarding_dismissed','1')"
+                    class="btn" style="font-size:11px;padding:4px 10px">Dismiss</button>
+          </div>
+          <div class="panel-b">
+            <div class="stack" style="gap:10px">
+              <div id="oc_step1" class="check-row" style="cursor:pointer" onclick="navigateTo('ai-settings')">
+                <span id="oc_step1_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Configure your AI agent</strong>
+                  <span class="muted" style="display:block;font-size:12px">Set your agent name and enable the SMS bot</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Go →</span>
+              </div>
+              <div id="oc_step2" class="check-row" style="cursor:pointer" onclick="openModal('leadModal');resetLeadForm()">
+                <span id="oc_step2_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Add your first lead</strong>
+                  <span class="muted" style="display:block;font-size:12px">Create a lead record or wait for your first inbound SMS</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Add lead →</span>
+              </div>
+              <div id="oc_step3" class="check-row" style="cursor:pointer" onclick="navigateTo('buy-leads')">
+                <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Buy your first lead pack</strong>
+                  <span class="muted" style="display:block;font-size:12px">Or connect an ad source to start flowing leads in</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Buy leads →</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Machine status banner -->
         <div class="status-banner">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -524,8 +641,29 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               <b id="statusQuotesSent">—</b>
               <span>quotes out</span>
             </div>
+            <div class="status-stat">
+              <b id="statusTotalRevenue">—</b>
+              <span>total revenue</span>
+            </div>
           </div>
         </div>
+
+        <!-- Hot leads needing action (Change 1) -->
+        <section class="panel" id="hotLeadsPanel">
+          <div class="panel-h">
+            <div>
+              <h2>Needs your attention</h2>
+              <p>Hot and warm leads with no quote sent, sorted by age.</p>
+            </div>
+            <div class="actions">
+              <span id="hotLeadsCount" class="chip" style="font-size:13px;font-weight:600"></span>
+              <button class="btn" type="button" onclick="navigateTo('leads')">View all leads →</button>
+            </div>
+          </div>
+          <div class="panel-b" id="hotLeadsBody">
+            <div class="notice">Loading…</div>
+          </div>
+        </section>
 
         <!-- Exception queue -->
         <section class="panel">
@@ -590,8 +728,30 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <section class="panel">
           <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button></div></div>
           <div class="panel-b">
-            <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
-            <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Leads will appear here automatically as they're delivered to your pipeline.</p></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+              <button class="btn active" data-lead-filter="all" onclick="filterLeadsTable('all',this)" type="button">All</button>
+              <button class="btn" data-lead-filter="hot" onclick="filterLeadsTable('hot',this)" type="button">🔥 Hot</button>
+              <button class="btn" data-lead-filter="warm" onclick="filterLeadsTable('warm',this)" type="button">🌤 Warm</button>
+              <button class="btn" data-lead-filter="no_quote" onclick="filterLeadsTable('no_quote',this)" type="button">No quote</button>
+              <button class="btn" data-lead-filter="stale" onclick="filterLeadsTable('stale',this)" type="button">Stale 72h+</button>
+              <div style="margin-left:auto;display:flex;gap:6px">
+                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
+                  <span class="icon" data-icon="plus"></span> New Lead
+                </button>
+              </div>
+            </div>
+            <div class="table-wrap"><table id="leadsTable"><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
+            <div id="leadsEmptyState" class="empty hidden">
+              <span class="icon" data-icon="users" style="width:32px;height:32px"></span>
+              <h3>No leads yet</h3>
+              <p>Leads flow in automatically once your AI agent is live, or you can add them manually.</p>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
+                  <span class="icon" data-icon="plus"></span> Add a lead
+                </button>
+                <button class="btn" type="button" onclick="navigateTo('buy-leads')">Buy leads →</button>
+              </div>
+            </div>
             <div id="leadsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
           </div>
         </section>
@@ -641,7 +801,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
             <div class="panel-b" style="padding:0">
               <div id="conversationList" class="conv-list"></div>
-              <div id="convEmptyState" class="empty" style="margin:14px"><span class="icon" data-icon="message"></span><h3>No conversations</h3><p>Inbound SMS threads will appear here, or create one manually.</p></div>
+              <div id="convEmptyState" class="empty" style="margin:14px">
+                <span class="icon" data-icon="message" style="width:28px;height:28px"></span>
+                <h3>No conversations yet</h3>
+                <p>Once a lead texts your AI number, threads appear here. You can also start one manually.</p>
+                <button class="btn2" type="button" onclick="openNewConvModal()" style="margin-top:4px">
+                  <span class="icon" data-icon="plus"></span> Start conversation
+                </button>
+              </div>
               <div id="convPagination" style="display:flex;justify-content:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"></div>
             </div>
           </aside>
@@ -740,6 +907,48 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
           </div>
 
+          <!-- Quick Setup Card (Change 4) -->
+          <section class="panel" style="border:2px solid var(--accent,#1f6fff)">
+            <div class="panel-h">
+              <div>
+                <h2 style="display:flex;align-items:center;gap:8px">
+                  <span class="icon" data-icon="spark" style="color:var(--accent,#1f6fff)"></span>
+                  Quick Setup
+                </h2>
+                <p>Three settings are all you need to go live.</p>
+              </div>
+              <div id="quickSetupStatus" style="font-size:12px;color:var(--muted)">Loading…</div>
+            </div>
+            <div class="panel-b">
+              <form id="quickSetupForm" class="stack">
+                <div class="form2">
+                  <div class="field">
+                    <label for="qsAgentName">Agent name (shown in SMS)</label>
+                    <input id="qsAgentName" type="text" placeholder="e.g., Sarah from ABC Solar">
+                    <span class="field-hint">Leads see this name when the AI books callbacks.</span>
+                  </div>
+                  <div class="field">
+                    <label for="qsTwilioNumber">Your SMS number</label>
+                    <input id="qsTwilioNumber" type="text" readonly style="background:var(--surface-2);cursor:default">
+                    <span class="field-hint">Assigned by QuoteLeads — contact support to change.</span>
+                  </div>
+                </div>
+                <label class="toggle-item" style="border:2px solid var(--accent,#1f6fff)">
+                  <input id="qsAiEnabled" type="checkbox" checked>
+                  <div>
+                    <span class="toggle-label" style="font-size:14px">AI Agent Active</span>
+                    <span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">
+                      When on, the AI replies to inbound SMS leads automatically 24/7.
+                    </span>
+                  </div>
+                </label>
+                <div class="actions">
+                  <button class="btn2" type="submit">Save and go live</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
           <!-- Overview Cards -->
           <section class="panel">
             <div class="panel-h">
@@ -756,11 +965,20 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
           </section>
 
-          <!-- Main AI Settings Form -->
+          <!-- Advanced Settings Accordion (Change 4) -->
           <section class="panel">
-            <div class="panel-h">
-              <div><h2>SMS Agent Configuration</h2><p>Configure how the AI responds to inbound SMS messages.</p></div>
-            </div>
+            <button type="button" id="advancedSettingsToggle"
+                    onclick="document.getElementById('advancedSettingsBody').classList.toggle('hidden');this.querySelector('.chev-icon').style.transform=document.getElementById('advancedSettingsBody').classList.contains('hidden')?'':'rotate(90deg)'"
+                    style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left">
+              <div>
+                <span style="font-size:14px;font-weight:500">Advanced Settings</span>
+                <span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">
+                  Reply delay, on-site scheduling, quote automation, pricing config, system prompt
+                </span>
+              </div>
+              <span class="icon chev-icon" data-icon="chevron-right" style="transition:transform .2s;flex-shrink:0"></span>
+            </button>
+            <div id="advancedSettingsBody" class="hidden">
             <div class="panel-b">
               <form id="aiSettingsForm" class="stack">
                 
@@ -953,9 +1171,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                 </div>
 
                 <div class="actions">
-                  <button class="btn2" type="submit">Save AI Settings</button>
+                  <button class="btn2" type="submit">Save advanced settings</button>
                 </div>
               </form>
+            </div>
             </div>
           </section>
 
@@ -1812,20 +2031,31 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Overview Tab -->
       <div id="oppTabOverview" class="opp-tab-content">
         <div class="form2">
-          <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text" readonly></div>
-          <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text" readonly></div>
-          <div class="field"><label>Phone</label><input id="oppOverviewPhone" type="text" readonly></div>
-          <div class="field"><label>Status</label><input id="oppOverviewStatus" type="text" readonly></div>
-          <div class="field"><label>Source</label><input id="oppOverviewSource" type="text" readonly></div>
-          <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text" readonly></div>
+          <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text"></div>
+          <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text"></div>
+          <div class="field"><label>Phone</label><input id="oppOverviewPhone" type="text"></div>
+          <div class="field">
+            <label>Status</label>
+            <select id="oppOverviewStatus">
+              <option>New Lead</option>
+              <option>Qualifying</option>
+              <option>Quote in Progress</option>
+              <option>Quoted</option>
+              <option>Closed Won</option>
+              <option>Closed Lost</option>
+            </select>
+          </div>
+          <div class="field"><label>Source</label><input id="oppOverviewSource" type="text"></div>
+          <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text"></div>
           <div class="field"><label>AI Score</label><input id="oppOverviewAiScore" type="text" readonly></div>
           <div class="field"><label>AI Status</label><input id="oppOverviewAiStatus" type="text" readonly></div>
-          <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text" readonly></div>
+          <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text"></div>
           <div class="full"><label>AI Summary</label><textarea id="oppOverviewAiSummary" rows="3" readonly style="background:var(--surface-2);font-style:italic"></textarea></div>
-          <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3" readonly></textarea></div>
+          <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3"></textarea></div>
         </div>
         <div class="actions" style="margin-top:16px">
-          <button id="oppEditLeadBtn" class="btn" type="button"><span class="icon" data-icon="edit"></span> Edit Lead</button>
+          <button id="oppSaveInlineBtn" class="btn2" type="button">Save changes</button>
+          <button id="oppEditLeadBtn" class="btn" type="button">Open full edit</button>
         </div>
       </div>
 
@@ -1838,6 +2068,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Quotes Tab -->
       <div id="oppTabQuotes" class="opp-tab-content hidden">
+        <div class="actions" style="margin-bottom:14px">
+          <button class="btn2" type="button" id="oppCreateQuoteBtn">
+            <span class="icon" data-icon="plus"></span> New Quote for this Lead
+          </button>
+        </div>
         <div id="oppQuotesList" class="run-list">
           <div class="notice">Loading quotes...</div>
         </div>

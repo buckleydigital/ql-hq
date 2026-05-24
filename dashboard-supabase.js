@@ -552,22 +552,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("appView")?.classList.toggle("collapsed");
   });
 
-  document.getElementById("inboxToggle")?.addEventListener("click", () => {
-    document.getElementById("inboxSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("automationsToggle")?.addEventListener("click", () => {
-    document.getElementById("automationsSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("crmToggle")?.addEventListener("click", () => {
-    document.getElementById("crmSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("settingsToggle")?.addEventListener("click", () => {
-    document.getElementById("settingsSubmenu")?.classList.toggle("closed");
-  });
-
   document.getElementById("byTheNumbersToggle")?.addEventListener("click", () => {
     const el = document.getElementById("byTheNumbers");
     if (!el) return;
@@ -625,6 +609,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
+
+  // ── Quick Setup Form (Change 4) ──────────────────────────────────────────
+  document.getElementById("quickSetupForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      company_id:       currentCompanyId,
+      agent_name:       document.getElementById("qsAgentName")?.value || "Sales Team",
+      is_active:        document.getElementById("qsAiEnabled")?.checked ?? true,
+      callback_enabled: document.getElementById("qsAiEnabled")?.checked ?? true,
+    };
+    try {
+      const { error } = await sb.from("sms_agent_config")
+        .upsert(payload, { onConflict: "company_id" });
+      if (error) { toast(error.message, true); return; }
+      toast("AI agent settings saved. You're live!");
+      setInputValue("aiAgentName", payload.agent_name);
+      setCheckboxValue("aiEnabled", payload.is_active);
+      updateQuickSetupStatus(payload.is_active);
+    } catch (err) { toast("Failed to save.", true); }
+  });
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
   document.getElementById("addPricingItemBtn")?.addEventListener("click", addPricingItemRow);
 
@@ -703,6 +707,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Phone number auto-format (Twilio E.164) ──────────────────────────────
   document.getElementById("leadPhone")?.addEventListener("blur", function () {
     this.value = formatPhoneE164(this.value);
+  });
+
+  // ── Global keyboard shortcuts (Change 10) ────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+    if (document.querySelector('.modal.open')) return;
+    switch(e.key) {
+      case 'l': navigateTo('leads'); break;
+      case 'p': navigateTo('pipeline'); break;
+      case 'c': navigateTo('conversations'); break;
+      case 'n': if (currentPageId==='leads') { openModal('leadModal'); resetLeadForm(); } break;
+      case 'q': if (currentPageId==='quotes') { document.getElementById('openQuoteModal')?.click(); } break;
+      case '?': toast('Shortcuts: L=Leads, P=Pipeline, C=Conversations, N=New lead (Leads page), Q=New quote (Quotes page)'); break;
+    }
   });
 });
 
@@ -1036,23 +1054,6 @@ function navigateTo(page) {
   document.querySelectorAll("[data-page]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.page === page)
   );
-  const crmToggle = document.getElementById("crmToggle");
-  if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
-
-  const inboxToggle = document.getElementById("inboxToggle");
-  const inboxSubmenu = document.getElementById("inboxSubmenu");
-  if (inboxToggle) inboxToggle.classList.toggle("active", INBOX_PAGES.includes(page));
-  if (inboxSubmenu && INBOX_PAGES.includes(page)) inboxSubmenu.classList.remove("closed");
-
-  const automationsToggle = document.getElementById("automationsToggle");
-  const automationsSubmenu = document.getElementById("automationsSubmenu");
-  if (automationsToggle) automationsToggle.classList.toggle("active", AUTOMATIONS_PAGES.includes(page));
-  if (automationsSubmenu && AUTOMATIONS_PAGES.includes(page)) automationsSubmenu.classList.remove("closed");
-
-  const settingsToggle = document.getElementById("settingsToggle");
-  const settingsSubmenu = document.getElementById("settingsSubmenu");
-  if (settingsToggle) settingsToggle.classList.toggle("active", SETTINGS_PAGES.includes(page));
-  if (settingsSubmenu && SETTINGS_PAGES.includes(page)) settingsSubmenu.classList.remove("closed");
 
   document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = document.getElementById(`page-${page}`);
@@ -1200,6 +1201,10 @@ async function loadDashboard() {
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
     renderPipelineSnapshot(all);
 
+    // Load hot leads and onboarding checklist
+    loadHotLeads();
+    loadOnboardingChecklist();
+
     // ── Status banner ──────────────────────────────────────────────────────
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const leadsToday = all.filter(l => new Date(l.created_at) >= todayStart).length;
@@ -1211,6 +1216,9 @@ async function loadDashboard() {
     setText2("statusLeadsToday", leadsToday);
     setText2("statusOpenCount",  openAll);
     setText2("statusQuotesSent", quotesOut);
+    const totalRevenue = all.filter(l => l.pipeline_stage === 'closed_won')
+      .reduce((a, l) => a + (Number(l.value) || 0), 0);
+    setText2("statusTotalRevenue", fmt(totalRevenue));
 
     const aiChip = document.getElementById("statusAiChip");
     const aiNote = document.getElementById("statusAiNote");
@@ -1318,6 +1326,142 @@ function renderPipelineSnapshot(leads) {
   }).join("");
 }
 
+// ─── Hot Leads Panel (Change 1) ───────────────────────────────────────────────
+async function loadHotLeads() {
+  if (!currentCompanyId) return;
+  try {
+    const { data: leads } = await sb
+      .from('leads')
+      .select('id, name, phone, email, pipeline_stage, ai_score, ai_status, created_at, value')
+      .eq('company_id', currentCompanyId)
+      .not('pipeline_stage', 'in', '("closed_won","closed_lost")')
+      .order('created_at', { ascending: false });
+
+    const { data: quotedLeads } = await sb
+      .from('quotes')
+      .select('lead_id')
+      .eq('company_id', currentCompanyId);
+
+    const quotedIds = new Set((quotedLeads || []).map(q => q.lead_id));
+
+    const actionable = (leads || []).filter(l => {
+      const status = l.ai_status || aiStatusFromScore(l.ai_score);
+      return (status === 'hot' || status === 'warm') && !quotedIds.has(l.id);
+    }).slice(0, 6);
+
+    const countEl = document.getElementById('hotLeadsCount');
+    const bodyEl  = document.getElementById('hotLeadsBody');
+    if (countEl) countEl.textContent = actionable.length ? `${actionable.length} need action` : 'All clear';
+
+    if (!bodyEl) return;
+
+    if (!actionable.length) {
+      bodyEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>No hot or warm leads without a quote. Great work.</p></div>`;
+      return;
+    }
+
+    bodyEl.innerHTML = `<div class="table-lite">${actionable.map(l => {
+      const status = l.ai_status || aiStatusFromScore(l.ai_score);
+      const ageMs   = Date.now() - new Date(l.created_at).getTime();
+      const ageHrs  = Math.floor(ageMs / 3600000);
+      const ageLabel = ageHrs < 1 ? 'Just now' : ageHrs < 24 ? `${ageHrs}h ago` : `${Math.floor(ageHrs/24)}d ago`;
+      const urgency  = ageHrs > 48 ? 'color:#c53535' : ageHrs > 24 ? 'color:#b45309' : '';
+      const borderColor = status === 'hot' ? '#ef4444' : '#3b82f6';
+      return `<div class="row" style="border-left:3px solid ${borderColor};border-radius:0 12px 12px 0;cursor:pointer;grid-template-columns:1.3fr 1fr auto auto"
+                   onclick="openOpportunityModal('${l.id}')">
+        <div>
+          <strong style="font-size:13px">${esc(l.name || '—')}</strong>
+          <span class="muted">${esc(l.phone || l.email || '—')}</span>
+        </div>
+        <div>
+          <span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span>
+          <span class="chip" style="margin-left:4px">${stageLabel(l.pipeline_stage)}</span>
+        </div>
+        <div style="${urgency}"><span class="muted">${ageLabel}</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn2" style="font-size:11px;padding:4px 10px"
+                  onclick="event.stopPropagation();quickSendQuote('${l.id}')">
+            Send Quote
+          </button>
+          <button class="btn" style="font-size:11px;padding:4px 10px"
+                  onclick="event.stopPropagation();openConversationForLead('${l.id}')">
+            SMS
+          </button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+    renderIcons();
+  } catch (err) {
+    console.error('loadHotLeads error:', err);
+  }
+}
+
+async function quickSendQuote(leadId) {
+  await populateLeadSelector('quoteLeadSelect');
+  document.getElementById('quoteForm')?.reset();
+  document.getElementById('quoteLineItems').innerHTML = '';
+  recalcQuoteTotals();
+  await prefillQuoteDefaults();
+  const sel = document.getElementById('quoteLeadSelect');
+  if (sel) sel.value = leadId;
+  openModal('quoteModal');
+}
+
+async function openConversationForLead(leadId) {
+  navigateTo('conversations');
+  setTimeout(async () => {
+    const { data: conv } = await sb
+      .from('conversations')
+      .select('id, leads(name, phone)')
+      .eq('company_id', currentCompanyId)
+      .eq('lead_id', leadId)
+      .maybeSingle();
+    if (conv) {
+      const item = document.querySelector(`.conv-item[data-conv-id="${conv.id}"]`);
+      if (item) item.click();
+    }
+  }, 400);
+}
+
+// ─── Onboarding Checklist (Change 7) ─────────────────────────────────────────
+async function loadOnboardingChecklist() {
+  if (!currentCompanyId) return;
+  if (localStorage.getItem('onboarding_dismissed')) return;
+  const el = document.getElementById('onboardingChecklist');
+  if (!el) return;
+  try {
+    const [
+      { data: aiConfig },
+      { count: leadCount },
+      { count: orderCount },
+    ] = await Promise.all([
+      sb.from('sms_agent_config').select('is_active, agent_name').eq('company_id', currentCompanyId).maybeSingle(),
+      sb.from('leads').select('id', { count: 'exact', head: true }).eq('company_id', currentCompanyId),
+      sb.from('ppl_lead_orders').select('id', { count: 'exact', head: true }).eq('company_id', currentCompanyId).not('status','eq','pending'),
+    ]);
+    const step1Done = aiConfig?.is_active === true && !!aiConfig?.agent_name;
+    const step2Done = (leadCount || 0) > 0;
+    const step3Done = (orderCount || 0) > 0;
+    const doneCount = [step1Done, step2Done, step3Done].filter(Boolean).length;
+    if (doneCount === 3) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const setStep = (id, done) => {
+      const row  = document.getElementById(id);
+      const icon = document.getElementById(id + '_icon');
+      if (!row || !icon) return;
+      if (done) { icon.textContent = '✓'; icon.style.color = '#16a34a'; row.style.opacity = '0.6'; }
+      else { icon.textContent = '○'; icon.style.color = ''; row.style.opacity = ''; }
+    };
+    setStep('oc_step1', step1Done);
+    setStep('oc_step2', step2Done);
+    setStep('oc_step3', step3Done);
+    const prog = document.getElementById('onboardingProgress');
+    if (prog) prog.textContent = `${doneCount} of 3 complete`;
+  } catch (err) {
+    console.warn('loadOnboardingChecklist error:', err);
+  }
+}
+
 // ─── Custom Fields ────────────────────────────────────────────────────────────
 async function loadCustomFields() {
   if (!currentCompanyId) return [];
@@ -1419,6 +1563,7 @@ async function loadLeads() {
       .range(from, to);
     if (error) { toast(error.message, true); return; }
     allLeads = data || [];
+    _allLeadsForFilter = allLeads;
     renderLeadsTable(allLeads);
     renderPagination("leadsPagination", leadsPage, count, PER_PAGE, (page) => {
       leadsPage = page;
@@ -1427,6 +1572,31 @@ async function loadLeads() {
   } catch (err) {
     toast("Failed to load leads.", true);
   }
+}
+
+let _leadsFilter = 'all';
+let _allLeadsForFilter = [];
+
+async function filterLeadsTable(filter, btnEl) {
+  _leadsFilter = filter;
+  document.querySelectorAll('[data-lead-filter]').forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  let filtered = _allLeadsForFilter;
+  if (filter === 'hot') {
+    filtered = filtered.filter(l => (l.ai_status || aiStatusFromScore(l.ai_score)) === 'hot');
+  } else if (filter === 'warm') {
+    filtered = filtered.filter(l => (l.ai_status || aiStatusFromScore(l.ai_score)) === 'warm');
+  } else if (filter === 'no_quote') {
+    const { data: qLeads } = await sb.from('quotes').select('lead_id').eq('company_id', currentCompanyId);
+    const qIds = new Set((qLeads||[]).map(q=>q.lead_id));
+    filtered = filtered.filter(l => !qIds.has(l.id) && !['closed_won','closed_lost'].includes(l.pipeline_stage));
+  } else if (filter === 'stale') {
+    filtered = filtered.filter(l => {
+      const hrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+      return hrs > 72 && !['closed_won','closed_lost'].includes(l.pipeline_stage);
+    });
+  }
+  renderLeadsTable(filtered);
 }
 
 function renderLeadsTable(leads) {
@@ -1439,9 +1609,15 @@ function renderLeadsTable(leads) {
     return;
   }
   empty?.classList.add("hidden");
-  tbody.innerHTML = leads.map((l) => `
-    <tr>
-      <td><strong>${esc(l.name) || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
+  tbody.innerHTML = leads.map((l) => {
+    const status = l.ai_status || aiStatusFromScore(l.ai_score);
+    const ageHrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+    const isStale = !['closed_won','closed_lost'].includes(l.pipeline_stage) && ageHrs > 72;
+    const urgencyClass = status === 'hot' ? 'lead-hot' : status === 'warm' ? 'lead-warm' : 'lead-cold';
+    const staleHtml = isStale ? `<span class="stale-badge">${Math.floor(ageHrs/24)}d</span>` : '';
+    return `
+    <tr class="${urgencyClass}">
+      <td><strong>${esc(l.name) || "—"}${staleHtml}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
       <td><strong>${esc(l.email) || "—"}</strong>${l.phone ? `<span class="muted">${esc(l.phone)}</span>` : ""}</td>
       <td><strong>${esc(l.address) || "—"}</strong>${l.postcode ? `<span class="muted">${esc(l.postcode)}</span>` : ""}</td>
       <td>${l.source ? `<span class="chip">${esc(l.source)}</span>` : "—"}</td>
@@ -1457,7 +1633,8 @@ function renderLeadsTable(leads) {
           <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>
         </div>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   renderIcons();
 }
 
@@ -2474,7 +2651,13 @@ function buildKanban(leads) {
         </div>
         <div class="cards">
           ${cards.length
-            ? cards.map((l) => `
+            ? cards.map((l) => {
+                const ageHrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+                const ageLabel = ageHrs < 24 ? `${Math.floor(ageHrs)}h`
+                  : ageHrs < 168 ? `${Math.floor(ageHrs/24)}d`
+                  : `${Math.floor(ageHrs/168)}w`;
+                const isOverdue = ageHrs > 48 && !['closed_won','closed_lost'].includes(l.pipeline_stage);
+                return `
               <div class="kcard"
                    draggable="true"
                    data-lead-id="${l.id}"
@@ -2485,8 +2668,12 @@ function buildKanban(leads) {
                 <h3>${l.name || "—"}</h3>
                 <p>${l.email || l.phone || "—"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
-                ${l.ai_score != null ? `<div style="margin-top:6px"><span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span></div>` : ""}
-                </div>`).join("")
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+                  ${l.ai_score != null ? `<span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span>` : '<span></span>'}
+                  <span style="font-size:11px;color:${isOverdue ? '#c53535' : 'var(--muted)'}${isOverdue ? ';font-weight:600' : ''}">${ageLabel}</span>
+                </div>
+              </div>`;
+              }).join("")
             : `<div class="kanban-drop-hint">Drop leads here</div>`}
         </div>
       </div>`;
@@ -2572,7 +2759,20 @@ async function loadQuotes() {
     const el = document.getElementById("quotesPanel");
     if (!el) return;
     if (!quotes.length) {
-      el.innerHTML = `<div class="empty"><h3>No quotes yet</h3><p>Create a quote from the button above or via AI SMS workflow.</p></div>`;
+      el.innerHTML = `<div class="empty">
+  <span class="icon" data-icon="file" style="width:28px;height:28px"></span>
+  <h3>No quotes yet</h3>
+  <p>Create your first quote manually, or enable AI Quote Drafting so the agent drafts quotes automatically when leads are ready.</p>
+  <div style="display:flex;gap:8px;margin-top:4px;justify-content:center">
+    <button class="btn2" type="button" onclick="document.getElementById('openQuoteModal').click()">
+      <span class="icon" data-icon="plus"></span> New quote
+    </button>
+    <button class="btn" type="button" onclick="navigateTo('ai-settings');setTimeout(()=>document.getElementById('advancedSettingsBody')?.classList.remove('hidden'),200)">
+      Enable AI drafting →
+    </button>
+  </div>
+</div>`;
+      renderIcons();
       renderPagination("quotesPagination", quotesPage, 0, PER_PAGE, () => {});
       return;
     }
@@ -2850,7 +3050,15 @@ async function loadAppointments() {
     if (!el) return;
 
     if (!appointments.length) {
-      el.innerHTML = `<div class="empty"><h3>No appointments yet</h3><p>Appointments booked via AI or manually will appear here.</p></div>`;
+      el.innerHTML = `<div class="empty">
+  <span class="icon" data-icon="calendar" style="width:28px;height:28px"></span>
+  <h3>No appointments yet</h3>
+  <p>The AI books callbacks and on-site visits automatically. You can also create one manually.</p>
+  <button class="btn2" type="button" onclick="document.getElementById('openAppointmentModal').click()" style="margin-top:4px">
+    <span class="icon" data-icon="plus"></span> New appointment
+  </button>
+</div>`;
+      renderIcons();
       renderPagination("appointmentsPagination", appointmentsPage, 0, PER_PAGE, () => {});
       return;
     }
@@ -3397,6 +3605,14 @@ async function handlePasswordChange(e) {
 // AI SETTINGS — UPDATED WITH ALL REQUIRED FIELDS
 // =============================================================================
 
+function updateQuickSetupStatus(isActive) {
+  const el = document.getElementById("quickSetupStatus");
+  if (!el) return;
+  el.innerHTML = isActive
+    ? `<span style="color:#16a34a;font-weight:600">● Live</span>`
+    : `<span style="color:#dc2626;font-weight:600">● Paused</span>`;
+}
+
 async function loadAiSettings() {
   if (!currentCompanyId) return;
   
@@ -3458,6 +3674,12 @@ async function loadAiSettings() {
       if (promptHelp) {
         promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
       }
+
+      // Populate quick setup fields (Change 4)
+      setInputValue("qsAgentName", data.agent_name);
+      setInputValue("qsTwilioNumber", data.twilio_number);
+      setCheckboxValue("qsAiEnabled", data.is_active);
+      updateQuickSetupStatus(data.is_active ?? false);
     }
     
     // Load Twilio numbers count
@@ -4095,9 +4317,16 @@ async function loadConversations() {
       const name = esc(c.leads?.name || "Unknown");
       const phone = esc(c.leads?.phone || "");
       const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
+      const lastMsgTime = c.last_message_at ? new Date(c.last_message_at) : null;
+      const minsAgo = lastMsgTime ? Math.floor((Date.now() - lastMsgTime) / 60000) : null;
+      let urgencyBadge = '';
+      if (minsAgo !== null && minsAgo < 60) {
+        const color = minsAgo < 5 ? '#16a34a' : minsAgo < 15 ? '#d97706' : '#dc2626';
+        urgencyBadge = `<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:${color}22;color:${color};font-weight:600;margin-left:4px">${minsAgo}m ago</span>`;
+      }
       return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
                    data-lead-name="${name}" data-lead-phone="${phone}">
-        <h3>${name}<span class="conv-time">${time}</span></h3>
+        <h3>${name}${urgencyBadge}<span class="conv-time">${time}</span></h3>
         <p>${esc(c.last_message) || "No messages yet"}</p>
       </div>`;
     }).join("");
@@ -4578,18 +4807,62 @@ async function openOpportunityModal(leadId) {
   if (oppModalTitle) oppModalTitle.textContent = lead.name || "Lead Details";
   if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${stageLabel(lead.pipeline_stage)} · Created: ${fmtDate(lead.created_at)}`;
 
-  // Populate overview
-  document.getElementById("oppOverviewName").value = lead.name || "—";
-  document.getElementById("oppOverviewEmail").value = lead.email || "—";
-  document.getElementById("oppOverviewPhone").value = lead.phone || "—";
-  document.getElementById("oppOverviewStatus").value = stageLabel(lead.pipeline_stage) || "—";
-  document.getElementById("oppOverviewSource").value = lead.source || "—";
-  document.getElementById("oppOverviewValue").value = lead.value ? fmt(lead.value) : "—";
-  document.getElementById("oppOverviewAiScore").value = aiScoreDisplay(lead);
-  document.getElementById("oppOverviewAiStatus").value = aiStatusLabel(lead);
-  document.getElementById("oppOverviewAddress").value = lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "—";
-  document.getElementById("oppOverviewAiSummary").value = lead.ai_summary || "No AI summary yet.";
-  document.getElementById("oppOverviewNotes").value = lead.notes || "—";
+  // Populate overview fields (editable, Change 6)
+  const setOppField = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ""; };
+  setOppField("oppOverviewName", lead.name || "");
+  setOppField("oppOverviewEmail", lead.email || "");
+  setOppField("oppOverviewPhone", lead.phone || "");
+  // Status is now a select — set its value
+  const statusSel = document.getElementById("oppOverviewStatus");
+  if (statusSel) statusSel.value = stageLabel(lead.pipeline_stage) || "New Lead";
+  setOppField("oppOverviewSource", lead.source || "");
+  setOppField("oppOverviewValue", lead.value || "");
+  setOppField("oppOverviewAiScore", aiScoreDisplay(lead));
+  setOppField("oppOverviewAiStatus", aiStatusLabel(lead));
+  setOppField("oppOverviewAddress", lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "");
+  setOppField("oppOverviewAiSummary", lead.ai_summary || "No AI summary yet.");
+  setOppField("oppOverviewNotes", lead.notes || "");
+
+  // Wire inline save button (Change 6)
+  const saveBtn = document.getElementById('oppSaveInlineBtn');
+  if (saveBtn) {
+    const newSave = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSave, saveBtn);
+    newSave.addEventListener('click', async () => {
+      newSave.disabled = true;
+      newSave.textContent = 'Saving…';
+      const payload = {
+        name:           document.getElementById('oppOverviewName')?.value || null,
+        email:          document.getElementById('oppOverviewEmail')?.value || null,
+        phone:          document.getElementById('oppOverviewPhone')?.value || null,
+        pipeline_stage: stageKey(document.getElementById('oppOverviewStatus')?.value || 'New Lead'),
+        source:         document.getElementById('oppOverviewSource')?.value || null,
+        value:          Number(document.getElementById('oppOverviewValue')?.value) || null,
+        address:        document.getElementById('oppOverviewAddress')?.value || null,
+        notes:          document.getElementById('oppOverviewNotes')?.value || null,
+      };
+      try {
+        const { error } = await sb.from('leads').update(payload).eq('id', leadId);
+        if (error) { toast(error.message, true); return; }
+        toast('Lead updated.');
+        const idx = allLeads.findIndex(l => l.id === leadId);
+        if (idx > -1) allLeads[idx] = { ...allLeads[idx], ...payload };
+        if (payload.pipeline_stage === 'closed_won') scheduleReviewRequest(leadId);
+      } catch (err) { toast('Failed to save.', true); }
+      finally { newSave.disabled = false; newSave.textContent = 'Save changes'; }
+    });
+  }
+
+  // Wire create-quote button for this lead (Change 5)
+  const qBtn = document.getElementById('oppCreateQuoteBtn');
+  if (qBtn) {
+    const newBtn = qBtn.cloneNode(true);
+    qBtn.parentNode.replaceChild(newBtn, qBtn);
+    newBtn.addEventListener('click', async () => {
+      closeModal('opportunityModal');
+      await quickSendQuote(leadId);
+    });
+  }
 
   // Reset tabs to overview
   document.querySelectorAll(".opp-tab").forEach((t) => t.classList.remove("active"));
