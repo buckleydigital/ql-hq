@@ -341,7 +341,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 }
 @media(max-width:860px){
   .app,.app.collapsed{grid-template-columns:1fr!important}
-  .sidebar{position:fixed!important;top:0;left:0;bottom:0;width:min(272px,85vw)!important;z-index:16;overflow-y:auto;transform:translateX(-105%);transition:transform .25s ease;border-right:1px solid var(--border)!important;border-bottom:none!important}
+  .sidebar{position:fixed!important;top:0;left:0;bottom:0;width:min(272px,85vw)!important;z-index:16;overflow-y:auto;transform:translateX(-105%);transition:transform .25s ease;border-right:1px solid var(--border)!important;border-bottom:none!important;padding-bottom:calc(54px + env(safe-area-inset-bottom,0px))!important}
   .app.mobile-open .sidebar{transform:translateX(0)}
   .app.mobile-open .mobile-overlay{display:block}
   #mobileMenuToggle{display:inline-flex!important}
