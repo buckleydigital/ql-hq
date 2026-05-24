@@ -1173,6 +1173,7 @@ async function loadDashboard() {
 
     loadHotLeads();
     loadOnboardingChecklist(aiCfg, all.length, orderCount || 0);
+    loadActiveOrdersDash();
 
     // ── Status banner ──────────────────────────────────────────────────────
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -1363,6 +1364,44 @@ async function loadHotLeads() {
   } catch (err) {
     console.error('loadHotLeads error:', err);
   }
+}
+
+async function loadActiveOrdersDash() {
+  const panel = document.getElementById("activeOrdersPanel");
+  const body  = document.getElementById("activeOrdersBody");
+  if (!panel || !body || !currentCompanyId) return;
+
+  const { data: orders } = await sb
+    .from("ppl_lead_orders")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .in("status", ["paid", "active"])
+    .order("created_at", { ascending: false });
+
+  if (!orders?.length) { panel.style.display = "none"; return; }
+
+  panel.style.display = "";
+  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
+  const statusColor = s => s === "active" ? "#22c55e" : "#4797FF";
+
+  body.innerHTML = orders.map(o => {
+    const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
+    const bar    = pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
+    const city   = o.area_city || o.area || "—";
+    const badge  = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
+    return `<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          ${badge}
+          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;margin-bottom:6px">
+          <div style="width:${pct}%;height:100%;background:${bar};border-radius:4px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">${o.delivered_count} / ${o.quantity} leads delivered · ${fmt(o.total_amount)}</div>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 async function quickSendQuote(leadId) {
