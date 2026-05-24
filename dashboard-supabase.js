@@ -991,7 +991,7 @@ async function showApp() {
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const PAGE_META = {
-  dashboard:          ["Status",            "Your automation system at a glance."],
+  dashboard:          ["Status",            "Your lead system at a glance."],
   leads:              ["Leads",             "Manage and capture your lead records."],
   pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
