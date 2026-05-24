@@ -272,6 +272,19 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Volume Discount Tiers panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Volume Discount Tiers</h2>
+          <p>Pack-size discounts shown on both the public buy-leads page and the dashboard. Changes take effect immediately.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="volumeDiscountTiersTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- PPL Campaign Registry panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -1261,6 +1274,9 @@ h1{font-size:18px;font-weight:500}
     // 8. Load PPL pricing panel
     await loadPplPricing();
 
+    // 8b. Load volume discount tiers
+    await loadVolumeTiers();
+
     // 9. Load PPL campaign registry
     await loadPplCampaigns();
 
@@ -1272,6 +1288,8 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('refreshSignupAttemptsBtn').addEventListener('click', loadSignupAttempts);
     document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
     document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
+
+  } // end boot()
 
   // ── Companies ─────────────────────────────────────────────────────────────
   var allCompaniesPanel = [];
@@ -1585,6 +1603,74 @@ h1{font-size:18px;font-weight:500}
     await loadPplPricing();
   };
 
+  // ── Volume Discount Tiers ──────────────────────────────────────────────────
+  async function loadVolumeTiers() {
+    var el = document.getElementById('volumeDiscountTiersTable');
+    if (!el) return;
+    try {
+      var { data, error } = await sb
+        .from('volume_discount_tiers')
+        .select('id, min_quantity, discount_percent, label, is_popular, active, sort_order')
+        .order('sort_order');
+      if (error) throw error;
+      renderVolumeTiers(data || []);
+    } catch (err) {
+      el.innerHTML = '<div class="notice">Failed to load discount tiers: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderVolumeTiers(rows) {
+    var el = document.getElementById('volumeDiscountTiersTable');
+    if (!el) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="notice">No tiers found. Run the migration to seed the default tiers.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Label</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Min Qty</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Discount %</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Popular</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Active</th>' +
+        '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (t) {
+        return '<tr id="tierRow-' + t.id + '">' +
+          '<td style="padding:8px 10px"><input type="text" value="' + escapeHtml(t.label) + '" data-field="label" data-id="' + t.id + '" style="width:110px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" min="1" value="' + t.min_quantity + '" data-field="min_quantity" data-id="' + t.id + '" style="width:72px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" min="0" max="100" value="' + t.discount_percent + '" data-field="discount_percent" data-id="' + t.id + '" style="width:72px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="is_popular" data-id="' + t.id + '"' + (t.is_popular ? ' checked' : '') + '></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="active" data-id="' + t.id + '"' + (t.active ? ' checked' : '') + '></td>' +
+          '<td style="padding:8px 10px;display:flex;gap:6px">' +
+            '<button class="btn2 btn-sm" onclick="saveVolumeTier(\'' + t.id + '\')">Save</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  window.saveVolumeTier = async function (id) {
+    var row = document.getElementById('tierRow-' + id);
+    if (!row) return;
+    var label            = row.querySelector('[data-field="label"]').value.trim();
+    var min_quantity     = parseInt(row.querySelector('[data-field="min_quantity"]').value);
+    var discount_percent = parseInt(row.querySelector('[data-field="discount_percent"]').value);
+    var is_popular       = row.querySelector('[data-field="is_popular"]').checked;
+    var active           = row.querySelector('[data-field="active"]').checked;
+    if (!label || isNaN(min_quantity) || isNaN(discount_percent)) {
+      toast('Invalid values — check label, quantity and discount.', true);
+      return;
+    }
+    var { error } = await sb
+      .from('volume_discount_tiers')
+      .update({ label, min_quantity, discount_percent, is_popular, active })
+      .eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Tier saved.');
+  };
+
   // ── PPL Campaign Registry ─────────────────────────────────────────────────
   async function loadPplCampaigns() {
     var el = document.getElementById('pplCampaignsTable');
@@ -1692,7 +1778,7 @@ h1{font-size:18px;font-weight:500}
     const typeFilter   = document.getElementById('signupAttemptTypeFilter').value;
     const statusFilter = document.getElementById('signupAttemptStatusFilter').value;
 
-    let q = supabase.from('signup_attempts').select('*').order('created_at', { ascending: false }).limit(200);
+    let q = sb.from('signup_attempts').select('*').order('created_at', { ascending: false }).limit(200);
     if (typeFilter)   q = q.eq('type', typeFilter);
     if (statusFilter) q = q.eq('status', statusFilter);
 

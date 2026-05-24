@@ -51,7 +51,18 @@ serve(async (req) => {
     if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
 
     const validatedPrice = pricing.price_per_lead
-    const totalCents = Math.round(validatedPrice * quantity * 100)
+
+    // Derive discount server-side — never trust a client-supplied value
+    const { data: tierRows } = await supabase
+      .from('volume_discount_tiers')
+      .select('min_quantity, discount_percent')
+      .eq('active', true)
+      .lte('min_quantity', quantity)
+      .order('min_quantity', { ascending: false })
+      .limit(1)
+
+    const discountPercent = tierRows?.[0]?.discount_percent ?? 0
+    const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
 
     const { data: company } = await supabase
       .from('companies')
@@ -79,7 +90,7 @@ serve(async (req) => {
         postcode_list: location_type === 'postcodes' ? postcode_list : null,
         quantity,
         price_per_lead: validatedPrice,
-        total_amount: validatedPrice * quantity,
+        total_amount: validatedPrice * quantity * (1 - discountPercent / 100),
         status: 'pending',
       })
       .select('id')
@@ -109,10 +120,11 @@ serve(async (req) => {
         order_id: order!.id,
         niche,
         area_city,
-        location_type: location_type || 'radius',
-        radius_km: String(radius_km ?? 50),
-        quantity: String(quantity),
-        price_per_lead: String(validatedPrice),
+        location_type:   location_type || 'radius',
+        radius_km:       String(radius_km ?? 50),
+        quantity:        String(quantity),
+        price_per_lead:  String(validatedPrice),
+        discount_percent: String(discountPercent),
       },
       success_url: 'https://quoteleadshq.com/dashboard.html?ppl_success=true',
       cancel_url: 'https://quoteleadshq.com/dashboard.html?ppl_cancelled=true',

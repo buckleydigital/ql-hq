@@ -5687,23 +5687,30 @@ async function skipReviewRequest(requestId) {
 // =============================================================================
 // Buy Leads state
 // =============================================================================
-let _pplPricing    = [];           // [{niche, price_per_lead}]
-let _blNiche       = null;
-let _blCity        = null;
-let _blLocType     = 'radius';     // 'radius' | 'postcodes'
-let _blPPL         = null;
+let _pplPricing      = [];  // [{niche, price_per_lead}]
+let _blDiscountTiers = [];  // [{min_quantity, discount_percent, label, is_popular}]
+let _blNiche         = null;
+let _blCity          = null;
+let _blLocType       = 'radius';  // 'radius' | 'postcodes'
+let _blPPL           = null;
+let _blQty           = 10;        // selected quantity
+let _blDiscount      = 0;         // discount % for selected qty
 const _pplOrdersCache = new Map(); // id → order row (for retry)
 
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
-  const [{ data: pricing }, { data: orders }] = await Promise.all([
+  const [{ data: pricing }, { data: orders }, { data: tiers }] = await Promise.all([
     sb.from('ppl_pricing').select('niche, price_per_lead').is('area', null).order('niche'),
     sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
+    sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
   ]);
 
-  _pplPricing = pricing || [];
+  _pplPricing      = pricing || [];
+  _blDiscountTiers = tiers   || [];
   _blNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _blQty = _blDiscountTiers[0]?.min_quantity ?? 10;
+  _blDiscount = 0;
 
   renderBuyLeadsNiches(_pplPricing);
   renderBuyLeadsOrders(orders || []);
@@ -5711,13 +5718,6 @@ async function loadBuyLeads() {
   // Wire up city select
   const cityEl = document.getElementById('buyLeadsCity');
   if (cityEl) cityEl.onchange = () => { _blCity = cityEl.value || null; buyLeadsOnCityChange(); };
-
-  // Wire up quantity slider
-  const qtyEl = document.getElementById('buyLeadsQty');
-  if (qtyEl) qtyEl.oninput = () => {
-    document.getElementById('buyLeadsQtyLabel').textContent = `${qtyEl.value} leads`;
-    buyLeadsUpdateSummary();
-  };
 
   // Wire up radius select
   document.getElementById('buyLeadsRadius')?.addEventListener('change', buyLeadsUpdateSummary);
@@ -5735,6 +5735,30 @@ function renderBuyLeadsNiches(pricing) {
       id="nicheCard-${p.niche}"
       style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
       ${label}
+    </button>`;
+  }).join('');
+}
+
+function renderBuyLeadsPacks() {
+  const el = document.getElementById('buyLeadsPackGrid');
+  if (!el) return;
+  if (!_blDiscountTiers.length) {
+    el.innerHTML = `<p style="font-size:13px;color:var(--muted)">No packs available.</p>`;
+    return;
+  }
+  el.innerHTML = _blDiscountTiers.map(t => {
+    const isSelected = t.min_quantity === _blQty;
+    const badge = t.discount_percent > 0
+      ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700;background:${isSelected ? 'rgba(255,255,255,0.25)' : '#22c55e22'};color:${isSelected ? '#fff' : '#16a34a'}">${t.discount_percent}% off</span>`
+      : '';
+    const popular = t.is_popular
+      ? `<div style="font-size:10px;font-weight:600;color:${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--accent,#4797FF)'};margin-top:2px">Most popular</div>`
+      : '';
+    return `<button type="button" id="packCard-${t.min_quantity}"
+      onclick="buyLeadsSelectPack(${t.min_quantity}, ${t.discount_percent})"
+      style="padding:12px 18px;border-radius:10px;border:1px solid ${isSelected ? '#4797FF' : 'var(--border)'};background:${isSelected ? '#4797FF' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
+      ${t.label}${badge}
+      ${popular}
     </button>`;
   }).join('');
 }
@@ -5762,11 +5786,20 @@ function buyLeadsSelectNiche(niche, ppl) {
   document.getElementById('buyLeadsSummary').style.display = 'none';
 }
 
+function buyLeadsSelectPack(qty, discountPct) {
+  _blQty      = qty;
+  _blDiscount = discountPct;
+  // Re-render pack grid so active state updates
+  renderBuyLeadsPacks();
+  buyLeadsUpdateSummary();
+}
+
 function buyLeadsOnCityChange() {
   if (!_blCity) return;
   document.getElementById('buyLeadsLocationField').style.display = '';
   document.getElementById('buyLeadsQtyField').style.display = '';
   buyLeadsSetLocType(_blLocType);
+  renderBuyLeadsPacks();
   buyLeadsUpdateSummary();
 }
 
@@ -5787,8 +5820,7 @@ function buyLeadsSetLocType(type) {
 function buyLeadsUpdateSummary() {
   if (!_blNiche || !_blCity || !_blPPL) return;
 
-  const qty  = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
-  const fmt  = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
 
   let coverage = '';
   if (_blLocType === 'postcodes') {
@@ -5801,20 +5833,33 @@ function buyLeadsUpdateSummary() {
     coverage = `${radius}km radius`;
   }
 
+  const subtotal = _blQty * _blPPL;
+  const saving   = subtotal * (_blDiscount / 100);
+  const total    = subtotal - saving;
+
   document.getElementById('buyLeadsSumNiche').textContent    = _blNiche.charAt(0).toUpperCase() + _blNiche.slice(1);
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
-  document.getElementById('buyLeadsSumQty').textContent      = `${qty} leads`;
+  document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
   document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
-  document.getElementById('buyLeadsSumTotal').textContent    = fmt(qty * _blPPL);
-  document.getElementById('buyLeadsSummary').style.display   = '';
+  document.getElementById('buyLeadsSumTotal').textContent    = fmt(total);
 
+  const discRow = document.getElementById('buyLeadsSumDiscountRow');
+  if (discRow) {
+    if (_blDiscount > 0) {
+      document.getElementById('buyLeadsSumDiscount').textContent = `−${fmt(saving)} (${_blDiscount}% off)`;
+      discRow.style.display = 'flex';
+    } else {
+      discRow.style.display = 'none';
+    }
+  }
+
+  document.getElementById('buyLeadsSummary').style.display = '';
   const btn = document.getElementById('buyLeadsCheckoutBtn');
   if (btn) btn.onclick = () => startPplCheckout();
 }
 
 async function startPplCheckout() {
-  const qty       = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
   const radius    = parseInt(document.getElementById('buyLeadsRadius')?.value || 50);
   const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
 
@@ -5836,7 +5881,7 @@ async function startPplCheckout() {
         location_type: _blLocType,
         radius_km:     _blLocType === 'radius' ? radius : null,
         postcode_list: _blLocType === 'postcodes' ? postcodes : null,
-        quantity:      qty,
+        quantity:      _blQty,
       }),
     });
     const data = await res.json();

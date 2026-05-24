@@ -57,7 +57,18 @@ serve(async (req) => {
     if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
 
     const validatedPrice = pricing.price_per_lead
-    const totalCents = Math.round(validatedPrice * quantity * 100)
+
+    // Derive discount server-side — never trust a client-supplied value
+    const { data: tierRows } = await supabase
+      .from('volume_discount_tiers')
+      .select('min_quantity, discount_percent')
+      .eq('active', true)
+      .lte('min_quantity', quantity)
+      .order('min_quantity', { ascending: false })
+      .limit(1)
+
+    const discountPercent = tierRows?.[0]?.discount_percent ?? 0
+    const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
 
     // Capture signup attempt before redirecting — persists even if checkout is abandoned
     const { data: attempt } = await supabase
@@ -105,8 +116,9 @@ serve(async (req) => {
         location_type: location_type || 'radius',
         radius_km:     String(radius_km ?? 50),
         postcode_list: postcode_list || '',
-        quantity:      String(quantity),
-        price_per_lead: String(validatedPrice),
+        quantity:         String(quantity),
+        price_per_lead:   String(validatedPrice),
+        discount_percent: String(discountPercent),
       },
       success_url: 'https://quoteleads.com.au/welcome?session_id={CHECKOUT_SESSION_ID}&type=ppl',
       cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',

@@ -1540,11 +1540,10 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   </div>
                 </div>
 
-                <!-- Step 4: Quantity -->
+                <!-- Step 4: Pack Size -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Quantity — <span id="buyLeadsQtyLabel" style="color:var(--text,var(--ink));text-transform:none;letter-spacing:0">10 leads</span></label>
-                  <input id="buyLeadsQty" type="range" min="10" max="100" step="10" value="10" style="width:100%;margin-top:8px">
-                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>10</span><span>100</span></div>
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Select Pack Size</label>
+                  <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
                 </div>
 
                 <!-- Order summary -->
@@ -1556,7 +1555,8 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <div style="display:flex;justify-content:space-between"><span>Coverage</span><span id="buyLeadsSumCoverage" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Quantity</span><span id="buyLeadsSumQty" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Price per lead</span><span id="buyLeadsSumPPL" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
-                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total</span><span id="buyLeadsSumTotal">—</span></div>
+                    <div id="buyLeadsSumDiscountRow" style="display:none;justify-content:space-between"><span>Volume discount</span><span id="buyLeadsSumDiscount" style="color:#22c55e;font-weight:500">—</span></div>
+                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total (ex GST)</span><span id="buyLeadsSumTotal">—</span></div>
                   </div>
                   <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Purchase Leads →</button>
                   <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">

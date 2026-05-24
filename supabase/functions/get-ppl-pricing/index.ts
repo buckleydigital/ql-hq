@@ -65,8 +65,18 @@ serve(async (req) => {
     )
   }
 
+  // Fetch active volume discount tiers ordered by sort_order
+  const { data: tiers } = await supabase
+    .from('volume_discount_tiers')
+    .select('min_quantity, discount_percent, label, is_popular')
+    .eq('active', true)
+    .order('sort_order')
+
   return new Response(
-    JSON.stringify({ price_per_lead: pricing.price_per_lead }),
+    JSON.stringify({
+      price_per_lead: pricing.price_per_lead,
+      discount_tiers: tiers || [],
+    }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })
