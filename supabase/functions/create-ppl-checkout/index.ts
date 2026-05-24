@@ -31,24 +31,26 @@ serve(async (req) => {
       throw new Error('Missing required fields: company_id, niche, area_city, quantity')
     }
 
+    const normNiche = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+
     // Always validate price from DB — never trust client.
     // Try area-specific price first, fall back to niche default (area IS NULL).
     const { data: areaPrice } = await supabase
       .from('ppl_pricing')
       .select('price_per_lead')
-      .eq('niche', niche)
+      .eq('niche', normNiche)
       .eq('area', area_city)
       .maybeSingle()
 
     const pricing = areaPrice ?? (await supabase
       .from('ppl_pricing')
       .select('price_per_lead')
-      .eq('niche', niche)
+      .eq('niche', normNiche)
       .is('area', null)
       .maybeSingle()
     ).data
 
-    if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
+    if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
 
@@ -82,7 +84,7 @@ serve(async (req) => {
       .from('ppl_lead_orders')
       .insert({
         company_id,
-        niche,
+        niche: normNiche,
         area: area_city,
         area_city,
         location_type: location_type || 'radius',
@@ -107,7 +109,7 @@ serve(async (req) => {
           currency: 'aud',
           unit_amount: totalCents,
           product_data: {
-            name: `${quantity} ${niche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
+            name: `${quantity} ${normNiche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
             description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
@@ -118,7 +120,7 @@ serve(async (req) => {
         type: 'ppl',
         company_id,
         order_id: order!.id,
-        niche,
+        niche: normNiche,
         area_city,
         location_type:   location_type || 'radius',
         radius_km:       String(radius_km ?? 50),

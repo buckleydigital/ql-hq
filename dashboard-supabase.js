@@ -5900,7 +5900,7 @@ async function skipReviewRequest(requestId) {
 // Buy Leads helpers
 // =============================================================================
 function nicheLabel(niche) {
-  return (niche || '').split('_').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+  return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
 
 // =============================================================================

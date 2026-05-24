@@ -38,23 +38,25 @@ serve(async (req) => {
       throw new Error('Missing required fields')
     }
 
+    const normNiche = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+
     // Validate price from DB — never trust client
     const { data: areaPrice } = await supabase
       .from('ppl_pricing')
       .select('price_per_lead')
-      .eq('niche', niche)
+      .eq('niche', normNiche)
       .eq('area', area_city)
       .maybeSingle()
 
     const pricing = areaPrice ?? (await supabase
       .from('ppl_pricing')
       .select('price_per_lead')
-      .eq('niche', niche)
+      .eq('niche', normNiche)
       .is('area', null)
       .maybeSingle()
     ).data
 
-    if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
+    if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
 
@@ -76,7 +78,7 @@ serve(async (req) => {
       .insert({
         type: 'ppl_signup',
         first_name, last_name, email, phone, company,
-        niche, area_city,
+        niche: normNiche, area_city,
         quantity,
         price_per_lead: validatedPrice,
         status: 'pending',
@@ -97,7 +99,7 @@ serve(async (req) => {
           currency: 'aud',
           unit_amount: totalCents,
           product_data: {
-            name: `${quantity} ${niche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
+            name: `${quantity} ${normNiche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
             description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
@@ -111,7 +113,7 @@ serve(async (req) => {
         email,
         phone,
         company,
-        niche,
+        niche: normNiche,
         area_city,
         location_type: location_type || 'radius',
         radius_km:     String(radius_km ?? 50),
