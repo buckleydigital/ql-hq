@@ -102,7 +102,7 @@ function aiStatusFromScore(score) {
 
 function aiStatusLabel(lead) {
   const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
-  const labels = { hot: "🔥 Hot", warm: "🌤 Warm", cold: "❄️ Cold", new: "New" };
+  const labels = { hot: "Hot", warm: "Warm", cold: "Cold", new: "New" };
   return labels[status] || status;
 }
 
@@ -1206,14 +1206,14 @@ async function loadDashboard() {
     const quotedLeadIdsSet = new Set(allQuotes.map(q => q.lead_id));
     const unquoted = all.filter(l => ["new_lead","follow_up"].includes(l.pipeline_stage) && !quotedLeadIdsSet.has(l.id));
     if (unquoted.length) exceptions.push({
-      icon: "⚠", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
+      icon: "!", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
       action: "View Leads", page: "leads"
     });
 
     const threeDaysAgo = new Date(Date.now() - 3 * 864e5);
     const staleQuotes = allQuotes.filter(q => q.status === "sent" && new Date(q.created_at) < threeDaysAgo);
     if (staleQuotes.length) exceptions.push({
-      icon: "⚠", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
+      icon: "!", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
       action: "Follow Up", page: "quotes"
     });
 
@@ -1227,7 +1227,7 @@ async function loadDashboard() {
     const queueEl = document.getElementById("exceptionQueue");
     if (queueEl) {
       if (!exceptions.length) {
-        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>Nothing needs your attention right now.</p></div>`;
+        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><p>Nothing needs your attention right now.</p></div>`;
       } else {
         queueEl.innerHTML = exceptions.map(ex => `
           <div class="exception-card">
@@ -1326,7 +1326,7 @@ async function loadHotLeads() {
     if (!bodyEl) return;
 
     if (!actionable.length) {
-      bodyEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>No hot or warm leads without a quote. Great work.</p></div>`;
+      bodyEl.innerHTML = `<div class="empty" style="min-height:80px"><p>No hot or warm leads without a quote. Great work.</p></div>`;
       return;
     }
 
@@ -1880,10 +1880,10 @@ async function runDisputeCheck() {
     if (!res.ok) {
       // 409 = already disputed
       if (res.status === 409) {
-        showDisputeDone("⚠️", "Already Disputed", payload.error || "This lead already has an active dispute.");
+        showDisputeDone("", "Already Disputed", payload.error || "This lead already has an active dispute.");
         return;
       }
-      showDisputeDone("✗", "Check Failed", payload.error || "An error occurred. Please try again.");
+      showDisputeDone("", "Check Failed", payload.error || "An error occurred. Please try again.");
       return;
     }
 
@@ -1913,10 +1913,10 @@ function renderDisputeResult(payload) {
   if (banner) {
     if (approved) {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20";
-      banner.innerHTML = "<strong>✓ Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
+      banner.innerHTML = "<strong>Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
     } else {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d";
-      banner.innerHTML = "<strong>✗ Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
+      banner.innerHTML = "<strong>Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
     }
   }
 
@@ -2020,7 +2020,7 @@ async function sendDisputeManualReview() {
     }
 
     showDisputeDone(
-      "📋",
+      "",
       "Sent for Manual Review",
       "Our team will assess this lead against the agreed delivery criteria and be in touch. Remember: leads where a prospect said 'not interested' or any outcome outside QuoteLeads' control do not qualify for replacement.",
     );
@@ -3409,7 +3409,7 @@ async function loadPplOrdersUI() {
             <div style="font-size:12px;color:var(--muted)">
               ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
             </div>
-            <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">⚠️ Payment not completed</div>
+            <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">Payment not completed</div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
             <button class="btn2" style="font-size:12px;padding:6px 14px" onclick="retryPplOrder('${o.id}')">Complete Payment</button>
@@ -4186,16 +4186,16 @@ async function loadNotifications() {
     }
 
     const typeIcons = {
-      callback_booked: "📞",
-      onsite_booked: "📍",
-      quote_drafted: "📄",
-      sale_completed: "💰",
+      callback_booked: "",
+      onsite_booked: "",
+      quote_drafted: "",
+      sale_completed: "",
     };
 
     el.innerHTML = `<div class="table-lite">${notifications.map((n) => `
       <div class="row${n.is_read ? "" : " unread"}" style="cursor:pointer;${n.is_read ? "" : "border-left:3px solid #8b5cf6;"}" onclick="markNotificationRead('${n.id}')">
         <div>
-          <strong style="font-size:13px">${typeIcons[n.type] || "🔔"} ${esc(n.title)}</strong>
+          <strong style="font-size:13px">${esc(n.title)}</strong>
           <span class="muted">${esc(n.message || "")}</span>
         </div>
         <div>
@@ -4746,8 +4746,8 @@ async function handleBulkSmsSend() {
     if (progressText) progressText.textContent = `${done} / ${count}`;
   }
 
-  let summary = `✅ ${sent} sent`;
-  if (failed) summary += ` · ❌ ${failed} failed`;
+  let summary = `${sent} sent`;
+  if (failed) summary += ` · ${failed} failed`;
   if (resultSummary) resultSummary.textContent = summary;
   if (sendBtn) sendBtn.disabled = false;
 
@@ -5113,13 +5113,13 @@ async function loadAiInsights() {
       knowledgeEl.innerHTML = `<div class="notice">No AI learnings yet. As leads progress through your pipeline, the AI will extract insights automatically.</div>`;
     } else {
       const categoryLabels = {
-        winning_pattern: "✅ Winning Pattern",
-        failed_pattern: "⚠️ Failed Pattern",
-        objection_response: "💬 Objection Response",
-        scheduling_approach: "📅 Scheduling",
-        quote_approach: "💰 Quote Approach",
-        service_insight: "🔧 Service Insight",
-        style_preference: "🎨 Style Preference",
+        winning_pattern: "Winning Pattern",
+        failed_pattern: "Failed Pattern",
+        objection_response: "Objection Response",
+        scheduling_approach: "Scheduling",
+        quote_approach: "Quote Approach",
+        service_insight: "Service Insight",
+        style_preference: "Style Preference",
       };
 
       knowledgeEl.innerHTML = knowledge.map((k) => {
@@ -5169,7 +5169,6 @@ async function loadAiInsights() {
     if (!cards.length) {
       industryEl.innerHTML = `<div class="notice">Add more leads to your pipeline to unlock performance insights.</div>`;
     } else {
-      const iconMap = { good: "✅", warn: "⚠️", alert: "🔴", info: "💡" };
       const colorMap = {
         good:  { bg: "#f0fdf4", border: "#86efac44", label: "#166534" },
         warn:  { bg: "#fffbeb", border: "#fcd34d44", label: "#92400e" },
@@ -5179,7 +5178,6 @@ async function loadAiInsights() {
       industryEl.innerHTML = cards.map(c => {
         const col = colorMap[c.type] || colorMap.info;
         return `<div style="display:flex;align-items:flex-start;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border);background:${col.bg}">
-          <div style="font-size:20px;flex-shrink:0;margin-top:2px">${iconMap[c.type] || "💡"}</div>
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(c.title)}</div>
             <div style="font-size:12px;color:var(--muted);line-height:1.65">${esc(c.body)}</div>
@@ -6203,7 +6201,6 @@ function renderBuyLeadsOrders(orders) {
       const label = `${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
-          <span style="font-size:18px">⚠️</span>
           <div>
             <div style="font-size:13px;font-weight:600;color:#92400e">Payment not completed</div>
             <div style="font-size:12px;color:#b45309;margin-top:1px">${label}</div>

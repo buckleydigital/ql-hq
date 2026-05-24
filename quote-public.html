@@ -154,7 +154,7 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
     let actionsHtml = "";
     if (isResolved) {
       actionsHtml = '<div class="resolved-msg ' + esc(q.status) + '">' +
-        (q.status === "accepted" ? "✓ You accepted this quote" : "✗ You declined this quote") + "</div>";
+        (q.status === "accepted" ? "You accepted this quote" : "You declined this quote") + "</div>";
     } else if (q.status !== "expired") {
       actionsHtml = '<div class="quote-actions">' +
         '<button class="btn btn-accept" id="btnAccept">Accept Quote</button>' +
