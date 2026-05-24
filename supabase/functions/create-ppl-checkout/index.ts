@@ -107,7 +107,7 @@ serve(async (req) => {
           currency: 'aud',
           unit_amount: totalCents,
           product_data: {
-            name: `${quantity} ${niche.charAt(0).toUpperCase() + niche.slice(1)} leads`,
+            name: `${quantity} ${niche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
             description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
