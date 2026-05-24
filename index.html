@@ -1098,20 +1098,6 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="cta-grid-bg"></div>
     <h2>Stop leaving jobs<br/>on the table.</h2>
     <p>Every unanswered lead is a job your competitor just picked up. Get an obligation-free custom AI demo for your trade business.</p>
-    <form class="cta-form" id="ctaForm" autocomplete="on">
-        <input type="text" name="name" placeholder="Your name" required autocomplete="name"/>
-        <input type="email" name="email" placeholder="Email address" required autocomplete="email"/>
-        <input type="tel" name="phone" placeholder="Phone number" autocomplete="tel"/>
-        <input type="text" name="company" placeholder="Company name" autocomplete="organization"/>
-        <div class="cta-form-full" style="display:flex;justify-content:center"><div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div></div>
-        <button type="submit">Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-        <div class="cta-form-error" id="ctaFormError" style="display:none"></div>
-    </form>
-    <div class="cta-success" id="ctaSuccess" style="display:none">
-        <div class="cta-success-icon">✅</div>
-        <h3>You're on the list!</h3>
-        <p>We'll be in touch shortly with an obligation-free custom AI demo tailored to your business.</p>
-    </div>
     <div class="cta-note">
         <span>No lock-in contracts</span>
         <span>Australian owned and operated</span>
@@ -1204,57 +1190,6 @@ var statObs = new IntersectionObserver(function(entries){
 
 document.querySelectorAll('.stat-item').forEach(function(el){ statObs.observe(el); });
 
-// Get Started form submission
-(function(){
-    var form = document.getElementById('ctaForm');
-    var success = document.getElementById('ctaSuccess');
-    var errEl = document.getElementById('ctaFormError');
-    var SUPABASE_URL = 'https://wjadekgptkstfdootuol.supabase.co ';
-    var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYWRla2dwdGtzdGZkb290dW9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5OTc3NzQsImV4cCI6MjA5MDU3Mzc3NH0.g45wqe_F9KHh3TVzkq8LimxxT4UiuTZpJZcWkzzD7IM';
-    if(!form) return;
-    form.addEventListener('submit', function(e){
-        e.preventDefault();
-        errEl.style.display = 'none';
-        var btn = form.querySelector('button[type="submit"]');
-        btn.disabled = true;
-        btn.textContent = 'Sending…';
-        var turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
-        var token = turnstileInput ? turnstileInput.value : '';
-        if(!token){
-            errEl.textContent = 'Please complete the CAPTCHA verification.';
-            errEl.style.display = 'block';
-            btn.disabled = false;
-            btn.innerHTML = 'Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
-            return;
-        }
-        var data = {
-            name: form.name.value.trim(),
-            email: form.email.value.trim(),
-            phone: form.phone.value.trim() || null,
-            company: form.company.value.trim() || null,
-            cf_turnstile_response: token
-        };
-        fetch(SUPABASE_URL + '/functions/v1/demo-request', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON
-            },
-            body: JSON.stringify(data)
-        }).then(function(res){
-            if(!res.ok) return res.json().then(function(d){ throw new Error(d.error || 'Request failed'); });
-            form.style.display = 'none';
-            success.style.display = 'block';
-        }).catch(function(err){
-            console.error('Form submission failed:', err);
-            errEl.textContent = err.message || 'Something went wrong. Please try again.';
-            errEl.style.display = 'block';
-            btn.disabled = false;
-            btn.innerHTML = 'Get Your Free Demo <svg class="icon" style="width:18px;height:18px" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
-            if(window.turnstile){ turnstile.reset(); }
-        });
-    });
-})();
 </script>
 </body>
 </html>
