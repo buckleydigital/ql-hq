@@ -1,4 +1,4 @@
--- Add Solar Battery niche pricing — default row + the 18 cities shown in the buy-leads UI.
+-- Add Solar Battery niche pricing — default row + the 15 active cities.
 -- Default price: $90/lead. Admin can adjust individual rows in /admin.
 
 insert into ppl_pricing (niche, area, price_per_lead) values
@@ -30,13 +30,6 @@ insert into ppl_pricing (niche, area, price_per_lead) values
   ('solar_battery','Adelaide',90.00),
 
   -- Australian Capital Territory
-  ('solar_battery','Canberra',90.00),
-
-  -- Tasmania
-  ('solar_battery','Hobart',90.00),
-  ('solar_battery','Launceston',90.00),
-
-  -- Northern Territory
-  ('solar_battery','Darwin',90.00)
+  ('solar_battery','Canberra',90.00)
 
 on conflict do nothing;
