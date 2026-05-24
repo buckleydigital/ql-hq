@@ -5789,9 +5789,20 @@ function buyLeadsSelectNiche(niche, ppl) {
 function buyLeadsSelectPack(qty, discountPct) {
   _blQty      = qty;
   _blDiscount = discountPct;
-  // Re-render pack grid so active state updates
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (input) input.value = qty;
   renderBuyLeadsPacks();
   buyLeadsUpdateSummary();
+}
+
+// Returns the best active discount tier for a given quantity (highest min_qty ≤ qty)
+function blGetTierForQty(qty) {
+  let best = null;
+  for (const t of _blDiscountTiers) {
+    if (t.min_quantity <= qty) best = t;
+    else break;
+  }
+  return best;
 }
 
 function buyLeadsOnCityChange() {
@@ -5800,6 +5811,25 @@ function buyLeadsOnCityChange() {
   document.getElementById('buyLeadsQtyField').style.display = '';
   buyLeadsSetLocType(_blLocType);
   renderBuyLeadsPacks();
+  // Wire custom qty input (only once — replace any prior listener by cloning)
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (input) {
+    const fresh = input.cloneNode(true);
+    input.parentNode.replaceChild(fresh, input);
+    fresh.value = _blQty;
+    fresh.addEventListener('input', buyLeadsOnCustomQtyChange);
+  }
+  buyLeadsUpdateSummary();
+}
+
+function buyLeadsOnCustomQtyChange() {
+  const input = document.getElementById('buyLeadsCustomQty');
+  const raw = parseInt(input?.value || '0');
+  if (isNaN(raw) || raw < 10) return; // wait until valid
+  _blQty = raw;
+  const tier = blGetTierForQty(_blQty);
+  _blDiscount = tier ? tier.discount_percent : 0;
+  renderBuyLeadsPacks(); // re-render to reflect active state
   buyLeadsUpdateSummary();
 }
 
@@ -5819,6 +5849,7 @@ function buyLeadsSetLocType(type) {
 
 function buyLeadsUpdateSummary() {
   if (!_blNiche || !_blCity || !_blPPL) return;
+  if (_blQty < 10) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
 
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
 

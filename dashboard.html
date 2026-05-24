@@ -1540,10 +1540,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   </div>
                 </div>
 
-                <!-- Step 4: Pack Size -->
+                <!-- Step 4: Quantity -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Select Pack Size</label>
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Select Quantity</label>
                   <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
+                  <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:12px;color:var(--muted)">Custom:</span>
+                    <input id="buyLeadsCustomQty" type="number" min="10" step="1" placeholder="e.g. 35"
+                      style="width:88px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-size:13px;font-family:inherit">
+                    <span style="font-size:12px;color:var(--muted)">leads (min. 10)</span>
+                  </div>
                 </div>
 
                 <!-- Order summary -->
