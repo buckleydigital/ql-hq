@@ -494,7 +494,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
     <div class="nav">
       <button class="nav-item" data-page="dashboard" type="button">
         <span class="icon" data-icon="dashboard"></span>
-        <span class="nav-text">Today</span>
+        <span class="nav-text">Status</span>
       </button>
       <button class="nav-item" data-page="pipeline" type="button">
         <span class="icon" data-icon="kanban"></span>
@@ -596,7 +596,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       <div id="page-dashboard" class="page">
 
         <!-- Onboarding checklist (Change 7) -->
-        <section class="panel" id="onboardingChecklist" style="border:1.5px solid var(--accent,#1f6fff);display:none">
+        <section class="panel" id="onboardingChecklist" style="border:1px solid var(--accent,#1f6fff);display:none">
           <div class="panel-h">
             <div>
               <h2>Get started — 3 steps to your first booked job</h2>
@@ -634,6 +634,22 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             </div>
           </div>
         </section>
+
+        <!-- Quick actions -->
+        <div>
+          <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
+          <div class="quick-tiles">
+            <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
+              <span class="icon" data-icon="file"></span><span>New Quote</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('buy-leads')">
+              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
+              <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
+            </button>
+          </div>
+        </div>
 
         <!-- Machine status banner -->
         <div class="status-banner">
@@ -683,22 +699,6 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <div class="panel-h"><div><h2>Needs attention</h2><p>Items that may need a human decision.</p></div></div>
           <div class="panel-b" id="exceptionQueue"><div class="notice">Loading…</div></div>
         </section>
-
-        <!-- Quick actions -->
-        <div>
-          <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
-          <div class="quick-tiles">
-            <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
-              <span class="icon" data-icon="file"></span><span>New Quote</span>
-            </button>
-            <button class="quick-tile" type="button" onclick="navigateTo('buy-leads')">
-              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
-            </button>
-            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
-              <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
-            </button>
-          </div>
-        </div>
 
         <!-- By the numbers (collapsible) -->
         <div>
