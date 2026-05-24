@@ -299,7 +299,7 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Campaign ID</label><input id="adminCampId" class="form-input" type="text" placeholder="Campaign ID"></div>
@@ -329,6 +329,7 @@ h1{font-size:18px;font-weight:500}
           <select id="pplLeadNicheFilter" class="filter-select">
             <option value="">All niches</option>
             <option value="solar">Solar</option>
+            <option value="solar_battery">Solar Battery</option>
             <option value="roofing">Roofing</option>
             <option value="hvac">HVAC</option>
             <option value="renovation">Renovation</option>
@@ -602,6 +603,10 @@ h1{font-size:18px;font-weight:500}
       throw new Error(data.error || 'Request failed (HTTP ' + res.status + ')');
     }
     return data;
+  }
+
+  function nicheLabel(niche) {
+    return (niche || '').split('_').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
   }
 
   // ── Render user list ──────────────────────────────────────────────────────
@@ -1463,7 +1468,7 @@ h1{font-size:18px;font-weight:500}
 
   function renderPplLeadOrderRow(o) {
     var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
-    var niche       = (o.niche || '').charAt(0).toUpperCase() + (o.niche || '').slice(1);
+    var niche       = nicheLabel(o.niche);
     var locDesc     = o.location_type === 'postcodes'
       ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
       : escapeHtml(o.area_city || '') + ' — ' + (o.radius_km || 50) + 'km radius';
@@ -1544,7 +1549,7 @@ h1{font-size:18px;font-weight:500}
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>' +
           '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
-            '<option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option>' +
+            '<option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option>' +
           '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Area <span style="font-weight:400">(blank = default)</span></label>' +
           '<input id="addPriceArea" type="text" placeholder="e.g. Brisbane" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px"></div>' +
@@ -1570,7 +1575,7 @@ h1{font-size:18px;font-weight:500}
       rows.map(function (p) {
         var areaLabel = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">Default (all areas)</span>';
         return '<tr id="pricingRow-' + p.id + '">' +
-          '<td style="padding:8px 10px;font-weight:600;text-transform:capitalize">' + escapeHtml(p.niche) + '</td>' +
+          '<td style="padding:8px 10px;font-weight:600">' + escapeHtml(nicheLabel(p.niche)) + '</td>' +
           '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
           '<td style="padding:8px 10px;display:flex;gap:6px">' +
@@ -1819,7 +1824,7 @@ h1{font-size:18px;font-weight:500}
         <td style="padding:8px 10px"><a href="mailto:${escapeHtml(r.email || '')}" style="color:var(--accent)">${escapeHtml(r.email || '—')}</a></td>
         <td style="padding:8px 10px">${escapeHtml(r.phone || '—')}</td>
         <td style="padding:8px 10px;color:var(--muted)">${r.type === 'ppl_signup'
-          ? escapeHtml(`${r.niche || ''} · ${r.area_city || ''} · ${r.quantity || ''} leads`)
+          ? escapeHtml(`${nicheLabel(r.niche)} · ${r.area_city || ''} · ${r.quantity || ''} leads`)
           : escapeHtml(`${r.industry || ''} · ${r.service_location || ''} · ${r.service_radius || ''}`)
         }</td>
       </tr>`).join('')}</tbody>

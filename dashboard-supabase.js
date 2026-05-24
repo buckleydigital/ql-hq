@@ -3365,7 +3365,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
             </div>
             <div style="font-size:12px;color:var(--muted)">
               ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
@@ -3389,7 +3389,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
             </div>
             <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
               ${o.delivered_count} / ${o.quantity}
@@ -5897,6 +5897,13 @@ async function skipReviewRequest(requestId) {
 }
 
 // =============================================================================
+// Buy Leads helpers
+// =============================================================================
+function nicheLabel(niche) {
+  return (niche || '').split('_').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+}
+
+// =============================================================================
 // Buy Leads state
 // =============================================================================
 let _pplPricing      = [];  // [{niche, price_per_lead}]
@@ -5942,7 +5949,7 @@ function renderBuyLeadsNiches(pricing) {
   const el = document.getElementById('buyLeadsNicheCards');
   if (!el) return;
   el.innerHTML = pricing.map(p => {
-    const label = p.niche.charAt(0).toUpperCase() + p.niche.slice(1);
+    const label = nicheLabel(p.niche);
     return `<button type="button" onclick="buyLeadsSelectNiche('${p.niche}', ${p.price_per_lead})"
       id="nicheCard-${p.niche}"
       style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
@@ -6080,7 +6087,7 @@ function buyLeadsUpdateSummary() {
   const saving   = subtotal * (_blDiscount / 100);
   const total    = subtotal - saving;
 
-  document.getElementById('buyLeadsSumNiche').textContent    = _blNiche.charAt(0).toUpperCase() + _blNiche.slice(1);
+  document.getElementById('buyLeadsSumNiche').textContent    = nicheLabel(_blNiche);
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
   document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
