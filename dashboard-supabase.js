@@ -6454,7 +6454,17 @@ function isInStandaloneMode() {
   return window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
 }
 
+function isMobileDevice() {
+  if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+    return navigator.userAgentData.mobile;
+  }
+  return navigator.maxTouchPoints > 0 && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+}
+
 function maybeShowInstallPrompt(userId) {
+  // Desktop browsers — home screen prompt is not relevant
+  if (!isMobileDevice()) return;
+
   // Already installed as a standalone app — no need to prompt
   if (isInStandaloneMode()) return;
 
