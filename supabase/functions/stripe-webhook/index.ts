@@ -152,6 +152,22 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       .update({ status: 'active', stripe_payment_intent_id: session.payment_intent as string })
       .eq('id', m.order_id)
 
+    // Sync postcodes to company service areas if this was a postcode-targeted order
+    const { data: orderData } = await supabase
+      .from('ppl_lead_orders')
+      .select('location_type, postcode_list')
+      .eq('id', m.order_id)
+      .maybeSingle()
+
+    if (orderData?.location_type === 'postcodes' && orderData?.postcode_list) {
+      const newPostcodes = orderData.postcode_list
+        .split(/[\s,\n]+/).map((p: string) => p.trim()).filter(Boolean)
+      const { data: companyData } = await supabase
+        .from('companies').select('ppl_agreed_postcodes').eq('id', m.company_id).maybeSingle()
+      const merged = [...new Set([...(companyData?.ppl_agreed_postcodes || []), ...newPostcodes])]
+      await supabase.from('companies').update({ ppl_agreed_postcodes: merged }).eq('id', m.company_id)
+    }
+
     if (!await hasTwilioNumber(m.company_id)) {
       await provisionTwilio(m.company_id)
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', m.order_id)
@@ -192,6 +208,10 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     if (authError) throw new Error(`Auth: ${authError.message}`)
     const userId = authData.user.id
 
+    const signupPostcodes = m.location_type === 'postcodes' && m.postcode_list
+      ? m.postcode_list.split(/[\s,\n]+/).map((p: string) => p.trim()).filter(Boolean)
+      : []
+
     const { data: company, error: companyError } = await supabase
       .from('companies')
       .insert({
@@ -201,6 +221,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         plan:               'ppl',
         status:             'active',
         stripe_customer_id: session.customer as string,
+        ...(signupPostcodes.length > 0 && { ppl_agreed_postcodes: signupPostcodes }),
       })
       .select('id')
       .single()
