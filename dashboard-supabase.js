@@ -975,6 +975,12 @@ async function showApp() {
     if (urlParams.get('ppl_success') === 'true') {
       toast('Payment confirmed! Your leads are being queued and will appear in your pipeline shortly.');
       history.replaceState({}, '', window.location.pathname);
+      if (currentCompanyId) {
+        const { data: co } = await sb.from('companies').select('ppl_agreed_postcodes').eq('id', currentCompanyId).maybeSingle();
+        if (co?.ppl_agreed_postcodes?.length > 0) {
+          setTimeout(() => toast(`Your service area has been set to ${co.ppl_agreed_postcodes.length} postcodes from this order. View or edit them in Settings → Service Areas.`), 1800);
+        }
+      }
     }
     if (urlParams.get('ppl_cancelled') === 'true') {
       toast('Order cancelled — no charge was made.');
@@ -3324,6 +3330,8 @@ function loadServiceAreasUI(postcodes) {
   if (!container) return;
   container.innerHTML = "";
   postcodes.forEach((pc) => _renderServiceAreaTag(container, pc));
+  const note = document.getElementById("serviceAreaAutoNote");
+  if (note) note.style.display = postcodes.length > 0 ? "" : "none";
 }
 
 function _renderServiceAreaTag(container, postcode) {
