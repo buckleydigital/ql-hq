@@ -264,7 +264,43 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-h">
         <div>
           <h2>PPL Pricing</h2>
-          <p>Fixed price per lead by niche. Changes take effect on the next order.</p>
+          <p>Price per lead by niche / sub-niche / city. Changes take effect on the next order.</p>
+        </div>
+        <div class="filter-bar">
+          <select id="pplPriceNicheFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All niches</option>
+            <option value="solar">Solar</option>
+            <option value="solar_battery">Solar Battery</option>
+            <option value="roofing">Roofing</option>
+            <option value="hvac">HVAC</option>
+            <option value="renovation">Renovation</option>
+          </select>
+          <select id="pplPriceSubNicheFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All sub-niches</option>
+            <option value="__none__">— Parent niche only —</option>
+            <optgroup label="HVAC"><option value="split_ducted">Split &amp; Ducted</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>
+            <optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal</option></optgroup>
+            <optgroup label="Renovation"><option value="kitchen">Kitchen</option><option value="bathroom">Bathroom</option></optgroup>
+          </select>
+          <select id="pplPriceAreaFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All cities</option>
+            <option value="__default__">— Default (no city) —</option>
+            <option value="Brisbane">Brisbane</option>
+            <option value="Gold Coast">Gold Coast</option>
+            <option value="Sunshine Coast">Sunshine Coast</option>
+            <option value="Toowoomba">Toowoomba</option>
+            <option value="Townsville">Townsville</option>
+            <option value="Cairns">Cairns</option>
+            <option value="Sydney">Sydney</option>
+            <option value="Newcastle">Newcastle</option>
+            <option value="Wollongong">Wollongong</option>
+            <option value="Central Coast">Central Coast</option>
+            <option value="Melbourne">Melbourne</option>
+            <option value="Geelong">Geelong</option>
+            <option value="Perth">Perth</option>
+            <option value="Adelaide">Adelaide</option>
+            <option value="Canberra">Canberra</option>
+          </select>
         </div>
       </div>
       <div class="panel-b">
@@ -1547,21 +1583,40 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('pplLeadStatusFilter').addEventListener('change', applyPplLeadFilter);
 
   // ── PPL Pricing ───────────────────────────────────────────────────────────
+  var allPricingRows = [];
+
   async function loadPplPricing() {
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
     try {
       var { data, error } = await sb.from('ppl_pricing').select('id, niche, sub_niche, area, price_per_lead').order('niche').order('sub_niche').order('area');
       if (error) throw error;
-      renderPplPricing(data || []);
+      allPricingRows = data || [];
+      applyPricingFilter();
     } catch (err) {
       el.innerHTML = '<div class="notice">Failed to load pricing: ' + escapeHtml(err.message) + '</div>';
     }
   }
 
-  function renderPplPricing(rows) {
+  window.applyPricingFilter = function () {
+    var nicheVal    = document.getElementById('pplPriceNicheFilter')?.value    || '';
+    var subNicheVal = document.getElementById('pplPriceSubNicheFilter')?.value || '';
+    var areaVal     = document.getElementById('pplPriceAreaFilter')?.value     || '';
+    var filtered = allPricingRows.filter(function (p) {
+      var nicheOk    = !nicheVal    || p.niche === nicheVal;
+      var subOk      = !subNicheVal || (subNicheVal === '__none__' ? !p.sub_niche : p.sub_niche === subNicheVal);
+      var areaOk     = !areaVal     || (areaVal === '__default__'  ? !p.area      : p.area      === areaVal);
+      return nicheOk && subOk && areaOk;
+    });
+    renderPplPricing(filtered, allPricingRows.length);
+  };
+
+  function renderPplPricing(rows, totalCount) {
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
+    var countNote = totalCount !== undefined && totalCount !== rows.length
+      ? ' <span style="color:var(--muted);font-weight:400">(' + rows.length + ' of ' + totalCount + ' shown)</span>'
+      : ' <span style="color:var(--muted);font-weight:400">(' + rows.length + ' rows)</span>';
     var addForm =
       '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:10px;border:1px solid var(--border)">' +
         '<div style="font-size:12px;font-weight:600;margin-bottom:10px">Add Pricing Row</div>' +
@@ -1586,16 +1641,17 @@ h1{font-size:18px;font-weight:500}
       '</div>';
 
     if (!rows.length) {
-      el.innerHTML = addForm + '<div class="notice">No pricing rows yet. Add one above.</div>';
+      el.innerHTML = addForm + '<div class="notice">No pricing rows match the current filter.</div>';
       return;
     }
 
     el.innerHTML = addForm +
-      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Pricing rows' + countNote + '</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Sub-Niche</th>' +
-        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">City</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price / Lead (AUD)</th>' +
         '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
       '</tr></thead><tbody>' +
@@ -1613,7 +1669,7 @@ h1{font-size:18px;font-weight:500}
           '</td>' +
         '</tr>';
       }).join('') +
-      '</tbody></table>';
+      '</tbody></table></div>';
   }
 
   window.addPricingRow = async function () {
@@ -1628,7 +1684,7 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('addPriceSubNiche').value = '';
     document.getElementById('addPriceArea').value     = '';
     document.getElementById('addPriceValue').value    = '';
-    await loadPplPricing();
+    await loadPplPricing();  // reload all rows, then reapply filter
   };
 
   window.deletePricingRow = async function (id) {
