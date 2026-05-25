@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="QL HQ">
+<link rel="apple-touch-icon" href="/product-logo.png">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://api.twilio.com https://api.resend.com wss://*.supabase.co; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self';">
 <title>QuoteLeadsHQ</title>
 <script>window.onTurnstileLoad=function(){window._turnstileReady=true;if(window._initTurnstile)window._initTurnstile();};</script>
@@ -49,6 +54,13 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 .top-side{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .top-side-actions{display:flex;gap:4px}
 .nav-sec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 10px}
+details.nav-group{margin-top:8px}
+details.nav-group>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding-right:10px;user-select:none}
+details.nav-group>summary::-webkit-details-marker{display:none}
+details.nav-group>summary::after{content:'›';font-size:14px;color:var(--muted);display:inline-block;transform:rotate(90deg);transition:transform .15s}
+details.nav-group[open]>summary::after{transform:rotate(-90deg)}
+.app.collapsed details.nav-group>summary::after{display:none}
+.app.collapsed details.nav-group>.nav{display:flex!important}
 .nav,.sub{display:flex;flex-direction:column;gap:3px}
 .nav-item,.sub-item,.account{min-height:42px;padding:0 10px;border-radius:12px;display:flex;align-items:center;gap:10px;color:var(--text);border:1px solid transparent;text-align:left;transition:background .15s}
 .nav-item:hover,.sub-item:hover,.account:hover{background:var(--side-hover)}
@@ -290,7 +302,7 @@ textarea{min-height:100px;resize:vertical}
 textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
 /* ── Status Page ──────────────────────────────────── */
-.status-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.status-banner{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .status-stats{display:flex;gap:28px;flex-wrap:wrap}
 .status-stat{display:flex;flex-direction:column;align-items:flex-end;min-width:60px}
 .status-stat b{font-size:22px;font-weight:500;line-height:1.1}
@@ -334,7 +346,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 }
 @media(max-width:860px){
   .app,.app.collapsed{grid-template-columns:1fr!important}
-  .sidebar{position:fixed!important;top:0;left:0;bottom:0;width:min(272px,85vw)!important;z-index:16;overflow-y:auto;transform:translateX(-105%);transition:transform .25s ease;border-right:1px solid var(--border)!important;border-bottom:none!important}
+  .sidebar{position:fixed!important;top:0;left:0;bottom:0;width:min(272px,85vw)!important;z-index:16;overflow-y:auto;transform:translateX(-105%);transition:transform .25s ease;border-right:1px solid var(--border)!important;border-bottom:none!important;padding-bottom:calc(54px + env(safe-area-inset-bottom,0px))!important}
   .app.mobile-open .sidebar{transform:translateX(0)}
   .app.mobile-open .mobile-overlay{display:block}
   #mobileMenuToggle{display:inline-flex!important}
@@ -348,6 +360,9 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   .heading{width:100%}
   .actions{width:100%}
   .actions .btn,.actions .btn2,.actions .iconbtn{flex:1}
+  .panel-h{flex-wrap:wrap}
+  .panel-h .actions{width:auto;flex-shrink:0}
+  .panel-h .actions .btn,.panel-h .actions .btn2,.panel-h .actions .iconbtn{flex:0 0 auto;min-width:unset;white-space:nowrap}
   .form2,.custom-row,.grid4,.mini-grid,.split-panels,.settings-grid,.settings-grid-3{grid-template-columns:1fr}
   .pc-rule-row input,.pc-rule-row select{flex:1 1 100%;min-width:0}
   .item,.table-lite .row,.team-row{grid-template-columns:1fr!important;overflow:hidden}
@@ -370,6 +385,62 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 .opp-tab:hover{color:var(--text)}
 .opp-tab-content{display:block}
 .opp-tab-content.hidden{display:none}
+
+/* ── Change 2: Lead row urgency ──────────────────────────────── */
+tr.lead-hot td:first-child{border-left:3px solid #ef4444}
+tr.lead-warm td:first-child{border-left:3px solid #3b82f6}
+tr.lead-cold td:first-child{border-left:3px solid transparent}
+tr.lead-hot{background:rgba(239,68,68,.03)}
+tr.lead-warm{background:rgba(59,130,246,.03)}
+[data-theme=dark] tr.lead-hot{background:rgba(239,68,68,.06)}
+[data-theme=dark] tr.lead-warm{background:rgba(59,130,246,.06)}
+.stale-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(197,53,53,.12);color:#c53535;margin-left:4px}
+[data-theme=dark] .stale-badge{background:rgba(239,100,100,.2);color:#f87171}
+
+/* ── Change 9: Mobile lead card layout ───────────────────────── */
+@media(max-width:860px){
+  #leadsTableBody tr{display:grid;grid-template-columns:1fr auto;gap:6px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:8px}
+  #leadsTableBody td:nth-child(2),#leadsTableBody td:nth-child(3),#leadsTableBody td:nth-child(4),#leadsTableBody td:nth-child(6),#leadsTableBody td:nth-child(8),#leadsTableBody td:nth-child(9){display:none}
+  #leadsTableBody td:nth-child(1){grid-column:1}
+  #leadsTableBody td:nth-child(5){grid-column:1}
+  #leadsTableBody td:nth-child(7){grid-column:1}
+  #leadsTableBody td:nth-child(10){grid-column:2;grid-row:1/4;display:flex;flex-direction:column;justify-content:center}
+  #leadsTable thead th:nth-child(3),#leadsTable thead th:nth-child(4),#leadsTable thead th:nth-child(6),#leadsTable thead th:nth-child(8),#leadsTable thead th:nth-child(9){display:none}
+}
+
+/* ── Change 10: Panel-header actions + kbd ───────────────────── */
+.panel-h .actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.panel-h .actions .btn,.panel-h .actions .btn2{white-space:nowrap;font-size:12px;padding:6px 14px;min-height:36px}
+.kbd{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-family:monospace;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);margin-left:4px}
+
+/* ── Change 11: Larger status stats ─────────────────────────── */
+.status-stat b{font-size:28px!important;font-weight:500;line-height:1;display:block}
+.status-stat span{font-size:11px;color:var(--muted);margin-top:4px;display:block;white-space:nowrap}
+
+/* ── Change 14: Polish ───────────────────────────────────────── */
+.page{animation:fadeIn .15s ease}
+@keyframes fadeIn{from{opacity:.7;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.page{animation:none}}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--accent,#1f6fff)}
+.modal.open .modal-card{animation:scaleIn .15s ease}
+@keyframes scaleIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.modal.open .modal-card{animation:none}}
+/* ── Mobile bottom nav ──────────────────────────────── */
+.mobile-nav{display:none}
+@media(max-width:860px){
+  .mobile-nav{display:flex;position:fixed!important;bottom:0;left:0;right:0;height:calc(54px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--border);z-index:200;padding-bottom:env(safe-area-inset-bottom,0px);overflow:hidden}
+  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 2px;border:none;background:none;color:var(--muted);font-size:10px;font-weight:500;cursor:pointer;position:relative;transition:color .15s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden}
+  .mobile-nav-item.active,.mobile-nav-item:active{color:var(--accent,#1f6fff)}
+  .mobile-nav-item .icon{width:20px;height:20px;flex-shrink:0}
+  .mobile-badge{position:absolute;top:2px;right:calc(50% - 18px);min-width:14px;height:14px;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;padding:0 3px;pointer-events:none}
+  .main{padding-bottom:calc(58px + env(safe-area-inset-bottom,0px))!important}
+}
+tbody tr:hover{background:var(--side-hover);transition:background .1s}
+.chip{transition:all .1s}
+.empty{gap:12px}
+.empty .icon{width:36px;height:36px;color:var(--muted);opacity:.5}
+.empty h3{font-size:15px;font-weight:500}
+.empty p{max-width:340px;text-align:center;line-height:1.6}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="./dashboard-supabase.js"></script>
@@ -429,60 +500,86 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     </div>
 
     <div class="nav">
-      <button class="nav-item" data-page="dashboard" type="button"><span class="icon" data-icon="dashboard"></span><span class="nav-text">Status</span></button>
+      <button class="nav-item" data-page="dashboard" type="button">
+        <span class="icon" data-icon="dashboard"></span>
+        <span class="nav-text">Status</span>
+      </button>
+      <button class="nav-item" data-page="pipeline" type="button">
+        <span class="icon" data-icon="kanban"></span>
+        <span class="nav-text">Pipeline</span>
+      </button>
+      <button class="nav-item" data-page="conversations" type="button">
+        <span class="icon" data-icon="message"></span>
+        <span class="nav-text">Conversations</span>
+        <span id="notifBadge" class="count" style="display:none;cursor:pointer" onclick="event.stopPropagation();navigateTo('notifications')" title="View notifications">0</span>
+      </button>
+      <button class="nav-item" data-page="leads" type="button">
+        <span class="icon" data-icon="users"></span>
+        <span class="nav-text">Leads</span>
+      </button>
+      <button class="nav-item" data-page="quotes" type="button">
+        <span class="icon" data-icon="file"></span>
+        <span class="nav-text">Quotes</span>
+      </button>
+      <button class="nav-item" data-page="appointments" type="button">
+        <span class="icon" data-icon="calendar"></span>
+        <span class="nav-text">Appointments</span>
+      </button>
     </div>
 
-    <div>
-      <div class="nav-sec">Inbox</div>
+    <details class="nav-group" open>
+      <summary class="nav-sec">Automate</summary>
       <div class="nav">
-        <button class="nav-item" id="inboxToggle" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Inbox</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="inboxSubmenu">
-          <button class="sub-item" data-page="conversations" type="button"><span class="icon" data-icon="message"></span><span class="nav-text">Conversations</span></button>
-          <button class="sub-item" data-page="notifications" type="button"><span class="icon" data-icon="bell"></span><span class="nav-text">Notifications</span><span id="notifBadge" class="count" style="display:none">0</span></button>
-        </div>
+        <button class="nav-item" data-page="ai-settings" type="button">
+          <span class="icon" data-icon="spark"></span>
+          <span class="nav-text">AI Agent</span>
+        </button>
+        <button class="nav-item" data-page="bulk-sms" type="button">
+          <span class="icon" data-icon="mail"></span>
+          <span class="nav-text">Broadcasts</span>
+        </button>
       </div>
-    </div>
+    </details>
 
-    <div>
-      <div class="nav-sec">Automate</div>
+    <details class="nav-group" open>
+      <summary class="nav-sec">Grow</summary>
       <div class="nav">
-        <button class="nav-item" id="automationsToggle" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Automations</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="automationsSubmenu">
-          <button id="navAiSettings" class="sub-item" data-page="ai-settings" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">AI Agent</span></button>
-          <button class="sub-item" data-page="bulk-sms" type="button"><span class="icon" data-icon="mail"></span><span class="nav-text">Broadcasts</span></button>
-          <button class="sub-item" data-page="ai-insights" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Performance</span></button>
-          <button class="sub-item" data-page="campaigns" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Campaigns</span><span id="campaignNavBadge" class="count" style="display:none;background:#22c55e">!</span></button>
-        </div>
+        <button id="navBuyLeads" class="nav-item" data-page="buy-leads" type="button">
+          <span class="icon" data-icon="spark"></span>
+          <span class="nav-text">Buy Leads</span>
+        </button>
+        <button class="nav-item" data-page="ai-insights" type="button">
+          <span class="icon" data-icon="chart"></span>
+          <span class="nav-text">Performance</span>
+        </button>
       </div>
-    </div>
+    </details>
 
-    <div>
-      <div class="nav-sec">Results</div>
+    <details class="nav-group">
+      <summary class="nav-sec">Admin</summary>
       <div class="nav">
-        <button class="nav-item" id="crmToggle" type="button"><span class="icon" data-icon="briefcase"></span><span class="nav-text">Results</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="crmSubmenu">
-          <button class="sub-item" data-page="pipeline" type="button"><span class="icon" data-icon="kanban"></span><span class="nav-text">Pipeline</span></button>
-          <button class="sub-item" data-page="leads" type="button"><span class="icon" data-icon="users"></span><span class="nav-text">Leads</span></button>
-          <button class="sub-item" data-page="quotes" type="button"><span class="icon" data-icon="file"></span><span class="nav-text">Quotes</span></button>
-          <button class="sub-item" data-page="appointments" type="button"><span class="icon" data-icon="calendar"></span><span class="nav-text">Appointments</span></button>
-          <button class="sub-item" data-page="sales" type="button"><span class="icon" data-icon="chart"></span><span class="nav-text">Sales</span></button>
-        </div>
+        <button class="nav-item" data-page="sales" type="button">
+          <span class="icon" data-icon="briefcase"></span>
+          <span class="nav-text">Sales</span>
+        </button>
+        <button class="nav-item" data-page="team-members" type="button">
+          <span class="icon" data-icon="team"></span>
+          <span class="nav-text">Team</span>
+        </button>
+        <button class="nav-item" data-page="reviews" type="button">
+          <span class="icon" data-icon="star"></span>
+          <span class="nav-text">Reviews</span>
+        </button>
+        <button class="nav-item" data-page="integrations" type="button">
+          <span class="icon" data-icon="external-link"></span>
+          <span class="nav-text">Integrations</span>
+        </button>
+        <button class="nav-item" data-page="general-settings" type="button">
+          <span class="icon" data-icon="settings"></span>
+          <span class="nav-text">Account</span>
+        </button>
       </div>
-    </div>
-
-    <div>
-      <div class="nav-sec">Setup</div>
-      <div class="nav">
-        <button class="nav-item" id="settingsToggle" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Setup</span><span class="icon chev" data-icon="chevron-right"></span></button>
-        <div class="sub closed" id="settingsSubmenu">
-          <button id="navBuyLeads" class="sub-item" data-page="buy-leads" type="button"><span class="icon" data-icon="spark"></span><span class="nav-text">Buy Leads</span></button>
-          <button class="sub-item" data-page="reviews" type="button"><span class="icon" data-icon="star"></span><span class="nav-text">Reviews</span></button>
-          <button class="sub-item" data-page="team-members" type="button"><span class="icon" data-icon="team"></span><span class="nav-text">Team</span></button>
-          <button class="sub-item" data-page="integrations" type="button"><span class="icon" data-icon="external-link"></span><span class="nav-text">Integrations</span></button>
-          <button class="sub-item" data-page="general-settings" type="button"><span class="icon" data-icon="settings"></span><span class="nav-text">Account</span></button>
-        </div>
-      </div>
-    </div>
+    </details>
 
     <div class="foot">
       <button id="sidebarAccountButton" class="account" type="button">
@@ -506,6 +603,62 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Dashboard / Status -->
       <div id="page-dashboard" class="page">
 
+        <!-- Onboarding checklist (Change 7) -->
+        <section class="panel" id="onboardingChecklist" style="border:1px solid var(--accent,#1f6fff);display:none">
+          <div class="panel-h">
+            <div>
+              <h2>Get started — 3 steps to your first booked job</h2>
+              <p id="onboardingProgress" style="font-size:13px;color:var(--muted)">0 of 3 complete</p>
+            </div>
+            <button type="button" onclick="document.getElementById('onboardingChecklist').style.display='none';localStorage.setItem('onboarding_dismissed','1')"
+                    class="btn" style="font-size:11px;padding:4px 10px">Dismiss</button>
+          </div>
+          <div class="panel-b">
+            <div class="stack" style="gap:10px">
+              <div id="oc_step1" class="check-row" style="cursor:pointer" onclick="navigateTo('ai-settings')">
+                <span id="oc_step1_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Configure your AI agent</strong>
+                  <span class="muted" style="display:block;font-size:12px">Set your agent name and enable the SMS bot</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Go →</span>
+              </div>
+              <div id="oc_step2" class="check-row" style="cursor:pointer" onclick="openModal('leadModal');resetLeadForm()">
+                <span id="oc_step2_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Add your first lead</strong>
+                  <span class="muted" style="display:block;font-size:12px">Create a lead record or wait for your first inbound SMS</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Add lead →</span>
+              </div>
+              <div id="oc_step3" class="check-row" style="cursor:pointer" onclick="navigateTo('buy-leads')">
+                <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Buy your first lead pack</strong>
+                  <span class="muted" style="display:block;font-size:12px">Purchase a lead pack to start receiving exclusive leads in your area</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Buy leads →</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quick actions -->
+        <div>
+          <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
+          <div class="quick-tiles">
+            <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
+              <span class="icon" data-icon="file"></span><span>New Quote</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('buy-leads')">
+              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
+            </button>
+            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
+              <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Machine status banner -->
         <div class="status-banner">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -525,30 +678,49 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
               <b id="statusQuotesSent">—</b>
               <span>quotes out</span>
             </div>
+            <div class="status-stat">
+              <b id="statusTotalRevenue">—</b>
+              <span>total revenue</span>
+            </div>
           </div>
         </div>
+
+        <!-- Active Lead Orders -->
+        <section class="panel" id="activeOrdersPanel" style="display:none">
+          <div class="panel-h">
+            <div>
+              <h2>Active Lead Orders</h2>
+              <p>Lead packs currently being delivered to your account.</p>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" onclick="navigateTo('buy-leads')">View all orders →</button>
+            </div>
+          </div>
+          <div class="panel-b" id="activeOrdersBody"><div class="notice">Loading…</div></div>
+        </section>
+
+        <!-- Hot leads needing action (Change 1) -->
+        <section class="panel" id="hotLeadsPanel">
+          <div class="panel-h">
+            <div>
+              <h2>Needs your attention</h2>
+              <p>Hot and warm leads with no quote sent, sorted by age.</p>
+            </div>
+            <div class="actions">
+              <span id="hotLeadsCount" class="chip" style="font-size:13px;font-weight:600"></span>
+              <button class="btn" type="button" onclick="navigateTo('leads')">View all leads →</button>
+            </div>
+          </div>
+          <div class="panel-b" id="hotLeadsBody">
+            <div class="notice">Loading…</div>
+          </div>
+        </section>
 
         <!-- Exception queue -->
         <section class="panel">
           <div class="panel-h"><div><h2>Needs attention</h2><p>Items that may need a human decision.</p></div></div>
           <div class="panel-b" id="exceptionQueue"><div class="notice">Loading…</div></div>
         </section>
-
-        <!-- Quick actions -->
-        <div>
-          <div style="margin-bottom:12px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Quick actions</span></div>
-          <div class="quick-tiles">
-            <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
-              <span class="icon" data-icon="file"></span><span>New Quote</span>
-            </button>
-            <button class="quick-tile" type="button" onclick="navigateTo('buy-leads')">
-              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
-            </button>
-            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
-              <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
-            </button>
-          </div>
-        </div>
 
         <!-- By the numbers (collapsible) -->
         <div>
@@ -591,8 +763,30 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         <section class="panel">
           <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button></div></div>
           <div class="panel-b">
-            <div class="table-wrap"><table><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
-            <div id="leadsEmptyState" class="empty hidden"><span class="icon" data-icon="users"></span><h3>No leads yet</h3><p>Leads will appear here automatically as they're delivered to your pipeline.</p></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+              <button class="btn active" data-lead-filter="all" onclick="filterLeadsTable('all',this)" type="button">All</button>
+              <button class="btn" data-lead-filter="hot" onclick="filterLeadsTable('hot',this)" type="button">Hot</button>
+              <button class="btn" data-lead-filter="warm" onclick="filterLeadsTable('warm',this)" type="button">Warm</button>
+              <button class="btn" data-lead-filter="no_quote" onclick="filterLeadsTable('no_quote',this)" type="button">No quote</button>
+              <button class="btn" data-lead-filter="stale" onclick="filterLeadsTable('stale',this)" type="button">Stale 72h+</button>
+              <div style="margin-left:auto;display:flex;gap:6px">
+                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
+                  <span class="icon" data-icon="plus"></span> New Lead
+                </button>
+              </div>
+            </div>
+            <div class="table-wrap"><table id="leadsTable"><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
+            <div id="leadsEmptyState" class="empty hidden">
+              <span class="icon" data-icon="users" style="width:32px;height:32px"></span>
+              <h3>No leads yet</h3>
+              <p>Leads flow in automatically once your AI agent is live, or you can add them manually.</p>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
+                  <span class="icon" data-icon="plus"></span> Add a lead
+                </button>
+                <button class="btn" type="button" onclick="navigateTo('buy-leads')">Buy leads →</button>
+              </div>
+            </div>
             <div id="leadsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
           </div>
         </section>
@@ -642,7 +836,14 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
             <div class="panel-b" style="padding:0">
               <div id="conversationList" class="conv-list"></div>
-              <div id="convEmptyState" class="empty" style="margin:14px"><span class="icon" data-icon="message"></span><h3>No conversations</h3><p>Inbound SMS threads will appear here, or create one manually.</p></div>
+              <div id="convEmptyState" class="empty" style="margin:14px">
+                <span class="icon" data-icon="message" style="width:28px;height:28px"></span>
+                <h3>No conversations yet</h3>
+                <p>Once a lead texts your AI number, threads appear here. You can also start one manually.</p>
+                <button class="btn2" type="button" onclick="openNewConvModal()" style="margin-top:4px">
+                  <span class="icon" data-icon="plus"></span> Start conversation
+                </button>
+              </div>
               <div id="convPagination" style="display:flex;justify-content:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"></div>
             </div>
           </aside>
@@ -734,7 +935,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
           <!-- SMS number pending notice — shown when no Twilio numbers are configured -->
           <div id="smsNumberPendingNotice" class="hidden sms-pending-notice" style="border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px">
-            <span style="font-size:20px">⏳</span>
+            <span style="font-size:20px;color:var(--muted)">···</span>
             <div>
               <strong class="sms-pending-title" style="font-size:13px">Your SMS number is being configured</strong>
               <p class="sms-pending-body" style="font-size:12px;margin:2px 0 0">Your dedicated SMS number is being set up by the QuoteLeads team. You'll be able to enable the AI agent once it's ready — usually within 1 business day.</p>
@@ -757,11 +958,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
             </div>
           </section>
 
-          <!-- Main AI Settings Form -->
           <section class="panel">
-            <div class="panel-h">
-              <div><h2>SMS Agent Configuration</h2><p>Configure how the AI responds to inbound SMS messages.</p></div>
-            </div>
             <div class="panel-b">
               <form id="aiSettingsForm" class="stack">
                 
@@ -954,7 +1151,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                 </div>
 
                 <div class="actions">
-                  <button class="btn2" type="submit">Save AI Settings</button>
+                  <button class="btn2" type="submit">Save advanced settings</button>
                 </div>
               </form>
             </div>
@@ -1225,103 +1422,6 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
         </div>
       </div>
 
-      <!-- ── Campaigns Page ───────────────────────────────────────────────────── -->
-      <div id="page-campaigns" class="page hidden">
-        <div class="stack">
-
-          <!-- Campaign Preview Card — shown when campaign_status === 'preview' -->
-          <div id="campaignPreviewCard" class="panel" style="display:none;border:1px solid rgba(71,151,255,0.3);background:rgba(71,151,255,0.04)">
-            <div class="panel-h">
-              <div>
-                <h2 style="font-size:14px;font-weight:500">Campaign Preview</h2>
-                <p>Review your creatives and copy before we go live. Approve when you're happy.</p>
-              </div>
-              <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600">AWAITING APPROVAL</span>
-            </div>
-            <div class="panel-b">
-              <!-- Ad creative previews -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-                <div>
-                  <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Feed Ad (1:1)</p>
-                  <div id="previewFeedImg" style="background:var(--surface-2);border-radius:10px;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center">
-                    <span style="color:var(--muted);font-size:12px">Loading...</span>
-                  </div>
-                </div>
-                <div>
-                  <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Story Ad (9:16)</p>
-                  <div id="previewStoryImg" style="background:var(--surface-2);border-radius:10px;overflow:hidden;aspect-ratio:9/16;display:flex;align-items:center;justify-content:center">
-                    <span style="color:var(--muted);font-size:12px">Loading...</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Ad copy preview -->
-              <div id="previewCopySection" style="margin-bottom:20px;display:none">
-                <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Ad Headlines</p>
-                <div id="previewHeadlines" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
-                <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Primary Text</p>
-                <div id="previewPrimaryTexts" style="display:flex;flex-direction:column;gap:8px"></div>
-              </div>
-
-              <!-- Regenerate section -->
-              <div style="background:var(--surface-2);border-radius:12px;padding:14px;margin-bottom:16px">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                  <span style="font-size:13px;font-weight:500">Not quite right?</span>
-                  <span id="previewRegenCount" style="font-size:11px;color:var(--muted)">10 regenerations remaining today</span>
-                </div>
-                <input id="previewRegenPrompt" type="text" placeholder="Tell us what to change — e.g. 'Make it more urgent' or 'Change the colour to blue'" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:8px;color:var(--text)">
-                <button onclick="regenerateCreatives()" class="btn" style="width:100%">⟳ Regenerate Creatives</button>
-              </div>
-
-              <!-- Approve button -->
-              <button onclick="approveCampaign()" class="btn2" style="width:100%;min-height:44px;font-size:14px;font-weight:600">✓ Approve — I'm happy with this</button>
-              <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">Once approved, your account manager will set everything live within 24 hours.</p>
-            </div>
-          </div>
-
-          <!-- Preparing Card — shown when campaign_status === 'preparing' -->
-          <div id="campaignPreparingCard" class="panel" style="display:none;border:1px solid rgba(234,179,8,0.3);background:rgba(234,179,8,0.04)">
-            <div class="panel-h">
-              <div>
-                <h2 style="font-size:14px;font-weight:500">Campaign Approved</h2>
-                <p>Your account manager is setting everything live. You'll hear from us within 24 hours.</p>
-              </div>
-              <span style="background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600">PREPARING</span>
-            </div>
-          </div>
-
-          <!-- Connection Status Card -->
-          <div class="status-banner" style="margin-bottom:20px">
-            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-              <div id="campaignMetaStatus"><!-- filled by JS --></div>
-              <div id="campaignGoogleStatus"><!-- filled by JS --></div>
-            </div>
-            <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:13px;color:var(--text);text-decoration:none;white-space:nowrap">
-              🔗 Reconnect via Admatic
-            </a>
-          </div>
-
-          <!-- Meta Campaigns Card -->
-          <div class="card" style="margin-bottom:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-              <h3 style="margin:0;font-size:15px;font-weight:600">Meta Campaigns</h3>
-              <div id="campaignMetaActions"><!-- pause/enable btns injected --></div>
-            </div>
-            <div id="campaignMetaList"><p style="color:var(--muted);font-size:14px">No Meta campaigns yet.</p></div>
-          </div>
-
-          <!-- Google Campaigns Card -->
-          <div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-              <h3 style="margin:0;font-size:15px;font-weight:600">Google Campaigns</h3>
-              <div id="campaignGoogleActions"><!-- pause/enable btns injected --></div>
-            </div>
-            <div id="campaignGoogleList"><p style="color:var(--muted);font-size:14px">No Google campaigns yet.</p></div>
-          </div>
-
-        </div>
-      </div>
-
       <!-- ── Integrations Page ──────────────────────────────────────────────── -->
       <div id="page-integrations" class="page hidden">
         <div class="stack">
@@ -1361,7 +1461,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
           <!-- API Key Created (show once) -->
           <section id="apiKeyCreatedPanel" class="panel" style="display:none">
-            <div class="panel-h"><div><h2>🔑 API Key Created</h2><p>Copy this key now — it will not be shown again.</p></div></div>
+            <div class="panel-h"><div><h2>API Key Created</h2><p>Copy this key now — it will not be shown again.</p></div></div>
             <div class="panel-b">
               <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:14px;word-break:break-all;position:relative">
                 <code id="apiKeyRawValue"></code>
@@ -1407,7 +1507,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
           <!-- Webhook Secret Created (show once) -->
           <section id="webhookSecretPanel" class="panel" style="display:none">
-            <div class="panel-h"><div><h2>🔒 Webhook Signing Secret</h2><p>Copy this secret now — it will not be shown again. Use it to verify webhook signatures.</p></div></div>
+            <div class="panel-h"><div><h2>Webhook Signing Secret</h2><p>Copy this secret now — it will not be shown again. Use it to verify webhook signatures.</p></div></div>
             <div class="panel-b">
               <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:14px;word-break:break-all;position:relative">
                 <code id="webhookSecretValue"></code>
@@ -1558,9 +1658,15 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
                 </div>
 
-                <!-- Step 2: City -->
+                <!-- Step 2: Sub-Niche (conditional — HVAC / Roofing / Renovation only) -->
+                <div class="field" id="buyLeadsSubNicheField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
+                  <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+                </div>
+
+                <!-- Step 3: City -->
                 <div class="field" id="buyLeadsCityField" style="display:none">
-                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Select City</label>
+                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Select City</label>
                   <select id="buyLeadsCity" style="margin-top:8px">
                     <option value="">Select a city…</option>
                     <optgroup label="Queensland">
@@ -1590,19 +1696,12 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                     <optgroup label="Australian Capital Territory">
                       <option value="Canberra">Canberra</option>
                     </optgroup>
-                    <optgroup label="Tasmania">
-                      <option value="Hobart">Hobart</option>
-                      <option value="Launceston">Launceston</option>
-                    </optgroup>
-                    <optgroup label="Northern Territory">
-                      <option value="Darwin">Darwin</option>
-                    </optgroup>
                   </select>
                 </div>
 
-                <!-- Step 3: Location type -->
+                <!-- Step 4: Location type -->
                 <div id="buyLeadsLocationField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Define Coverage Area</label>
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Define Coverage Area</label>
                   <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:16px">
                     <button id="locTypeRadius" type="button" onclick="buyLeadsSetLocType('radius')"
                       style="padding:8px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
@@ -1638,11 +1737,16 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   </div>
                 </div>
 
-                <!-- Step 4: Quantity -->
+                <!-- Step 5: Quantity -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Quantity — <span id="buyLeadsQtyLabel" style="color:var(--text,var(--ink));text-transform:none;letter-spacing:0">10 leads</span></label>
-                  <input id="buyLeadsQty" type="range" min="10" max="100" step="10" value="10" style="width:100%;margin-top:8px">
-                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>10</span><span>100</span></div>
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">5. Select Quantity</label>
+                  <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
+                  <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:12px;color:var(--muted)">Custom:</span>
+                    <input id="buyLeadsCustomQty" type="number" min="10" step="1" placeholder="e.g. 35"
+                      style="width:88px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-size:13px;font-family:inherit">
+                    <span style="font-size:12px;color:var(--muted)">leads (min. 10)</span>
+                  </div>
                 </div>
 
                 <!-- Order summary -->
@@ -1650,11 +1754,13 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
                   <p style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Order Summary</p>
                   <div style="font-size:13px;color:var(--muted);line-height:2.1">
                     <div style="display:flex;justify-content:space-between"><span>Niche</span><span id="buyLeadsSumNiche" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
+                    <div id="buyLeadsSumSubNicheRow" style="display:none;justify-content:space-between"><span>Lead Type</span><span id="buyLeadsSumSubNiche" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>City</span><span id="buyLeadsSumCity" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Coverage</span><span id="buyLeadsSumCoverage" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Quantity</span><span id="buyLeadsSumQty" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Price per lead</span><span id="buyLeadsSumPPL" style="color:var(--text,var(--ink));font-weight:500">—</span></div>
-                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total</span><span id="buyLeadsSumTotal">—</span></div>
+                    <div id="buyLeadsSumDiscountRow" style="display:none;justify-content:space-between"><span>Volume discount</span><span id="buyLeadsSumDiscount" style="color:#22c55e;font-weight:500">—</span></div>
+                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total (ex GST)</span><span id="buyLeadsSumTotal">—</span></div>
                   </div>
                   <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Purchase Leads →</button>
                   <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">
@@ -1678,6 +1784,30 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
     </section>
   </main>
+
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item" data-page="dashboard" type="button">
+      <span class="icon" data-icon="dashboard"></span>
+      <span>Status</span>
+    </button>
+    <button class="mobile-nav-item" data-page="pipeline" type="button">
+      <span class="icon" data-icon="kanban"></span>
+      <span>Pipeline</span>
+    </button>
+    <button class="mobile-nav-item" data-page="conversations" type="button">
+      <span class="icon" data-icon="message"></span>
+      <span>Inbox</span>
+      <span id="mobileNotifBadge" class="mobile-badge" style="display:none">0</span>
+    </button>
+    <button class="mobile-nav-item" data-page="leads" type="button">
+      <span class="icon" data-icon="users"></span>
+      <span>Leads</span>
+    </button>
+    <button class="mobile-nav-item" data-page="quotes" type="button">
+      <span class="icon" data-icon="file"></span>
+      <span>Quotes</span>
+    </button>
+  </nav>
 </div>
 
 <!-- ── Lead Modal ──────────────────────────────────────────────────────────── -->
@@ -1904,20 +2034,31 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
       <!-- Overview Tab -->
       <div id="oppTabOverview" class="opp-tab-content">
         <div class="form2">
-          <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text" readonly></div>
-          <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text" readonly></div>
-          <div class="field"><label>Phone</label><input id="oppOverviewPhone" type="text" readonly></div>
-          <div class="field"><label>Status</label><input id="oppOverviewStatus" type="text" readonly></div>
-          <div class="field"><label>Source</label><input id="oppOverviewSource" type="text" readonly></div>
-          <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text" readonly></div>
+          <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text"></div>
+          <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text"></div>
+          <div class="field"><label>Phone</label><input id="oppOverviewPhone" type="text"></div>
+          <div class="field">
+            <label>Status</label>
+            <select id="oppOverviewStatus">
+              <option>New Lead</option>
+              <option>Qualifying</option>
+              <option>Quote in Progress</option>
+              <option>Quoted</option>
+              <option>Closed Won</option>
+              <option>Closed Lost</option>
+            </select>
+          </div>
+          <div class="field"><label>Source</label><input id="oppOverviewSource" type="text"></div>
+          <div class="field"><label>Estimated Value</label><input id="oppOverviewValue" type="text"></div>
           <div class="field"><label>AI Score</label><input id="oppOverviewAiScore" type="text" readonly></div>
           <div class="field"><label>AI Status</label><input id="oppOverviewAiStatus" type="text" readonly></div>
-          <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text" readonly></div>
+          <div class="full"><label>Address</label><input id="oppOverviewAddress" type="text"></div>
           <div class="full"><label>AI Summary</label><textarea id="oppOverviewAiSummary" rows="3" readonly style="background:var(--surface-2);font-style:italic"></textarea></div>
-          <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3" readonly></textarea></div>
+          <div class="full"><label>Notes</label><textarea id="oppOverviewNotes" rows="3"></textarea></div>
         </div>
         <div class="actions" style="margin-top:16px">
-          <button id="oppEditLeadBtn" class="btn" type="button"><span class="icon" data-icon="edit"></span> Edit Lead</button>
+          <button id="oppSaveInlineBtn" class="btn2" type="button">Save changes</button>
+          <button id="oppEditLeadBtn" class="btn" type="button">Open full edit</button>
         </div>
       </div>
 
@@ -1930,6 +2071,11 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
 
       <!-- Quotes Tab -->
       <div id="oppTabQuotes" class="opp-tab-content hidden">
+        <div class="actions" style="margin-bottom:14px">
+          <button class="btn2" type="button" id="oppCreateQuoteBtn">
+            <span class="icon" data-icon="plus"></span> New Quote for this Lead
+          </button>
+        </div>
         <div id="oppQuotesList" class="run-list">
           <div class="notice">Loading quotes...</div>
         </div>
@@ -2091,7 +2237,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
     <div class="mb">
       <form id="pplOrderForm" class="stack">
         <div class="form2">
-          <div class="field"><label for="pplOrderNiche">Niche</label><select id="pplOrderNiche" required><option value="">Select niche…</option><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+          <div class="field"><label for="pplOrderNiche">Niche</label><select id="pplOrderNiche" required><option value="">Select niche…</option><option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
           <div class="field"><label for="pplOrderCity">City</label><input id="pplOrderCity" type="text" required placeholder="e.g. Brisbane"></div>
           <div class="field"><label for="pplOrderQty">Quantity</label><input id="pplOrderQty" type="number" min="1" required placeholder="e.g. 20"></div>
           <div class="field"><label for="pplOrderPPL">Price Per Lead ($)</label><input id="pplOrderPPL" type="number" min="0" step="0.01" required placeholder="e.g. 75.00"></div>
@@ -2134,310 +2280,20 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   });
 })();
 </script>
-
-<!-- ── Onboarding Wizard (managed plan only) ────────────────────────────── -->
-<div id="onboardingWizard" style="display:none;position:fixed;inset:0;background:rgba(5,5,5,0.96);z-index:1000;align-items:center;justify-content:center;font-family:'Poppins',system-ui,sans-serif;overflow-y:auto">
-  <div style="max-width:520px;width:calc(100% - 40px);background:#101010;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px;box-shadow:0 24px 64px rgba(0,0,0,0.6);margin:20px auto">
-    <div id="wizardDots" style="display:flex;gap:6px;margin-bottom:32px;align-items:center"></div>
-
-    <!-- Step 1: Welcome -->
-    <div id="wizardStep1">
-      <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Let's build your lead machine.</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 8px">We'll set up your ads, landing page, and AI follow-up in about 2 minutes.</p>
-      <p id="wizardCompanyName" style="font-size:13px;color:#4797FF;margin:0 0 28px"></p>
-      <button onclick="wizardGoTo(2)" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Let's go →</button>
+<!-- Add to Home Screen banner -->
+<div id="a2hsBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--surface,#fff);border-top:1px solid var(--border,#d8e0ec);padding:16px 20px;box-shadow:0 -4px 24px rgba(0,0,0,0.10)">
+  <div style="max-width:560px;margin:0 auto;display:flex;align-items:flex-start;gap:14px">
+    <img src="/product-logo.png" alt="" style="width:44px;height:44px;border-radius:10px;flex-shrink:0;object-fit:contain" onerror="this.style.display='none'">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:14px;font-weight:600;color:var(--text,#121826)">Add QuoteLeadsHQ to your home screen</div>
+      <div id="a2hsInstructions" style="font-size:12px;color:var(--muted,#667284);margin-top:3px;line-height:1.5"></div>
     </div>
-
-    <!-- Step 2: Goals -->
-    <div id="wizardStep2" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 20px">How many leads do you want per month?</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
-        <div onclick="wizardSelectLeadGoal(this,'10-20')" data-value="10-20" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:15px;font-weight:500;color:#f5f5f5">10–20</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Getting started</div>
-        </div>
-        <div onclick="wizardSelectLeadGoal(this,'20-50')" data-value="20-50" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:15px;font-weight:500;color:#f5f5f5">20–50</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Steady growth</div>
-        </div>
-        <div onclick="wizardSelectLeadGoal(this,'50-100')" data-value="50-100" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:15px;font-weight:500;color:#f5f5f5">50–100</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Scaling fast</div>
-        </div>
-        <div onclick="wizardSelectLeadGoal(this,'100+')" data-value="100+" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:15px;font-weight:500;color:#f5f5f5">100+</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Full throttle</div>
-        </div>
-      </div>
-      <div style="margin-bottom:24px">
-        <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:8px">Primary service area</label>
-        <input id="wizardServiceArea" type="text" placeholder="e.g. Brisbane, Gold Coast, Sydney" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <p style="font-size:12px;color:#666;margin:6px 0 0">Used on your landing page and to target your ads geographically</p>
-      </div>
-      <div style="margin-bottom:24px">
-        <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:8px">Max daily ad spend (AUD)</label>
-        <input id="wizardAdSpend" type="number" min="1" placeholder="e.g. 50" oninput="wizardUpdateBudgetNote(this.value)" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <div id="wizardBudgetNote" style="margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#9a9a9a">Enter your budget to see which platforms are available.</div>
-      </div>
-      <button onclick="wizardStep2Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-    </div>
-
-    <!-- Step 3: Niche Selection -->
-    <div id="wizardStep3" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">What industry are you in?</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We'll tailor your hooks, ad copy, and landing page to your specific trade.</p>
-      <div id="wizardNicheGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-        <div onclick="wizardSelectNiche(this,'Solar')" data-niche="Solar" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">☀️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Solar</div></div>
-        <div onclick="wizardSelectNiche(this,'Roofing')" data-niche="Roofing" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🏠</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Roofing</div></div>
-        <div onclick="wizardSelectNiche(this,'Electrical')" data-niche="Electrical" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">⚡</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Electrical</div></div>
-        <div onclick="wizardSelectNiche(this,'Plumbing')" data-niche="Plumbing" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🔧</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Plumbing</div></div>
-        <div onclick="wizardSelectNiche(this,'HVAC / Air Con')" data-niche="HVAC / Air Con" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">❄️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">HVAC / Air Con</div></div>
-        <div onclick="wizardSelectNiche(this,'Landscaping')" data-niche="Landscaping" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🌿</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Landscaping</div></div>
-        <div onclick="wizardSelectNiche(this,'Cleaning')" data-niche="Cleaning" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🧹</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Cleaning</div></div>
-        <div onclick="wizardSelectNiche(this,'Painting')" data-niche="Painting" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🎨</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Painting</div></div>
-        <div onclick="wizardSelectNiche(this,'Pest Control')" data-niche="Pest Control" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">🐛</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Pest Control</div></div>
-        <div onclick="wizardSelectNiche(this,'other')" data-niche="other" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:20px;margin-bottom:4px">✏️</div><div style="font-size:13px;font-weight:500;color:#f5f5f5">Other</div></div>
-      </div>
-      <div id="wizardNicheOtherField" style="display:none;margin-bottom:16px">
-        <input id="wizardNicheOther" type="text" placeholder="e.g. Pool Services, Fencing, Concreting…" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-      </div>
-      <div style="margin-bottom:20px">
-        <label style="font-size:13px;color:#9a9a9a;display:block;margin-bottom:10px">Who do you primarily serve?</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div id="wizardMarketResidential" onclick="wizardSelectMarket('residential')" style="border:1.5px solid #4797FF;background:rgba(71,151,255,0.08);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:13px;font-weight:500;color:#f5f5f5">🏘️ Residential</div></div>
-          <div id="wizardMarketCommercial" onclick="wizardSelectMarket('commercial')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s"><div style="font-size:13px;font-weight:500;color:#f5f5f5">🏢 Commercial</div></div>
-        </div>
-      </div>
-      <button onclick="wizardStep3Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-    </div>
-
-    <!-- Step 4: Website -->
-    <div id="wizardStep4" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">What's your business website?</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We'll scan it to write your ads and landing page automatically.</p>
-      <div id="wizardWebsiteField" style="margin-bottom:16px">
-        <input id="wizardWebsiteUrl" type="url" placeholder="https://yourcompany.com.au" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-      </div>
-      <div id="wizardNoWebsiteField" style="display:none;margin-bottom:16px">
-        <textarea id="wizardBusinessDesc" placeholder="Describe what you do in 2-3 sentences" rows="4" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"></textarea>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9a9a9a;cursor:pointer;margin-bottom:24px">
-        <input id="wizardNoWebsite" type="checkbox" onchange="wizardToggleWebsite(this)" style="accent-color:#4797FF;width:15px;height:15px">
-        I don't have a website
-      </label>
-      <button onclick="wizardStep4Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-    </div>
-
-    <!-- Step 5: Hooks & Angles -->
-    <div id="wizardStep5" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Choose your winning angle</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">We've analysed your niche and business. Pick the hook that resonates most — your entire campaign will be built around it.</p>
-
-      <!-- Loading state -->
-      <div id="wizardHooksLoading" style="text-align:center;padding:40px 0">
-        <div style="font-size:24px;margin-bottom:12px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
-        <p style="font-size:14px;color:#9a9a9a">Analysing your niche…</p>
-      </div>
-
-      <!-- Hook cards (populated by JS) -->
-      <div id="wizardHookCards" style="display:none;display:flex;flex-direction:column;gap:10px;margin-bottom:20px"></div>
-
-      <!-- Use this angle button (shown after selection) -->
-      <button id="wizardHookNextBtn" onclick="wizardStep5Next()" style="display:none;background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Use this angle →</button>
-      <a id="wizardHookSkipBtn" onclick="wizardStep5Skip()" style="display:none;font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Let AI decide →</a>
-    </div>
-
-    <!-- Step 7: Brand -->
-    <div id="wizardStep7" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Upload your logo</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">Your logo appears on your landing page and ads.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px">
-        <div id="wizardLogoUploadTile" onclick="wizardSelectLogoTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:22px;margin-bottom:8px">↑</div>
-          <div style="font-size:13px;font-weight:500;color:#f5f5f5">Upload logo</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">PNG, JPG, SVG</div>
-          <input id="wizardLogoFile" type="file" accept=".png,.jpg,.jpeg,.svg" style="display:none" onchange="wizardLogoPreview(this)">
-          <div id="wizardLogoPreview" style="margin-top:12px;display:none"><img id="wizardLogoImg" style="max-width:80px;max-height:60px;border-radius:4px;object-fit:contain"></div>
-        </div>
-        <div id="wizardLogoStockTile" onclick="wizardSelectLogoTile('stock')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:22px;margin-bottom:8px">✦</div>
-          <div style="font-size:13px;font-weight:500;color:#f5f5f5">Use stock imagery</div>
-          <div style="font-size:12px;color:#9a9a9a;margin-top:4px">Let the system choose</div>
-        </div>
-      </div>
-
-      <!-- Hero Background Image -->
-      <h3 style="font-size:15px;font-weight:600;color:#f5f5f5;margin:0 0 8px">Background image for ads &amp; landing page</h3>
-      <p style="font-size:13px;color:#9a9a9a;margin:0 0 14px">This appears behind your ad creative and hero section.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
-        <div id="wizardHeroUploadTile" onclick="wizardSelectHeroTile('upload')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:20px;margin-bottom:6px">📷</div>
-          <div style="font-size:12px;font-weight:500;color:#f5f5f5">Upload photo</div>
-          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Your own image</div>
-        </div>
-        <div id="wizardHeroAiTile" onclick="wizardSelectHeroTile('ai')" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:20px;margin-bottom:6px">✨</div>
-          <div style="font-size:12px;font-weight:500;color:#f5f5f5">AI generate</div>
-          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Create with AI</div>
-        </div>
-        <div id="wizardHeroNicheTile" onclick="wizardSelectHeroTile('niche')" style="border:1.5px solid #4797FF;background:rgba(71,151,255,0.08);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="font-size:20px;margin-bottom:6px">🔍</div>
-          <div style="font-size:12px;font-weight:500;color:#f5f5f5">Niche default</div>
-          <div style="font-size:11px;color:#9a9a9a;margin-top:3px">Auto-matched</div>
-        </div>
-      </div>
-      <input id="wizardHeroFile" type="file" accept="image/*" style="display:none" onchange="wizardHeroPreview(this)">
-      <div id="wizardHeroPreviewBox" style="display:none;margin-bottom:14px;border-radius:8px;overflow:hidden;max-height:140px">
-        <img id="wizardHeroImg" style="width:100%;height:140px;object-fit:cover;border-radius:8px;display:block">
-      </div>
-      <div id="wizardHeroAiBox" style="display:none;margin-bottom:14px">
-        <input id="wizardHeroPrompt" type="text" placeholder="Describe your ideal image (e.g. Professional roofing team on residential home, bright day)" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <div style="font-size:11px;color:#555;margin-top:6px">AI image generated during campaign creation. Leave blank for an auto-generated prompt.</div>
-      </div>
-
-      <!-- Brand Colors -->
-      <div style="margin-top:16px;margin-bottom:16px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Primary brand colour</label>
-        <div style="display:flex;align-items:center;gap:10px">
-          <input id="wizardBrandColor" type="color" value="#16a34a" oninput="document.getElementById('wizardBrandColorHex').textContent=this.value" style="width:40px;height:40px;border:none;border-radius:8px;cursor:pointer;background:none;padding:0">
-          <span id="wizardBrandColorHex" style="font-size:13px;color:#9a9a9a">#16a34a</span>
-        </div>
-      </div>
-
-      <!-- Font Style -->
-      <div style="margin-bottom:20px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Font style</label>
-        <select id="wizardFontStyle" style="width:100%;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none">
-          <option value="system">System (Default)</option>
-          <option value="modern">Modern — Clean &amp; minimal</option>
-          <option value="bold">Bold — High impact</option>
-          <option value="classic">Classic — Professional serif</option>
-        </select>
-      </div>
-
-      <!-- Optional: Style prompt -->
-      <div style="margin-bottom:20px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:8px">Any specific branding notes? <span style="color:#444">(optional)</span></label>
-        <input id="wizardBrandNotes" type="text" placeholder="e.g. We use dark green and white, very premium feel" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-      </div>
-
-      <button onclick="wizardStep7Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-    </div>
-
-    <!-- Step 6: Testimonials -->
-    <div id="wizardStep6" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Add customer testimonials</h2>
-      <p style="font-size:14px;color:#9a9a9a;line-height:1.7;margin:0 0 20px">These appear on your landing page. Add 2–3 real reviews — no fabricated quotes.</p>
-
-      <!-- Testimonial 1 -->
-      <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 1</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <input id="wizardT1Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-          <input id="wizardT1Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-        </div>
-        <textarea id="wizardT1Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
-      </div>
-
-      <!-- Testimonial 2 -->
-      <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 2</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <input id="wizardT2Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-          <input id="wizardT2Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-        </div>
-        <textarea id="wizardT2Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
-      </div>
-
-      <!-- Testimonial 3 (optional) -->
-      <div id="wizardT3Wrap" style="display:none;background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:10px">Review 3</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <input id="wizardT3Name" type="text" placeholder="Customer name" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-          <input id="wizardT3Suburb" type="text" placeholder="Suburb / city" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-        </div>
-        <textarea id="wizardT3Quote" rows="2" placeholder="What did they say about your service?" style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:6px;padding:9px 12px;color:#f5f5f5;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
-      </div>
-
-      <button id="wizardAddT3Btn" onclick="document.getElementById('wizardT3Wrap').style.display='';this.style.display='none'" style="background:transparent;color:#9a9a9a;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;padding:9px 16px;font-size:12px;font-family:inherit;cursor:pointer;width:100%;margin-bottom:14px">+ Add a third review</button>
-      <button onclick="wizardStep6Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(7)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;margin-top:10px;cursor:pointer">Skip — I'll add these later</a>
-    </div>
-
-    <!-- Step 8: Connect Ad Accounts -->
-    <div id="wizardStep8" style="display:none">
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 6px">Connect your ad accounts</h2>
-      <div id="wizardStep8PlatformBadge" style="margin-bottom:16px"></div>
-      <a href="https://app.admatic.io/connect/lsflycgvzpsj" target="_blank" rel="noopener" style="display:block;background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">Connect via Admatic →</a>
-      <p style="font-size:13px;color:#9a9a9a;line-height:1.6;margin:0 0 20px">This grants us access to run ads in your accounts. Takes 60 seconds.</p>
-
-      <!-- Meta fields — always shown -->
-      <div style="margin-bottom:14px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Meta Ad Account ID</label>
-        <input id="wizardMetaAccountId" type="text" placeholder="act_xxxxxxxxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Ads Manager → Account Overview</p>
-      </div>
-      <div style="margin-bottom:20px">
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Facebook Page ID</label>
-        <input id="wizardFbPageId" type="text" placeholder="e.g. 123456789012345" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-        <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Meta Business Suite → Settings → Pages</p>
-      </div>
-
-      <!-- Google fields — only shown if budget ≥ $100 -->
-      <div id="wizardStep8GoogleSection" style="display:none">
-        <div style="border-top:1px solid rgba(255,255,255,0.08);margin-bottom:18px;padding-top:18px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-            <span style="font-size:11px;font-weight:600;background:rgba(66,133,244,0.15);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:4px;padding:2px 7px">GOOGLE UNLOCKED</span>
-          </div>
-          <div style="margin-bottom:14px">
-            <label style="font-size:12px;color:#666;display:block;margin-bottom:6px">Google Ads Customer ID</label>
-            <input id="wizardGoogleCustomerId" type="text" placeholder="xxx-xxx-xxxx" style="width:100%;box-sizing:border-box;background:#1a1a1a;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:11px 14px;color:#f5f5f5;font-size:14px;font-family:inherit;outline:none" onfocus="this.style.borderColor='#4797FF'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
-            <p style="font-size:11px;color:#555;margin:5px 0 0">Find it in Google Ads → top-right corner</p>
-          </div>
-        </div>
-      </div>
-      <div id="wizardStep8GoogleLocked" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
-        <p style="font-size:12px;color:#555;margin:0">🔒 Google Search unlocks at <strong style="color:#9a9a9a">$100/day</strong> — upgrade your budget to add Google campaigns.</p>
-      </div>
-
-      <button onclick="wizardStep8Next()" style="background:#f5f5f5;color:#050505;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:500;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">Next →</button>
-      <a onclick="wizardGoTo(9)" style="font-size:13px;color:#9a9a9a;text-decoration:underline;display:block;text-align:center;cursor:pointer">Skip for now →</a>
-    </div>
-
-    <!-- Step 9: Generating -->
-    <div id="wizardStep9" style="display:none;text-align:center">
-      <div style="font-size:32px;margin-bottom:20px;animation:wizardSpin 1.2s linear infinite;display:inline-block">⟳</div>
-      <h2 style="font-size:22px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 8px">Building your lead machine…</h2>
-      <p style="font-size:14px;color:#9a9a9a;margin:0 0 32px">This usually takes 30–60 seconds</p>
-      <div id="wizardProgressSteps" style="text-align:left;margin:0 auto;max-width:280px">
-        <div id="wps1" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span>○</span> Scanning your website &amp; saving data…</div>
-        <div id="wps2" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span>○</span> Writing your ad copy &amp; headlines…</div>
-        <div id="wps3" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span>○</span> Generating ad images &amp; landing page…</div>
-        <div id="wps4" style="font-size:14px;color:#9a9a9a;padding:6px 0;display:flex;align-items:center;gap:10px"><span>○</span> Deploying your campaigns…</div>
-      </div>
-      <div id="wizardGenerateError" style="display:none;margin-top:20px;padding:12px 16px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#ef4444;font-size:13px;text-align:left"></div>
-      <style>@keyframes wizardSpin{to{transform:rotate(360deg)}}</style>
-    </div>
-
-    <!-- Step 10: Live -->
-    <div id="wizardStep10" style="display:none;text-align:center">
-      <div style="font-size:48px;color:#22c55e;margin-bottom:16px">✓</div>
-      <h2 style="font-size:24px;font-weight:600;color:#f5f5f5;letter-spacing:-0.5px;margin:0 0 12px">Your lead machine is live.</h2>
-      <div id="wizardLandingUrl" style="margin-bottom:20px;display:none">
-        <div style="background:rgba(71,151,255,0.08);border:1.5px solid rgba(71,151,255,0.3);border-radius:10px;padding:14px 16px;text-align:left">
-          <div style="font-size:11px;font-weight:600;color:#4797FF;letter-spacing:0.07em;text-transform:uppercase;margin-bottom:6px">Your landing page is live</div>
-          <a id="wizardLandingLink" href="#" target="_blank" rel="noopener" style="color:#f5f5f5;font-size:13px;word-break:break-all;text-decoration:none;display:block;margin-bottom:10px"></a>
-          <a id="wizardLandingBtn" href="#" target="_blank" rel="noopener" style="display:inline-block;background:#4797FF;color:#fff;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600;text-decoration:none">Open landing page ↗</a>
-        </div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:28px">
-        <span style="background:rgba(71,151,255,0.12);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500">Ad copy is ready</span>
-        <span style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:500">AI agent is configured</span>
-      </div>
-      <button id="wizardFinishBtn" onclick="completeOnboarding('campaigns')" style="background:#4797FF;color:#fff;border:none;padding:13px 24px;border-radius:8px;font-size:14px;font-weight:600;width:100%;cursor:pointer;font-family:inherit;margin-bottom:10px" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">View my campaign preview →</button>
-      <button onclick="completeOnboarding('dashboard')" style="background:transparent;color:#9a9a9a;border:1px solid rgba(255,255,255,0.1);padding:10px 24px;border-radius:8px;font-size:13px;font-weight:500;width:100%;cursor:pointer;font-family:inherit" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">Go to dashboard</button>
+    <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+      <button id="a2hsInstallBtn" style="display:none;padding:8px 16px;border-radius:8px;background:var(--accent,#1f6fff);color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Install</button>
+      <button id="a2hsDismissBtn" style="padding:8px 12px;border-radius:8px;background:transparent;color:var(--muted,#667284);border:1px solid var(--border,#d8e0ec);font-size:13px;cursor:pointer;font-family:inherit">✕</button>
     </div>
   </div>
 </div>
+
 </body>
 </html>

@@ -1,5 +1,5 @@
-// Public endpoint — returns PPL price for a given niche + area (no auth required).
-// GET ?niche=solar&area=Brisbane  → { price_per_lead }
+// Public endpoint — returns PPL price for a given niche + optional sub_niche + optional area.
+// GET ?niche=roofing&sub_niche=tile_metal&area=Brisbane  → { price_per_lead, discount_tiers }
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -16,9 +16,10 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const url = new URL(req.url)
-  const niche = url.searchParams.get('niche')?.toLowerCase().trim()
-  const area  = url.searchParams.get('area')?.toLowerCase().trim()
+  const url      = new URL(req.url)
+  const niche    = url.searchParams.get('niche')?.toLowerCase().trim().replace(/-/g, '_')
+  const subNiche = url.searchParams.get('sub_niche')?.toLowerCase().trim().replace(/-/g, '_') || null
+  const area     = url.searchParams.get('area')?.toLowerCase().trim() || null
 
   if (!niche) {
     return new Response(
@@ -27,10 +28,15 @@ serve(async (req) => {
     )
   }
 
-  // Fetch all rows for this niche, match area in JS to avoid case/encoding issues
+  // Pricing resolution order:
+  // 1. (niche, sub_niche, area)  — most specific
+  // 2. (niche, sub_niche, null)  — sub-niche default
+  // 3. (niche, null,      area)  — parent niche, area-specific
+  // 4. (niche, null,      null)  — parent niche default (fallback)
+
   const { data: rows, error } = await supabase
     .from('ppl_pricing')
-    .select('price_per_lead, area')
+    .select('price_per_lead, sub_niche, area')
     .eq('niche', niche)
 
   if (error) {
@@ -43,30 +49,41 @@ serve(async (req) => {
 
   if (!rows || rows.length === 0) {
     return new Response(
-      JSON.stringify({ error: `No pricing found for niche: ${niche}`, rows_checked: 0 }),
+      JSON.stringify({ error: `No pricing found for niche: ${niche}` }),
       { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 
-  // Area-specific match (case-insensitive JS comparison)
-  let pricing = area
-    ? rows.find(r => r.area?.toLowerCase().trim() === area) ?? null
-    : null
+  const match = (sn: string | null, a: string | null) =>
+    rows.find(r =>
+      (sn === null ? !r.sub_niche : r.sub_niche === sn) &&
+      (a  === null ? !r.area      : r.area?.toLowerCase().trim() === a)
+    ) ?? null
 
-  // Fall back to default (null area)
-  if (!pricing) {
-    pricing = rows.find(r => !r.area) ?? null
-  }
+  const pricing =
+    (subNiche && area ? match(subNiche, area) : null) ??
+    (subNiche        ? match(subNiche, null)  : null) ??
+    (area            ? match(null, area)      : null) ??
+    match(null, null)
 
   if (!pricing) {
     return new Response(
-      JSON.stringify({ error: `No pricing for area: ${area}`, available: rows.map(r => r.area) }),
+      JSON.stringify({ error: `No pricing found for niche: ${niche}` }),
       { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 
+  const { data: tiers } = await supabase
+    .from('volume_discount_tiers')
+    .select('min_quantity, discount_percent, label, is_popular')
+    .eq('active', true)
+    .order('sort_order')
+
   return new Response(
-    JSON.stringify({ price_per_lead: pricing.price_per_lead }),
+    JSON.stringify({
+      price_per_lead: pricing.price_per_lead,
+      discount_tiers: tiers || [],
+    }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })

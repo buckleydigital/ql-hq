@@ -99,8 +99,6 @@ Deno.serve(async (req) => {
         role: string | null;
         is_admin: boolean;
         created_at: string;
-        has_advertising_system: boolean;
-        onboarding_completed: boolean;
       }> = [];
 
       let page = 1;
@@ -132,28 +130,8 @@ Deno.serve(async (req) => {
           }) => [p.id, p]),
         );
 
-        // Batch-fetch company flags for all company_ids on this page
-        const companyIds = (profiles || [])
-          .map((p: { company_id: string | null }) => p.company_id)
-          .filter(Boolean) as string[];
-
-        const companyMap: Record<string, { has_advertising_system: boolean; onboarding_completed: boolean }> = {};
-        if (companyIds.length > 0) {
-          const { data: companies } = await adminClient
-            .from("companies")
-            .select("id, has_advertising_system, onboarding_completed")
-            .in("id", companyIds);
-          for (const c of (companies || [])) {
-            companyMap[c.id] = {
-              has_advertising_system: c.has_advertising_system === true,
-              onboarding_completed: c.onboarding_completed === true,
-            };
-          }
-        }
-
         for (const u of pageData.users) {
           const p = profileMap[u.id] || null;
-          const co = p?.company_id ? (companyMap[p.company_id] ?? null) : null;
           users.push({
             id: u.id,
             email: u.email ?? "",
@@ -162,8 +140,6 @@ Deno.serve(async (req) => {
             role: p?.role ?? null,
             is_admin: p?.is_admin ?? false,
             created_at: u.created_at ?? "",
-            has_advertising_system: co?.has_advertising_system ?? false,
-            onboarding_completed: co?.onboarding_completed ?? false,
           });
         }
 
@@ -552,13 +528,11 @@ Deno.serve(async (req) => {
     // ── action: update_user ───────────────────────────────────────────────────
     // Updates email (auth.users) and/or full_name/is_admin (profiles) for any user.
     if (action === 'update_user') {
-      const { user_id, full_name, email, is_admin, has_advertising_system, onboarding_completed } = body as {
+      const { user_id, full_name, email, is_admin } = body as {
         user_id?: string;
         full_name?: string;
         email?: string;
         is_admin?: boolean;
-        has_advertising_system?: boolean;
-        onboarding_completed?: boolean;
       };
 
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -605,47 +579,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update company flags if provided
-      if (has_advertising_system !== undefined || onboarding_completed !== undefined) {
-        // Resolve company_id from profile
-        const { data: prof } = await adminClient
-          .from('profiles')
-          .select('company_id')
-          .eq('id', user_id)
-          .maybeSingle();
-
-        if (prof?.company_id) {
-          const companyUpdate: Record<string, unknown> = {};
-          if (has_advertising_system !== undefined) companyUpdate.has_advertising_system = !!has_advertising_system;
-          if (onboarding_completed    !== undefined) companyUpdate.onboarding_completed    = !!onboarding_completed;
-
-          // When resetting onboarding, also clear the legacy settings JSON key so
-          // the dashboard's OR-check doesn't keep treating them as onboarded.
-          if (onboarding_completed === false) {
-            const { data: co } = await adminClient
-              .from('companies')
-              .select('settings')
-              .eq('id', prof.company_id)
-              .maybeSingle();
-
-            const existingSettings = (co?.settings as Record<string, unknown>) ?? {};
-            if (existingSettings.onboarding_complete) {
-              const { onboarding_complete: _removed, ...cleanedSettings } = existingSettings;
-              companyUpdate.settings = cleanedSettings;
-            }
-          }
-
-          const { error: coErr } = await adminClient
-            .from('companies')
-            .update(companyUpdate)
-            .eq('id', prof.company_id);
-
-          if (coErr) {
-            console.error('update_user company error:', coErr.message);
-            return json({ error: 'Failed to update company: ' + coErr.message }, 500);
-          }
-        }
-      }
 
       return json({ success: true, user_id });
     }

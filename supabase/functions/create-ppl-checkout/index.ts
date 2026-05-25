@@ -13,6 +13,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Resolve price: sub_niche+area → sub_niche default → parent area → parent default
+async function resolvePrice(niche: string, subNiche: string | null, area: string) {
+  const { data: rows } = await supabase
+    .from('ppl_pricing')
+    .select('price_per_lead, sub_niche, area')
+    .eq('niche', niche)
+
+  if (!rows?.length) return null
+
+  const match = (sn: string | null, a: string | null) =>
+    rows.find(r =>
+      (sn === null ? !r.sub_niche : r.sub_niche === sn) &&
+      (a  === null ? !r.area      : r.area?.toLowerCase() === a.toLowerCase())
+    ) ?? null
+
+  return (
+    (subNiche ? match(subNiche, area) : null) ??
+    (subNiche ? match(subNiche, null) : null) ??
+    match(null, area) ??
+    match(null, null)
+  )
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -20,6 +43,7 @@ serve(async (req) => {
     const {
       company_id,
       niche,
+      sub_niche,
       area_city,
       location_type,
       radius_km,
@@ -31,27 +55,26 @@ serve(async (req) => {
       throw new Error('Missing required fields: company_id, niche, area_city, quantity')
     }
 
+    const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+    const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
+
     // Always validate price from DB — never trust client.
-    // Try area-specific price first, fall back to niche default (area IS NULL).
-    const { data: areaPrice } = await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .eq('niche', niche)
-      .eq('area', area_city)
-      .maybeSingle()
-
-    const pricing = areaPrice ?? (await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .eq('niche', niche)
-      .is('area', null)
-      .maybeSingle()
-    ).data
-
-    if (!pricing) throw new Error(`No pricing configured for niche: ${niche}`)
+    const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
+    if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
-    const totalCents = Math.round(validatedPrice * quantity * 100)
+
+    // Derive discount server-side — never trust a client-supplied value
+    const { data: tierRows } = await supabase
+      .from('volume_discount_tiers')
+      .select('min_quantity, discount_percent')
+      .eq('active', true)
+      .lte('min_quantity', quantity)
+      .order('min_quantity', { ascending: false })
+      .limit(1)
+
+    const discountPercent = tierRows?.[0]?.discount_percent ?? 0
+    const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
 
     const { data: company } = await supabase
       .from('companies')
@@ -61,17 +84,22 @@ serve(async (req) => {
 
     if (!company) throw new Error('Company not found')
 
-    // Build a readable location description for the Stripe line item
     const locationDesc = location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} — ${radius_km ?? 50}km radius`
+
+    const nicheDisplay = [normNiche, normSubNiche]
+      .filter(Boolean)
+      .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
+      .join(' › ')
 
     // Create pending order
     const { data: order, error: orderErr } = await supabase
       .from('ppl_lead_orders')
       .insert({
         company_id,
-        niche,
+        niche: normNiche,
+        sub_niche: normSubNiche,
         area: area_city,
         area_city,
         location_type: location_type || 'radius',
@@ -79,7 +107,7 @@ serve(async (req) => {
         postcode_list: location_type === 'postcodes' ? postcode_list : null,
         quantity,
         price_per_lead: validatedPrice,
-        total_amount: validatedPrice * quantity,
+        total_amount: validatedPrice * quantity * (1 - discountPercent / 100),
         status: 'pending',
       })
       .select('id')
@@ -96,7 +124,7 @@ serve(async (req) => {
           currency: 'aud',
           unit_amount: totalCents,
           product_data: {
-            name: `${quantity} ${niche.charAt(0).toUpperCase() + niche.slice(1)} leads`,
+            name: `${quantity} ${nicheDisplay} leads`,
             description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
@@ -106,16 +134,18 @@ serve(async (req) => {
       metadata: {
         type: 'ppl',
         company_id,
-        order_id: order!.id,
-        niche,
+        order_id:         order!.id,
+        niche:            normNiche,
+        sub_niche:        normSubNiche || '',
         area_city,
-        location_type: location_type || 'radius',
-        radius_km: String(radius_km ?? 50),
-        quantity: String(quantity),
-        price_per_lead: String(validatedPrice),
+        location_type:    location_type || 'radius',
+        radius_km:        String(radius_km ?? 50),
+        quantity:         String(quantity),
+        price_per_lead:   String(validatedPrice),
+        discount_percent: String(discountPercent),
       },
       success_url: 'https://quoteleadshq.com/dashboard.html?ppl_success=true',
-      cancel_url: 'https://quoteleadshq.com/dashboard.html?ppl_cancelled=true',
+      cancel_url:  'https://quoteleadshq.com/dashboard.html?ppl_cancelled=true',
     })
 
     await supabase

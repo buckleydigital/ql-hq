@@ -102,7 +102,7 @@ function aiStatusFromScore(score) {
 
 function aiStatusLabel(lead) {
   const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
-  const labels = { hot: "🔥 Hot", warm: "🌤 Warm", cold: "❄️ Cold", new: "New" };
+  const labels = { hot: "Hot", warm: "Warm", cold: "Cold", new: "New" };
   return labels[status] || status;
 }
 
@@ -225,10 +225,6 @@ let currentUserIsSuperAdmin = false; // platform-level super-admin (is_admin col
 let currentUserPerms = {};    // permissions from sales_reps
 let realtimeChannel  = null;  // Supabase realtime subscription
 let currentPageId    = null;  // Track which page is currently displayed
-let _cachedCompany       = null;   // company record cached for wizard re-open
-let _hasAdSystem         = false;  // whether company has advertising system
-let _onboardingCompleted = null;   // whether onboarding wizard has been completed
-let _campaignStatus      = null;   // campaign_status from companies table
 // ─── Pagination State ─────────────────────────────────────────────────────────
 const PER_PAGE = 20;
 let conversationsPage  = 0;
@@ -556,22 +552,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("appView")?.classList.toggle("collapsed");
   });
 
-  document.getElementById("inboxToggle")?.addEventListener("click", () => {
-    document.getElementById("inboxSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("automationsToggle")?.addEventListener("click", () => {
-    document.getElementById("automationsSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("crmToggle")?.addEventListener("click", () => {
-    document.getElementById("crmSubmenu")?.classList.toggle("closed");
-  });
-
-  document.getElementById("settingsToggle")?.addEventListener("click", () => {
-    document.getElementById("settingsSubmenu")?.classList.toggle("closed");
-  });
-
   document.getElementById("byTheNumbersToggle")?.addEventListener("click", () => {
     const el = document.getElementById("byTheNumbers");
     if (!el) return;
@@ -629,6 +609,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── AI Settings ───────────────────────────────────────────────────────────
   document.getElementById("aiSettingsForm")?.addEventListener("submit", handleAiSettingsSave);
+
   document.getElementById("twilioNumberForm")?.addEventListener("submit", handleTwilioNumberSave);
   document.getElementById("addPricingItemBtn")?.addEventListener("click", addPricingItemRow);
 
@@ -707,6 +688,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── Phone number auto-format (Twilio E.164) ──────────────────────────────
   document.getElementById("leadPhone")?.addEventListener("blur", function () {
     this.value = formatPhoneE164(this.value);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+    if (document.querySelector('.modal.open')) return;
+    if (e.key === 'n') { openModal('leadModal'); resetLeadForm(); }
+    if (e.key === 'q') { document.getElementById('openQuoteModal')?.click(); }
   });
 });
 
@@ -931,7 +919,7 @@ async function showApp() {
     if (currentCompanyId) {
       const { data: company, error: companyError } = await sb
         .from("companies")
-        .select("name, settings, plan, has_advertising_system, onboarding_completed, campaign_status")
+        .select("name, settings, plan")
         .eq("id", currentCompanyId)
         .maybeSingle();
 
@@ -951,23 +939,6 @@ async function showApp() {
       const navBuyLeads = document.getElementById("navBuyLeads");
       if (navBuyLeads) navBuyLeads.style.display = '';
 
-      const hasAdSystem = company?.has_advertising_system === true || company?.plan === 'managed';
-      // Onboarding is done if either the boolean column is true OR the settings JSON
-      // key is true — completeOnboarding() writes to settings.onboarding_complete, while
-      // the fulfillment edge function sets the boolean column.
-      const onboardingDone = company?.onboarding_completed === true || company?.settings?.onboarding_complete === true;
-      _cachedCompany       = company || null;
-      _hasAdSystem         = hasAdSystem;
-      _onboardingCompleted = onboardingDone;
-      _campaignStatus      = company?.campaign_status ?? null;
-      updateCampaignNavBadge();
-
-      if (hasAdSystem && !onboardingDone) {
-        showOnboardingWizard(company, currentUser);
-      }
-
-      // Gate features behind advertising system purchase
-      applyAdvertisingSystemGating(hasAdSystem, onboardingDone);
     }
 
     // Fetch current user's permissions from sales_reps
@@ -1012,6 +983,9 @@ async function showApp() {
 
 
     navigateTo(currentPageId || "dashboard");
+
+    // Show "Add to Home Screen" prompt once per new user/device
+    if (currentUser?.id) maybeShowInstallPrompt(currentUser.id);
   } catch (err) {
     console.error("Error loading app:", err);
     toast("Error loading dashboard. Please refresh.", true);
@@ -1019,13 +993,8 @@ async function showApp() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
-const CRM_PAGES        = ["pipeline","leads","quotes","appointments","sales"];
-const INBOX_PAGES      = ["conversations","notifications"];
-const AUTOMATIONS_PAGES = ["ai-settings","bulk-sms","ai-insights","campaigns"];
-const SETTINGS_PAGES   = ["general-settings","reviews","team-members","integrations","buy-leads"];
-
 const PAGE_META = {
-  dashboard:          ["Status",            "Your automation system at a glance."],
+  dashboard:          ["Status",            "Your lead system at a glance."],
   leads:              ["Leads",             "Manage and capture your lead records."],
   pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
@@ -1041,7 +1010,6 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
-  "campaigns":        ["Campaigns",          "View and manage your Meta and Google ad campaigns."],
 };
 
 function isAdmin() {
@@ -1058,23 +1026,6 @@ function navigateTo(page) {
   document.querySelectorAll("[data-page]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.page === page)
   );
-  const crmToggle = document.getElementById("crmToggle");
-  if (crmToggle) crmToggle.classList.toggle("active", CRM_PAGES.includes(page));
-
-  const inboxToggle = document.getElementById("inboxToggle");
-  const inboxSubmenu = document.getElementById("inboxSubmenu");
-  if (inboxToggle) inboxToggle.classList.toggle("active", INBOX_PAGES.includes(page));
-  if (inboxSubmenu && INBOX_PAGES.includes(page)) inboxSubmenu.classList.remove("closed");
-
-  const automationsToggle = document.getElementById("automationsToggle");
-  const automationsSubmenu = document.getElementById("automationsSubmenu");
-  if (automationsToggle) automationsToggle.classList.toggle("active", AUTOMATIONS_PAGES.includes(page));
-  if (automationsSubmenu && AUTOMATIONS_PAGES.includes(page)) automationsSubmenu.classList.remove("closed");
-
-  const settingsToggle = document.getElementById("settingsToggle");
-  const settingsSubmenu = document.getElementById("settingsSubmenu");
-  if (settingsToggle) settingsToggle.classList.toggle("active", SETTINGS_PAGES.includes(page));
-  if (settingsSubmenu && SETTINGS_PAGES.includes(page)) settingsSubmenu.classList.remove("closed");
 
   document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = document.getElementById(`page-${page}`);
@@ -1113,7 +1064,6 @@ function navigateTo(page) {
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
     "buy-leads":        loadBuyLeads,
-    "campaigns":        loadCampaigns,
   };
   loaders[page]?.();
 }
@@ -1156,60 +1106,14 @@ async function loadDashboard() {
 
   const rangeStart = getDashRangeStart();
 
-  // Show or remove the advertising setup banner / campaign preview banner
-  const dashPage = document.getElementById("page-dashboard");
-  const existingSetupBanner = document.getElementById("adSetupDashBanner");
-  const existingPreviewBanner = document.getElementById("campaignPreviewDashBanner");
-
-  if (dashPage && _hasAdSystem && !_onboardingCompleted) {
-    // Setup not finished — prompt to complete
-    if (existingPreviewBanner) existingPreviewBanner.remove();
-    if (!existingSetupBanner) {
-      const banner = document.createElement("div");
-      banner.id = "adSetupDashBanner";
-      banner.style.cssText = "margin-bottom:16px;padding:14px 20px;background:rgba(71,151,255,0.08);border:1px solid rgba(71,151,255,0.25);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
-      banner.innerHTML = `
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:8px;height:8px;background:#4797FF;border-radius:50%;flex-shrink:0"></div>
-          <div>
-            <span style="font-weight:600;color:#f5f5f5;font-size:14px">Advertising system setup pending</span>
-            <span style="font-size:13px;color:#9a9a9a;margin-left:8px">Your ads and landing page aren't live yet.</span>
-          </div>
-        </div>
-        <button onclick="resumeAdSetup()" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:inherit">Complete Setup →</button>
-      `;
-      dashPage.insertBefore(banner, dashPage.firstChild);
-    }
-  } else if (dashPage && _hasAdSystem && _onboardingCompleted && _campaignStatus === 'preview') {
-    // Onboarding done, campaign preview is ready and waiting for approval
-    if (existingSetupBanner) existingSetupBanner.remove();
-    if (!existingPreviewBanner) {
-      const banner = document.createElement("div");
-      banner.id = "campaignPreviewDashBanner";
-      banner.style.cssText = "margin-bottom:16px;padding:18px 24px;background:linear-gradient(135deg,rgba(34,197,94,0.12),rgba(71,151,255,0.08));border:1.5px solid rgba(34,197,94,0.4);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
-      banner.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">🎉</div>
-          <div>
-            <div style="font-weight:700;color:#f5f5f5;font-size:15px">Your campaign preview is ready!</div>
-            <div style="font-size:13px;color:#9a9a9a;margin-top:2px">Review your ads and landing page, then approve to go live.</div>
-          </div>
-        </div>
-        <button onclick="navigateTo('campaigns')" style="background:#22c55e;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">Review & Approve →</button>
-      `;
-      dashPage.insertBefore(banner, dashPage.firstChild);
-    }
-  } else {
-    if (existingSetupBanner) existingSetupBanner.remove();
-    if (existingPreviewBanner) existingPreviewBanner.remove();
-  }
 
   try {
-    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
+    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }, { count: orderCount }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
       sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
-      sb.from("sms_agent_config").select("ai_enabled").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("sms_agent_config").select("ai_enabled, is_active, agent_name").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("ppl_lead_orders").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId).not("status", "eq", "pending"),
     ]);
 
     const all          = leads || [];
@@ -1270,6 +1174,10 @@ async function loadDashboard() {
     renderRecentLeads(all.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5));
     renderPipelineSnapshot(all);
 
+    loadHotLeads();
+    loadOnboardingChecklist(aiCfg, all.length, orderCount || 0);
+    loadActiveOrdersDash();
+
     // ── Status banner ──────────────────────────────────────────────────────
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const leadsToday = all.filter(l => new Date(l.created_at) >= todayStart).length;
@@ -1281,6 +1189,9 @@ async function loadDashboard() {
     setText2("statusLeadsToday", leadsToday);
     setText2("statusOpenCount",  openAll);
     setText2("statusQuotesSent", quotesOut);
+    const totalRevenue = all.filter(l => l.pipeline_stage === 'closed_won')
+      .reduce((a, l) => a + (Number(l.value) || 0), 0);
+    setText2("statusTotalRevenue", fmt(totalRevenue));
 
     const aiChip = document.getElementById("statusAiChip");
     const aiNote = document.getElementById("statusAiNote");
@@ -1298,14 +1209,14 @@ async function loadDashboard() {
     const quotedLeadIdsSet = new Set(allQuotes.map(q => q.lead_id));
     const unquoted = all.filter(l => ["new_lead","follow_up"].includes(l.pipeline_stage) && !quotedLeadIdsSet.has(l.id));
     if (unquoted.length) exceptions.push({
-      icon: "⚠", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
+      icon: "!", msg: `${unquoted.length} lead${unquoted.length > 1 ? "s" : ""} in the pipeline with no quote yet`,
       action: "View Leads", page: "leads"
     });
 
     const threeDaysAgo = new Date(Date.now() - 3 * 864e5);
     const staleQuotes = allQuotes.filter(q => q.status === "sent" && new Date(q.created_at) < threeDaysAgo);
     if (staleQuotes.length) exceptions.push({
-      icon: "⚠", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
+      icon: "!", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
       action: "Follow Up", page: "quotes"
     });
 
@@ -1319,7 +1230,7 @@ async function loadDashboard() {
     const queueEl = document.getElementById("exceptionQueue");
     if (queueEl) {
       if (!exceptions.length) {
-        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><span style="font-size:20px;margin-bottom:4px">✓</span><p>Nothing needs your attention right now.</p></div>`;
+        queueEl.innerHTML = `<div class="empty" style="min-height:80px"><p>Nothing needs your attention right now.</p></div>`;
       } else {
         queueEl.innerHTML = exceptions.map(ex => `
           <div class="exception-card">
@@ -1386,6 +1297,166 @@ function renderPipelineSnapshot(leads) {
       <div><p>${val ? fmt(val) : "—"}</p></div>
     </div>`;
   }).join("");
+}
+
+// ─── Hot Leads Panel (Change 1) ───────────────────────────────────────────────
+async function loadHotLeads() {
+  if (!currentCompanyId) return;
+  try {
+    const { data: leads } = await sb
+      .from('leads')
+      .select('id, name, phone, email, pipeline_stage, ai_score, ai_status, created_at, value')
+      .eq('company_id', currentCompanyId)
+      .not('pipeline_stage', 'in', '("closed_won","closed_lost")')
+      .order('created_at', { ascending: false });
+
+    const { data: quotedLeads } = await sb
+      .from('quotes')
+      .select('lead_id')
+      .eq('company_id', currentCompanyId);
+
+    const quotedIds = new Set((quotedLeads || []).map(q => q.lead_id));
+
+    const actionable = (leads || []).filter(l => {
+      const status = l.ai_status || aiStatusFromScore(l.ai_score);
+      return (status === 'hot' || status === 'warm') && !quotedIds.has(l.id);
+    }).slice(0, 6);
+
+    const countEl = document.getElementById('hotLeadsCount');
+    const bodyEl  = document.getElementById('hotLeadsBody');
+    if (countEl) countEl.textContent = actionable.length ? `${actionable.length} need action` : 'All clear';
+
+    if (!bodyEl) return;
+
+    if (!actionable.length) {
+      bodyEl.innerHTML = `<div class="empty" style="min-height:80px"><p>No hot or warm leads without a quote. Great work.</p></div>`;
+      return;
+    }
+
+    bodyEl.innerHTML = `<div class="table-lite">${actionable.map(l => {
+      const status = l.ai_status || aiStatusFromScore(l.ai_score);
+      const ageMs   = Date.now() - new Date(l.created_at).getTime();
+      const ageHrs  = Math.floor(ageMs / 3600000);
+      const ageLabel = ageHrs < 1 ? 'Just now' : ageHrs < 24 ? `${ageHrs}h ago` : `${Math.floor(ageHrs/24)}d ago`;
+      const urgency  = ageHrs > 48 ? 'color:#c53535' : ageHrs > 24 ? 'color:#b45309' : '';
+      const borderColor = status === 'hot' ? '#ef4444' : '#3b82f6';
+      return `<div class="row" style="border-left:3px solid ${borderColor};border-radius:0 12px 12px 0;cursor:pointer;grid-template-columns:1.3fr 1fr auto auto"
+                   onclick="openOpportunityModal('${l.id}')">
+        <div>
+          <strong style="font-size:13px">${esc(l.name || '—')}</strong>
+          <span class="muted">${esc(l.phone || l.email || '—')}</span>
+        </div>
+        <div>
+          <span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span>
+          <span class="chip" style="margin-left:4px">${stageLabel(l.pipeline_stage)}</span>
+        </div>
+        <div style="${urgency}"><span class="muted">${ageLabel}</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn2" style="font-size:11px;padding:4px 10px"
+                  onclick="event.stopPropagation();quickSendQuote('${l.id}')">
+            Send Quote
+          </button>
+          <button class="btn" style="font-size:11px;padding:4px 10px"
+                  onclick="event.stopPropagation();openConversationForLead('${l.id}')">
+            SMS
+          </button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+    renderIcons();
+  } catch (err) {
+    console.error('loadHotLeads error:', err);
+  }
+}
+
+async function loadActiveOrdersDash() {
+  const panel = document.getElementById("activeOrdersPanel");
+  const body  = document.getElementById("activeOrdersBody");
+  if (!panel || !body || !currentCompanyId) return;
+
+  const { data: orders } = await sb
+    .from("ppl_lead_orders")
+    .select("*")
+    .eq("company_id", currentCompanyId)
+    .in("status", ["paid", "active"])
+    .order("created_at", { ascending: false });
+
+  if (!orders?.length) { panel.style.display = "none"; return; }
+
+  panel.style.display = "";
+  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
+  const statusColor = s => s === "active" ? "#22c55e" : "#4797FF";
+
+  body.innerHTML = orders.map(o => {
+    const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
+    const bar    = pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
+    const city   = o.area_city || o.area || "—";
+    const badge  = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
+    return `<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          ${badge}
+          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;margin-bottom:6px">
+          <div style="width:${pct}%;height:100%;background:${bar};border-radius:4px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">${o.delivered_count} / ${o.quantity} leads delivered · ${fmt(o.total_amount)}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function quickSendQuote(leadId) {
+  await populateLeadSelector('quoteLeadSelect');
+  document.getElementById('quoteForm')?.reset();
+  document.getElementById('quoteLineItems').innerHTML = '';
+  recalcQuoteTotals();
+  await prefillQuoteDefaults();
+  const sel = document.getElementById('quoteLeadSelect');
+  if (sel) sel.value = leadId;
+  openModal('quoteModal');
+}
+
+async function openConversationForLead(leadId) {
+  navigateTo('conversations');
+  setTimeout(async () => {
+    const { data: conv } = await sb
+      .from('conversations')
+      .select('id, leads(name, phone)')
+      .eq('company_id', currentCompanyId)
+      .eq('lead_id', leadId)
+      .maybeSingle();
+    if (conv) {
+      const item = document.querySelector(`.conv-item[data-conv-id="${conv.id}"]`);
+      if (item) item.click();
+    }
+  }, 400);
+}
+
+// ─── Onboarding Checklist (Change 7) ─────────────────────────────────────────
+function loadOnboardingChecklist(aiCfg, leadCount, orderCount) {
+  if (localStorage.getItem('onboarding_dismissed')) return;
+  const el = document.getElementById('onboardingChecklist');
+  if (!el) return;
+  const step1Done = aiCfg?.is_active === true && !!aiCfg?.agent_name;
+  const step2Done = (leadCount || 0) > 0;
+  const step3Done = (orderCount || 0) > 0;
+  const doneCount = [step1Done, step2Done, step3Done].filter(Boolean).length;
+  if (doneCount === 3) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const setStep = (id, done) => {
+    const row  = document.getElementById(id);
+    const icon = document.getElementById(id + '_icon');
+    if (!row || !icon) return;
+    if (done) { icon.textContent = '✓'; icon.style.color = '#16a34a'; row.style.opacity = '0.6'; }
+    else      { icon.textContent = '○'; icon.style.color = ''; row.style.opacity = ''; }
+  };
+  setStep('oc_step1', step1Done);
+  setStep('oc_step2', step2Done);
+  setStep('oc_step3', step3Done);
+  const prog = document.getElementById('onboardingProgress');
+  if (prog) prog.textContent = `${doneCount} of 3 complete`;
 }
 
 // ─── Custom Fields ────────────────────────────────────────────────────────────
@@ -1489,6 +1560,7 @@ async function loadLeads() {
       .range(from, to);
     if (error) { toast(error.message, true); return; }
     allLeads = data || [];
+    _allLeadsForFilter = allLeads;
     renderLeadsTable(allLeads);
     renderPagination("leadsPagination", leadsPage, count, PER_PAGE, (page) => {
       leadsPage = page;
@@ -1497,6 +1569,31 @@ async function loadLeads() {
   } catch (err) {
     toast("Failed to load leads.", true);
   }
+}
+
+let _leadsFilter = 'all';
+let _allLeadsForFilter = [];
+
+async function filterLeadsTable(filter, btnEl) {
+  _leadsFilter = filter;
+  document.querySelectorAll('[data-lead-filter]').forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  let filtered = _allLeadsForFilter;
+  if (filter === 'hot') {
+    filtered = filtered.filter(l => (l.ai_status || aiStatusFromScore(l.ai_score)) === 'hot');
+  } else if (filter === 'warm') {
+    filtered = filtered.filter(l => (l.ai_status || aiStatusFromScore(l.ai_score)) === 'warm');
+  } else if (filter === 'no_quote') {
+    const { data: qLeads } = await sb.from('quotes').select('lead_id').eq('company_id', currentCompanyId);
+    const qIds = new Set((qLeads||[]).map(q=>q.lead_id));
+    filtered = filtered.filter(l => !qIds.has(l.id) && !['closed_won','closed_lost'].includes(l.pipeline_stage));
+  } else if (filter === 'stale') {
+    filtered = filtered.filter(l => {
+      const hrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+      return hrs > 72 && !['closed_won','closed_lost'].includes(l.pipeline_stage);
+    });
+  }
+  renderLeadsTable(filtered);
 }
 
 function renderLeadsTable(leads) {
@@ -1509,9 +1606,15 @@ function renderLeadsTable(leads) {
     return;
   }
   empty?.classList.add("hidden");
-  tbody.innerHTML = leads.map((l) => `
-    <tr>
-      <td><strong>${esc(l.name) || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
+  tbody.innerHTML = leads.map((l) => {
+    const status = l.ai_status || aiStatusFromScore(l.ai_score);
+    const ageHrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+    const isStale = !['closed_won','closed_lost'].includes(l.pipeline_stage) && ageHrs > 72;
+    const urgencyClass = status === 'hot' ? 'lead-hot' : status === 'warm' ? 'lead-warm' : 'lead-cold';
+    const staleHtml = isStale ? `<span class="stale-badge">${Math.floor(ageHrs/24)}d</span>` : '';
+    return `
+    <tr class="${urgencyClass}">
+      <td><strong>${esc(l.name) || "—"}${staleHtml}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
       <td><strong>${esc(l.email) || "—"}</strong>${l.phone ? `<span class="muted">${esc(l.phone)}</span>` : ""}</td>
       <td><strong>${esc(l.address) || "—"}</strong>${l.postcode ? `<span class="muted">${esc(l.postcode)}</span>` : ""}</td>
       <td>${l.source ? `<span class="chip">${esc(l.source)}</span>` : "—"}</td>
@@ -1527,7 +1630,8 @@ function renderLeadsTable(leads) {
           <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>
         </div>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   renderIcons();
 }
 
@@ -1779,10 +1883,10 @@ async function runDisputeCheck() {
     if (!res.ok) {
       // 409 = already disputed
       if (res.status === 409) {
-        showDisputeDone("⚠️", "Already Disputed", payload.error || "This lead already has an active dispute.");
+        showDisputeDone("", "Already Disputed", payload.error || "This lead already has an active dispute.");
         return;
       }
-      showDisputeDone("✗", "Check Failed", payload.error || "An error occurred. Please try again.");
+      showDisputeDone("", "Check Failed", payload.error || "An error occurred. Please try again.");
       return;
     }
 
@@ -1812,10 +1916,10 @@ function renderDisputeResult(payload) {
   if (banner) {
     if (approved) {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20";
-      banner.innerHTML = "<strong>✓ Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
+      banner.innerHTML = "<strong>Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
     } else {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d";
-      banner.innerHTML = "<strong>✗ Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
+      banner.innerHTML = "<strong>Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
     }
   }
 
@@ -1919,7 +2023,7 @@ async function sendDisputeManualReview() {
     }
 
     showDisputeDone(
-      "📋",
+      "",
       "Sent for Manual Review",
       "Our team will assess this lead against the agreed delivery criteria and be in touch. Remember: leads where a prospect said 'not interested' or any outcome outside QuoteLeads' control do not qualify for replacement.",
     );
@@ -2544,7 +2648,13 @@ function buildKanban(leads) {
         </div>
         <div class="cards">
           ${cards.length
-            ? cards.map((l) => `
+            ? cards.map((l) => {
+                const ageHrs = (Date.now() - new Date(l.created_at).getTime()) / 3600000;
+                const ageLabel = ageHrs < 24 ? `${Math.floor(ageHrs)}h`
+                  : ageHrs < 168 ? `${Math.floor(ageHrs/24)}d`
+                  : `${Math.floor(ageHrs/168)}w`;
+                const isOverdue = ageHrs > 48 && !['closed_won','closed_lost'].includes(l.pipeline_stage);
+                return `
               <div class="kcard"
                    draggable="true"
                    data-lead-id="${l.id}"
@@ -2555,8 +2665,12 @@ function buildKanban(leads) {
                 <h3>${l.name || "—"}</h3>
                 <p>${l.email || l.phone || "—"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
-                ${l.ai_score != null ? `<div style="margin-top:6px"><span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span></div>` : ""}
-                </div>`).join("")
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+                  ${l.ai_score != null ? `<span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span>` : '<span></span>'}
+                  <span style="font-size:11px;color:${isOverdue ? '#c53535' : 'var(--muted)'}${isOverdue ? ';font-weight:600' : ''}">${ageLabel}</span>
+                </div>
+              </div>`;
+              }).join("")
             : `<div class="kanban-drop-hint">Drop leads here</div>`}
         </div>
       </div>`;
@@ -2642,7 +2756,20 @@ async function loadQuotes() {
     const el = document.getElementById("quotesPanel");
     if (!el) return;
     if (!quotes.length) {
-      el.innerHTML = `<div class="empty"><h3>No quotes yet</h3><p>Create a quote from the button above or via AI SMS workflow.</p></div>`;
+      el.innerHTML = `<div class="empty">
+  <span class="icon" data-icon="file" style="width:28px;height:28px"></span>
+  <h3>No quotes yet</h3>
+  <p>Create your first quote manually, or enable AI Quote Drafting so the agent drafts quotes automatically when leads are ready.</p>
+  <div style="display:flex;gap:8px;margin-top:4px;justify-content:center">
+    <button class="btn2" type="button" onclick="document.getElementById('openQuoteModal').click()">
+      <span class="icon" data-icon="plus"></span> New quote
+    </button>
+    <button class="btn" type="button" onclick="navigateTo('ai-settings');setTimeout(()=>document.getElementById('advancedSettingsBody')?.classList.remove('hidden'),200)">
+      Enable AI drafting →
+    </button>
+  </div>
+</div>`;
+      renderIcons();
       renderPagination("quotesPagination", quotesPage, 0, PER_PAGE, () => {});
       return;
     }
@@ -2920,7 +3047,15 @@ async function loadAppointments() {
     if (!el) return;
 
     if (!appointments.length) {
-      el.innerHTML = `<div class="empty"><h3>No appointments yet</h3><p>Appointments booked via AI or manually will appear here.</p></div>`;
+      el.innerHTML = `<div class="empty">
+  <span class="icon" data-icon="calendar" style="width:28px;height:28px"></span>
+  <h3>No appointments yet</h3>
+  <p>The AI books callbacks and on-site visits automatically. You can also create one manually.</p>
+  <button class="btn2" type="button" onclick="document.getElementById('openAppointmentModal').click()" style="margin-top:4px">
+    <span class="icon" data-icon="plus"></span> New appointment
+  </button>
+</div>`;
+      renderIcons();
       renderPagination("appointmentsPagination", appointmentsPage, 0, PER_PAGE, () => {});
       return;
     }
@@ -3272,12 +3407,12 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
             </div>
             <div style="font-size:12px;color:var(--muted)">
               ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
             </div>
-            <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">⚠️ Payment not completed</div>
+            <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">Payment not completed</div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
             <button class="btn2" style="font-size:12px;padding:6px 14px" onclick="retryPplOrder('${o.id}')">Complete Payment</button>
@@ -3296,7 +3431,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
             </div>
             <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
               ${o.delivered_count} / ${o.quantity}
@@ -3528,6 +3663,7 @@ async function loadAiSettings() {
       if (promptHelp) {
         promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
       }
+
     }
     
     // Load Twilio numbers count
@@ -4042,13 +4178,10 @@ async function loadNotifications() {
     const el = document.getElementById("notificationsPanel");
     if (!el) return;
 
-    // Update unread badge count
     const unread = (notifications || []).filter((n) => !n.is_read).length;
-    const badge = document.getElementById("notifBadge");
-    if (badge) {
-      badge.textContent = unread;
-      badge.style.display = unread > 0 ? "inline-flex" : "none";
-    }
+    [document.getElementById("notifBadge"), document.getElementById("mobileNotifBadge")].forEach(b => {
+      if (b) { b.textContent = unread; b.style.display = unread > 0 ? "inline-flex" : "none"; }
+    });
 
     if (!notifications?.length) {
       el.innerHTML = `<div class="empty"><h3>No notifications yet</h3><p>When AI books appointments, triggers quotes, or completes goals, notifications will appear here.</p></div>`;
@@ -4056,16 +4189,16 @@ async function loadNotifications() {
     }
 
     const typeIcons = {
-      callback_booked: "📞",
-      onsite_booked: "📍",
-      quote_drafted: "📄",
-      sale_completed: "💰",
+      callback_booked: "",
+      onsite_booked: "",
+      quote_drafted: "",
+      sale_completed: "",
     };
 
     el.innerHTML = `<div class="table-lite">${notifications.map((n) => `
       <div class="row${n.is_read ? "" : " unread"}" style="cursor:pointer;${n.is_read ? "" : "border-left:3px solid #8b5cf6;"}" onclick="markNotificationRead('${n.id}')">
         <div>
-          <strong style="font-size:13px">${typeIcons[n.type] || "🔔"} ${esc(n.title)}</strong>
+          <strong style="font-size:13px">${esc(n.title)}</strong>
           <span class="muted">${esc(n.message || "")}</span>
         </div>
         <div>
@@ -4165,9 +4298,16 @@ async function loadConversations() {
       const name = esc(c.leads?.name || "Unknown");
       const phone = esc(c.leads?.phone || "");
       const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
+      const lastMsgTime = c.last_message_at ? new Date(c.last_message_at) : null;
+      const minsAgo = lastMsgTime ? Math.floor((Date.now() - lastMsgTime) / 60000) : null;
+      let urgencyBadge = '';
+      if (minsAgo !== null && minsAgo < 60) {
+        const color = minsAgo < 5 ? '#16a34a' : minsAgo < 15 ? '#d97706' : '#dc2626';
+        urgencyBadge = `<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:${color}22;color:${color};font-weight:600;margin-left:4px">${minsAgo}m ago</span>`;
+      }
       return `<div class="conv-item" data-conv-id="${c.id}" data-lead-id="${c.lead_id}"
                    data-lead-name="${name}" data-lead-phone="${phone}">
-        <h3>${name}<span class="conv-time">${time}</span></h3>
+        <h3>${name}${urgencyBadge}<span class="conv-time">${time}</span></h3>
         <p>${esc(c.last_message) || "No messages yet"}</p>
       </div>`;
     }).join("");
@@ -4609,8 +4749,8 @@ async function handleBulkSmsSend() {
     if (progressText) progressText.textContent = `${done} / ${count}`;
   }
 
-  let summary = `✅ ${sent} sent`;
-  if (failed) summary += ` · ❌ ${failed} failed`;
+  let summary = `${sent} sent`;
+  if (failed) summary += ` · ${failed} failed`;
   if (resultSummary) resultSummary.textContent = summary;
   if (sendBtn) sendBtn.disabled = false;
 
@@ -4648,18 +4788,62 @@ async function openOpportunityModal(leadId) {
   if (oppModalTitle) oppModalTitle.textContent = lead.name || "Lead Details";
   if (oppModalSubtitle) oppModalSubtitle.textContent = `Status: ${stageLabel(lead.pipeline_stage)} · Created: ${fmtDate(lead.created_at)}`;
 
-  // Populate overview
-  document.getElementById("oppOverviewName").value = lead.name || "—";
-  document.getElementById("oppOverviewEmail").value = lead.email || "—";
-  document.getElementById("oppOverviewPhone").value = lead.phone || "—";
-  document.getElementById("oppOverviewStatus").value = stageLabel(lead.pipeline_stage) || "—";
-  document.getElementById("oppOverviewSource").value = lead.source || "—";
-  document.getElementById("oppOverviewValue").value = lead.value ? fmt(lead.value) : "—";
-  document.getElementById("oppOverviewAiScore").value = aiScoreDisplay(lead);
-  document.getElementById("oppOverviewAiStatus").value = aiStatusLabel(lead);
-  document.getElementById("oppOverviewAddress").value = lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "—";
-  document.getElementById("oppOverviewAiSummary").value = lead.ai_summary || "No AI summary yet.";
-  document.getElementById("oppOverviewNotes").value = lead.notes || "—";
+  // Populate overview fields (editable, Change 6)
+  const setOppField = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ""; };
+  setOppField("oppOverviewName", lead.name || "");
+  setOppField("oppOverviewEmail", lead.email || "");
+  setOppField("oppOverviewPhone", lead.phone || "");
+  // Status is now a select — set its value
+  const statusSel = document.getElementById("oppOverviewStatus");
+  if (statusSel) statusSel.value = stageLabel(lead.pipeline_stage) || "New Lead";
+  setOppField("oppOverviewSource", lead.source || "");
+  setOppField("oppOverviewValue", lead.value || "");
+  setOppField("oppOverviewAiScore", aiScoreDisplay(lead));
+  setOppField("oppOverviewAiStatus", aiStatusLabel(lead));
+  setOppField("oppOverviewAddress", lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "");
+  setOppField("oppOverviewAiSummary", lead.ai_summary || "No AI summary yet.");
+  setOppField("oppOverviewNotes", lead.notes || "");
+
+  // Wire inline save button (Change 6)
+  const saveBtn = document.getElementById('oppSaveInlineBtn');
+  if (saveBtn) {
+    const newSave = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSave, saveBtn);
+    newSave.addEventListener('click', async () => {
+      newSave.disabled = true;
+      newSave.textContent = 'Saving…';
+      const payload = {
+        name:           document.getElementById('oppOverviewName')?.value || null,
+        email:          document.getElementById('oppOverviewEmail')?.value || null,
+        phone:          document.getElementById('oppOverviewPhone')?.value || null,
+        pipeline_stage: stageKey(document.getElementById('oppOverviewStatus')?.value || 'New Lead'),
+        source:         document.getElementById('oppOverviewSource')?.value || null,
+        value:          Number(document.getElementById('oppOverviewValue')?.value) || null,
+        address:        document.getElementById('oppOverviewAddress')?.value || null,
+        notes:          document.getElementById('oppOverviewNotes')?.value || null,
+      };
+      try {
+        const { error } = await sb.from('leads').update(payload).eq('id', leadId);
+        if (error) { toast(error.message, true); return; }
+        toast('Lead updated.');
+        const idx = allLeads.findIndex(l => l.id === leadId);
+        if (idx > -1) allLeads[idx] = { ...allLeads[idx], ...payload };
+        if (payload.pipeline_stage === 'closed_won') scheduleReviewRequest(leadId);
+      } catch (err) { toast('Failed to save.', true); }
+      finally { newSave.disabled = false; newSave.textContent = 'Save changes'; }
+    });
+  }
+
+  // Wire create-quote button for this lead (Change 5)
+  const qBtn = document.getElementById('oppCreateQuoteBtn');
+  if (qBtn) {
+    const newBtn = qBtn.cloneNode(true);
+    qBtn.parentNode.replaceChild(newBtn, qBtn);
+    newBtn.addEventListener('click', async () => {
+      closeModal('opportunityModal');
+      await quickSendQuote(leadId);
+    });
+  }
 
   // Reset tabs to overview
   document.querySelectorAll(".opp-tab").forEach((t) => t.classList.remove("active"));
@@ -4848,276 +5032,6 @@ async function approveAndSendQuote(quoteId) {
   }
 }
 
-// =============================================================================
-// ── Campaigns ─────────────────────────────────────────────────────────────────
-// =============================================================================
-
-async function loadCampaigns() {
-  if (!currentCompanyId) return;
-
-  const { data: company } = await sb
-    .from('companies')
-    .select('meta_ad_account_id, meta_page_id, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, google_ads_customer_id, google_campaign_id, campaign_status, campaigns_created_at, generated_ad_copy, creative_regeneration_count, creative_last_regenerated_at')
-    .eq('id', currentCompanyId)
-    .single();
-
-  if (!company) return;
-
-  const previewCard = document.getElementById('campaignPreviewCard');
-  const preparingCard = document.getElementById('campaignPreparingCard');
-
-  if (previewCard) previewCard.style.display = 'none';
-  if (preparingCard) preparingCard.style.display = 'none';
-
-  if (company.campaign_status === 'preview') {
-    if (previewCard) {
-      previewCard.style.display = '';
-      const adCopy = company.generated_ad_copy || {};
-
-      // Feed image
-      const feedContainer = document.getElementById('previewFeedImg');
-      if (feedContainer) {
-        if (adCopy.ad_image_feed_url) {
-          feedContainer.innerHTML = `<img src="${adCopy.ad_image_feed_url}" style="width:100%;height:100%;object-fit:cover" alt="Feed ad">`;
-        } else {
-          feedContainer.innerHTML = '<span style="color:var(--muted);font-size:12px">Not yet generated</span>';
-        }
-      }
-
-      // Story image
-      const storyContainer = document.getElementById('previewStoryImg');
-      if (storyContainer) {
-        if (adCopy.ad_image_story_url) {
-          storyContainer.innerHTML = `<img src="${adCopy.ad_image_story_url}" style="width:100%;height:100%;object-fit:cover" alt="Story ad">`;
-        } else {
-          storyContainer.innerHTML = '<span style="color:var(--muted);font-size:12px">Not yet generated</span>';
-        }
-      }
-
-      // Ad copy section
-      const copySection = document.getElementById('previewCopySection');
-      const headlinesEl = document.getElementById('previewHeadlines');
-      const primaryTextsEl = document.getElementById('previewPrimaryTexts');
-      if (copySection && (adCopy.meta_headlines?.length || adCopy.meta_primary_texts?.length)) {
-        copySection.style.display = '';
-        if (headlinesEl && adCopy.meta_headlines) {
-          headlinesEl.innerHTML = adCopy.meta_headlines.map(h =>
-            `<span style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--text)">${escapeHtmlJs(h)}</span>`
-          ).join('');
-        }
-        if (primaryTextsEl && adCopy.meta_primary_texts) {
-          primaryTextsEl.innerHTML = adCopy.meta_primary_texts.map(t =>
-            `<p style="font-size:13px;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0">${escapeHtmlJs(t)}</p>`
-          ).join('');
-        }
-      }
-
-      // Regen count
-      const regenCountEl = document.getElementById('previewRegenCount');
-      if (regenCountEl) {
-        const now = Date.now();
-        const lastRegen = company.creative_last_regenerated_at
-          ? new Date(company.creative_last_regenerated_at).getTime()
-          : 0;
-        const withinWindow = (now - lastRegen) < 24 * 60 * 60 * 1000;
-        const used = withinWindow ? (company.creative_regeneration_count || 0) : 0;
-        const remaining = Math.max(0, 10 - used);
-        regenCountEl.textContent = `${remaining} regeneration${remaining !== 1 ? 's' : ''} remaining today`;
-      }
-    }
-  } else if (company.campaign_status === 'preparing') {
-    if (preparingCard) preparingCard.style.display = '';
-  }
-
-  // Connection status chips
-  const metaConnected = !!company.meta_ad_account_id;
-  const googleConnected = !!company.google_ads_customer_id;
-
-  const metaStatusEl = document.getElementById('campaignMetaStatus');
-  const googleStatusEl = document.getElementById('campaignGoogleStatus');
-
-  if (metaStatusEl) {
-    metaStatusEl.innerHTML = metaConnected
-      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Meta Connected</span>'
-      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Meta Not Connected</span>';
-  }
-
-  if (googleStatusEl) {
-    googleStatusEl.innerHTML = googleConnected
-      ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✓ Google Connected</span>'
-      : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:500">✗ Google Not Connected</span>';
-  }
-
-  // Meta campaigns panel
-  const metaList = document.getElementById('campaignMetaList');
-  const metaActions = document.getElementById('campaignMetaActions');
-  if (metaList) {
-    if (company.meta_campaign_id) {
-      const isPaused = company.campaign_status === 'paused';
-      metaList.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:500;color:var(--text)">Lead Generation Campaign</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.meta_campaign_id}</div>
-            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
-          </div>
-          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
-        </div>`;
-      if (metaActions) {
-        const label = isPaused ? 'Enable' : 'Pause';
-        const action = isPaused ? 'enable' : 'pause';
-        metaActions.innerHTML = `<button onclick="toggleCampaign('meta','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Meta</button>`;
-      }
-    } else {
-      metaList.innerHTML = metaConnected
-        ? '<p style="color:var(--muted);font-size:14px">No Meta campaign created yet. Complete onboarding to generate your campaign.</p>'
-        : '<p style="color:var(--muted);font-size:14px">Connect your Meta Ad Account to enable campaign creation.</p>';
-    }
-  }
-
-  // Google campaigns panel
-  const googleList = document.getElementById('campaignGoogleList');
-  const googleActions = document.getElementById('campaignGoogleActions');
-  if (googleList) {
-    if (company.google_campaign_id) {
-      const isPaused = company.campaign_status === 'paused';
-      googleList.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:500;color:var(--text)">Search Campaign</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">ID: ${company.google_campaign_id}</div>
-            ${company.campaigns_created_at ? `<div style="font-size:12px;color:var(--muted)">Created ${new Date(company.campaigns_created_at).toLocaleDateString()}</div>` : ''}
-          </div>
-          <span style="background:${isPaused ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)'};color:${isPaused ? '#eab308' : '#22c55e'};border:1px solid ${isPaused ? 'rgba(234,179,8,0.25)' : 'rgba(34,197,94,0.25)'};border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500">${isPaused ? 'Paused' : 'Active'}</span>
-        </div>`;
-      if (googleActions) {
-        const label = isPaused ? 'Enable' : 'Pause';
-        const action = isPaused ? 'enable' : 'pause';
-        googleActions.innerHTML = `<button onclick="toggleCampaign('google','${action}')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer">${label} Google</button>`;
-      }
-    } else {
-      googleList.innerHTML = googleConnected
-        ? '<p style="color:var(--muted);font-size:14px">No Google campaign created yet. Complete onboarding to generate your campaign.</p>'
-        : '<p style="color:var(--muted);font-size:14px">Connect your Google Ads account to enable campaign creation.</p>';
-    }
-  }
-}
-
-async function toggleCampaign(platform, action) {
-  if (!currentCompanyId) return;
-  const btn = event?.target;
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-campaign`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token}`,
-      },
-      body: JSON.stringify({ platform, action, company_id: currentCompanyId }),
-    });
-    if (res.ok) {
-      await loadCampaigns();
-    } else {
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-      alert('Error: ' + (err.error ?? 'Failed to update campaign'));
-      if (btn) { btn.disabled = false; btn.textContent = (action === 'pause' ? 'Pause' : 'Enable') + ' ' + (platform === 'meta' ? 'Meta' : 'Google'); }
-    }
-  } catch (err) {
-    console.error('toggleCampaign error:', err);
-    if (btn) { btn.disabled = false; }
-  }
-}
-
-// =============================================================================
-// ── Campaign Preview: Approve & Regenerate ────────────────────────────────────
-// =============================================================================
-
-async function approveCampaign() {
-  if (!currentCompanyId) return;
-  const btn = event?.target;
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/approve-campaign`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ company_id: currentCompanyId }),
-    });
-
-    if (res.ok) {
-      _campaignStatus = 'preparing';
-      updateCampaignNavBadge();
-      // Remove preview banner from dashboard if visible
-      document.getElementById('campaignPreviewDashBanner')?.remove();
-      await loadCampaigns();
-    } else {
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-      alert('Error: ' + (err.error ?? 'Failed to approve campaign'));
-      if (btn) { btn.disabled = false; btn.textContent = '✓ Approve — I\'m happy with this'; }
-    }
-  } catch (err) {
-    console.error('approveCampaign error:', err);
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve — I\'m happy with this'; }
-  }
-}
-
-async function regenerateCreatives() {
-  if (!currentCompanyId) return;
-  const btn = event?.target;
-  const prompt = document.getElementById('previewRegenPrompt')?.value?.trim() || '';
-  if (btn) { btn.disabled = true; btn.textContent = '⟳ Regenerating…'; }
-
-  const regenCountEl = document.getElementById('previewRegenCount');
-  if (regenCountEl) regenCountEl.textContent = 'Regenerating…';
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/regenerate-creatives`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ company_id: currentCompanyId, prompt }),
-    });
-
-    if (res.status === 429) {
-      if (regenCountEl) regenCountEl.textContent = '0 regenerations remaining today';
-      alert('You\'ve reached your daily regeneration limit. Please try again tomorrow.');
-      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
-      return;
-    }
-
-    if (res.ok) {
-      const result = await res.json();
-      const remaining = result?.remaining ?? 0;
-      if (regenCountEl) regenCountEl.textContent = `${remaining} regeneration${remaining !== 1 ? 's' : ''} remaining today — regeneration started, images will update shortly`;
-      // Clear prompt
-      const promptEl = document.getElementById('previewRegenPrompt');
-      if (promptEl) promptEl.value = '';
-      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
-      // Reload after a short delay to pick up new images
-      setTimeout(() => loadCampaigns(), 5000);
-    } else {
-      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-      alert('Error: ' + (err.error ?? 'Failed to regenerate'));
-      if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
-      if (regenCountEl) regenCountEl.textContent = '';
-    }
-  } catch (err) {
-    console.error('regenerateCreatives error:', err);
-    if (btn) { btn.disabled = false; btn.textContent = '⟳ Regenerate Creatives'; }
-  }
-}
 
 // =============================================================================
 // ── AI Insights ───────────────────────────────────────────────────────────────
@@ -5202,13 +5116,13 @@ async function loadAiInsights() {
       knowledgeEl.innerHTML = `<div class="notice">No AI learnings yet. As leads progress through your pipeline, the AI will extract insights automatically.</div>`;
     } else {
       const categoryLabels = {
-        winning_pattern: "✅ Winning Pattern",
-        failed_pattern: "⚠️ Failed Pattern",
-        objection_response: "💬 Objection Response",
-        scheduling_approach: "📅 Scheduling",
-        quote_approach: "💰 Quote Approach",
-        service_insight: "🔧 Service Insight",
-        style_preference: "🎨 Style Preference",
+        winning_pattern: "Winning Pattern",
+        failed_pattern: "Failed Pattern",
+        objection_response: "Objection Response",
+        scheduling_approach: "Scheduling",
+        quote_approach: "Quote Approach",
+        service_insight: "Service Insight",
+        style_preference: "Style Preference",
       };
 
       knowledgeEl.innerHTML = knowledge.map((k) => {
@@ -5258,7 +5172,6 @@ async function loadAiInsights() {
     if (!cards.length) {
       industryEl.innerHTML = `<div class="notice">Add more leads to your pipeline to unlock performance insights.</div>`;
     } else {
-      const iconMap = { good: "✅", warn: "⚠️", alert: "🔴", info: "💡" };
       const colorMap = {
         good:  { bg: "#f0fdf4", border: "#86efac44", label: "#166534" },
         warn:  { bg: "#fffbeb", border: "#fcd34d44", label: "#92400e" },
@@ -5268,7 +5181,6 @@ async function loadAiInsights() {
       industryEl.innerHTML = cards.map(c => {
         const col = colorMap[c.type] || colorMap.info;
         return `<div style="display:flex;align-items:flex-start;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border);background:${col.bg}">
-          <div style="font-size:20px;flex-shrink:0;margin-top:2px">${iconMap[c.type] || "💡"}</div>
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(c.title)}</div>
             <div style="font-size:12px;color:var(--muted);line-height:1.65">${esc(c.body)}</div>
@@ -6025,633 +5937,65 @@ async function skipReviewRequest(requestId) {
 }
 
 // =============================================================================
-// Onboarding Wizard (managed plan only)
+// Buy Leads helpers
 // =============================================================================
-
-let wizardData = {};
-
-function showOnboardingWizard(company, user) {
-  const wizard = document.getElementById('onboardingWizard');
-  if (!wizard) return;
-  wizardData = {};
-  wizard.style.display = 'flex';
-  const nameEl = document.getElementById('wizardCompanyName');
-  if (nameEl) nameEl.textContent = company?.name || '';
-  wizardGoTo(1);
+function nicheLabel(niche) {
+  return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
-
-function resumeAdSetup() {
-  if (_cachedCompany) {
-    showOnboardingWizard(_cachedCompany, currentUser);
-  }
-}
-
-function updateCampaignNavBadge() {
-  const badge = document.getElementById('campaignNavBadge');
-  if (!badge) return;
-  if (_campaignStatus === 'preview') {
-    badge.style.display = '';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-function wizardGoTo(step) {
-  for (let i = 1; i <= 10; i++) {
-    const el = document.getElementById(`wizardStep${i}`);
-    if (el) el.style.display = i === step ? '' : 'none';
-  }
-  const dots = document.getElementById('wizardDots');
-  if (dots) {
-    dots.innerHTML = [1,2,3,4,5,6,7,8,9,10].map(i =>
-      i === step
-        ? `<div style="background:#4797FF;width:24px;height:8px;border-radius:4px;transition:all 0.3s ease"></div>`
-        : `<div style="background:rgba(255,255,255,0.15);width:8px;height:8px;border-radius:50%;transition:all 0.3s ease"></div>`
-    ).join('');
-  }
-  if (step === 5) {
-    fetchHooks();
-  }
-  if (step === 8) {
-    const googleEnabled = wizardData.googleEnabled === true;
-    const googleSection = document.getElementById('wizardStep8GoogleSection');
-    const googleLocked  = document.getElementById('wizardStep8GoogleLocked');
-    const badge         = document.getElementById('wizardStep8PlatformBadge');
-    if (googleSection) googleSection.style.display = googleEnabled ? '' : 'none';
-    if (googleLocked)  googleLocked.style.display  = googleEnabled ? 'none' : '';
-    if (badge) {
-      badge.innerHTML = googleEnabled
-        ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">✓ Meta + Google enabled</span>'
-        : '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(71,151,255,0.1);color:#4797FF;border:1px solid rgba(71,151,255,0.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500">📘 Meta only</span>';
-    }
-  }
-  if (step === 9) wizardGenerateStep();
-}
-
-function wizardSelectLeadGoal(tile, value) {
-  document.querySelectorAll('#wizardStep2 [data-value]').forEach(t => {
-    t.style.borderColor = 'rgba(255,255,255,0.12)';
-    t.style.background = '';
-  });
-  tile.style.borderColor = '#4797FF';
-  tile.style.background = 'rgba(71,151,255,0.08)';
-  wizardData.leadGoals = value;
-}
-
-function wizardUpdateBudgetNote(val) {
-  const note = document.getElementById('wizardBudgetNote');
-  if (!note) return;
-  const n = parseFloat(val);
-  if (!val || isNaN(n) || n <= 0) {
-    note.style.color = '#9a9a9a';
-    note.textContent = 'Enter your budget to see which platforms are available.';
-  } else if (n < 100) {
-    note.style.color = '#f5a623';
-    note.innerHTML = '📘 <strong style="color:#f5a623">Meta only</strong> — reach $100/day to unlock Google Search ads.';
-  } else {
-    note.style.color = '#22c55e';
-    note.innerHTML = '✓ <strong style="color:#22c55e">Meta + Google</strong> both active at this budget.';
-  }
-}
-
-function wizardSelectNiche(tile, value) {
-  document.querySelectorAll('#wizardNicheGrid [data-niche]').forEach(t => {
-    t.style.borderColor = 'rgba(255,255,255,0.12)';
-    t.style.background = '';
-  });
-  tile.style.borderColor = '#4797FF';
-  tile.style.background = 'rgba(71,151,255,0.08)';
-  const otherField = document.getElementById('wizardNicheOtherField');
-  if (value === 'other') {
-    wizardData.niche = null;
-    if (otherField) otherField.style.display = '';
-  } else {
-    wizardData.niche = value;
-    if (otherField) otherField.style.display = 'none';
-  }
-}
-
-function wizardSelectMarket(type) {
-  const res = document.getElementById('wizardMarketResidential');
-  const com = document.getElementById('wizardMarketCommercial');
-  if (res) { res.style.borderColor = type === 'residential' ? '#4797FF' : 'rgba(255,255,255,0.12)'; res.style.background = type === 'residential' ? 'rgba(71,151,255,0.08)' : ''; }
-  if (com) { com.style.borderColor = type === 'commercial'  ? '#4797FF' : 'rgba(255,255,255,0.12)'; com.style.background = type === 'commercial'  ? 'rgba(71,151,255,0.08)' : ''; }
-  wizardData.market = type;
-}
-
-function wizardStep2Next() {
-  const spend = document.getElementById('wizardAdSpend')?.value;
-  wizardData.maxDailySpend = spend ? parseFloat(spend) : null;
-  wizardData.googleEnabled = (wizardData.maxDailySpend ?? 0) >= 100;
-  wizardGoTo(3);
-}
-
-function wizardStep3Next() {
-  // Resolve niche — either tile selection or free-text "other"
-  const otherVal = document.getElementById('wizardNicheOther')?.value?.trim();
-  if (!wizardData.niche && otherVal) wizardData.niche = otherVal;
-  if (!wizardData.niche) wizardData.niche = 'General Services';
-  if (!wizardData.market) wizardData.market = 'residential';
-  wizardGoTo(4);
-}
-
-function wizardToggleWebsite(cb) {
-  const urlField = document.getElementById('wizardWebsiteField');
-  const descField = document.getElementById('wizardNoWebsiteField');
-  if (cb.checked) {
-    urlField.style.display = 'none';
-    descField.style.display = '';
-  } else {
-    urlField.style.display = '';
-    descField.style.display = 'none';
-  }
-}
-
-function wizardStep4Next() {
-  const noWebsite = document.getElementById('wizardNoWebsite')?.checked;
-  if (noWebsite) {
-    wizardData.websiteUrl = null;
-    wizardData.businessDesc = document.getElementById('wizardBusinessDesc')?.value || '';
-  } else {
-    wizardData.websiteUrl = document.getElementById('wizardWebsiteUrl')?.value || '';
-    wizardData.businessDesc = null;
-  }
-  wizardGoTo(5);
-  // fetchHooks() is triggered inside wizardGoTo when step === 5
-}
-
-function wizardSelectLogoTile(type) {
-  const uploadTile = document.getElementById('wizardLogoUploadTile');
-  const stockTile = document.getElementById('wizardLogoStockTile');
-  uploadTile.style.borderColor = type === 'upload' ? '#4797FF' : 'rgba(255,255,255,0.12)';
-  uploadTile.style.background = type === 'upload' ? 'rgba(71,151,255,0.08)' : '';
-  stockTile.style.borderColor = type === 'stock' ? '#4797FF' : 'rgba(255,255,255,0.12)';
-  stockTile.style.background = type === 'stock' ? 'rgba(71,151,255,0.08)' : '';
-  wizardData.logoChoice = type;
-  if (type === 'upload') {
-    document.getElementById('wizardLogoFile').click();
-  }
-}
-
-function wizardLogoPreview(input) {
-  const file = input.files?.[0];
-  if (!file) return;
-  wizardData.logoFile = file;
-  const preview = document.getElementById('wizardLogoPreview');
-  const img = document.getElementById('wizardLogoImg');
-  const reader = new FileReader();
-  reader.onload = e => {
-    img.src = e.target.result;
-    preview.style.display = '';
-  };
-  reader.readAsDataURL(file);
-}
-
-function wizardSelectHeroTile(type) {
-  const ids = ['wizardHeroUploadTile', 'wizardHeroAiTile', 'wizardHeroNicheTile'];
-  const types = ['upload', 'ai', 'niche'];
-  ids.forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const active = types[i] === type;
-    el.style.borderColor = active ? '#4797FF' : 'rgba(255,255,255,0.12)';
-    el.style.background = active ? 'rgba(71,151,255,0.08)' : '';
-  });
-  wizardData.heroChoice = type;
-  document.getElementById('wizardHeroAiBox').style.display = type === 'ai' ? '' : 'none';
-  if (type === 'upload') {
-    document.getElementById('wizardHeroFile').click();
-  }
-  if (type !== 'upload') {
-    document.getElementById('wizardHeroPreviewBox').style.display = 'none';
-  }
-}
-
-function wizardHeroPreview(input) {
-  const file = input.files?.[0];
-  if (!file) return;
-  wizardData.heroFile = file;
-  const box = document.getElementById('wizardHeroPreviewBox');
-  const img = document.getElementById('wizardHeroImg');
-  const reader = new FileReader();
-  reader.onload = e => {
-    img.src = e.target.result;
-    box.style.display = '';
-  };
-  reader.readAsDataURL(file);
-}
-
-async function fetchHooks() {
-  const loadingEl = document.getElementById('wizardHooksLoading');
-  const cardsEl = document.getElementById('wizardHookCards');
-  const nextBtn = document.getElementById('wizardHookNextBtn');
-  const skipBtn = document.getElementById('wizardHookSkipBtn');
-
-  if (loadingEl) loadingEl.style.display = '';
-  if (cardsEl) { cardsEl.style.display = 'none'; cardsEl.innerHTML = ''; }
-  if (nextBtn) nextBtn.style.display = 'none';
-  if (skipBtn) skipBtn.style.display = 'none';
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-hooks`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        company_id: currentCompanyId,
-        website_url: wizardData.websiteUrl || null,
-        business_desc: wizardData.businessDesc || null,
-        niche: wizardData.niche || null,
-        market: wizardData.market || 'residential',
-      }),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const result = await res.json();
-    const hooks = result?.hooks ?? [];
-
-    if (loadingEl) loadingEl.style.display = 'none';
-
-    if (hooks.length === 0) {
-      if (skipBtn) { skipBtn.style.display = 'block'; }
-      return;
-    }
-
-    if (cardsEl) {
-      cardsEl.style.display = 'flex';
-      cardsEl.innerHTML = hooks.map((hook, idx) => `
-        <div class="wizard-hook-card" data-idx="${idx}" onclick="wizardSelectHook(this, ${idx})" style="border:1.5px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color 0.2s,background 0.2s">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <span style="font-size:10px;font-weight:700;background:rgba(234,179,8,0.15);color:#eab308;border:1px solid rgba(234,179,8,0.3);border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:0.05em">${escapeHtmlJs(hook.angle || '')}</span>
-          </div>
-          <div style="font-size:16px;font-weight:700;color:#f5f5f5;margin-bottom:4px">${escapeHtmlJs(hook.headline || '')}</div>
-          <div style="font-size:13px;color:#9a9a9a;margin-bottom:8px">${escapeHtmlJs(hook.body || '')}</div>
-          <div style="font-size:12px;color:#555;font-style:italic">Why this works: ${escapeHtmlJs(hook.why || '')}</div>
-        </div>
-      `).join('');
-    }
-
-    if (skipBtn) skipBtn.style.display = 'block';
-
-    // Store all hooks for reference
-    wizardData._hooks = hooks;
-
-  } catch (err) {
-    console.warn('fetchHooks error:', err);
-    if (loadingEl) loadingEl.style.display = 'none';
-    if (skipBtn) skipBtn.style.display = 'block';
-  }
-}
-
-function escapeHtmlJs(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function wizardSelectHook(card, idx) {
-  document.querySelectorAll('.wizard-hook-card').forEach(c => {
-    c.style.borderColor = 'rgba(255,255,255,0.12)';
-    c.style.background = '';
-  });
-  card.style.borderColor = '#4797FF';
-  card.style.background = 'rgba(71,151,255,0.08)';
-  wizardData.selectedHookIdx = idx;
-
-  const nextBtn = document.getElementById('wizardHookNextBtn');
-  if (nextBtn) nextBtn.style.display = '';
-}
-
-function wizardStep5Next() {
-  // Store selected hook
-  if (wizardData._hooks && wizardData.selectedHookIdx != null) {
-    wizardData.selectedHook = wizardData._hooks[wizardData.selectedHookIdx] || null;
-  } else {
-    wizardData.selectedHook = null;
-  }
-  wizardGoTo(6);
-}
-
-function wizardStep5Skip() {
-  // Use first hook automatically (let AI decide)
-  if (wizardData._hooks && wizardData._hooks.length > 0) {
-    wizardData.selectedHook = wizardData._hooks[0];
-  } else {
-    wizardData.selectedHook = null;
-  }
-  wizardGoTo(6);
-}
-
-function wizardStep6Next() {
-  // Collect testimonials (min 1, max 3)
-  const t1name   = document.getElementById('wizardT1Name')?.value?.trim() || '';
-  const t1suburb = document.getElementById('wizardT1Suburb')?.value?.trim() || '';
-  const t1quote  = document.getElementById('wizardT1Quote')?.value?.trim() || '';
-  const t2name   = document.getElementById('wizardT2Name')?.value?.trim() || '';
-  const t2suburb = document.getElementById('wizardT2Suburb')?.value?.trim() || '';
-  const t2quote  = document.getElementById('wizardT2Quote')?.value?.trim() || '';
-  const t3name   = document.getElementById('wizardT3Name')?.value?.trim() || '';
-  const t3suburb = document.getElementById('wizardT3Suburb')?.value?.trim() || '';
-  const t3quote  = document.getElementById('wizardT3Quote')?.value?.trim() || '';
-
-  const testimonials = [];
-  if (t1name || t1quote) testimonials.push({ name: t1name, suburb: t1suburb, quote: t1quote });
-  if (t2name || t2quote) testimonials.push({ name: t2name, suburb: t2suburb, quote: t2quote });
-  if (t3name || t3quote) testimonials.push({ name: t3name, suburb: t3suburb, quote: t3quote });
-  wizardData.testimonials = testimonials.length > 0 ? testimonials : null;
-  wizardGoTo(7);
-}
-
-function wizardStep7Next() {
-  wizardData.brandColor = document.getElementById('wizardBrandColor')?.value || '#16a34a';
-  wizardData.fontStyle = document.getElementById('wizardFontStyle')?.value || 'system';
-  wizardData.brandNotes = document.getElementById('wizardBrandNotes')?.value?.trim() || '';
-  wizardData.heroChoice = wizardData.heroChoice || 'niche';
-  wizardData.heroPrompt = document.getElementById('wizardHeroPrompt')?.value?.trim() || '';
-  wizardGoTo(8);
-}
-
-function wizardStep8Next() {
-  wizardData.metaAccountId  = document.getElementById('wizardMetaAccountId')?.value?.trim() || null;
-  wizardData.fbPageId       = document.getElementById('wizardFbPageId')?.value?.trim() || null;
-  wizardData.googleCustomerId = wizardData.googleEnabled
-    ? (document.getElementById('wizardGoogleCustomerId')?.value?.trim() || null)
-    : null;
-  wizardGoTo(9);
-}
-
-async function wizardGenerateStep() {
-  // Reset all steps to pending
-  ['wps1','wps2','wps3','wps4'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.querySelector('span').textContent = '○'; el.style.color = '#9a9a9a'; }
-  });
-
-  const tick = (id) => {
-    const el = document.getElementById(id);
-    if (el) { el.querySelector('span').textContent = '✓'; el.style.color = '#22c55e'; }
-  };
-  const setActive = (id) => {
-    const el = document.getElementById(id);
-    if (el) { el.querySelector('span').textContent = '…'; el.style.color = '#4797FF'; }
-  };
-
-  // Step 1: Save data + upload logo
-  setActive('wps1');
-  await wizardSaveOnboardingData();
-
-  if (wizardData.logoFile) {
-    try {
-      const file = wizardData.logoFile;
-      const ext = file.name.split('.').pop().toLowerCase();
-      const { data: uploadData } = await sb.storage
-        .from('logos')
-        .upload(`${currentCompanyId}/logo.${ext}`, file, { upsert: true, contentType: file.type });
-      if (uploadData) {
-        const { data: { publicUrl } } = sb.storage.from('logos').getPublicUrl(`${currentCompanyId}/logo.${ext}`);
-        await sb.from('companies').update({ logo_url: publicUrl }).eq('id', currentCompanyId);
-      }
-    } catch (e) {
-      console.warn('Logo upload error:', e);
-    }
-  }
-
-  if (wizardData.heroChoice === 'upload' && wizardData.heroFile) {
-    try {
-      const file = wizardData.heroFile;
-      const ext = file.name.split('.').pop().toLowerCase() || 'jpg';
-      const { data: uploadData } = await sb.storage
-        .from('logos')
-        .upload(`${currentCompanyId}/hero.${ext}`, file, { upsert: true, contentType: file.type });
-      if (uploadData) {
-        const { data: { publicUrl } } = sb.storage.from('logos').getPublicUrl(`${currentCompanyId}/hero.${ext}`);
-        wizardData.heroImageUrl = publicUrl;
-      }
-    } catch (e) {
-      console.warn('Hero image upload error:', e);
-    }
-  }
-  tick('wps1');
-
-  // Step 2: Fire the pipeline
-  setActive('wps2');
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const token = session?.access_token;
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-fulfillment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        company_id:        currentCompanyId,
-        website_url:       wizardData.websiteUrl,
-        business_desc:     wizardData.businessDesc,
-        lead_goals:        wizardData.leadGoals,
-        max_daily_ad_spend: wizardData.maxDailySpend,
-        service_area:      wizardData.serviceArea,
-        testimonials:      wizardData.testimonials || [],
-        selected_hook:     wizardData.selectedHook || null,
-        brand_color:       wizardData.brandColor || '#16a34a',
-        font_style:        wizardData.fontStyle || 'system',
-        brand_notes:       wizardData.brandNotes || '',
-        niche:             wizardData.niche || null,
-        market:            wizardData.market || 'residential',
-        hero_image_url:    wizardData.heroImageUrl || null,
-        hero_prompt:       (wizardData.heroChoice === 'ai' ? (wizardData.heroPrompt || null) : null),
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `HTTP ${res.status}`);
-    }
-    tick('wps2');
-
-    // Steps 3 + 4: Poll DB every 3s until campaign_status = 'preview' (max 3 min)
-    setActive('wps3');
-    const maxPolls = 60;
-    let polls = 0;
-    let landingUrl = null;
-
-    while (polls < maxPolls) {
-      await new Promise(r => setTimeout(r, 3000));
-      polls++;
-
-      // Advance visual ticks based on elapsed time (copy ~15s, images ~30s, deploy ~45s)
-      if (polls === 5)  { tick('wps3'); setActive('wps4'); }
-      if (polls === 10) { tick('wps4'); }
-
-      const { data: co } = await sb.from('companies')
-        .select('campaign_status, generated_page_url')
-        .eq('id', currentCompanyId)
-        .single();
-
-      if (co?.campaign_status === 'preview') {
-        tick('wps3');
-        tick('wps4');
-        landingUrl = co?.generated_page_url || null;
-        break;
-      }
-    }
-
-    if (polls >= maxPolls) {
-      throw new Error('Generation is taking longer than expected. Check back in a few minutes — your preview will appear in the Campaigns tab.');
-    }
-
-    // Everything is ready — update local state
-    _onboardingCompleted = true;
-    _campaignStatus = 'preview';
-    updateCampaignNavBadge();
-    document.getElementById('adSetupDashBanner')?.remove();
-
-    try { await sb.from('companies').update({ onboarding_completed: true }).eq('id', currentCompanyId); } catch (_) {}
-
-    if (landingUrl) {
-      const urlWrap = document.getElementById('wizardLandingUrl');
-      const urlLink = document.getElementById('wizardLandingLink');
-      const urlBtn  = document.getElementById('wizardLandingBtn');
-      if (urlWrap && urlLink) {
-        urlLink.href = landingUrl;
-        urlLink.textContent = landingUrl;
-        if (urlBtn) urlBtn.href = landingUrl;
-        urlWrap.style.display = '';
-      }
-    }
-
-    wizardGoTo(10);
-
-  } catch (err) {
-    console.error('wizardGenerateStep error:', err);
-    // Show the error on step 9 so the user knows what happened
-    const errEl = document.getElementById('wizardGenerateError');
-    if (errEl) {
-      errEl.textContent = String(err.message || err);
-      errEl.style.display = '';
-    }
-    // Mark complete so wizard doesn't loop if they refresh
-    try { await sb.from('companies').update({ onboarding_completed: true }).eq('id', currentCompanyId); } catch (_) {}
-  }
-}
-
-async function wizardSaveOnboardingData() {
-  const { error } = await sb.from('companies')
-    .update({
-      website_url:            wizardData.websiteUrl,
-      lead_goals:             wizardData.leadGoals,
-      max_daily_ad_spend:     wizardData.maxDailySpend,
-      service_area:           wizardData.serviceArea,
-      testimonials:           wizardData.testimonials || null,
-      meta_ad_account_id:     wizardData.metaAccountId,
-      google_ads_customer_id: wizardData.googleCustomerId,
-      meta_page_id:           wizardData.fbPageId,
-    })
-    .eq('id', currentCompanyId);
-  if (error) console.warn('wizardSaveOnboardingData error:', error);
-}
-
-
-async function completeOnboarding(destination = 'dashboard') {
-  try {
-    const { data: existingCompany } = await sb
-      .from('companies')
-      .select('settings')
-      .eq('id', currentCompanyId)
-      .maybeSingle();
-
-    const updatedSettings = {
-      ...(existingCompany?.settings || {}),
-      onboarding_complete: true,
-    };
-    await sb.from('companies').update({ settings: updatedSettings }).eq('id', currentCompanyId);
-
-    const { data: { session } } = await sb.auth.getSession();
-    const { data: co } = await sb
-      .from('companies')
-      .select('name, email, phone')
-      .eq('id', currentCompanyId)
-      .maybeSingle();
-
-    if (co) {
-      fetch(`${SUPABASE_URL}/functions/v1/notify-internal`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          subject: `🚀 New managed client onboarded — ${co.name}`,
-          body: `
-            <h2 style="font-family:system-ui,sans-serif">${co.name} has completed onboarding.</h2>
-            <p style="font-family:system-ui,sans-serif;color:#555"><strong>Email:</strong> ${co.email}</p>
-            <p style="font-family:system-ui,sans-serif;color:#555"><strong>Phone:</strong> ${co.phone || '—'}</p>
-            <p style="font-family:system-ui,sans-serif;color:#555">Onboarding wizard completed. Campaigns and landing page generated.</p>
-          `,
-        }),
-        keepalive: true,
-      }).catch(e => console.warn('notify-internal error:', e));
-    }
-
-    fetch(`${SUPABASE_URL}/functions/v1/provision-twilio`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ company_id: currentCompanyId }),
-      keepalive: true,
-    }).catch(e => console.warn('provision-twilio error:', e));
-
-    document.getElementById('onboardingWizard').style.display = 'none';
-    _onboardingCompleted = true;
-    document.getElementById('adSetupDashBanner')?.remove();
-    document.getElementById('adSetupResumeBanner')?.remove();
-    navigateTo(destination);
-  } catch (err) {
-    console.error('completeOnboarding error:', err);
-    toast('Error saving progress. Please try again.', true);
-  }
-}
-
-// =============================================================================
-// Buy Leads (PPL plan)
-// =============================================================================
 
 // =============================================================================
 // Buy Leads state
 // =============================================================================
-let _pplPricing    = [];           // [{niche, price_per_lead}]
-let _blNiche       = null;
-let _blCity        = null;
-let _blLocType     = 'radius';     // 'radius' | 'postcodes'
-let _blPPL         = null;
+let _pplPricing      = [];  // [{niche, sub_niche, price_per_lead}]
+let _blDiscountTiers = [];  // [{min_quantity, discount_percent, label, is_popular}]
+let _blNiche         = null;
+let _blSubNiche      = null;  // selected sub-niche id or null
+let _blCity          = null;
+let _blLocType       = 'radius';  // 'radius' | 'postcodes'
+let _blPPL           = null;
+let _blQty           = 10;        // selected quantity
+let _blDiscount      = 0;         // discount % for selected qty
 const _pplOrdersCache = new Map(); // id → order row (for retry)
+
+// Sub-niche definitions per parent niche
+const NICHE_SUB_NICHES = {
+  hvac: [
+    { id: 'split_ducted',              label: 'Installations (Split & Ducted)' },
+    { id: 'installations_maintenance', label: 'Installations & Maintenance'    },
+  ],
+  roofing: [
+    { id: 'all_restorations', label: 'All Restorations'           },
+    { id: 'all_replacements', label: 'All Replacements'           },
+    { id: 'tile_metal',       label: 'Tile-to-Metal Replacements' },
+  ],
+  renovation: [
+    { id: 'kitchen',  label: 'Kitchen Renovations'  },
+    { id: 'bathroom', label: 'Bathroom Renovations' },
+  ],
+};
+
+function subNicheLabel(subNiche) {
+  for (const subs of Object.values(NICHE_SUB_NICHES)) {
+    const found = subs.find(s => s.id === subNiche);
+    if (found) return found.label;
+  }
+  return nicheLabel(subNiche);
+}
 
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
-  const [{ data: pricing }, { data: orders }] = await Promise.all([
-    sb.from('ppl_pricing').select('niche, price_per_lead').is('area', null).order('niche'),
+  const [{ data: pricing }, { data: orders }, { data: tiers }] = await Promise.all([
+    sb.from('ppl_pricing').select('niche, sub_niche, price_per_lead').is('area', null).order('niche').order('sub_niche'),
     sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
+    sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
   ]);
 
-  _pplPricing = pricing || [];
-  _blNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _pplPricing      = pricing || [];
+  _blDiscountTiers = tiers   || [];
+  _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _blQty = _blDiscountTiers[0]?.min_quantity ?? 10;
+  _blDiscount = 0;
 
   renderBuyLeadsNiches(_pplPricing);
   renderBuyLeadsOrders(orders || []);
@@ -6659,13 +6003,6 @@ async function loadBuyLeads() {
   // Wire up city select
   const cityEl = document.getElementById('buyLeadsCity');
   if (cityEl) cityEl.onchange = () => { _blCity = cityEl.value || null; buyLeadsOnCityChange(); };
-
-  // Wire up quantity slider
-  const qtyEl = document.getElementById('buyLeadsQty');
-  if (qtyEl) qtyEl.oninput = () => {
-    document.getElementById('buyLeadsQtyLabel').textContent = `${qtyEl.value} leads`;
-    buyLeadsUpdateSummary();
-  };
 
   // Wire up radius select
   document.getElementById('buyLeadsRadius')?.addEventListener('change', buyLeadsUpdateSummary);
@@ -6677,8 +6014,10 @@ async function loadBuyLeads() {
 function renderBuyLeadsNiches(pricing) {
   const el = document.getElementById('buyLeadsNicheCards');
   if (!el) return;
-  el.innerHTML = pricing.map(p => {
-    const label = p.niche.charAt(0).toUpperCase() + p.niche.slice(1);
+  // Only show parent-niche rows (sub_niche is null) as top-level cards
+  const parentRows = pricing.filter(p => !p.sub_niche);
+  el.innerHTML = parentRows.map(p => {
+    const label = nicheLabel(p.niche);
     return `<button type="button" onclick="buyLeadsSelectNiche('${p.niche}', ${p.price_per_lead})"
       id="nicheCard-${p.niche}"
       style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
@@ -6687,12 +6026,70 @@ function renderBuyLeadsNiches(pricing) {
   }).join('');
 }
 
-function buyLeadsSelectNiche(niche, ppl) {
-  _blNiche = niche;
-  _blPPL   = ppl;
-  _blCity  = null;
+function renderBuyLeadsSubNiches(niche) {
+  const field = document.getElementById('buyLeadsSubNicheField');
+  const el    = document.getElementById('buyLeadsSubNicheCards');
+  const subs  = NICHE_SUB_NICHES[niche];
+  if (!field || !el || !subs) { if (field) field.style.display = 'none'; return; }
 
-  // Update card styles
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const parentPricing = _pplPricing.find(p => p.niche === niche && !p.sub_niche);
+  const parentPPL = parentPricing?.price_per_lead ?? null;
+
+  // "Any" option (skip sub-niche, use parent price)
+  const anyLabel = parentPPL !== null ? `Any ${nicheLabel(niche)} — ${fmt(parentPPL)}/lead` : `Any ${nicheLabel(niche)}`;
+  let html = `<button type="button" onclick="buyLeadsSelectSubNiche(null)"
+    id="subNicheCard-any"
+    style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+    ${anyLabel}
+  </button>`;
+
+  html += subs.map(s => {
+    const subRow = _pplPricing.find(p => p.niche === niche && p.sub_niche === s.id);
+    const ppl    = subRow?.price_per_lead ?? parentPPL;
+    const priceNote = ppl !== null ? ` — ${fmt(ppl)}/lead` : '';
+    return `<button type="button" onclick="buyLeadsSelectSubNiche('${s.id}')"
+      id="subNicheCard-${s.id}"
+      style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      ${s.label}${priceNote}
+    </button>`;
+  }).join('');
+
+  el.innerHTML = html;
+  field.style.display = '';
+}
+
+function renderBuyLeadsPacks() {
+  const el = document.getElementById('buyLeadsPackGrid');
+  if (!el) return;
+  if (!_blDiscountTiers.length) {
+    el.innerHTML = `<p style="font-size:13px;color:var(--muted)">No packs available.</p>`;
+    return;
+  }
+  el.innerHTML = _blDiscountTiers.map(t => {
+    const isSelected = t.min_quantity === _blQty;
+    const badge = t.discount_percent > 0
+      ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700;background:${isSelected ? 'rgba(255,255,255,0.25)' : '#22c55e22'};color:${isSelected ? '#fff' : '#16a34a'}">${t.discount_percent}% off</span>`
+      : '';
+    const popular = t.is_popular
+      ? `<div style="font-size:10px;font-weight:600;color:${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--accent,#4797FF)'};margin-top:2px">Most popular</div>`
+      : '';
+    return `<button type="button" id="packCard-${t.min_quantity}"
+      onclick="buyLeadsSelectPack(${t.min_quantity}, ${t.discount_percent})"
+      style="padding:12px 18px;border-radius:10px;border:1px solid ${isSelected ? '#4797FF' : 'var(--border)'};background:${isSelected ? '#4797FF' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
+      ${t.label}${badge}
+      ${popular}
+    </button>`;
+  }).join('');
+}
+
+function buyLeadsSelectNiche(niche, ppl) {
+  _blNiche    = niche;
+  _blPPL      = ppl;
+  _blSubNiche = null;
+  _blCity     = null;
+
+  // Update niche card styles
   document.querySelectorAll('[id^="nicheCard-"]').forEach(el => {
     el.style.background = '';
     el.style.borderColor = 'var(--border)';
@@ -6704,10 +6101,69 @@ function buyLeadsSelectNiche(niche, ppl) {
   // Reset downstream fields
   const cityEl = document.getElementById('buyLeadsCity');
   if (cityEl) cityEl.value = '';
+  document.getElementById('buyLeadsLocationField').style.display = 'none';
+  document.getElementById('buyLeadsQtyField').style.display = 'none';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  // Show sub-niche step if this niche has sub-niches; otherwise go straight to city
+  const hasSubs = !!NICHE_SUB_NICHES[niche];
+  if (hasSubs) {
+    renderBuyLeadsSubNiches(niche);
+    document.getElementById('buyLeadsCityField').style.display = 'none';
+  } else {
+    const subField = document.getElementById('buyLeadsSubNicheField');
+    if (subField) subField.style.display = 'none';
+    document.getElementById('buyLeadsCityField').style.display = '';
+  }
+}
+
+function buyLeadsSelectSubNiche(subNicheId) {
+  _blSubNiche = subNicheId;
+
+  // Resolve price for selected sub-niche (or parent if null)
+  const row = subNicheId
+    ? _pplPricing.find(p => p.niche === _blNiche && p.sub_niche === subNicheId)
+    : _pplPricing.find(p => p.niche === _blNiche && !p.sub_niche);
+  if (row) _blPPL = row.price_per_lead;
+
+  // Update sub-niche card styles
+  document.querySelectorAll('[id^="subNicheCard-"]').forEach(el => {
+    el.style.background = '';
+    el.style.borderColor = 'var(--border)';
+    el.style.color = 'var(--text,var(--ink))';
+  });
+  const cardId = subNicheId ? `subNicheCard-${subNicheId}` : 'subNicheCard-any';
+  const card = document.getElementById(cardId);
+  if (card) { card.style.background = '#4797FF'; card.style.borderColor = '#4797FF'; card.style.color = '#fff'; }
+
+  // Show city step
+  const cityEl = document.getElementById('buyLeadsCity');
+  if (cityEl) cityEl.value = '';
+  _blCity = null;
   document.getElementById('buyLeadsCityField').style.display = '';
   document.getElementById('buyLeadsLocationField').style.display = 'none';
   document.getElementById('buyLeadsQtyField').style.display = 'none';
   document.getElementById('buyLeadsSummary').style.display = 'none';
+}
+window.buyLeadsSelectSubNiche = buyLeadsSelectSubNiche;
+
+function buyLeadsSelectPack(qty, discountPct) {
+  _blQty      = qty;
+  _blDiscount = discountPct;
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (input) input.value = qty;
+  renderBuyLeadsPacks();
+  buyLeadsUpdateSummary();
+}
+
+// Returns the best active discount tier for a given quantity (highest min_qty ≤ qty)
+function blGetTierForQty(qty) {
+  let best = null;
+  for (const t of _blDiscountTiers) {
+    if (t.min_quantity <= qty) best = t;
+    else break;
+  }
+  return best;
 }
 
 function buyLeadsOnCityChange() {
@@ -6715,6 +6171,26 @@ function buyLeadsOnCityChange() {
   document.getElementById('buyLeadsLocationField').style.display = '';
   document.getElementById('buyLeadsQtyField').style.display = '';
   buyLeadsSetLocType(_blLocType);
+  renderBuyLeadsPacks();
+  // Wire custom qty input (only once — replace any prior listener by cloning)
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (input) {
+    const fresh = input.cloneNode(true);
+    input.parentNode.replaceChild(fresh, input);
+    fresh.value = _blQty;
+    fresh.addEventListener('input', buyLeadsOnCustomQtyChange);
+  }
+  buyLeadsUpdateSummary();
+}
+
+function buyLeadsOnCustomQtyChange() {
+  const input = document.getElementById('buyLeadsCustomQty');
+  const raw = parseInt(input?.value || '0');
+  if (isNaN(raw) || raw < 10) return; // wait until valid
+  _blQty = raw;
+  const tier = blGetTierForQty(_blQty);
+  _blDiscount = tier ? tier.discount_percent : 0;
+  renderBuyLeadsPacks(); // re-render to reflect active state
   buyLeadsUpdateSummary();
 }
 
@@ -6734,9 +6210,9 @@ function buyLeadsSetLocType(type) {
 
 function buyLeadsUpdateSummary() {
   if (!_blNiche || !_blCity || !_blPPL) return;
+  if (_blQty < 10) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
 
-  const qty  = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
-  const fmt  = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
 
   let coverage = '';
   if (_blLocType === 'postcodes') {
@@ -6749,20 +6225,42 @@ function buyLeadsUpdateSummary() {
     coverage = `${radius}km radius`;
   }
 
-  document.getElementById('buyLeadsSumNiche').textContent    = _blNiche.charAt(0).toUpperCase() + _blNiche.slice(1);
+  const subtotal = _blQty * _blPPL;
+  const saving   = subtotal * (_blDiscount / 100);
+  const total    = subtotal - saving;
+
+  document.getElementById('buyLeadsSumNiche').textContent    = nicheLabel(_blNiche);
+  const subNicheRow = document.getElementById('buyLeadsSumSubNicheRow');
+  if (subNicheRow) {
+    if (_blSubNiche) {
+      document.getElementById('buyLeadsSumSubNiche').textContent = subNicheLabel(_blSubNiche);
+      subNicheRow.style.display = 'flex';
+    } else {
+      subNicheRow.style.display = 'none';
+    }
+  }
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
-  document.getElementById('buyLeadsSumQty').textContent      = `${qty} leads`;
+  document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
   document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
-  document.getElementById('buyLeadsSumTotal').textContent    = fmt(qty * _blPPL);
-  document.getElementById('buyLeadsSummary').style.display   = '';
+  document.getElementById('buyLeadsSumTotal').textContent    = fmt(total);
 
+  const discRow = document.getElementById('buyLeadsSumDiscountRow');
+  if (discRow) {
+    if (_blDiscount > 0) {
+      document.getElementById('buyLeadsSumDiscount').textContent = `−${fmt(saving)} (${_blDiscount}% off)`;
+      discRow.style.display = 'flex';
+    } else {
+      discRow.style.display = 'none';
+    }
+  }
+
+  document.getElementById('buyLeadsSummary').style.display = '';
   const btn = document.getElementById('buyLeadsCheckoutBtn');
   if (btn) btn.onclick = () => startPplCheckout();
 }
 
 async function startPplCheckout() {
-  const qty       = parseInt(document.getElementById('buyLeadsQty')?.value || 10);
   const radius    = parseInt(document.getElementById('buyLeadsRadius')?.value || 50);
   const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
 
@@ -6780,11 +6278,12 @@ async function startPplCheckout() {
       body: JSON.stringify({
         company_id:    currentCompanyId,
         niche:         _blNiche,
+        sub_niche:     _blSubNiche || null,
         area_city:     _blCity,
         location_type: _blLocType,
         radius_km:     _blLocType === 'radius' ? radius : null,
         postcode_list: _blLocType === 'postcodes' ? postcodes : null,
-        quantity:      qty,
+        quantity:      _blQty,
       }),
     });
     const data = await res.json();
@@ -6814,10 +6313,10 @@ function renderBuyLeadsOrders(orders) {
   if (pending.length) {
     html += pending.map(o => {
       const city  = o.area_city || o.area || '—';
-      const label = `${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
+      const pendingNicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
+      const label = `${pendingNicheDisplay} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
-          <span style="font-size:18px">⚠️</span>
           <div>
             <div style="font-size:13px;font-weight:600;color:#92400e">Payment not completed</div>
             <div style="font-size:12px;color:#b45309;margin-top:1px">${label}</div>
@@ -6847,8 +6346,9 @@ function renderBuyLeadsOrders(orders) {
       const coverage = o.location_type === 'postcodes'
         ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
         : `${o.radius_km || 50}km radius`;
+      const nicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
       return `<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:10px">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+        <td style="padding:10px">${nicheDisplay}</td>
         <td style="padding:10px">${city}</td>
         <td style="padding:10px;color:var(--muted)">${coverage}</td>
         <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
@@ -6881,6 +6381,7 @@ async function retryPplOrder(orderId) {
       body: JSON.stringify({
         company_id:    currentCompanyId,
         niche:         o.niche,
+        sub_niche:     o.sub_niche || null,
         area_city:     o.area_city || o.area,
         location_type: o.location_type || 'radius',
         radius_km:     o.radius_km || 50,
@@ -6928,103 +6429,75 @@ async function deletePendingOrderFromSettings(orderId) {
 }
 window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
 
-// =============================================================================
-// Advertising System Gating
-// =============================================================================
-
-function applyAdvertisingSystemGating(hasAdSystem, onboardingCompleted) {
-  // Gate the AI Settings nav item
-  const navAi = document.getElementById("navAiSettings");
-  if (navAi) {
-    if (!hasAdSystem) {
-      navAi.setAttribute("data-locked", "true");
-      navAi.title = "Requires Advertising System";
-    } else {
-      navAi.removeAttribute("data-locked");
-      navAi.title = "";
-    }
-  }
-
-  // Inject upsell banner into the AI settings page if not unlocked
-  const aiPage = document.getElementById("page-ai-settings");
-  if (aiPage && !hasAdSystem) {
-    const existing = document.getElementById("adSystemUpsell");
-    if (!existing) {
-      const banner = document.createElement("div");
-      banner.id = "adSystemUpsell";
-      banner.style.cssText = "margin:24px;padding:28px 32px;background:linear-gradient(135deg,#0a0b0f 0%,#1a1d2e 100%);border-radius:16px;color:#fff;text-align:center";
-      banner.innerHTML = `
-        <div style="margin-bottom:16px;display:flex;justify-content:center">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4797FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
-        </div>
-        <h2 style="font-size:20px;font-weight:700;margin:0 0 8px">Unlock the Advertising System</h2>
-        <p style="color:#aaa;font-size:14px;line-height:1.6;margin:0 0 24px;max-width:420px;margin-left:auto;margin-right:auto">
-          Get a dedicated AI SMS number, AI lead qualification, Meta &amp; Google ad campaign management, and landing pages — all in one place.
-        </p>
-        <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-          ${["AI SMS Agent", "AI SMS Number", "Meta & Google Ads", "Landing Pages"].map(f =>
-            `<span style="background:#ffffff18;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:500">${f}</span>`
-          ).join("")}
-        </div>
-        <button id="unlockAdSystemBtn" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:14px 32px;font-size:15px;font-weight:600;cursor:pointer">
-          Unlock for $2,500 + GST →
-        </button>
-        <p style="color:#555;font-size:11px;margin-top:12px">One-time payment. Yours forever.</p>
-      `;
-      aiPage.insertBefore(banner, aiPage.firstChild);
-
-      document.getElementById("unlockAdSystemBtn")?.addEventListener("click", async () => {
-        const btn = document.getElementById("unlockAdSystemBtn");
-        if (btn) { btn.disabled = true; btn.textContent = "Redirecting…"; }
-        try {
-          const { data: { session } } = await sb.auth.getSession();
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/create-advert-upgrade-checkout`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${session.access_token}`,
-              "apikey": SUPABASE_ANON_KEY,
-            },
-          });
-          const data = await res.json();
-          if (!res.ok || !data.url) throw new Error(data.error || "No checkout URL");
-          window.location.href = data.url;
-        } catch (err) {
-          toast(err.message || "Failed to start checkout.", true);
-          if (btn) { btn.disabled = false; btn.textContent = "Unlock for $2,500 + GST →"; }
-        }
-      });
-    }
-
-    // Hide the rest of the AI settings content behind the upsell
-    const aiContent = aiPage.querySelector(".panel-b, .panel");
-    if (aiContent) aiContent.style.filter = "blur(4px) opacity(0.3)";
-    if (aiContent) aiContent.style.pointerEvents = "none";
-  }
-
-  // When ad system is active but onboarding not finished, show a resume button
-  // in the AI Agent page so users can reopen the wizard at any time
-  if (aiPage && hasAdSystem && !onboardingCompleted) {
-    const existing = document.getElementById("adSetupResumeBanner");
-    if (!existing) {
-      const banner = document.createElement("div");
-      banner.id = "adSetupResumeBanner";
-      banner.style.cssText = "margin:24px 24px 0;padding:16px 20px;background:rgba(71,151,255,0.08);border:1px solid rgba(71,151,255,0.25);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap";
-      banner.innerHTML = `
-        <div>
-          <div style="font-weight:600;color:#f5f5f5;font-size:14px;margin-bottom:3px">Setup not complete</div>
-          <div style="font-size:13px;color:#9a9a9a">Your ads and landing page aren't live yet — finish the setup wizard to go live.</div>
-        </div>
-        <button onclick="resumeAdSetup()" style="background:#4797FF;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:inherit">Resume Setup →</button>
-      `;
-      aiPage.insertBefore(banner, aiPage.firstChild);
-    }
-  }
-}
 
 // =============================================================================
 // PPL Admin (super admin only)
 // =============================================================================
+
+// =============================================================================
+// Add to Home Screen (PWA install prompt — shown once per new device/user)
+// =============================================================================
+
+let _a2hsDeferredPrompt = null;
+
+// Capture the Android/Chrome install prompt before it fires automatically
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _a2hsDeferredPrompt = e;
+});
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function isInStandaloneMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+}
+
+function isMobileDevice() {
+  if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+    return navigator.userAgentData.mobile;
+  }
+  return navigator.maxTouchPoints > 0 && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+}
+
+function maybeShowInstallPrompt(userId) {
+  // Desktop browsers — home screen prompt is not relevant
+  if (!isMobileDevice()) return;
+
+  // Already installed as a standalone app — no need to prompt
+  if (isInStandaloneMode()) return;
+
+  const storageKey = `ql_aths_${userId}`;
+  if (localStorage.getItem(storageKey)) return; // already shown to this user on this device
+
+  const banner = document.getElementById('a2hsBanner');
+  if (!banner) return;
+
+  // Mark as shown so it never repeats
+  localStorage.setItem(storageKey, '1');
+
+  const instructions = document.getElementById('a2hsInstructions');
+  const installBtn   = document.getElementById('a2hsInstallBtn');
+  const dismissBtn   = document.getElementById('a2hsDismissBtn');
+
+  if (isIosDevice()) {
+    // iOS Safari: manual instructions
+    if (instructions) instructions.textContent = 'Tap the Share button (↑) in Safari then "Add to Home Screen".';
+    setTimeout(() => { banner.style.display = ''; }, 1500);
+  } else if (_a2hsDeferredPrompt) {
+    // Android/Chrome: native install prompt available
+    if (instructions) instructions.textContent = 'Install for quick access — works like a native app, no app store needed.';
+    if (installBtn) installBtn.style.display = '';
+    if (installBtn) installBtn.addEventListener('click', async () => {
+      banner.style.display = 'none';
+      _a2hsDeferredPrompt.prompt();
+      await _a2hsDeferredPrompt.userChoice;
+      _a2hsDeferredPrompt = null;
+    });
+    setTimeout(() => { banner.style.display = ''; }, 1500);
+  }
+
+  if (dismissBtn) dismissBtn.addEventListener('click', () => { banner.style.display = 'none'; });
+}
 

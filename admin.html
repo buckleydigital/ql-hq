@@ -165,26 +165,11 @@ h1{font-size:18px;font-weight:500}
 
     <!-- Warning notice -->
     <div class="notice warn" style="margin-bottom:20px">
-      ⚠️ <strong>Impersonation is immediate and permanent until you sign out.</strong>
+      <strong>Warning: Impersonation is immediate and permanent until you sign out.</strong>
       Clicking "Login as" will replace your current session with the selected user's session and redirect to the dashboard.
       The target user will <em>not</em> receive any email or notification about the impersonation.
     </div>
 
-    <!-- Manual Tasks panel -->
-    <div class="card" style="margin-bottom:20px" id="manualTasksCard">
-      <div class="panel-h">
-        <div>
-          <h2>⚡ Manual Tasks</h2>
-          <p id="manualTaskCountLabel">Actions required by the QuoteLeadsHQ team.</p>
-        </div>
-        <button class="btn btn-sm" id="refreshManualTasksBtn" type="button">Refresh</button>
-      </div>
-      <div class="panel-b">
-        <div id="manualTaskLoadingState" class="notice">Loading…</div>
-        <div id="manualTaskList" class="hidden"></div>
-        <div id="manualTaskEmptyState" class="notice hidden">✓ No pending manual tasks.</div>
-      </div>
-    </div>
 
     <!-- Create Account panel -->
     <div class="card" style="margin-bottom:20px">
@@ -279,11 +264,60 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-h">
         <div>
           <h2>PPL Pricing</h2>
-          <p>Fixed price per lead by niche. Changes take effect on the next order.</p>
+          <p>Price per lead by niche / sub-niche / city. Changes take effect on the next order.</p>
+        </div>
+        <div class="filter-bar">
+          <select id="pplPriceNicheFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All niches</option>
+            <option value="solar">Solar</option>
+            <option value="solar_battery">Solar Battery</option>
+            <option value="roofing">Roofing</option>
+            <option value="hvac">HVAC</option>
+            <option value="renovation">Renovation</option>
+          </select>
+          <select id="pplPriceSubNicheFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All sub-niches</option>
+            <option value="__none__">— Parent niche only —</option>
+            <optgroup label="HVAC"><option value="split_ducted">Split &amp; Ducted</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>
+            <optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal</option></optgroup>
+            <optgroup label="Renovation"><option value="kitchen">Kitchen</option><option value="bathroom">Bathroom</option></optgroup>
+          </select>
+          <select id="pplPriceAreaFilter" class="filter-select" onchange="applyPricingFilter()">
+            <option value="">All cities</option>
+            <option value="__default__">— Default (no city) —</option>
+            <option value="Brisbane">Brisbane</option>
+            <option value="Gold Coast">Gold Coast</option>
+            <option value="Sunshine Coast">Sunshine Coast</option>
+            <option value="Toowoomba">Toowoomba</option>
+            <option value="Townsville">Townsville</option>
+            <option value="Cairns">Cairns</option>
+            <option value="Sydney">Sydney</option>
+            <option value="Newcastle">Newcastle</option>
+            <option value="Wollongong">Wollongong</option>
+            <option value="Central Coast">Central Coast</option>
+            <option value="Melbourne">Melbourne</option>
+            <option value="Geelong">Geelong</option>
+            <option value="Perth">Perth</option>
+            <option value="Adelaide">Adelaide</option>
+            <option value="Canberra">Canberra</option>
+          </select>
         </div>
       </div>
       <div class="panel-b">
         <div id="pplPricingTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- Volume Discount Tiers panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Volume Discount Tiers</h2>
+          <p>Pack-size discounts shown on both the public buy-leads page and the dashboard. Changes take effect immediately.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="volumeDiscountTiersTable"><div class="notice">Loading…</div></div>
       </div>
     </div>
 
@@ -301,7 +335,8 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label><select id="adminCampSubNiche" class="form-input"><option value="">— None —</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup><optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup><optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Campaign ID</label><input id="adminCampId" class="form-input" type="text" placeholder="Campaign ID"></div>
@@ -331,9 +366,23 @@ h1{font-size:18px;font-weight:500}
           <select id="pplLeadNicheFilter" class="filter-select">
             <option value="">All niches</option>
             <option value="solar">Solar</option>
-            <option value="roofing">Roofing</option>
-            <option value="hvac">HVAC</option>
-            <option value="renovation">Renovation</option>
+            <option value="solar_battery">Solar Battery</option>
+            <optgroup label="Roofing">
+              <option value="roofing">Roofing (any)</option>
+              <option value="roofing:all_restorations">↳ All Restorations</option>
+              <option value="roofing:all_replacements">↳ All Replacements</option>
+              <option value="roofing:tile_metal">↳ Tile-to-Metal</option>
+            </optgroup>
+            <optgroup label="HVAC">
+              <option value="hvac">HVAC (any)</option>
+              <option value="hvac:split_ducted">↳ Split &amp; Ducted</option>
+              <option value="hvac:installations_maintenance">↳ Installations &amp; Maintenance</option>
+            </optgroup>
+            <optgroup label="Renovation">
+              <option value="renovation">Renovation (any)</option>
+              <option value="renovation:kitchen">↳ Kitchen</option>
+              <option value="renovation:bathroom">↳ Bathroom</option>
+            </optgroup>
           </select>
           <select id="pplLeadStatusFilter" class="filter-select">
             <option value="">All statuses</option>
@@ -391,7 +440,6 @@ h1{font-size:18px;font-weight:500}
           <select id="signupAttemptTypeFilter" class="filter-select">
             <option value="">All types</option>
             <option value="ppl_signup">PPL Signup</option>
-            <option value="advertising_system">Advertising System</option>
           </select>
           <select id="signupAttemptStatusFilter" class="filter-select">
             <option value="">All statuses</option>
@@ -471,25 +519,6 @@ h1{font-size:18px;font-weight:500}
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
         <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
         <span style="font-size:12px;font-weight:500">Super Admin access</span>
-      </label>
-    </div>
-    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Advertising System</div>
-    <div class="form-row" style="margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
-        <input type="checkbox" id="editUserHasAdSystem" style="accent-color:#4797FF;width:16px;height:16px;flex-shrink:0">
-        <div>
-          <div style="font-size:12px;font-weight:500">Has advertising system</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">Unlocks the ad onboarding wizard and campaign tools</div>
-        </div>
-      </label>
-    </div>
-    <div class="form-row" style="margin-bottom:16px">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
-        <input type="checkbox" id="editUserOnboardingDone" style="accent-color:#22c55e;width:16px;height:16px;flex-shrink:0">
-        <div>
-          <div style="font-size:12px;font-weight:500">Onboarding completed</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">Marks the wizard as finished — uncheck to force re-onboarding</div>
-        </div>
       </label>
     </div>
     <div class="modal-actions">
@@ -624,6 +653,10 @@ h1{font-size:18px;font-weight:500}
       throw new Error(data.error || 'Request failed (HTTP ' + res.status + ')');
     }
     return data;
+  }
+
+  function nicheLabel(niche) {
+    return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
   }
 
   // ── Render user list ──────────────────────────────────────────────────────
@@ -832,8 +865,6 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('editUserName').value  = u.full_name || '';
     document.getElementById('editUserEmail').value = u.email || '';
     document.getElementById('editUserIsAdmin').checked      = !!u.is_admin;
-    document.getElementById('editUserHasAdSystem').checked  = !!u.has_advertising_system;
-    document.getElementById('editUserOnboardingDone').checked = !!u.onboarding_completed;
     document.getElementById('editUserModal').classList.remove('hidden');
   }
 
@@ -855,8 +886,6 @@ h1{font-size:18px;font-weight:500}
     var full_name             = document.getElementById('editUserName').value.trim();
     var email                 = document.getElementById('editUserEmail').value.trim().toLowerCase();
     var is_admin              = document.getElementById('editUserIsAdmin').checked;
-    var has_advertising_system = document.getElementById('editUserHasAdSystem').checked;
-    var onboarding_completed  = document.getElementById('editUserOnboardingDone').checked;
 
     if (!full_name) { toast('Full name is required.', true); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Valid email required.', true); return; }
@@ -865,9 +894,9 @@ h1{font-size:18px;font-weight:500}
     btn.textContent = 'Saving…';
 
     try {
-      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin, has_advertising_system, onboarding_completed });
+      await callEdge({ action: 'update_user', user_id: editingUserId, full_name, email, is_admin });
       var u = allUsers.find(function (x) { return x.id === editingUserId; });
-      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; u.has_advertising_system = has_advertising_system; u.onboarding_completed = onboarding_completed; }
+      if (u) { u.full_name = full_name; u.email = email; u.is_admin = is_admin; }
       document.getElementById('editUserModal').classList.add('hidden');
       editingUserId = null;
       applyFilter(document.getElementById('searchInput').value);
@@ -1300,6 +1329,9 @@ h1{font-size:18px;font-weight:500}
     // 8. Load PPL pricing panel
     await loadPplPricing();
 
+    // 8b. Load volume discount tiers
+    await loadVolumeTiers();
+
     // 9. Load PPL campaign registry
     await loadPplCampaigns();
 
@@ -1312,108 +1344,7 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
     document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
 
-    // 12. Load manual tasks panel
-    await loadManualTasks();
-    document.getElementById('refreshManualTasksBtn').addEventListener('click', loadManualTasks);
-  }
-
-  // ── Manual Tasks ──────────────────────────────────────────────────────────
-  async function loadManualTasks() {
-    var loadingEl  = document.getElementById('manualTaskLoadingState');
-    var listEl     = document.getElementById('manualTaskList');
-    var emptyEl    = document.getElementById('manualTaskEmptyState');
-    var countLabel = document.getElementById('manualTaskCountLabel');
-    if (!loadingEl || !listEl || !emptyEl) return;
-
-    loadingEl.classList.remove('hidden');
-    listEl.classList.add('hidden');
-    emptyEl.classList.add('hidden');
-
-    // Companies with Google connected but no campaign created yet
-    var { data: googleTasks } = await sb
-      .from('companies')
-      .select('id, name, slug, google_ads_customer_id, google_campaign_id, generated_ad_copy, generated_page_url, onboarding_completed')
-      .not('google_ads_customer_id', 'is', null)
-      .is('google_campaign_id', null)
-      .eq('onboarding_completed', true)
-      .order('name');
-
-    var tasks = [];
-
-    (googleTasks || []).forEach(function(c) {
-      var adCopy = c.generated_ad_copy || {};
-      tasks.push({
-        type: 'google_campaign',
-        company_id: c.id,
-        company_name: c.name,
-        customer_id: c.google_ads_customer_id,
-        landing_url: c.generated_page_url || '—',
-        keywords: (adCopy.google_keywords || []).slice(0, 5).join(', ') || '—',
-        headlines_count: (adCopy.google_headlines || []).length,
-        niche: adCopy.niche || '—',
-      });
-    });
-
-    loadingEl.classList.add('hidden');
-    countLabel.textContent = tasks.length + ' pending task' + (tasks.length !== 1 ? 's' : '') + ' requiring manual action.';
-
-    if (tasks.length === 0) {
-      emptyEl.classList.remove('hidden');
-      return;
-    }
-
-    listEl.innerHTML = tasks.map(function(t) {
-      if (t.type === 'google_campaign') {
-        return '<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface-2)">' +
-          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
-            '<div>' +
-              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-                '<span style="background:rgba(66,133,244,0.12);color:#4285F4;border:1px solid rgba(66,133,244,0.3);border-radius:6px;font-size:11px;font-weight:600;padding:2px 8px">Google Ads</span>' +
-                '<span style="font-size:13px;font-weight:600">' + escHtml(t.company_name) + '</span>' +
-              '</div>' +
-              '<div style="font-size:12px;color:var(--muted);line-height:1.7">' +
-                '<div><strong>Customer ID:</strong> ' + escHtml(t.customer_id) + '</div>' +
-                '<div><strong>Niche:</strong> ' + escHtml(t.niche) + '</div>' +
-                '<div><strong>Landing page:</strong> <a href="' + escHtml(t.landing_url) + '" target="_blank" style="color:var(--accent)">' + escHtml(t.landing_url) + '</a></div>' +
-                '<div><strong>Sample keywords:</strong> ' + escHtml(t.keywords) + '</div>' +
-                '<div><strong>RSA headlines ready:</strong> ' + t.headlines_count + '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
-              '<button onclick="adminMarkGoogleDone(\'' + t.company_id + '\', this)" class="btn2 btn-sm" style="white-space:nowrap">✓ Mark done</button>' +
-              '<span style="font-size:11px;color:var(--muted)">Set up in Google Ads UI</span>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      }
-      return '';
-    }).join('');
-
-    listEl.classList.remove('hidden');
-  }
-
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  async function adminMarkGoogleDone(companyId, btn) {
-    var campaignId = prompt('Enter the Google Campaign ID you just created:');
-    if (!campaignId || !campaignId.trim()) return;
-    btn.disabled = true;
-    btn.textContent = '…';
-    var { error } = await sb
-      .from('companies')
-      .update({ google_campaign_id: campaignId.trim(), campaign_status: 'active' })
-      .eq('id', companyId);
-    if (error) {
-      alert('Error saving: ' + error.message);
-      btn.disabled = false;
-      btn.textContent = '✓ Mark done';
-    } else {
-      await loadManualTasks();
-    }
-  }
+  } // end boot()
 
   // ── Companies ─────────────────────────────────────────────────────────────
   var allCompaniesPanel = [];
@@ -1587,7 +1518,7 @@ h1{font-size:18px;font-weight:500}
 
   function renderPplLeadOrderRow(o) {
     var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
-    var niche       = (o.niche || '').charAt(0).toUpperCase() + (o.niche || '').slice(1);
+    var niche       = nicheLabel(o.niche) + (o.sub_niche ? ' › ' + nicheLabel(o.sub_niche) : '');
     var locDesc     = o.location_type === 'postcodes'
       ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
       : escapeHtml(o.area_city || '') + ' — ' + (o.radius_km || 50) + 'km radius';
@@ -1620,12 +1551,17 @@ h1{font-size:18px;font-weight:500}
   }
 
   function applyPplLeadFilter() {
-    var company = document.getElementById('pplLeadCompanyFilter').value;
-    var niche   = document.getElementById('pplLeadNicheFilter').value;
-    var status  = document.getElementById('pplLeadStatusFilter').value;
+    var company    = document.getElementById('pplLeadCompanyFilter').value;
+    var nicheRaw   = document.getElementById('pplLeadNicheFilter').value;
+    var status     = document.getElementById('pplLeadStatusFilter').value;
+    var nicheParts = nicheRaw ? nicheRaw.split(':') : [];
+    var nicheVal   = nicheParts[0] || '';
+    var subNicheVal = nicheParts[1] || '';
     var filtered = allPplLeadOrders.filter(function (o) {
+      var nicheMatch = !nicheVal || o.niche === nicheVal;
+      var subNicheMatch = !subNicheVal || (o.sub_niche || '') === subNicheVal;
       return (!company || o.company_id === company) &&
-             (!niche   || o.niche === niche) &&
+             nicheMatch && subNicheMatch &&
              (!status  || o.status === status);
     });
     var listEl  = document.getElementById('pplLeadOrderList');
@@ -1647,28 +1583,54 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('pplLeadStatusFilter').addEventListener('change', applyPplLeadFilter);
 
   // ── PPL Pricing ───────────────────────────────────────────────────────────
+  var allPricingRows = [];
+
   async function loadPplPricing() {
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
     try {
-      var { data, error } = await sb.from('ppl_pricing').select('id, niche, area, price_per_lead').order('niche').order('area');
+      var { data, error } = await sb.from('ppl_pricing').select('id, niche, sub_niche, area, price_per_lead').order('niche').order('sub_niche').order('area');
       if (error) throw error;
-      renderPplPricing(data || []);
+      allPricingRows = data || [];
+      applyPricingFilter();
     } catch (err) {
       el.innerHTML = '<div class="notice">Failed to load pricing: ' + escapeHtml(err.message) + '</div>';
     }
   }
 
-  function renderPplPricing(rows) {
+  window.applyPricingFilter = function () {
+    var nicheVal    = document.getElementById('pplPriceNicheFilter')?.value    || '';
+    var subNicheVal = document.getElementById('pplPriceSubNicheFilter')?.value || '';
+    var areaVal     = document.getElementById('pplPriceAreaFilter')?.value     || '';
+    var filtered = allPricingRows.filter(function (p) {
+      var nicheOk    = !nicheVal    || p.niche === nicheVal;
+      var subOk      = !subNicheVal || (subNicheVal === '__none__' ? !p.sub_niche : p.sub_niche === subNicheVal);
+      var areaOk     = !areaVal     || (areaVal === '__default__'  ? !p.area      : p.area      === areaVal);
+      return nicheOk && subOk && areaOk;
+    });
+    renderPplPricing(filtered, allPricingRows.length);
+  };
+
+  function renderPplPricing(rows, totalCount) {
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
+    var countNote = totalCount !== undefined && totalCount !== rows.length
+      ? ' <span style="color:var(--muted);font-weight:400">(' + rows.length + ' of ' + totalCount + ' shown)</span>'
+      : ' <span style="color:var(--muted);font-weight:400">(' + rows.length + ' rows)</span>';
     var addForm =
       '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:10px;border:1px solid var(--border)">' +
         '<div style="font-size:12px;font-weight:600;margin-bottom:10px">Add Pricing Row</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>' +
           '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
-            '<option value="solar">Solar</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option>' +
+            '<option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option>' +
+          '</select></div>' +
+          '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Sub-Niche <span style="font-weight:400">(blank = parent niche default)</span></label>' +
+          '<select id="addPriceSubNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
+            '<option value="">— None (parent niche) —</option>' +
+            '<optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>' +
+            '<optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup>' +
+            '<optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup>' +
           '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Area <span style="font-weight:400">(blank = default)</span></label>' +
           '<input id="addPriceArea" type="text" placeholder="e.g. Brisbane" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px"></div>' +
@@ -1679,22 +1641,26 @@ h1{font-size:18px;font-weight:500}
       '</div>';
 
     if (!rows.length) {
-      el.innerHTML = addForm + '<div class="notice">No pricing rows yet. Add one above.</div>';
+      el.innerHTML = addForm + '<div class="notice">No pricing rows match the current filter.</div>';
       return;
     }
 
     el.innerHTML = addForm +
-      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Pricing rows' + countNote + '</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
-        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Sub-Niche</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">City</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price / Lead (AUD)</th>' +
         '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
       '</tr></thead><tbody>' +
       rows.map(function (p) {
-        var areaLabel = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">Default (all areas)</span>';
+        var areaLabel     = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">All areas</span>';
+        var subNicheLabel = p.sub_niche ? escapeHtml(nicheLabel(p.sub_niche)) : '<span style="color:var(--muted);font-style:italic">—</span>';
         return '<tr id="pricingRow-' + p.id + '">' +
-          '<td style="padding:8px 10px;font-weight:600;text-transform:capitalize">' + escapeHtml(p.niche) + '</td>' +
+          '<td style="padding:8px 10px;font-weight:600">' + escapeHtml(nicheLabel(p.niche)) + '</td>' +
+          '<td style="padding:8px 10px">' + subNicheLabel + '</td>' +
           '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
           '<td style="padding:8px 10px;display:flex;gap:6px">' +
@@ -1703,20 +1669,22 @@ h1{font-size:18px;font-weight:500}
           '</td>' +
         '</tr>';
       }).join('') +
-      '</tbody></table>';
+      '</tbody></table></div>';
   }
 
   window.addPricingRow = async function () {
-    var niche = document.getElementById('addPriceNiche').value;
-    var area  = document.getElementById('addPriceArea').value.trim() || null;
-    var price = parseFloat(document.getElementById('addPriceValue').value);
+    var niche    = document.getElementById('addPriceNiche').value;
+    var subNiche = document.getElementById('addPriceSubNiche').value.trim() || null;
+    var area     = document.getElementById('addPriceArea').value.trim() || null;
+    var price    = parseFloat(document.getElementById('addPriceValue').value);
     if (isNaN(price) || price <= 0) { toast('Enter a valid price.', true); return; }
-    var { error } = await sb.from('ppl_pricing').insert({ niche, area, price_per_lead: price });
+    var { error } = await sb.from('ppl_pricing').insert({ niche, sub_niche: subNiche, area, price_per_lead: price });
     if (error) { toast(error.message, true); return; }
     toast('Pricing row added.');
-    document.getElementById('addPriceArea').value  = '';
-    document.getElementById('addPriceValue').value = '';
-    await loadPplPricing();
+    document.getElementById('addPriceSubNiche').value = '';
+    document.getElementById('addPriceArea').value     = '';
+    document.getElementById('addPriceValue').value    = '';
+    await loadPplPricing();  // reload all rows, then reapply filter
   };
 
   window.deletePricingRow = async function (id) {
@@ -1725,6 +1693,74 @@ h1{font-size:18px;font-weight:500}
     if (error) { toast(error.message, true); return; }
     toast('Row deleted.');
     await loadPplPricing();
+  };
+
+  // ── Volume Discount Tiers ──────────────────────────────────────────────────
+  async function loadVolumeTiers() {
+    var el = document.getElementById('volumeDiscountTiersTable');
+    if (!el) return;
+    try {
+      var { data, error } = await sb
+        .from('volume_discount_tiers')
+        .select('id, min_quantity, discount_percent, label, is_popular, active, sort_order')
+        .order('sort_order');
+      if (error) throw error;
+      renderVolumeTiers(data || []);
+    } catch (err) {
+      el.innerHTML = '<div class="notice">Failed to load discount tiers: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderVolumeTiers(rows) {
+    var el = document.getElementById('volumeDiscountTiersTable');
+    if (!el) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="notice">No tiers found. Run the migration to seed the default tiers.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Label</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Min Qty</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Discount %</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Popular</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Active</th>' +
+        '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (t) {
+        return '<tr id="tierRow-' + t.id + '">' +
+          '<td style="padding:8px 10px"><input type="text" value="' + escapeHtml(t.label) + '" data-field="label" data-id="' + t.id + '" style="width:110px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" min="1" value="' + t.min_quantity + '" data-field="min_quantity" data-id="' + t.id + '" style="width:72px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px"><input type="number" min="0" max="100" value="' + t.discount_percent + '" data-field="discount_percent" data-id="' + t.id + '" style="width:72px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="is_popular" data-id="' + t.id + '"' + (t.is_popular ? ' checked' : '') + '></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="active" data-id="' + t.id + '"' + (t.active ? ' checked' : '') + '></td>' +
+          '<td style="padding:8px 10px;display:flex;gap:6px">' +
+            '<button class="btn2 btn-sm" onclick="saveVolumeTier(\'' + t.id + '\')">Save</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  window.saveVolumeTier = async function (id) {
+    var row = document.getElementById('tierRow-' + id);
+    if (!row) return;
+    var label            = row.querySelector('[data-field="label"]').value.trim();
+    var min_quantity     = parseInt(row.querySelector('[data-field="min_quantity"]').value);
+    var discount_percent = parseInt(row.querySelector('[data-field="discount_percent"]').value);
+    var is_popular       = row.querySelector('[data-field="is_popular"]').checked;
+    var active           = row.querySelector('[data-field="active"]').checked;
+    if (!label || isNaN(min_quantity) || isNaN(discount_percent)) {
+      toast('Invalid values — check label, quantity and discount.', true);
+      return;
+    }
+    var { error } = await sb
+      .from('volume_discount_tiers')
+      .update({ label, min_quantity, discount_percent, is_popular, active })
+      .eq('id', id);
+    if (error) { toast(error.message, true); return; }
+    toast('Tier saved.');
   };
 
   // ── PPL Campaign Registry ─────────────────────────────────────────────────
@@ -1834,7 +1870,7 @@ h1{font-size:18px;font-weight:500}
     const typeFilter   = document.getElementById('signupAttemptTypeFilter').value;
     const statusFilter = document.getElementById('signupAttemptStatusFilter').value;
 
-    let q = supabase.from('signup_attempts').select('*').order('created_at', { ascending: false }).limit(200);
+    let q = sb.from('signup_attempts').select('*').order('created_at', { ascending: false }).limit(200);
     if (typeFilter)   q = q.eq('type', typeFilter);
     if (statusFilter) q = q.eq('status', statusFilter);
 
@@ -1852,9 +1888,8 @@ h1{font-size:18px;font-weight:500}
     const statusBadge = s => s === 'completed'
       ? `<span style="background:#22c55e22;color:#22c55e;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Completed</span>`
       : `<span style="background:#f59e0b22;color:#f59e0b;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">Abandoned</span>`;
-    const typeBadge = t => t === 'advertising_system'
-      ? `<span style="background:#4797FF22;color:#4797FF;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">Ad System</span>`
-      : `<span style="background:#a78bfa22;color:#a78bfa;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">PPL</span>`;
+    const typeBadge = t =>
+      `<span style="background:#a78bfa22;color:#a78bfa;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px">${t}</span>`;
 
     list.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted);text-align:left">
@@ -1876,7 +1911,7 @@ h1{font-size:18px;font-weight:500}
         <td style="padding:8px 10px"><a href="mailto:${escapeHtml(r.email || '')}" style="color:var(--accent)">${escapeHtml(r.email || '—')}</a></td>
         <td style="padding:8px 10px">${escapeHtml(r.phone || '—')}</td>
         <td style="padding:8px 10px;color:var(--muted)">${r.type === 'ppl_signup'
-          ? escapeHtml(`${r.niche || ''} · ${r.area_city || ''} · ${r.quantity || ''} leads`)
+          ? escapeHtml(`${nicheLabel(r.niche)} · ${r.area_city || ''} · ${r.quantity || ''} leads`)
           : escapeHtml(`${r.industry || ''} · ${r.service_location || ''} · ${r.service_radius || ''}`)
         }</td>
       </tr>`).join('')}</tbody>

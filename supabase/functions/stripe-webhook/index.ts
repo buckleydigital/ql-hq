@@ -36,17 +36,9 @@ serve(async (req) => {
     case 'ppl_signup':
       await handlePplSignupPayment(session, m)
       break
-    case 'advertising_system':
-      await handleAdvertisingSystemPayment(session, m)
-      break
-    case 'advertising_system_upgrade':
-      await handleAdvertisingSystemUpgrade(session, m)
-      break
     case 'sms_credits':
       await handleSmsCreditsTopUp(session, m)
       break
-    default:
-      await handleManagedPayment(session, m)
   }
 
   return new Response(JSON.stringify({ received: true }), {
@@ -208,9 +200,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         phone:              m.phone,
         plan:               'ppl',
         status:             'active',
-        has_advertising_system: false,
         stripe_customer_id: session.customer as string,
-        settings:           { onboarding_complete: false },
       })
       .select('id')
       .single()
@@ -232,6 +222,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       .insert({
         company_id:     companyId,
         niche:          m.niche,
+        sub_niche:      m.sub_niche || null,
         area:           m.area_city,
         area_city:      m.area_city,
         location_type:  m.location_type || 'radius',
@@ -278,139 +269,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
   }
 }
 
-// ── Advertising system signup (new company from website) ──────────────────────
-async function handleAdvertisingSystemPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
-  console.log('Advertising system signup for:', m.email)
-  try {
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: m.email,
-      email_confirm: true,
-      user_metadata: { full_name: `${m.first_name} ${m.last_name}` },
-    })
-    if (authError) throw new Error(`Auth: ${authError.message}`)
-    const userId = authData.user.id
 
-    const { data: company, error: companyError } = await supabase
-      .from('companies')
-      .insert({
-        name:                        m.company,
-        email:                       m.email,
-        phone:                       m.phone,
-        plan:                        'ppl',
-        status:                      'active',
-        has_advertising_system:      true,
-        advertising_system_purchased_at: new Date().toISOString(),
-        stripe_customer_id:          session.customer as string,
-        settings: {
-          industry:           m.industry,
-          service_location:   m.service_location,
-          service_radius:     m.service_radius,
-          onboarding_complete: false,
-          onboarding:         m,
-        },
-      })
-      .select('id')
-      .single()
-    if (companyError) throw new Error(`Company: ${companyError.message}`)
-    const companyId = company.id
-
-    await supabase.from('profiles').upsert({
-      id:         userId,
-      company_id: companyId,
-      full_name:  `${m.first_name} ${m.last_name}`,
-      phone:      m.phone,
-      role:       'owner',
-      is_active:  true,
-    })
-
-    await insertSmsAgentConfig(companyId, m)
-    await provisionTwilio(companyId)
-
-    const magicLink = await createMagicLink(m.email, session.id)
-    await sendAdvertisingWelcomeEmail(m.email, m.first_name, m.company, magicLink)
-
-    await sendInternalEmail(
-      `🚀 New advertising system client — ${m.company}`,
-      `<h2>${m.company} purchased the advertising system.</h2>
-       <p><strong>Name:</strong> ${m.first_name} ${m.last_name}</p>
-       <p><strong>Email:</strong> ${m.email}</p>
-       <p><strong>Phone:</strong> ${m.phone}</p>
-       <p><strong>Industry:</strong> ${m.industry}</p>
-       <p><strong>Location:</strong> ${m.service_location} (${m.service_radius})</p>`
-    )
-    // Mark signup attempt as completed
-    await supabase.from('signup_attempts').update({ status: 'completed' })
-      .eq('stripe_session_id', session.id)
-
-    console.log('Advertising system client provisioned:', companyId)
-  } catch (err) {
-    console.error('handleAdvertisingSystemPayment error:', err)
-    await sendInternalEmail(
-      `⚠️ Advertising system provisioning failed — ${m.email}`,
-      `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
-    )
-  }
-}
-
-// ── Advertising system upgrade (existing dashboard company) ───────────────────
-async function handleAdvertisingSystemUpgrade(session: Stripe.Checkout.Session, m: Record<string, string>) {
-  console.log('Advertising system upgrade for company:', m.company_id)
-  try {
-    await supabase
-      .from('companies')
-      .update({
-        has_advertising_system:          true,
-        advertising_system_purchased_at: new Date().toISOString(),
-      })
-      .eq('id', m.company_id)
-
-    if (!await hasTwilioNumber(m.company_id)) {
-      await provisionTwilio(m.company_id)
-    }
-
-    // Create SMS agent config if it doesn't exist yet
-    const { data: existing } = await supabase
-      .from('sms_agent_config')
-      .select('id')
-      .eq('company_id', m.company_id)
-      .maybeSingle()
-
-    if (!existing) {
-      const { data: co } = await supabase
-        .from('companies')
-        .select('name, settings')
-        .eq('id', m.company_id)
-        .maybeSingle()
-
-      const fakeMeta: Record<string, string> = {
-        company:          co?.name || '',
-        industry:         co?.settings?.industry || '',
-        service_location: co?.settings?.service_location || '',
-        service_radius:   co?.settings?.service_radius || '',
-        special_offers:   '',
-        products_brands:  '',
-      }
-      await insertSmsAgentConfig(m.company_id, fakeMeta)
-    }
-
-    const { data: company } = await supabase
-      .from('companies').select('name, email').eq('id', m.company_id).maybeSingle()
-
-    await sendInternalEmail(
-      `⬆️ Advertising system upgrade — ${company?.name}`,
-      `<h2>${company?.name} upgraded to the advertising system.</h2>
-       <p><strong>Email:</strong> ${company?.email}</p>
-       <p><strong>Stripe Session:</strong> ${session.id}</p>`
-    )
-    console.log('Advertising system upgrade complete:', m.company_id)
-  } catch (err) {
-    console.error('handleAdvertisingSystemUpgrade error:', err)
-    await sendInternalEmail(
-      `⚠️ Advertising system upgrade failed — company ${m.company_id}`,
-      `<p>Error: ${String(err)}</p><p>Stripe Session: ${session.id}</p>`
-    )
-  }
-}
 
 // ── SMS credits top-up (existing dashboard company) ───────────────────────────
 async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record<string, string>) {
@@ -434,76 +293,6 @@ async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record
     await sendInternalEmail(
       `⚠️ SMS credits top-up failed — company ${m.company_id}`,
       `<p>Error: ${String(err)}</p><p>Credits: ${m.credits}</p><p>Stripe Session: ${session.id}</p>`
-    )
-  }
-}
-
-// ── Managed payment (legacy full-service onboarding) ──────────────────────────
-async function handleManagedPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
-  console.log('Managed payment for:', m.email)
-  try {
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: m.email,
-      email_confirm: true,
-      user_metadata: { full_name: `${m.first_name} ${m.last_name}` },
-    })
-    if (authError) throw new Error(`Auth: ${authError.message}`)
-    const userId = authData.user.id
-
-    const { data: company, error: companyError } = await supabase
-      .from('companies')
-      .insert({
-        name:               m.company,
-        email:              m.email,
-        phone:              m.phone,
-        plan:               'managed',
-        status:             'active',
-        has_advertising_system: true,
-        advertising_system_purchased_at: new Date().toISOString(),
-        stripe_customer_id: session.customer as string,
-        settings: {
-          industry:           m.industry,
-          service_location:   m.service_location,
-          service_radius:     m.service_radius,
-          onboarding_complete: false,
-          onboarding:         m,
-        },
-      })
-      .select('id')
-      .single()
-    if (companyError) throw new Error(`Company: ${companyError.message}`)
-    const companyId = company.id
-
-    await supabase.from('profiles').upsert({
-      id:         userId,
-      company_id: companyId,
-      full_name:  `${m.first_name} ${m.last_name}`,
-      phone:      m.phone,
-      role:       'owner',
-      is_active:  true,
-    })
-
-    await insertSmsAgentConfig(companyId, m)
-
-    const magicLink = await createMagicLink(m.email, session.id)
-    await sendAdvertisingWelcomeEmail(m.email, m.first_name, m.company, magicLink)
-
-    await sendInternalEmail(
-      `🚀 New managed client — ${m.company}`,
-      `<h2>${m.company} has paid and is onboarding.</h2>
-       <p><strong>Name:</strong> ${m.first_name} ${m.last_name}</p>
-       <p><strong>Email:</strong> ${m.email}</p>
-       <p><strong>Phone:</strong> ${m.phone}</p>
-       <p><strong>Industry:</strong> ${m.industry}</p>
-       <p><strong>Location:</strong> ${m.service_location} (${m.service_radius})</p>
-       <p><strong>Ad spend:</strong> ${m.max_daily_spend}</p>`
-    )
-    console.log('Managed client provisioned:', companyId)
-  } catch (err) {
-    console.error('handleManagedPayment error:', err)
-    await sendInternalEmail(
-      `⚠️ Managed provisioning failed — ${m.email}`,
-      `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
     )
   }
 }
@@ -553,55 +342,6 @@ async function sendPplWelcomeEmail(
   })
 }
 
-async function sendAdvertisingWelcomeEmail(
-  to: string, firstName: string, company: string, magicLink: string
-) {
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'QuoteLeads <onboarding@quoteleads.com.au>',
-      to,
-      subject: `You're in, ${firstName}. Your advertising system is ready.`,
-      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px">
-        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
-          <div style="background:#0a0b0f;padding:28px 36px">
-            <img src="https://quoteleads.com.au/quoteleads-logo-white.png" alt="QuoteLeads" style="height:30px">
-          </div>
-          <div style="padding:36px">
-            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">Your advertising system is live, ${firstName}.</h1>
-            <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
-              Your ${company} workspace is ready. Click below to access your dashboard — no password needed.
-            </p>
-            <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
-              Access My Dashboard →
-            </a>
-            <div style="background:#f8f9fb;border-radius:8px;padding:18px;margin-bottom:24px">
-              <p style="font-size:13px;font-weight:600;color:#0a0b0f;margin:0 0 10px">What's unlocked:</p>
-              <ul style="font-size:13px;color:#555;line-height:1.9;margin:0;padding-left:18px">
-                <li>CRM and pipeline</li>
-                <li>AI SMS agent — pre-configured for ${company}</li>
-                <li>Dedicated Twilio phone number</li>
-                <li>Meta / Google ad campaign management</li>
-                <li>Landing pages and lead capture forms</li>
-                <li>Quote templates and follow-up automation</li>
-              </ul>
-            </div>
-            <div style="border-top:1px solid #eee;padding-top:24px">
-              <p style="font-size:13px;color:#333;margin:0 0 12px">
-                <strong>Next:</strong> Connect your Meta Business account inside the dashboard to launch your first campaign.
-              </p>
-            </div>
-            <p style="font-size:12px;color:#999;margin:24px 0 0;line-height:1.6">
-              Questions? Reply to this email or reach us on WhatsApp.<br>
-              This login link expires in 24 hours.
-            </p>
-          </div>
-        </div>
-      </body></html>`,
-    }),
-  })
-}
 
 async function sendInternalEmail(subject: string, body: string) {
   await fetch('https://api.resend.com/emails', {
