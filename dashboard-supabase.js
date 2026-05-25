@@ -888,7 +888,7 @@ async function showApp() {
   try {
     const { data: profile, error: profileError } = await sb
       .from("profiles")
-      .select("company_id, full_name, phone, role, is_admin")
+      .select("company_id, full_name, phone, role, is_admin, a2hs_dismissed")
       .eq("id", currentUser.id)
       .maybeSingle();
 
@@ -985,7 +985,7 @@ async function showApp() {
     navigateTo(currentPageId || "dashboard");
 
     // Show "Add to Home Screen" prompt once per new user/device
-    if (currentUser?.id) maybeShowInstallPrompt(currentUser.id);
+    if (currentUser?.id) maybeShowInstallPrompt(currentUser.id, profile?.a2hs_dismissed === true);
   } catch (err) {
     console.error("Error loading app:", err);
     toast("Error loading dashboard. Please refresh.", true);
@@ -6461,32 +6461,35 @@ function isMobileDevice() {
   return navigator.maxTouchPoints > 0 && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 }
 
-function maybeShowInstallPrompt(userId) {
+async function _markA2hsDismissed(userId) {
+  localStorage.setItem(`ql_aths_${userId}`, '1');
+  await sb.from('profiles').update({ a2hs_dismissed: true }).eq('id', userId);
+}
+
+function maybeShowInstallPrompt(userId, alreadyDismissed) {
   // Desktop browsers — home screen prompt is not relevant
   if (!isMobileDevice()) return;
 
   // Already installed as a standalone app — no need to prompt
   if (isInStandaloneMode()) return;
 
-  const storageKey = `ql_aths_${userId}`;
-  if (localStorage.getItem(storageKey)) return; // already shown to this user on this device
+  // DB says this user has already seen and dismissed the banner
+  if (alreadyDismissed) return;
+
+  // Fast local cache (survives page refreshes within the same browser)
+  if (localStorage.getItem(`ql_aths_${userId}`)) return;
 
   const banner = document.getElementById('a2hsBanner');
   if (!banner) return;
-
-  // Mark as shown so it never repeats
-  localStorage.setItem(storageKey, '1');
 
   const instructions = document.getElementById('a2hsInstructions');
   const installBtn   = document.getElementById('a2hsInstallBtn');
   const dismissBtn   = document.getElementById('a2hsDismissBtn');
 
   if (isIosDevice()) {
-    // iOS Safari: manual instructions
     if (instructions) instructions.textContent = 'Tap the Share button (↑) in Safari then "Add to Home Screen".';
     setTimeout(() => { banner.style.display = ''; }, 1500);
   } else if (_a2hsDeferredPrompt) {
-    // Android/Chrome: native install prompt available
     if (instructions) instructions.textContent = 'Install for quick access — works like a native app, no app store needed.';
     if (installBtn) installBtn.style.display = '';
     if (installBtn) installBtn.addEventListener('click', async () => {
@@ -6494,10 +6497,14 @@ function maybeShowInstallPrompt(userId) {
       _a2hsDeferredPrompt.prompt();
       await _a2hsDeferredPrompt.userChoice;
       _a2hsDeferredPrompt = null;
+      _markA2hsDismissed(userId);
     });
     setTimeout(() => { banner.style.display = ''; }, 1500);
   }
 
-  if (dismissBtn) dismissBtn.addEventListener('click', () => { banner.style.display = 'none'; });
+  if (dismissBtn) dismissBtn.addEventListener('click', () => {
+    banner.style.display = 'none';
+    _markA2hsDismissed(userId);
+  });
 }
 
