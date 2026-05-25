@@ -16,6 +16,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Resolve price: sub_niche+area → sub_niche default → parent area → parent default
+async function resolvePrice(niche: string, subNiche: string | null, area: string) {
+  const { data: rows } = await supabase
+    .from('ppl_pricing')
+    .select('price_per_lead, sub_niche, area')
+    .eq('niche', niche)
+
+  if (!rows?.length) return null
+
+  const match = (sn: string | null, a: string | null) =>
+    rows.find(r =>
+      (sn === null ? !r.sub_niche : r.sub_niche === sn) &&
+      (a  === null ? !r.area      : r.area?.toLowerCase() === a.toLowerCase())
+    ) ?? null
+
+  return (
+    (subNiche ? match(subNiche, area) : null) ??
+    (subNiche ? match(subNiche, null) : null) ??
+    match(null, area) ??
+    match(null, null)
+  )
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -27,6 +50,7 @@ serve(async (req) => {
       phone,
       company,
       niche,
+      sub_niche,
       area_city,
       location_type,
       radius_km,
@@ -38,24 +62,11 @@ serve(async (req) => {
       throw new Error('Missing required fields')
     }
 
-    const normNiche = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+    const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+    const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
 
     // Validate price from DB — never trust client
-    const { data: areaPrice } = await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .eq('niche', normNiche)
-      .eq('area', area_city)
-      .maybeSingle()
-
-    const pricing = areaPrice ?? (await supabase
-      .from('ppl_pricing')
-      .select('price_per_lead')
-      .eq('niche', normNiche)
-      .is('area', null)
-      .maybeSingle()
-    ).data
-
+    const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
     if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
@@ -78,7 +89,9 @@ serve(async (req) => {
       .insert({
         type: 'ppl_signup',
         first_name, last_name, email, phone, company,
-        niche: normNiche, area_city,
+        niche: normNiche,
+        sub_niche: normSubNiche,
+        area_city,
         quantity,
         price_per_lead: validatedPrice,
         status: 'pending',
@@ -90,6 +103,11 @@ serve(async (req) => {
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} — ${radius_km ?? 50}km radius`
 
+    const nicheDisplay = [normNiche, normSubNiche]
+      .filter(Boolean)
+      .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
+      .join(' › ')
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -99,7 +117,7 @@ serve(async (req) => {
           currency: 'aud',
           unit_amount: totalCents,
           product_data: {
-            name: `${quantity} ${normNiche.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} leads`,
+            name: `${quantity} ${nicheDisplay} leads`,
             description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
@@ -113,7 +131,8 @@ serve(async (req) => {
         email,
         phone,
         company,
-        niche: normNiche,
+        niche:         normNiche,
+        sub_niche:     normSubNiche || '',
         area_city,
         location_type: location_type || 'radius',
         radius_km:     String(radius_km ?? 50),
@@ -126,7 +145,6 @@ serve(async (req) => {
       cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',
     })
 
-    // Store session ID on the attempt for cross-referencing
     if (attempt?.id) {
       await supabase.from('signup_attempts').update({ stripe_session_id: session.id }).eq('id', attempt.id)
     }

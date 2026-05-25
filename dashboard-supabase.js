@@ -983,6 +983,9 @@ async function showApp() {
 
 
     navigateTo(currentPageId || "dashboard");
+
+    // Show "Add to Home Screen" prompt once per new user/device
+    if (currentUser?.id) maybeShowInstallPrompt(currentUser.id);
   } catch (err) {
     console.error("Error loading app:", err);
     toast("Error loading dashboard. Please refresh.", true);
@@ -1393,7 +1396,7 @@ async function loadActiveOrdersDash() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
           ${badge}
-          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
+          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
         </div>
         <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;margin-bottom:6px">
           <div style="width:${pct}%;height:100%;background:${bar};border-radius:4px;transition:width .3s"></div>
@@ -3404,7 +3407,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
             </div>
             <div style="font-size:12px;color:var(--muted)">
               ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
@@ -3428,7 +3431,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
             </div>
             <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
               ${o.delivered_count} / ${o.quantity}
@@ -5943,9 +5946,10 @@ function nicheLabel(niche) {
 // =============================================================================
 // Buy Leads state
 // =============================================================================
-let _pplPricing      = [];  // [{niche, price_per_lead}]
+let _pplPricing      = [];  // [{niche, sub_niche, price_per_lead}]
 let _blDiscountTiers = [];  // [{min_quantity, discount_percent, label, is_popular}]
 let _blNiche         = null;
+let _blSubNiche      = null;  // selected sub-niche id or null
 let _blCity          = null;
 let _blLocType       = 'radius';  // 'radius' | 'postcodes'
 let _blPPL           = null;
@@ -5953,18 +5957,43 @@ let _blQty           = 10;        // selected quantity
 let _blDiscount      = 0;         // discount % for selected qty
 const _pplOrdersCache = new Map(); // id → order row (for retry)
 
+// Sub-niche definitions per parent niche
+const NICHE_SUB_NICHES = {
+  hvac: [
+    { id: 'split_ducted',              label: 'Installations (Split & Ducted)' },
+    { id: 'installations_maintenance', label: 'Installations & Maintenance'    },
+  ],
+  roofing: [
+    { id: 'all_restorations', label: 'All Restorations'           },
+    { id: 'all_replacements', label: 'All Replacements'           },
+    { id: 'tile_metal',       label: 'Tile-to-Metal Replacements' },
+  ],
+  renovation: [
+    { id: 'kitchen',  label: 'Kitchen Renovations'  },
+    { id: 'bathroom', label: 'Bathroom Renovations' },
+  ],
+};
+
+function subNicheLabel(subNiche) {
+  for (const subs of Object.values(NICHE_SUB_NICHES)) {
+    const found = subs.find(s => s.id === subNiche);
+    if (found) return found.label;
+  }
+  return nicheLabel(subNiche);
+}
+
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
   const [{ data: pricing }, { data: orders }, { data: tiers }] = await Promise.all([
-    sb.from('ppl_pricing').select('niche, price_per_lead').is('area', null).order('niche'),
+    sb.from('ppl_pricing').select('niche, sub_niche, price_per_lead').is('area', null).order('niche').order('sub_niche'),
     sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
     sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
   ]);
 
   _pplPricing      = pricing || [];
   _blDiscountTiers = tiers   || [];
-  _blNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blQty = _blDiscountTiers[0]?.min_quantity ?? 10;
   _blDiscount = 0;
 
@@ -5985,7 +6014,9 @@ async function loadBuyLeads() {
 function renderBuyLeadsNiches(pricing) {
   const el = document.getElementById('buyLeadsNicheCards');
   if (!el) return;
-  el.innerHTML = pricing.map(p => {
+  // Only show parent-niche rows (sub_niche is null) as top-level cards
+  const parentRows = pricing.filter(p => !p.sub_niche);
+  el.innerHTML = parentRows.map(p => {
     const label = nicheLabel(p.niche);
     return `<button type="button" onclick="buyLeadsSelectNiche('${p.niche}', ${p.price_per_lead})"
       id="nicheCard-${p.niche}"
@@ -5993,6 +6024,39 @@ function renderBuyLeadsNiches(pricing) {
       ${label}
     </button>`;
   }).join('');
+}
+
+function renderBuyLeadsSubNiches(niche) {
+  const field = document.getElementById('buyLeadsSubNicheField');
+  const el    = document.getElementById('buyLeadsSubNicheCards');
+  const subs  = NICHE_SUB_NICHES[niche];
+  if (!field || !el || !subs) { if (field) field.style.display = 'none'; return; }
+
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const parentPricing = _pplPricing.find(p => p.niche === niche && !p.sub_niche);
+  const parentPPL = parentPricing?.price_per_lead ?? null;
+
+  // "Any" option (skip sub-niche, use parent price)
+  const anyLabel = parentPPL !== null ? `Any ${nicheLabel(niche)} — ${fmt(parentPPL)}/lead` : `Any ${nicheLabel(niche)}`;
+  let html = `<button type="button" onclick="buyLeadsSelectSubNiche(null)"
+    id="subNicheCard-any"
+    style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+    ${anyLabel}
+  </button>`;
+
+  html += subs.map(s => {
+    const subRow = _pplPricing.find(p => p.niche === niche && p.sub_niche === s.id);
+    const ppl    = subRow?.price_per_lead ?? parentPPL;
+    const priceNote = ppl !== null ? ` — ${fmt(ppl)}/lead` : '';
+    return `<button type="button" onclick="buyLeadsSelectSubNiche('${s.id}')"
+      id="subNicheCard-${s.id}"
+      style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      ${s.label}${priceNote}
+    </button>`;
+  }).join('');
+
+  el.innerHTML = html;
+  field.style.display = '';
 }
 
 function renderBuyLeadsPacks() {
@@ -6020,11 +6084,12 @@ function renderBuyLeadsPacks() {
 }
 
 function buyLeadsSelectNiche(niche, ppl) {
-  _blNiche = niche;
-  _blPPL   = ppl;
-  _blCity  = null;
+  _blNiche    = niche;
+  _blPPL      = ppl;
+  _blSubNiche = null;
+  _blCity     = null;
 
-  // Update card styles
+  // Update niche card styles
   document.querySelectorAll('[id^="nicheCard-"]').forEach(el => {
     el.style.background = '';
     el.style.borderColor = 'var(--border)';
@@ -6036,11 +6101,51 @@ function buyLeadsSelectNiche(niche, ppl) {
   // Reset downstream fields
   const cityEl = document.getElementById('buyLeadsCity');
   if (cityEl) cityEl.value = '';
+  document.getElementById('buyLeadsLocationField').style.display = 'none';
+  document.getElementById('buyLeadsQtyField').style.display = 'none';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  // Show sub-niche step if this niche has sub-niches; otherwise go straight to city
+  const hasSubs = !!NICHE_SUB_NICHES[niche];
+  if (hasSubs) {
+    renderBuyLeadsSubNiches(niche);
+    document.getElementById('buyLeadsCityField').style.display = 'none';
+  } else {
+    const subField = document.getElementById('buyLeadsSubNicheField');
+    if (subField) subField.style.display = 'none';
+    document.getElementById('buyLeadsCityField').style.display = '';
+  }
+}
+
+function buyLeadsSelectSubNiche(subNicheId) {
+  _blSubNiche = subNicheId;
+
+  // Resolve price for selected sub-niche (or parent if null)
+  const row = subNicheId
+    ? _pplPricing.find(p => p.niche === _blNiche && p.sub_niche === subNicheId)
+    : _pplPricing.find(p => p.niche === _blNiche && !p.sub_niche);
+  if (row) _blPPL = row.price_per_lead;
+
+  // Update sub-niche card styles
+  document.querySelectorAll('[id^="subNicheCard-"]').forEach(el => {
+    el.style.background = '';
+    el.style.borderColor = 'var(--border)';
+    el.style.color = 'var(--text,var(--ink))';
+  });
+  const cardId = subNicheId ? `subNicheCard-${subNicheId}` : 'subNicheCard-any';
+  const card = document.getElementById(cardId);
+  if (card) { card.style.background = '#4797FF'; card.style.borderColor = '#4797FF'; card.style.color = '#fff'; }
+
+  // Show city step
+  const cityEl = document.getElementById('buyLeadsCity');
+  if (cityEl) cityEl.value = '';
+  _blCity = null;
   document.getElementById('buyLeadsCityField').style.display = '';
   document.getElementById('buyLeadsLocationField').style.display = 'none';
   document.getElementById('buyLeadsQtyField').style.display = 'none';
   document.getElementById('buyLeadsSummary').style.display = 'none';
 }
+window.buyLeadsSelectSubNiche = buyLeadsSelectSubNiche;
 
 function buyLeadsSelectPack(qty, discountPct) {
   _blQty      = qty;
@@ -6125,6 +6230,15 @@ function buyLeadsUpdateSummary() {
   const total    = subtotal - saving;
 
   document.getElementById('buyLeadsSumNiche').textContent    = nicheLabel(_blNiche);
+  const subNicheRow = document.getElementById('buyLeadsSumSubNicheRow');
+  if (subNicheRow) {
+    if (_blSubNiche) {
+      document.getElementById('buyLeadsSumSubNiche').textContent = subNicheLabel(_blSubNiche);
+      subNicheRow.style.display = 'flex';
+    } else {
+      subNicheRow.style.display = 'none';
+    }
+  }
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
   document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
@@ -6164,6 +6278,7 @@ async function startPplCheckout() {
       body: JSON.stringify({
         company_id:    currentCompanyId,
         niche:         _blNiche,
+        sub_niche:     _blSubNiche || null,
         area_city:     _blCity,
         location_type: _blLocType,
         radius_km:     _blLocType === 'radius' ? radius : null,
@@ -6198,7 +6313,8 @@ function renderBuyLeadsOrders(orders) {
   if (pending.length) {
     html += pending.map(o => {
       const city  = o.area_city || o.area || '—';
-      const label = `${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
+      const pendingNicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
+      const label = `${pendingNicheDisplay} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div>
@@ -6230,8 +6346,9 @@ function renderBuyLeadsOrders(orders) {
       const coverage = o.location_type === 'postcodes'
         ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
         : `${o.radius_km || 50}km radius`;
+      const nicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
       return `<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:10px">${o.niche.charAt(0).toUpperCase()+o.niche.slice(1)}</td>
+        <td style="padding:10px">${nicheDisplay}</td>
         <td style="padding:10px">${city}</td>
         <td style="padding:10px;color:var(--muted)">${coverage}</td>
         <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
@@ -6264,6 +6381,7 @@ async function retryPplOrder(orderId) {
       body: JSON.stringify({
         company_id:    currentCompanyId,
         niche:         o.niche,
+        sub_niche:     o.sub_niche || null,
         area_city:     o.area_city || o.area,
         location_type: o.location_type || 'radius',
         radius_km:     o.radius_km || 50,
@@ -6315,4 +6433,61 @@ window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
 // =============================================================================
 // PPL Admin (super admin only)
 // =============================================================================
+
+// =============================================================================
+// Add to Home Screen (PWA install prompt — shown once per new device/user)
+// =============================================================================
+
+let _a2hsDeferredPrompt = null;
+
+// Capture the Android/Chrome install prompt before it fires automatically
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _a2hsDeferredPrompt = e;
+});
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function isInStandaloneMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+}
+
+function maybeShowInstallPrompt(userId) {
+  // Already installed as a standalone app — no need to prompt
+  if (isInStandaloneMode()) return;
+
+  const storageKey = `ql_aths_${userId}`;
+  if (localStorage.getItem(storageKey)) return; // already shown to this user on this device
+
+  const banner = document.getElementById('a2hsBanner');
+  if (!banner) return;
+
+  // Mark as shown so it never repeats
+  localStorage.setItem(storageKey, '1');
+
+  const instructions = document.getElementById('a2hsInstructions');
+  const installBtn   = document.getElementById('a2hsInstallBtn');
+  const dismissBtn   = document.getElementById('a2hsDismissBtn');
+
+  if (isIosDevice()) {
+    // iOS Safari: manual instructions
+    if (instructions) instructions.textContent = 'Tap the Share button (↑) in Safari then "Add to Home Screen".';
+    setTimeout(() => { banner.style.display = ''; }, 1500);
+  } else if (_a2hsDeferredPrompt) {
+    // Android/Chrome: native install prompt available
+    if (instructions) instructions.textContent = 'Install for quick access — works like a native app, no app store needed.';
+    if (installBtn) installBtn.style.display = '';
+    if (installBtn) installBtn.addEventListener('click', async () => {
+      banner.style.display = 'none';
+      _a2hsDeferredPrompt.prompt();
+      await _a2hsDeferredPrompt.userChoice;
+      _a2hsDeferredPrompt = null;
+    });
+    setTimeout(() => { banner.style.display = ''; }, 1500);
+  }
+
+  if (dismissBtn) dismissBtn.addEventListener('click', () => { banner.style.display = 'none'; });
+}
 

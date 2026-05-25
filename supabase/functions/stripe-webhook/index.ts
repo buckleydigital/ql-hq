@@ -222,6 +222,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       .insert({
         company_id:     companyId,
         niche:          m.niche,
+        sub_niche:      m.sub_niche || null,
         area:           m.area_city,
         area_city:      m.area_city,
         location_type:  m.location_type || 'radius',

@@ -300,6 +300,7 @@ h1{font-size:18px;font-weight:500}
         <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label><select id="adminCampSubNiche" class="form-input"><option value="">— None —</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup><optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup><optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Campaign ID</label><input id="adminCampId" class="form-input" type="text" placeholder="Campaign ID"></div>
@@ -330,9 +331,22 @@ h1{font-size:18px;font-weight:500}
             <option value="">All niches</option>
             <option value="solar">Solar</option>
             <option value="solar_battery">Solar Battery</option>
-            <option value="roofing">Roofing</option>
-            <option value="hvac">HVAC</option>
-            <option value="renovation">Renovation</option>
+            <optgroup label="Roofing">
+              <option value="roofing">Roofing (any)</option>
+              <option value="roofing:all_restorations">↳ All Restorations</option>
+              <option value="roofing:all_replacements">↳ All Replacements</option>
+              <option value="roofing:tile_metal">↳ Tile-to-Metal</option>
+            </optgroup>
+            <optgroup label="HVAC">
+              <option value="hvac">HVAC (any)</option>
+              <option value="hvac:split_ducted">↳ Split &amp; Ducted</option>
+              <option value="hvac:installations_maintenance">↳ Installations &amp; Maintenance</option>
+            </optgroup>
+            <optgroup label="Renovation">
+              <option value="renovation">Renovation (any)</option>
+              <option value="renovation:kitchen">↳ Kitchen</option>
+              <option value="renovation:bathroom">↳ Bathroom</option>
+            </optgroup>
           </select>
           <select id="pplLeadStatusFilter" class="filter-select">
             <option value="">All statuses</option>
@@ -1468,7 +1482,7 @@ h1{font-size:18px;font-weight:500}
 
   function renderPplLeadOrderRow(o) {
     var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
-    var niche       = nicheLabel(o.niche);
+    var niche       = nicheLabel(o.niche) + (o.sub_niche ? ' › ' + nicheLabel(o.sub_niche) : '');
     var locDesc     = o.location_type === 'postcodes'
       ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
       : escapeHtml(o.area_city || '') + ' — ' + (o.radius_km || 50) + 'km radius';
@@ -1501,12 +1515,17 @@ h1{font-size:18px;font-weight:500}
   }
 
   function applyPplLeadFilter() {
-    var company = document.getElementById('pplLeadCompanyFilter').value;
-    var niche   = document.getElementById('pplLeadNicheFilter').value;
-    var status  = document.getElementById('pplLeadStatusFilter').value;
+    var company    = document.getElementById('pplLeadCompanyFilter').value;
+    var nicheRaw   = document.getElementById('pplLeadNicheFilter').value;
+    var status     = document.getElementById('pplLeadStatusFilter').value;
+    var nicheParts = nicheRaw ? nicheRaw.split(':') : [];
+    var nicheVal   = nicheParts[0] || '';
+    var subNicheVal = nicheParts[1] || '';
     var filtered = allPplLeadOrders.filter(function (o) {
+      var nicheMatch = !nicheVal || o.niche === nicheVal;
+      var subNicheMatch = !subNicheVal || (o.sub_niche || '') === subNicheVal;
       return (!company || o.company_id === company) &&
-             (!niche   || o.niche === niche) &&
+             nicheMatch && subNicheMatch &&
              (!status  || o.status === status);
     });
     var listEl  = document.getElementById('pplLeadOrderList');
@@ -1532,7 +1551,7 @@ h1{font-size:18px;font-weight:500}
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
     try {
-      var { data, error } = await sb.from('ppl_pricing').select('id, niche, area, price_per_lead').order('niche').order('area');
+      var { data, error } = await sb.from('ppl_pricing').select('id, niche, sub_niche, area, price_per_lead').order('niche').order('sub_niche').order('area');
       if (error) throw error;
       renderPplPricing(data || []);
     } catch (err) {
@@ -1551,6 +1570,13 @@ h1{font-size:18px;font-weight:500}
           '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
             '<option value="solar">Solar</option><option value="solar_battery">Solar Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option>' +
           '</select></div>' +
+          '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Sub-Niche <span style="font-weight:400">(blank = parent niche default)</span></label>' +
+          '<select id="addPriceSubNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
+            '<option value="">— None (parent niche) —</option>' +
+            '<optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>' +
+            '<optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup>' +
+            '<optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup>' +
+          '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Area <span style="font-weight:400">(blank = default)</span></label>' +
           '<input id="addPriceArea" type="text" placeholder="e.g. Brisbane" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px"></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Price / Lead (AUD)</label>' +
@@ -1568,14 +1594,17 @@ h1{font-size:18px;font-weight:500}
       '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Niche</th>' +
+        '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Sub-Niche</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Area</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price / Lead (AUD)</th>' +
         '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
       '</tr></thead><tbody>' +
       rows.map(function (p) {
-        var areaLabel = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">Default (all areas)</span>';
+        var areaLabel     = p.area ? escapeHtml(p.area) : '<span style="color:var(--muted);font-style:italic">All areas</span>';
+        var subNicheLabel = p.sub_niche ? escapeHtml(nicheLabel(p.sub_niche)) : '<span style="color:var(--muted);font-style:italic">—</span>';
         return '<tr id="pricingRow-' + p.id + '">' +
           '<td style="padding:8px 10px;font-weight:600">' + escapeHtml(nicheLabel(p.niche)) + '</td>' +
+          '<td style="padding:8px 10px">' + subNicheLabel + '</td>' +
           '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
           '<td style="padding:8px 10px;display:flex;gap:6px">' +
@@ -1588,15 +1617,17 @@ h1{font-size:18px;font-weight:500}
   }
 
   window.addPricingRow = async function () {
-    var niche = document.getElementById('addPriceNiche').value;
-    var area  = document.getElementById('addPriceArea').value.trim() || null;
-    var price = parseFloat(document.getElementById('addPriceValue').value);
+    var niche    = document.getElementById('addPriceNiche').value;
+    var subNiche = document.getElementById('addPriceSubNiche').value.trim() || null;
+    var area     = document.getElementById('addPriceArea').value.trim() || null;
+    var price    = parseFloat(document.getElementById('addPriceValue').value);
     if (isNaN(price) || price <= 0) { toast('Enter a valid price.', true); return; }
-    var { error } = await sb.from('ppl_pricing').insert({ niche, area, price_per_lead: price });
+    var { error } = await sb.from('ppl_pricing').insert({ niche, sub_niche: subNiche, area, price_per_lead: price });
     if (error) { toast(error.message, true); return; }
     toast('Pricing row added.');
-    document.getElementById('addPriceArea').value  = '';
-    document.getElementById('addPriceValue').value = '';
+    document.getElementById('addPriceSubNiche').value = '';
+    document.getElementById('addPriceArea').value     = '';
+    document.getElementById('addPriceValue').value    = '';
     await loadPplPricing();
   };
 
