@@ -79,10 +79,11 @@ async function createMagicLink(email: string, sessionId: string): Promise<string
   const magicLink = data.properties.action_link
 
   // Store for seamless post-payment redirect (one-time, 1hr TTL)
-  await supabase.from('pending_magic_links').insert({
+  const { error: linkError } = await supabase.from('pending_magic_links').insert({
     stripe_session_id: sessionId,
     magic_link:        magicLink,
-  }).catch(err => console.error('pending_magic_links insert error:', err))
+  })
+  if (linkError) throw new Error(`pending_magic_links insert: ${linkError.message}`)
 
   return magicLink
 }
@@ -173,6 +174,18 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', m.order_id)
     }
 
+    // Create ppl_orders row for lead delivery tracking
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 14)
+    const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
+      company_id:  m.company_id,
+      total_leads: parseInt(m.quantity),
+      due_date:    dueDate.toISOString().split('T')[0],
+      status:      'active',
+      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} — ${m.area_city}`,
+    })
+    if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
+
     const { data: company } = await supabase
       .from('companies').select('name, email, phone').eq('id', m.company_id).maybeSingle()
 
@@ -238,7 +251,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     })
 
     // Create the lead order (already paid)
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from('ppl_lead_orders')
       .insert({
         company_id:     companyId,
@@ -253,10 +266,24 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         price_per_lead: parseFloat(m.price_per_lead),
         total_amount:   parseFloat(m.price_per_lead) * parseInt(m.quantity),
         status:         'active',
+        stripe_session_id:        session.id,
         stripe_payment_intent_id: session.payment_intent as string,
       })
       .select('id')
       .single()
+    if (orderError) throw new Error(`ppl_lead_orders insert: ${orderError.message}`)
+
+    // Create ppl_orders row for lead delivery tracking
+    const dueDate = new Date()
+    dueDate.setDate(dueDate.getDate() + 14)
+    const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
+      company_id:  companyId,
+      total_leads: parseInt(m.quantity),
+      due_date:    dueDate.toISOString().split('T')[0],
+      status:      'active',
+      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} — ${m.area_city}`,
+    })
+    if (pplOrderError) throw new Error(`ppl_orders insert: ${pplOrderError.message}`)
 
     await provisionTwilio(companyId)
     if (order) {
@@ -324,7 +351,7 @@ async function sendPplWelcomeEmail(
   to: string, firstName: string, company: string,
   niche: string, city: string, quantity: string, magicLink: string
 ) {
-  await fetch('https://api.resend.com/emails', {
+  const emailRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -361,6 +388,10 @@ async function sendPplWelcomeEmail(
       </body></html>`,
     }),
   })
+  if (!emailRes.ok) {
+    const errBody = await emailRes.text()
+    throw new Error(`Resend error ${emailRes.status}: ${errBody}`)
+  }
 }
 
 
