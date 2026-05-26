@@ -69,23 +69,14 @@ async function hasTwilioNumber(companyId: string): Promise<boolean> {
   return !!data
 }
 
-async function createMagicLink(email: string, sessionId: string): Promise<string> {
+async function createMagicLink(email: string): Promise<string> {
   const { data, error } = await supabase.auth.admin.generateLink({
     type: 'magiclink',
     email,
     options: { redirectTo: 'https://quoteleadshq.com/dashboard', expiresIn: 86400 },
   })
   if (error) throw new Error(`Magic link: ${error.message}`)
-  const magicLink = data.properties.action_link
-
-  // Store for seamless post-payment redirect (one-time, 1hr TTL)
-  const { error: linkError } = await supabase.from('pending_magic_links').insert({
-    stripe_session_id: sessionId,
-    magic_link:        magicLink,
-  })
-  if (linkError) throw new Error(`pending_magic_links insert: ${linkError.message}`)
-
-  return magicLink
+  return data.properties.action_link
 }
 
 function buildSystemPrompt(m: Record<string, string>): string {
@@ -290,7 +281,17 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
     }
 
-    const magicLink = await createMagicLink(m.email, session.id)
+    // Generate magic link — throws if Supabase auth fails (user can't log in)
+    const magicLink = await createMagicLink(m.email)
+
+    // Store for /welcome page polling. Non-blocking: if this fails the email link still works.
+    const { error: linkError } = await supabase.from('pending_magic_links').insert({
+      stripe_session_id: session.id,
+      magic_link:        magicLink,
+    })
+    if (linkError) console.error('pending_magic_links insert failed (auto-login polling will not work):', linkError.message)
+
+    // Always send the email — magic link URL is valid regardless of DB store above
     await sendPplWelcomeEmail(m.email, m.first_name, m.company, m.niche, m.area_city, m.quantity, magicLink)
 
     await sendInternalEmail(
