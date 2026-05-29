@@ -369,6 +369,7 @@ function buildSystemPrompt(
   const companyName = (config.company_name as string) || "our company";
   const area = (config.company_area as string) || "your area";
   const service = (config.service_description as string) || "our services";
+  const leadFirstName = (lead.first_name as string) || null;
   const callbackEnabled = config.callback_enabled as boolean;
   const onsiteEnabled = config.onsite_enabled as boolean;
   const quoteDrafting = config.quote_drafting_enabled as boolean;
@@ -458,7 +459,13 @@ ON-SITE VISITS:
     disabledTypeRules.push(`Never offer, suggest, or mention scheduling a phone call or callback. Callbacks are not available.`);
   }
 
+  const leadNameLine = leadFirstName
+    ? `The lead's name is ${leadFirstName}.`
+    : `The lead's name is unknown — do not use a name.`;
+
   const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person — casual, warm, brief.
+
+${leadNameLine}
 
 RULES (never break these):
 1. Keep every reply under 2 short sentences. Be concise.
@@ -467,7 +474,8 @@ RULES (never break these):
 4. Never use emojis, asterisks, bullet points, or markdown.
 5. Never use filler phrases like "grab the details", "nail down the details", "how does time sound", "does that work", "whenever is convenient", "quick chat", "see how we can assist", "we usually just".
 6. Say "the team" or "our team", never refer to anyone by name.
-7. Only ask ONE question per message. Do not stack questions.${disabledTypeRules.length > 0 ? "\n" + disabledTypeRules.map((r, i) => `${i + 8}. ${r}`).join("\n") : ""}
+7. Only ask ONE question per message. Do not stack questions.
+8. Use the lead's first name only twice: once in your very first reply to acknowledge them, and once when confirming a booked callback or appointment. Never use it in any other message.${disabledTypeRules.length > 0 ? "\n" + disabledTypeRules.map((r, i) => `${i + 9}. ${r}`).join("\n") : ""}
 
 ${goalSection}
 ${callbackRules}

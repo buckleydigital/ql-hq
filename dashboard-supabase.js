@@ -3669,7 +3669,7 @@ async function loadAiSettings() {
       // Update prompt help text
       const promptHelp = document.getElementById("aiPromptHelp");
       if (promptHelp) {
-        promptHelp.textContent = "Customize how the AI responds to leads. Use {{first_name}} for personalization.";
+        promptHelp.textContent = "Add extra instructions for the AI — e.g. specific services to promote, things to avoid, or how to handle objections.";
       }
 
     }
