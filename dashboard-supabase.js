@@ -1188,7 +1188,7 @@ async function loadDashboard() {
     const leadsToday = all.filter(l => new Date(l.created_at) >= todayStart).length;
     const openAll    = all.filter(l => !["closed_won","closed_lost"].includes(l.pipeline_stage)).length;
     const quotesOut  = allQuotes.filter(q => q.status === "sent").length;
-    const aiOn       = aiCfg?.ai_enabled !== false;
+    const aiOn       = aiCfg?.ai_enabled === true;
 
     const setText2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     setText2("statusLeadsToday", leadsToday);
