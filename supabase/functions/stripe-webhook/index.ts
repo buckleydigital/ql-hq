@@ -204,6 +204,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
 async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL signup for:', m.email)
   try {
+    // createUser triggers handle_new_user() which auto-creates a company (with slug) + profile
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: m.email,
       email_confirm: true,
@@ -212,13 +213,23 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     if (authError) throw new Error(`Auth: ${authError.message}`)
     const userId = authData.user.id
 
+    // Fetch the company_id the trigger just created
+    const { data: profileData, error: profileFetchError } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', userId)
+      .single()
+    if (profileFetchError) throw new Error(`Profile fetch: ${profileFetchError.message}`)
+    const companyId = profileData.company_id
+
     const signupPostcodes = m.location_type === 'postcodes' && m.postcode_list
       ? m.postcode_list.split(/[\s,\n]+/).map((p: string) => p.trim()).filter(Boolean)
       : []
 
-    const { data: company, error: companyError } = await supabase
+    // Update the trigger-created company with PPL-specific fields
+    const { error: companyError } = await supabase
       .from('companies')
-      .insert({
+      .update({
         name:               m.company,
         email:              m.email,
         phone:              m.phone,
@@ -227,10 +238,8 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         stripe_customer_id: session.customer as string,
         ...(signupPostcodes.length > 0 && { ppl_agreed_postcodes: signupPostcodes }),
       })
-      .select('id')
-      .single()
+      .eq('id', companyId)
     if (companyError) throw new Error(`Company: ${companyError.message}`)
-    const companyId = company.id
 
     await supabase.from('profiles').upsert({
       id:         userId,
