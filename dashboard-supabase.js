@@ -693,8 +693,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener('keydown', (e) => {
     if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
     if (document.querySelector('.modal.open')) return;
-    if (e.key === 'n') { openModal('leadModal'); resetLeadForm(); }
-    if (e.key === 'q') { document.getElementById('openQuoteModal')?.click(); }
+if (e.key === 'q') { document.getElementById('openQuoteModal')?.click(); }
   });
 });
 
