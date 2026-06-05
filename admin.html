@@ -559,7 +559,7 @@ h1{font-size:18px;font-weight:500}
     <div style="padding:20px 24px 0;flex-shrink:0">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <h3 style="margin:0">Edit User</h3>
-        <span id="editUserDetailsStatus" style="font-size:11px;color:var(--muted)">Loading details…</span>
+        <span id="editUserDetailsStatus" style="font-size:11px;color:var(--muted)"></span>
       </div>
       <div class="form-grid" style="margin-bottom:10px">
         <div class="form-row">
@@ -571,14 +571,31 @@ h1{font-size:18px;font-weight:500}
           <input class="form-input" id="editUserEmail" type="email" placeholder="email@example.com">
         </div>
       </div>
-      <div class="form-row" style="margin-bottom:16px">
+      <div class="form-row" style="margin-bottom:14px">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
           <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
           <span style="font-size:12px;font-weight:500">Super Admin access</span>
         </label>
       </div>
+      <!-- PPL Service Areas — always visible, loaded directly from companies table -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="form-label" style="margin:0">PPL Service Areas</span>
+            <span id="editUserAreaLockBadge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid;display:none"></span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-approve" id="editUserUnlockAreaBtn" type="button" style="display:none">Unlock for User</button>
+            <button class="btn btn-sm btn-reject"  id="editUserLockAreaBtn"   type="button" style="display:none">Lock</button>
+          </div>
+        </div>
+        <textarea id="editUserAreaPostcodes" class="form-input" style="height:80px;resize:vertical;font-family:monospace;font-size:12px" placeholder="One postcode per line — loading…"></textarea>
+        <div style="margin-top:8px">
+          <button class="btn2 btn-sm" id="editUserSaveAreaBtn" type="button">Save Postcodes</button>
+        </div>
+      </div>
     </div>
-    <!-- scrollable detail body -->
+    <!-- scrollable extra detail body (bonus info when get_user_details is available) -->
     <div id="editUserDetailsBody" style="overflow-y:auto;flex:1;padding:0 24px 12px;border-top:1px solid var(--border)"></div>
     <!-- fixed footer -->
     <div class="modal-actions" style="flex-shrink:0;padding:10px 24px;border-top:1px solid var(--border);margin:0">
@@ -937,7 +954,8 @@ h1{font-size:18px;font-weight:500}
   });
 
   // ── Edit User ────────────────────────────────────────────────────────────
-  var editingUserId = null;
+  var editingUserId   = null;
+  var editingCompanyId = null;
 
   function ud_kv(label, value) {
     return '<div class="ud-kv-item"><div class="ud-kv-label">' + label + '</div><div class="ud-kv-value">' + (value !== null && value !== undefined && value !== '' ? escapeHtml(String(value)) : '<span style="color:var(--muted)">—</span>') + '</div></div>';
@@ -1053,34 +1071,121 @@ h1{font-size:18px;font-weight:500}
     return html;
   }
 
+  function setAreaLockUI(isLocked) {
+    var badge    = document.getElementById('editUserAreaLockBadge');
+    var unlockBtn = document.getElementById('editUserUnlockAreaBtn');
+    var lockBtn   = document.getElementById('editUserLockAreaBtn');
+    badge.style.display = '';
+    if (isLocked) {
+      badge.textContent = '🔒 Locked';
+      badge.style.background = 'rgba(185,28,28,.08)';
+      badge.style.color = '#b91c1c';
+      badge.style.borderColor = 'rgba(185,28,28,.2)';
+      unlockBtn.style.display = '';
+      lockBtn.style.display   = 'none';
+    } else {
+      badge.textContent = '🔓 Unlocked';
+      badge.style.background = 'rgba(22,163,74,.08)';
+      badge.style.color = '#15803d';
+      badge.style.borderColor = 'rgba(22,163,74,.2)';
+      unlockBtn.style.display = 'none';
+      lockBtn.style.display   = '';
+    }
+  }
+
   function openEditUserModal(u) {
-    editingUserId = u.id;
-    document.getElementById('editUserName').value     = u.full_name || '';
-    document.getElementById('editUserEmail').value    = u.email || '';
+    editingUserId    = u.id;
+    editingCompanyId = u.company_id || null;
+    document.getElementById('editUserName').value      = u.full_name || '';
+    document.getElementById('editUserEmail').value     = u.email || '';
     document.getElementById('editUserIsAdmin').checked = !!u.is_admin;
-    document.getElementById('editUserDetailsStatus').textContent = 'Loading details…';
     document.getElementById('editUserDetailsBody').innerHTML = '';
+    document.getElementById('editUserDetailsStatus').textContent = '';
+
+    // Reset service areas
+    var ta = document.getElementById('editUserAreaPostcodes');
+    ta.value = 'Loading…';
+    ta.disabled = true;
+    document.getElementById('editUserAreaLockBadge').style.display = 'none';
+    document.getElementById('editUserUnlockAreaBtn').style.display = 'none';
+    document.getElementById('editUserLockAreaBtn').style.display   = 'none';
+
     document.getElementById('editUserModal').classList.remove('hidden');
 
+    // Load service areas directly from companies table
+    if (u.company_id) {
+      sb.from('companies')
+        .select('ppl_agreed_postcodes, ppl_area_locked')
+        .eq('id', u.company_id)
+        .maybeSingle()
+        .then(function(res) {
+          if (editingUserId !== u.id) return;
+          ta.disabled = false;
+          if (res.error || !res.data) {
+            ta.value = '';
+            ta.placeholder = 'Could not load postcodes';
+            return;
+          }
+          ta.value = (res.data.ppl_agreed_postcodes || []).join('\n');
+          ta.placeholder = 'One postcode per line';
+          setAreaLockUI(res.data.ppl_area_locked !== false);
+        });
+    } else {
+      ta.disabled = false;
+      ta.value = '';
+      ta.placeholder = 'No company linked to this user';
+    }
+
+    // Also try to load extended details (bonus — works only if edge fn is deployed)
     callEdge({ action: 'get_user_details', user_id: u.id }).then(function(d) {
-      if (editingUserId !== u.id) return; // modal closed/changed
+      if (editingUserId !== u.id) return;
       document.getElementById('editUserDetailsBody').innerHTML = renderUserDetailsBody(d);
-      document.getElementById('editUserDetailsStatus').textContent = '';
-    }).catch(function(err) {
-      document.getElementById('editUserDetailsStatus').textContent = 'Could not load details';
-    });
+    }).catch(function() {});
   }
 
   document.getElementById('editUserCancelBtn').addEventListener('click', function () {
     document.getElementById('editUserModal').classList.add('hidden');
-    editingUserId = null;
+    editingUserId = null; editingCompanyId = null;
   });
 
   document.getElementById('editUserModal').addEventListener('click', function (e) {
     if (e.target === this) {
       this.classList.add('hidden');
-      editingUserId = null;
+      editingUserId = null; editingCompanyId = null;
     }
+  });
+
+  // ── Service area buttons (static IDs — always present in modal HTML) ──────
+  document.getElementById('editUserSaveAreaBtn').addEventListener('click', async function () {
+    if (!editingCompanyId) { toast('No company linked to this user.', true); return; }
+    var postcodes = document.getElementById('editUserAreaPostcodes').value
+      .split(/[\s,\n]+/).map(function(s){ return s.trim().toUpperCase(); }).filter(Boolean);
+    this.disabled = true; this.textContent = 'Saving…';
+    var res = await sb.from('companies').update({ ppl_agreed_postcodes: postcodes }).eq('id', editingCompanyId);
+    if (res.error) toast('Failed: ' + res.error.message, true);
+    else toast('Service areas saved.');
+    this.disabled = false; this.textContent = 'Save Postcodes';
+  });
+
+  document.getElementById('editUserUnlockAreaBtn').addEventListener('click', async function () {
+    if (!editingCompanyId) return;
+    if (!confirm('Unlock service areas for this user? They will be able to edit once.')) return;
+    this.disabled = true; this.textContent = 'Unlocking…';
+    var res = await sb.from('companies').update({ ppl_area_locked: false }).eq('id', editingCompanyId);
+    if (res.error) { toast('Failed: ' + res.error.message, true); this.disabled = false; this.textContent = 'Unlock for User'; return; }
+    setAreaLockUI(false);
+    this.disabled = false;
+    toast('Service area unlocked.');
+  });
+
+  document.getElementById('editUserLockAreaBtn').addEventListener('click', async function () {
+    if (!editingCompanyId) return;
+    this.disabled = true; this.textContent = 'Locking…';
+    var res = await sb.from('companies').update({ ppl_area_locked: true }).eq('id', editingCompanyId);
+    if (res.error) { toast('Failed: ' + res.error.message, true); this.disabled = false; this.textContent = 'Lock'; return; }
+    setAreaLockUI(true);
+    this.disabled = false;
+    toast('Service area locked.');
   });
 
   document.getElementById('editUserSaveBtn').addEventListener('click', async function () {
@@ -1110,46 +1215,6 @@ h1{font-size:18px;font-weight:500}
 
     btn.disabled    = false;
     btn.textContent = 'Save Changes';
-  });
-
-  // ── Edit User modal: service area buttons (delegated — buttons are dynamic) ──
-  document.getElementById('editUserModal').addEventListener('click', async function (e) {
-    var saveBtn   = e.target.closest('.admin-save-areas-btn');
-    var unlockBtn = e.target.closest('.admin-unlock-btn');
-    var lockBtn   = e.target.closest('.admin-lock-btn');
-
-    if (saveBtn) {
-      var cid = saveBtn.dataset.companyId;
-      var ta  = document.getElementById('adminServiceAreaPostcodes_' + cid);
-      if (!ta) return;
-      var postcodes = ta.value.split(/[\s,\n]+/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
-      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
-      var res = await sb.from('companies').update({ ppl_agreed_postcodes: postcodes }).eq('id', cid);
-      if (res.error) { toast('Failed: ' + res.error.message, true); }
-      else { toast('Service areas updated.'); }
-      saveBtn.disabled = false; saveBtn.textContent = 'Save Postcodes';
-    }
-
-    if (unlockBtn) {
-      var cid = unlockBtn.dataset.companyId;
-      if (!confirm('Unlock service areas for this company? They will be able to edit once.')) return;
-      unlockBtn.disabled = true; unlockBtn.textContent = 'Unlocking…';
-      var res = await sb.from('companies').update({ ppl_area_locked: false }).eq('id', cid);
-      if (res.error) { toast('Failed: ' + res.error.message, true); unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock for User'; return; }
-      unlockBtn.textContent = 'Unlocked ✓';
-      unlockBtn.className = 'btn btn-sm btn-reject admin-lock-btn';
-      unlockBtn.dataset.companyId = cid;
-      toast('Service area unlocked for user.');
-    }
-
-    if (lockBtn) {
-      var cid = lockBtn.dataset.companyId;
-      lockBtn.disabled = true; lockBtn.textContent = 'Locking…';
-      var res = await sb.from('companies').update({ ppl_area_locked: true }).eq('id', cid);
-      if (res.error) { toast('Failed: ' + res.error.message, true); lockBtn.disabled = false; lockBtn.textContent = 'Lock'; return; }
-      lockBtn.textContent = 'Locked ✓';
-      toast('Service area locked.');
-    }
   });
 
   // ── PPL Area Change Requests ──────────────────────────────────────────────
