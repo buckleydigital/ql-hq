@@ -453,7 +453,7 @@ h1{font-size:18px;font-weight:500}
     </div>
 
     <!-- Signup Attempts panel -->
-    <div class="card">
+    <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
         <div>
           <h2>Signup Attempts</h2>
@@ -578,6 +578,21 @@ h1{font-size:18px;font-weight:500}
     <div class="modal-actions">
       <button class="btn btn-sm" id="pplModalCancelBtn" type="button">Cancel</button>
       <button class="btn2 btn-sm" id="pplModalSubmitBtn" type="button">Create Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete User confirmation modal ─────────────────────────────────────────── -->
+<div id="deleteUserModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:420px">
+    <h3 style="color:#b91c1c">Delete User</h3>
+    <p id="deleteUserModalText" style="font-size:13px;color:var(--muted);margin-bottom:10px"></p>
+    <div class="notice warn" style="margin-bottom:16px;font-size:12px">
+      This will permanently delete the user and all their data. <strong>This cannot be undone.</strong>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="deleteUserCancelBtn" type="button">Cancel</button>
+      <button class="btn btn-sm btn-reject" id="deleteUserConfirmBtn" type="button" disabled>Delete User</button>
     </div>
   </div>
 </div>
@@ -710,6 +725,7 @@ h1{font-size:18px;font-weight:500}
       '<div style="display:flex;gap:6px">' +
         '<button class="btn btn-sm edit-user-btn" type="button">Edit</button>' +
         '<button class="btn2 btn-sm login-as-btn" type="button">Login as</button>' +
+        '<button class="btn btn-sm btn-reject delete-user-btn" type="button">Delete</button>' +
       '</div>';
 
     row.querySelector('.edit-user-btn').addEventListener('click', function () {
@@ -717,6 +733,9 @@ h1{font-size:18px;font-weight:500}
     });
     row.querySelector('.login-as-btn').addEventListener('click', function () {
       handleLoginAs(u.email, u.full_name || u.email, this);
+    });
+    row.querySelector('.delete-user-btn').addEventListener('click', function () {
+      openDeleteUserModal(u);
     });
     return row;
   }
@@ -932,6 +951,60 @@ h1{font-size:18px;font-weight:500}
     btn.textContent = 'Save Changes';
   });
 
+  // ── Delete User ───────────────────────────────────────────────────────────
+  var pendingDeleteUserId = null;
+  var deleteConfirmTimer  = null;
+
+  function openDeleteUserModal(u) {
+    pendingDeleteUserId = u.id;
+    document.getElementById('deleteUserModalText').textContent =
+      'You are about to delete ' + (u.full_name || '(no name)') + ' (' + u.email + ').';
+    var confirmBtn = document.getElementById('deleteUserConfirmBtn');
+    confirmBtn.disabled    = true;
+    confirmBtn.textContent = 'Delete User (wait 3s…)';
+    document.getElementById('deleteUserModal').classList.remove('hidden');
+    clearTimeout(deleteConfirmTimer);
+    deleteConfirmTimer = setTimeout(function () {
+      confirmBtn.disabled    = false;
+      confirmBtn.textContent = 'Yes, Delete Forever';
+    }, 3000);
+  }
+
+  function closeDeleteUserModal() {
+    document.getElementById('deleteUserModal').classList.add('hidden');
+    pendingDeleteUserId = null;
+    clearTimeout(deleteConfirmTimer);
+    var confirmBtn = document.getElementById('deleteUserConfirmBtn');
+    confirmBtn.disabled    = true;
+    confirmBtn.textContent = 'Delete User';
+  }
+
+  document.getElementById('deleteUserCancelBtn').addEventListener('click', closeDeleteUserModal);
+  document.getElementById('deleteUserModal').addEventListener('click', function (e) {
+    if (e.target === this) closeDeleteUserModal();
+  });
+
+  document.getElementById('deleteUserConfirmBtn').addEventListener('click', async function () {
+    if (!pendingDeleteUserId) return;
+    var btn = this;
+    btn.disabled    = true;
+    btn.textContent = 'Deleting…';
+    var uid = pendingDeleteUserId;
+    try {
+      await callEdge({ action: 'delete_user', user_id: uid });
+      allUsers = allUsers.filter(function (x) { return x.id !== uid; });
+      closeDeleteUserModal();
+      applyFilter(document.getElementById('searchInput').value);
+      var label = document.getElementById('userCountLabel');
+      if (label) label.textContent = allUsers.length + ' users';
+      toast('User deleted.');
+    } catch (err) {
+      toast('Failed to delete: ' + err.message, true);
+      btn.disabled    = false;
+      btn.textContent = 'Yes, Delete Forever';
+    }
+  });
+
   // ── Disputes ──────────────────────────────────────────────────────────────
 
   var allDisputes = [];
@@ -1125,9 +1198,14 @@ h1{font-size:18px;font-weight:500}
     var purchased = o.purchased_at
       ? new Date(o.purchased_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
       : '';
-    var due = o.due_date
-      ? new Date(o.due_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-      : '';
+    var due = '';
+    if (o.purchased_at) {
+      var dueD = new Date(o.purchased_at);
+      dueD.setDate(dueD.getDate() + 14);
+      due = dueD.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else if (o.due_date) {
+      due = new Date(o.due_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
     var statusLabel = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' }[o.status] || o.status;
 
     var row = document.createElement('div');

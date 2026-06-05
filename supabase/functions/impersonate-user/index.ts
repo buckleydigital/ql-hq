@@ -634,6 +634,28 @@ Deno.serve(async (req) => {
       return json({ success: true, user_id });
     }
 
+    // ── action: delete_user ───────────────────────────────────────────────────
+    // Permanently deletes a user from auth.users (cascades to profiles).
+    if (action === "delete_user") {
+      const { user_id } = body as { user_id?: string };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user_id || !UUID_RE.test(user_id)) {
+        return json({ error: "user_id must be a valid UUID" }, 400);
+      }
+      if (user_id === caller.id) {
+        return json({ error: "Cannot delete your own account" }, 400);
+      }
+
+      const { error: deleteErr } = await adminClient.auth.admin.deleteUser(user_id);
+      if (deleteErr) {
+        console.error("delete_user error:", deleteErr.message);
+        return json({ error: "Failed to delete user: " + deleteErr.message }, 500);
+      }
+
+      return json({ success: true });
+    }
+
     // ── Unknown action ────────────────────────────────────────────────────────
     return json({ error: `Unknown action: ${action ?? "(none)"}` }, 400);
   } catch (err) {
