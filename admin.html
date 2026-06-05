@@ -127,6 +127,15 @@ h1{font-size:18px;font-weight:500}
 .modal textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,111,255,.1)}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 
+/* ── Collapsible panels ──────────────────────────────────────────── */
+.panel-b.collapsed{display:none}
+.panel-chevron{background:none;border:none;cursor:pointer;padding:4px 6px;color:var(--muted);border-radius:6px;transition:color .15s;flex-shrink:0;display:flex;align-items:center;margin-left:8px}
+.panel-chevron:hover{color:var(--text,var(--ink))}
+.panel-chevron svg{transition:transform .2s;display:block}
+.panel-chevron.open svg{transform:rotate(180deg)}
+.panel-h-title{cursor:pointer}
+.panel-h-title:hover h2{color:var(--accent,#4797FF)}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media(max-width:600px){
   .user-row{grid-template-columns:1fr;gap:8px}
@@ -1919,6 +1928,48 @@ h1{font-size:18px;font-weight:500}
     document.addEventListener('DOMContentLoaded', boot);
   } else {
     boot();
+  }
+
+  // ── Collapsible panels ────────────────────────────────────────────
+  function initPanelToggles() {
+    document.querySelectorAll('.card').forEach(function(card) {
+      var header = card.querySelector('.panel-h');
+      var body   = card.querySelector('.panel-b');
+      if (!header || !body) return;
+
+      // Start collapsed
+      body.classList.add('collapsed');
+
+      // Chevron button
+      var chevron = document.createElement('button');
+      chevron.type = 'button';
+      chevron.className = 'panel-chevron';
+      chevron.setAttribute('aria-label', 'Toggle section');
+      chevron.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      chevron.addEventListener('click', function(e) { e.stopPropagation(); togglePanel(card); });
+      header.appendChild(chevron);
+
+      // Make the title div (first child div) clickable
+      var titleDiv = header.querySelector(':scope > div:first-child');
+      if (titleDiv) {
+        titleDiv.classList.add('panel-h-title');
+        titleDiv.addEventListener('click', function() { togglePanel(card); });
+      }
+    });
+  }
+
+  function togglePanel(card) {
+    var body    = card.querySelector('.panel-b');
+    var chevron = card.querySelector('.panel-chevron');
+    var nowCollapsed = body.classList.toggle('collapsed');
+    if (chevron) chevron.classList.toggle('open', !nowCollapsed);
+  }
+
+  // Wire toggles once the DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPanelToggles);
+  } else {
+    initPanelToggles();
   }
 })();
 </script>
