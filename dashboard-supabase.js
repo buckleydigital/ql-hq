@@ -1117,7 +1117,7 @@ async function loadDashboard() {
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
       sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
-      sb.from("sms_agent_config").select("ai_enabled, is_active, agent_name").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("sms_agent_config").select("is_active, agent_name").eq("company_id", currentCompanyId).maybeSingle(),
       sb.from("ppl_lead_orders").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId).not("status", "eq", "pending"),
     ]);
 
