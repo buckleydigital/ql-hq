@@ -623,13 +623,12 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                 </div>
                 <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Go →</span>
               </div>
-              <div id="oc_step2" class="check-row" style="cursor:pointer" onclick="openModal('leadModal');resetLeadForm()">
+              <div id="oc_step2" class="check-row">
                 <span id="oc_step2_icon" style="font-size:18px;flex-shrink:0">○</span>
                 <div>
-                  <strong style="font-size:13px">Add your first lead</strong>
-                  <span class="muted" style="display:block;font-size:12px">Create a lead record or wait for your first inbound SMS</span>
+                  <strong style="font-size:13px">Receive your first lead</strong>
+                  <span class="muted" style="display:block;font-size:12px">Leads are delivered automatically via PPL or inbound SMS</span>
                 </div>
-                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Add lead →</span>
               </div>
               <div id="oc_step3" class="check-row" style="cursor:pointer" onclick="navigateTo('buy-leads')">
                 <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
@@ -774,11 +773,8 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             <div id="leadsEmptyState" class="empty hidden">
               <span class="icon" data-icon="users" style="width:32px;height:32px"></span>
               <h3>No leads yet</h3>
-              <p>Leads flow in automatically once your AI agent is live, or you can add them manually.</p>
+              <p>Leads flow in automatically once your AI agent is live.</p>
               <div style="display:flex;gap:8px;margin-top:4px">
-                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
-                  <span class="icon" data-icon="plus"></span> Add a lead
-                </button>
                 <button class="btn" type="button" onclick="navigateTo('buy-leads')">Buy leads →</button>
               </div>
             </div>
