@@ -125,6 +125,16 @@ h1{font-size:18px;font-weight:500}
 .modal h3{font-size:15px;font-weight:600;margin-bottom:16px}
 .modal textarea{width:100%;min-height:90px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);font:inherit;font-size:13px;color:var(--text);resize:vertical;outline:none}
 .modal textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,111,255,.1)}
+
+/* ── User detail panel inside edit modal ─────────────────────────── */
+.ud-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:14px 0 7px;padding-top:14px;border-top:1px solid var(--border)}
+.ud-section:first-child{margin-top:4px;border-top:none}
+.ud-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:7px;margin-bottom:4px}
+.ud-kv-item{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 10px}
+.ud-kv-label{font-size:10px;font-weight:600;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px}
+.ud-kv-value{font-size:12px;color:var(--text);word-break:break-all;line-height:1.4}
+.ud-order{padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);margin-bottom:6px}
+.ud-twilio{padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);font-size:12px;margin-bottom:5px}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 
 /* ── Collapsible panels ──────────────────────────────────────────── */
@@ -528,23 +538,34 @@ h1{font-size:18px;font-weight:500}
 
 <!-- ── Edit User modal ────────────────────────────────────────────────────────── -->
 <div id="editUserModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-  <div class="modal" style="max-width:440px">
-    <h3>Edit User</h3>
-    <div class="form-row" style="margin-bottom:12px">
-      <label class="form-label" for="editUserName">Full Name</label>
-      <input class="form-input" id="editUserName" type="text" placeholder="Full name" maxlength="200">
+  <div class="modal" style="max-width:700px;padding:0;display:flex;flex-direction:column;max-height:88vh">
+    <!-- fixed header: editable fields -->
+    <div style="padding:20px 24px 0;flex-shrink:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0">Edit User</h3>
+        <span id="editUserDetailsStatus" style="font-size:11px;color:var(--muted)">Loading details…</span>
+      </div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="form-row">
+          <label class="form-label" for="editUserName">Full Name</label>
+          <input class="form-input" id="editUserName" type="text" placeholder="Full name" maxlength="200">
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="editUserEmail">Email</label>
+          <input class="form-input" id="editUserEmail" type="email" placeholder="email@example.com">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
+          <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
+          <span style="font-size:12px;font-weight:500">Super Admin access</span>
+        </label>
+      </div>
     </div>
-    <div class="form-row" style="margin-bottom:12px">
-      <label class="form-label" for="editUserEmail">Email</label>
-      <input class="form-input" id="editUserEmail" type="email" placeholder="email@example.com">
-    </div>
-    <div class="form-row" style="margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)">
-        <input type="checkbox" id="editUserIsAdmin" style="accent-color:#ef4444;width:16px;height:16px;flex-shrink:0">
-        <span style="font-size:12px;font-weight:500">Super Admin access</span>
-      </label>
-    </div>
-    <div class="modal-actions">
+    <!-- scrollable detail body -->
+    <div id="editUserDetailsBody" style="overflow-y:auto;flex:1;padding:0 24px 12px;border-top:1px solid var(--border)"></div>
+    <!-- fixed footer -->
+    <div class="modal-actions" style="flex-shrink:0;padding:10px 24px;border-top:1px solid var(--border);margin:0">
       <button class="btn btn-sm" id="editUserCancelBtn" type="button">Cancel</button>
       <button class="btn2 btn-sm" id="editUserSaveBtn" type="button">Save Changes</button>
     </div>
@@ -902,12 +923,120 @@ h1{font-size:18px;font-weight:500}
   // ── Edit User ────────────────────────────────────────────────────────────
   var editingUserId = null;
 
+  function ud_kv(label, value) {
+    return '<div class="ud-kv-item"><div class="ud-kv-label">' + label + '</div><div class="ud-kv-value">' + (value !== null && value !== undefined && value !== '' ? escapeHtml(String(value)) : '<span style="color:var(--muted)">—</span>') + '</div></div>';
+  }
+
+  function renderUserDetailsBody(d) {
+    var html = '';
+    var u = d.user || {};
+    var c = d.company;
+    var sms = d.sms_credits;
+
+    // Account
+    html += '<div class="ud-section">Account</div>';
+    html += '<div class="ud-kv">';
+    html += ud_kv('User ID', u.id);
+    html += ud_kv('Role', u.role || 'member');
+    html += ud_kv('Phone', u.phone);
+    html += ud_kv('Member Since', u.created_at ? new Date(u.created_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '');
+    html += '</div>';
+
+    // Company
+    if (c) {
+      html += '<div class="ud-section">Company</div>';
+      html += '<div class="ud-kv">';
+      html += ud_kv('Name', c.name);
+      html += ud_kv('Plan', c.plan);
+      html += ud_kv('Status', c.status);
+      html += ud_kv('Email', c.email);
+      html += ud_kv('Phone', c.phone);
+      html += ud_kv('Website', c.website_url);
+      html += ud_kv('Service Area', c.service_area);
+      html += ud_kv('Lead Goal', c.lead_goals);
+      html += ud_kv('Onboarding', c.onboarding_completed ? 'Complete' : 'Incomplete');
+      html += ud_kv('Advertising', c.has_advertising_system ? 'Active' : 'Not active');
+      html += ud_kv('Campaign Status', c.campaign_status || 'none');
+      if (c.ppl_agreed_postcodes && c.ppl_agreed_postcodes.length) {
+        html += ud_kv('PPL Postcodes', c.ppl_agreed_postcodes.join(', '));
+      }
+      html += ud_kv('Stripe ID', c.stripe_customer_id);
+      html += '</div>';
+    }
+
+    // SMS Credits
+    if (sms) {
+      html += '<div class="ud-section">SMS Credits</div>';
+      html += '<div class="ud-kv">';
+      html += ud_kv('Balance', sms.balance);
+      html += ud_kv('Lifetime Used', sms.lifetime_used);
+      html += ud_kv('Monthly Free', sms.monthly_free_sms);
+      html += ud_kv('Reset Date', sms.next_reset_at ? new Date(sms.next_reset_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '');
+      html += '</div>';
+    }
+
+    // Twilio Numbers
+    var nums = d.twilio_numbers || [];
+    html += '<div class="ud-section">Twilio Numbers (' + nums.length + ')</div>';
+    if (nums.length) {
+      nums.forEach(function(n) {
+        html += '<div class="ud-twilio"><strong>' + escapeHtml(n.phone_number || '') + '</strong>' +
+          (n.friendly_name ? ' <span style="color:var(--muted)">· ' + escapeHtml(n.friendly_name) + '</span>' : '') + '</div>';
+      });
+    } else {
+      html += '<div class="notice" style="font-size:12px;margin-bottom:4px">No numbers assigned.</div>';
+    }
+
+    // Lead Orders
+    var orders = d.ppl_orders || [];
+    html += '<div class="ud-section">Lead Orders (' + orders.length + ')</div>';
+    if (orders.length) {
+      orders.forEach(function(o) {
+        var pct = o.total_leads > 0 ? Math.min(100, Math.round(o.delivered_leads / o.total_leads * 100)) : 0;
+        var dueD = o.purchased_at ? new Date(o.purchased_at) : null;
+        if (dueD) dueD.setDate(dueD.getDate() + 14);
+        html += '<div class="ud-order">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">' +
+            '<span style="font-size:12px;font-weight:600">' + o.delivered_leads + ' / ' + o.total_leads + ' leads</span>' +
+            '<span class="badge-status ' + pplStatusClass(o.status) + '">' + escapeHtml(o.status) + '</span>' +
+          '</div>' +
+          '<div style="background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-bottom:5px">' +
+            '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' +
+            (o.purchased_at ? 'Purchased ' + new Date(o.purchased_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '') +
+            (dueD ? ' · Due ' + dueD.toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '') +
+          '</div>' +
+          (o.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + escapeHtml(o.notes) + '</div>' : '') +
+        '</div>';
+      });
+    } else {
+      html += '<div class="notice" style="font-size:12px;margin-bottom:4px">No lead orders.</div>';
+    }
+
+    // Leads total
+    html += '<div class="ud-section">Total Leads in System</div>';
+    html += '<div class="ud-kv">' + ud_kv('All Leads', d.lead_count !== undefined ? d.lead_count : '—') + '</div>';
+
+    return html;
+  }
+
   function openEditUserModal(u) {
     editingUserId = u.id;
-    document.getElementById('editUserName').value  = u.full_name || '';
-    document.getElementById('editUserEmail').value = u.email || '';
-    document.getElementById('editUserIsAdmin').checked      = !!u.is_admin;
+    document.getElementById('editUserName').value     = u.full_name || '';
+    document.getElementById('editUserEmail').value    = u.email || '';
+    document.getElementById('editUserIsAdmin').checked = !!u.is_admin;
+    document.getElementById('editUserDetailsStatus').textContent = 'Loading details…';
+    document.getElementById('editUserDetailsBody').innerHTML = '';
     document.getElementById('editUserModal').classList.remove('hidden');
+
+    callEdge({ action: 'get_user_details', user_id: u.id }).then(function(d) {
+      if (editingUserId !== u.id) return; // modal closed/changed
+      document.getElementById('editUserDetailsBody').innerHTML = renderUserDetailsBody(d);
+      document.getElementById('editUserDetailsStatus').textContent = '';
+    }).catch(function(err) {
+      document.getElementById('editUserDetailsStatus').textContent = 'Could not load details';
+    });
   }
 
   document.getElementById('editUserCancelBtn').addEventListener('click', function () {

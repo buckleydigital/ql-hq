@@ -381,6 +381,76 @@ Deno.serve(async (req) => {
       return json({ success: true, company_id });
     }
 
+    // ── action: get_user_details ──────────────────────────────────────────────
+    // Returns full profile + company + twilio numbers + ppl orders + sms credits
+    // for a single user. Used by the admin Edit User modal.
+    if (action === "get_user_details") {
+      const { user_id } = body as { user_id?: string };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user_id || !UUID_RE.test(user_id)) {
+        return json({ error: "user_id must be a valid UUID" }, 400);
+      }
+
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("id, full_name, company_id, role, phone, is_admin, created_at")
+        .eq("id", user_id)
+        .maybeSingle();
+
+      const companyId = profile?.company_id;
+
+      let company = null,
+        twilioNumbers: unknown[] = [],
+        pplOrders: unknown[] = [],
+        smsCredits = null,
+        leadCount = 0;
+
+      if (companyId) {
+        const [compRes, twilioRes, pplRes, smsRes, leadRes] = await Promise.all([
+          adminClient
+            .from("companies")
+            .select("id, name, plan, status, email, phone, website_url, service_area, stripe_customer_id, ppl_agreed_postcodes, has_advertising_system, campaign_status, onboarding_completed, lead_goals")
+            .eq("id", companyId)
+            .maybeSingle(),
+          adminClient
+            .from("twilio_numbers")
+            .select("id, phone_number, friendly_name")
+            .eq("company_id", companyId)
+            .order("created_at"),
+          adminClient
+            .from("ppl_orders")
+            .select("id, total_leads, delivered_leads, status, purchased_at, notes")
+            .eq("company_id", companyId)
+            .order("purchased_at", { ascending: false }),
+          adminClient
+            .from("sms_credits")
+            .select("balance, lifetime_used, monthly_free_sms, next_reset_at")
+            .eq("company_id", companyId)
+            .maybeSingle(),
+          adminClient
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .eq("company_id", companyId),
+        ]);
+
+        company       = compRes.data;
+        twilioNumbers = twilioRes.data || [];
+        pplOrders     = pplRes.data   || [];
+        smsCredits    = smsRes.data;
+        leadCount     = leadRes.count ?? 0;
+      }
+
+      return json({
+        user:           profile,
+        company,
+        twilio_numbers: twilioNumbers,
+        ppl_orders:     pplOrders,
+        sms_credits:    smsCredits,
+        lead_count:     leadCount,
+      });
+    }
+
     // ── action: list_twilio_numbers ───────────────────────────────────────────
     // Returns all Twilio numbers with their assigned company.
     if (action === "list_twilio_numbers") {
