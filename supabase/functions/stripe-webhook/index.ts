@@ -135,6 +135,68 @@ async function insertSmsAgentConfig(companyId: string, m: Record<string, string>
   })
 }
 
+// ── ql-mc sync: log PPL order into ppl_order_log ─────────────────────────────
+async function syncPplOrderToMc(params: {
+  companyId: string
+  quantity: number
+  pricePerLead: number
+  niche: string
+  subNiche: string | null
+  areaCity: string
+  qlHqOrderId: string
+}) {
+  const { companyId, quantity, pricePerLead, niche, subNiche, areaCity, qlHqOrderId } = params
+  try {
+    const { data: client } = await supabase
+      .from('clients')
+      .select('id, total_leads_purchased')
+      .eq('ql_hq_company_id', companyId)
+      .eq('type', 'ppl')
+      .maybeSingle()
+
+    if (!client) {
+      console.log('No ql-mc client found for company:', companyId, '— skipping mc sync')
+      return
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+    const slaDue = new Date()
+    slaDue.setDate(slaDue.getDate() + 14)
+
+    const { error: insertError } = await supabase.from('ppl_order_log').insert([{
+      client_id:   client.id,
+      leads_qty:   quantity,
+      lead_price:  pricePerLead,
+      notes:       `${niche}${subNiche ? ' › ' + subNiche : ''} — ${areaCity} | HQ Order ${qlHqOrderId}`,
+      order_date:  today,
+      status:      'in_progress',
+      sla_due_date: slaDue.toISOString().split('T')[0],
+      created_at:  new Date().toISOString(),
+    }])
+
+    if (insertError) {
+      console.error('ppl_order_log sync error:', insertError.message)
+      return
+    }
+
+    const { count } = await supabase
+      .from('ppl_order_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', client.id)
+
+    const newTotal = (client.total_leads_purchased || 0) + quantity
+    await supabase.from('clients').update({
+      total_leads_purchased: newTotal,
+      has_reordered:         (count || 0) >= 2,
+      updated_at:            new Date().toISOString(),
+    }).eq('id', client.id)
+
+    console.log('ql-mc ppl_order_log synced for client:', client.id)
+  } catch (err) {
+    console.error('syncPplOrderToMc error:', err)
+  }
+}
+
 // ── PPL payment (existing company buying more leads) ───────────────────────────
 async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL payment for order:', m.order_id)
@@ -176,6 +238,17 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} — ${m.area_city}`,
     })
     if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
+
+    // Sync new order to ql-mc ppl_order_log
+    await syncPplOrderToMc({
+      companyId:    m.company_id,
+      quantity:     parseInt(m.quantity),
+      pricePerLead: parseFloat(m.price_per_lead),
+      niche:        m.niche,
+      subNiche:     m.sub_niche || null,
+      areaCity:     m.area_city,
+      qlHqOrderId:  m.order_id,
+    })
 
     const { data: company } = await supabase
       .from('companies').select('name, email, phone').eq('id', m.company_id).maybeSingle()
@@ -288,6 +361,20 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     await provisionTwilio(companyId)
     if (order) {
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
+    }
+
+    // Sync new order to ql-mc ppl_order_log (fire-and-forget — new company won't have a client yet,
+    // but we try in case one was pre-created manually in ql-mc with a ql_hq_company_id)
+    if (order) {
+      await syncPplOrderToMc({
+        companyId:    companyId,
+        quantity:     parseInt(m.quantity),
+        pricePerLead: parseFloat(m.price_per_lead),
+        niche:        m.niche,
+        subNiche:     m.sub_niche || null,
+        areaCity:     m.area_city,
+        qlHqOrderId:  order.id,
+      })
     }
 
     // Generate magic link — throws if Supabase auth fails (user can't log in)
