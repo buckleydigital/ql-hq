@@ -188,13 +188,6 @@ Deno.serve(async (req) => {
       resolvedPhone,
     );
 
-    maybeSendLeadDeliveryEmail(db, company_id, {
-      name:   resolvedName,
-      email:  resolvedEmail,
-      phone:  resolvedPhone,
-      niche:  typeof niche === "string" ? niche : null,
-    });
-
     return json({ success: true, lead_id: leadId });
   } catch (err) {
     console.error("intake-lead error:", err);
@@ -319,60 +312,6 @@ function maybeSendWelcomeSms(
       }
     } catch (err) {
       console.warn("maybeSendWelcomeSms error:", err);
-    }
-  })();
-}
-
-function maybeSendLeadDeliveryEmail(
-  db: ReturnType<typeof createClient>,
-  companyId: string,
-  lead: { name: string | null; email: string | null; phone: string | null; niche: string | null },
-): void {
-  (async () => {
-    try {
-      const { data: company } = await db
-        .from("companies")
-        .select("name, settings")
-        .eq("id", companyId)
-        .maybeSingle();
-
-      const deliveryEmail = company?.settings?.lead_delivery?.email;
-      if (!deliveryEmail) return;
-
-      const resendApiKey = Deno.env.get("RESEND_API_KEY");
-      if (!resendApiKey) return;
-
-      const niche = lead.niche
-        ? lead.niche.charAt(0).toUpperCase() + lead.niche.slice(1)
-        : "New";
-
-      const html = `
-        <div style="font-family:system-ui,sans-serif;font-size:14px;color:#333;line-height:1.7;max-width:560px">
-          <h2 style="font-size:18px;margin:0 0 16px">🔔 New ${niche} Lead for ${company?.name || "your account"}</h2>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:6px 0;color:#666;width:100px">Name</td><td style="padding:6px 0;font-weight:500">${lead.name || "—"}</td></tr>
-            <tr><td style="padding:6px 0;color:#666">Phone</td><td style="padding:6px 0">${lead.phone || "—"}</td></tr>
-            <tr><td style="padding:6px 0;color:#666">Email</td><td style="padding:6px 0">${lead.email || "—"}</td></tr>
-            ${lead.niche ? `<tr><td style="padding:6px 0;color:#666">Niche</td><td style="padding:6px 0">${lead.niche}</td></tr>` : ""}
-          </table>
-          <p style="margin-top:20px;font-size:12px;color:#999">Log in to your QuoteLeads dashboard to view and action this lead.</p>
-        </div>`;
-
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "QuoteLeads <leads@quoteleads.com.au>",
-          to: deliveryEmail,
-          subject: `New ${niche} lead — ${lead.name || "Unknown"}`,
-          html,
-        }),
-      });
-    } catch (err) {
-      console.warn("maybeSendLeadDeliveryEmail error:", err);
     }
   })();
 }
