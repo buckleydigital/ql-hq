@@ -769,11 +769,6 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
               <button class="btn" data-lead-filter="warm" onclick="filterLeadsTable('warm',this)" type="button">Warm</button>
               <button class="btn" data-lead-filter="no_quote" onclick="filterLeadsTable('no_quote',this)" type="button">No quote</button>
               <button class="btn" data-lead-filter="stale" onclick="filterLeadsTable('stale',this)" type="button">Stale 72h+</button>
-              <div style="margin-left:auto;display:flex;gap:6px">
-                <button class="btn2" type="button" onclick="openModal('leadModal');resetLeadForm()">
-                  <span class="icon" data-icon="plus"></span> New Lead
-                </button>
-              </div>
             </div>
             <div class="table-wrap"><table id="leadsTable"><thead><tr><th>Lead</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th>AI Score</th><th>AI Status</th><th>AI Summary</th><th>Custom Fields</th><th>Actions</th></tr></thead><tbody id="leadsTableBody"></tbody></table></div>
             <div id="leadsEmptyState" class="empty hidden">
