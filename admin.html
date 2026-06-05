@@ -1124,36 +1124,31 @@ h1{font-size:18px;font-weight:500}
       if (!ta) return;
       var postcodes = ta.value.split(/[\s,\n]+/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
-      try {
-        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, postcodes: postcodes });
-        toast('Service areas updated.');
-      } catch (err) { toast('Failed: ' + err.message, true); }
+      var res = await sb.from('companies').update({ ppl_agreed_postcodes: postcodes }).eq('id', cid);
+      if (res.error) { toast('Failed: ' + res.error.message, true); }
+      else { toast('Service areas updated.'); }
       saveBtn.disabled = false; saveBtn.textContent = 'Save Postcodes';
     }
 
     if (unlockBtn) {
       var cid = unlockBtn.dataset.companyId;
-      if (!confirm('Unlock service areas for this company? They will be able to edit them once.')) return;
+      if (!confirm('Unlock service areas for this company? They will be able to edit once.')) return;
       unlockBtn.disabled = true; unlockBtn.textContent = 'Unlocking…';
-      try {
-        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, locked: false });
-        unlockBtn.textContent = 'Unlocked ✓';
-        unlockBtn.className = 'btn btn-sm admin-lock-btn btn-reject';
-        unlockBtn.removeAttribute('data-company-id');
-        unlockBtn.dataset.companyId = cid;
-        unlockBtn.classList.remove('admin-unlock-btn');
-        toast('Service area unlocked.');
-      } catch (err) { toast('Failed: ' + err.message, true); unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock for User'; }
+      var res = await sb.from('companies').update({ ppl_area_locked: false }).eq('id', cid);
+      if (res.error) { toast('Failed: ' + res.error.message, true); unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock for User'; return; }
+      unlockBtn.textContent = 'Unlocked ✓';
+      unlockBtn.className = 'btn btn-sm btn-reject admin-lock-btn';
+      unlockBtn.dataset.companyId = cid;
+      toast('Service area unlocked for user.');
     }
 
     if (lockBtn) {
       var cid = lockBtn.dataset.companyId;
       lockBtn.disabled = true; lockBtn.textContent = 'Locking…';
-      try {
-        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, locked: true });
-        lockBtn.textContent = 'Locked ✓';
-        toast('Service area locked.');
-      } catch (err) { toast('Failed: ' + err.message, true); lockBtn.disabled = false; lockBtn.textContent = 'Lock'; }
+      var res = await sb.from('companies').update({ ppl_area_locked: true }).eq('id', cid);
+      if (res.error) { toast('Failed: ' + res.error.message, true); lockBtn.disabled = false; lockBtn.textContent = 'Lock'; return; }
+      lockBtn.textContent = 'Locked ✓';
+      toast('Service area locked.');
     }
   });
 
@@ -1169,8 +1164,13 @@ h1{font-size:18px;font-weight:500}
     listEl.classList.add('hidden');
     emptyEl.classList.add('hidden');
     try {
-      var result = await callEdge({ action: 'list_ppl_unlock_requests' });
-      allPplAreaRequests = result.requests || [];
+      var { data: requests, error: reqErr } = await sb
+        .from('ppl_area_change_requests')
+        .select('*, company:companies(id, name)')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (reqErr) throw reqErr;
+      allPplAreaRequests = requests || [];
       var label = document.getElementById('pplAreaReqCountLabel');
       if (label) label.textContent = allPplAreaRequests.length + ' request' + (allPplAreaRequests.length === 1 ? '' : 's');
       loadingEl.classList.add('hidden');
@@ -1211,24 +1211,27 @@ h1{font-size:18px;font-weight:500}
         row.querySelector('.area-req-approve').addEventListener('click', async function () {
           var btn = this;
           btn.disabled = true; btn.textContent = 'Approving…';
-          try {
-            await callEdge({ action: 'resolve_ppl_unlock_request', request_id: r.id, resolution: 'approved' });
-            r.status = 'approved';
-            renderPplAreaRequests();
-            toast('Approved — service area unlocked for ' + (r.company ? r.company.name : 'company') + '.');
-          } catch (err) { toast('Failed: ' + err.message, true); btn.disabled = false; btn.textContent = 'Approve'; }
+          var upReq = await sb.from('ppl_area_change_requests')
+            .update({ status: 'approved', resolved_at: new Date().toISOString() })
+            .eq('id', r.id);
+          if (upReq.error) { toast('Failed: ' + upReq.error.message, true); btn.disabled = false; btn.textContent = 'Approve'; return; }
+          // Unlock the company
+          await sb.from('companies').update({ ppl_area_locked: false }).eq('id', r.company_id);
+          r.status = 'approved';
+          renderPplAreaRequests();
+          toast('Approved — service area unlocked for ' + (r.company ? r.company.name : 'company') + '.');
         });
         row.querySelector('.area-req-reject').addEventListener('click', async function () {
           var btn = this;
           var notes = prompt('Rejection reason (optional):') || '';
           btn.disabled = true; btn.textContent = 'Rejecting…';
-          try {
-            await callEdge({ action: 'resolve_ppl_unlock_request', request_id: r.id, resolution: 'rejected', admin_notes: notes });
-            r.status = 'rejected';
-            r.admin_notes = notes;
-            renderPplAreaRequests();
-            toast('Request rejected.');
-          } catch (err) { toast('Failed: ' + err.message, true); btn.disabled = false; btn.textContent = 'Reject'; }
+          var upReq = await sb.from('ppl_area_change_requests')
+            .update({ status: 'rejected', admin_notes: notes || null, resolved_at: new Date().toISOString() })
+            .eq('id', r.id);
+          if (upReq.error) { toast('Failed: ' + upReq.error.message, true); btn.disabled = false; btn.textContent = 'Reject'; return; }
+          r.status = 'rejected'; r.admin_notes = notes;
+          renderPplAreaRequests();
+          toast('Request rejected.');
         });
       }
       listEl.appendChild(row);
