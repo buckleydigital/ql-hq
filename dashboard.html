@@ -1332,16 +1332,41 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         </section>
         <!-- PPL Service Areas -->
         <section class="panel" style="margin-top:24px">
-          <div class="panel-h"><div><h2>PPL Service Areas</h2><p>The postcodes your company has contracted to receive leads for. Used to auto-check <em>Outside Agreed Criteria</em> disputes.</p></div></div>
+          <div class="panel-h">
+            <div>
+              <h2>PPL Service Areas <span id="serviceAreaLockBadge" style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-left:8px;border:1px solid"></span></h2>
+              <p>The postcodes your company has contracted to receive leads for. Used to auto-check <em>Outside Agreed Criteria</em> disputes.</p>
+            </div>
+            <button id="requestServiceAreaChangeBtn" class="btn" style="font-size:12px;display:none" type="button">Request Change</button>
+          </div>
           <div class="panel-b">
             <div id="serviceAreaTagsContainer" class="tags" style="min-height:32px;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px">
-              <textarea id="serviceAreaInput" placeholder="e.g. 2000, 2010, 2486" style="width:320px;height:64px;resize:vertical" maxlength="100000"></textarea>
-              <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcodes</button>
+            <!-- locked: no pending request -->
+            <div id="serviceAreaLockedNote" style="display:none">
+              <p class="muted" style="font-size:12px">Service areas are locked to prevent dispute abuse. Click <strong>Request Change</strong> to ask an admin to unlock them.</p>
             </div>
-            <p id="serviceAreaAutoNote" class="muted" style="font-size:11px;margin-bottom:10px;display:none">These postcodes were automatically set from your last lead pack order. You can edit them here at any time.</p>
-            <p class="muted" style="font-size:11px;margin-bottom:12px">Paste one postcode or a comma-separated list of postcodes. Duplicates are ignored automatically. The dispute auto-check will flag leads whose postcode is not in this list.</p>
-            <div class="actions"><button id="saveServiceAreasBtn" class="btn2" type="button">Save Service Areas</button></div>
+            <!-- locked: pending request -->
+            <div id="serviceAreaPendingNote" class="notice" style="display:none;font-size:12px">Your change request is pending admin review. You'll be able to edit once it's approved.</div>
+            <!-- unlocked: edit UI -->
+            <div id="serviceAreaEditSection" style="display:none">
+              <div class="notice" style="margin-bottom:12px;font-size:12px;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06);color:#92400e">Your service area has been temporarily unlocked. Make your changes and save — <strong>saving will re-lock it.</strong></div>
+              <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px">
+                <textarea id="serviceAreaInput" placeholder="e.g. 2000, 2010, 2486" style="width:320px;height:64px;resize:vertical" maxlength="100000"></textarea>
+                <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcodes</button>
+              </div>
+              <p id="serviceAreaAutoNote" class="muted" style="font-size:11px;margin-bottom:10px;display:none">These postcodes were automatically set from your last lead pack order.</p>
+              <p class="muted" style="font-size:11px;margin-bottom:12px">Paste postcodes, one per line or comma-separated. Duplicates are ignored.</p>
+              <div class="actions"><button id="saveServiceAreasBtn" class="btn2" type="button">Save &amp; Re-lock Service Areas</button></div>
+            </div>
+            <!-- request change inline form -->
+            <div id="serviceAreaRequestForm" style="display:none;margin-top:12px">
+              <p class="muted" style="font-size:12px;margin-bottom:8px">Briefly explain why you need to update your service areas:</p>
+              <textarea id="serviceAreaRequestMessage" placeholder="e.g. We're expanding into new suburbs and need to add additional postcodes." style="width:100%;height:72px;resize:vertical;margin-bottom:8px" maxlength="1000"></textarea>
+              <div style="display:flex;gap:8px">
+                <button id="serviceAreaRequestSubmitBtn" class="btn2" style="font-size:12px" type="button">Submit Request</button>
+                <button id="serviceAreaRequestCancelBtn" class="btn" style="font-size:12px" type="button">Cancel</button>
+              </div>
+            </div>
           </div>
         </section>
         <div class="actions" style="margin-top:24px"><button id="logoutButton" class="btn-danger btn" type="button"><span class="icon" data-icon="logout"></span><span>Log Out</span></button></div>

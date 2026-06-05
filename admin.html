@@ -462,6 +462,22 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- PPL Area Change Requests panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>PPL Area Change Requests</h2>
+          <p id="pplAreaReqCountLabel">Loading…</p>
+        </div>
+        <button class="btn btn-sm" id="refreshPplAreaReqBtn" type="button">Refresh</button>
+      </div>
+      <div class="panel-b">
+        <div id="pplAreaReqLoadingState" class="notice">Loading…</div>
+        <div id="pplAreaReqList" class="hidden"></div>
+        <div id="pplAreaReqEmptyState" class="notice hidden">No change requests found.</div>
+      </div>
+    </div>
+
     <!-- Signup Attempts panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -957,11 +973,27 @@ h1{font-size:18px;font-weight:500}
       html += ud_kv('Onboarding', c.onboarding_completed ? 'Complete' : 'Incomplete');
       html += ud_kv('Advertising', c.has_advertising_system ? 'Active' : 'Not active');
       html += ud_kv('Campaign Status', c.campaign_status || 'none');
-      if (c.ppl_agreed_postcodes && c.ppl_agreed_postcodes.length) {
-        html += ud_kv('PPL Postcodes', c.ppl_agreed_postcodes.join(', '));
-      }
       html += ud_kv('Stripe ID', c.stripe_customer_id);
       html += '</div>';
+
+      // PPL Service Areas — editable with lock toggle
+      var isLocked = c.ppl_area_locked !== false;
+      var postcodeList = (c.ppl_agreed_postcodes || []).join('\n');
+      var lockColor = isLocked ? '#b91c1c' : '#15803d';
+      var lockLabel = isLocked ? '🔒 Locked' : '🔓 Unlocked';
+      html += '<div class="ud-section">PPL Service Areas ' +
+        '<span style="font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600;background:' + (isLocked ? 'rgba(185,28,28,.08)' : 'rgba(22,163,74,.08)') + ';color:' + lockColor + ';border:1px solid ' + (isLocked ? 'rgba(185,28,28,.2)' : 'rgba(22,163,74,.2)') + '">' + lockLabel + '</span>' +
+        '</div>';
+      html += '<div id="adminServiceAreaEdit_' + escapeHtml(c.id) + '" data-company-id="' + escapeHtml(c.id) + '" data-locked="' + isLocked + '">' +
+        '<textarea id="adminServiceAreaPostcodes_' + escapeHtml(c.id) + '" style="width:100%;height:80px;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px;resize:vertical;margin-bottom:8px" placeholder="One postcode per line">' + escapeHtml(postcodeList) + '</textarea>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn2 btn-sm admin-save-areas-btn" data-company-id="' + escapeHtml(c.id) + '" type="button">Save Postcodes</button>' +
+          (isLocked
+            ? '<button class="btn btn-sm btn-approve admin-unlock-btn" data-company-id="' + escapeHtml(c.id) + '" type="button">Unlock for User</button>'
+            : '<button class="btn btn-sm btn-reject admin-lock-btn" data-company-id="' + escapeHtml(c.id) + '" type="button">Lock</button>'
+          ) +
+        '</div>' +
+      '</div>';
     }
 
     // SMS Credits
@@ -1079,6 +1111,131 @@ h1{font-size:18px;font-weight:500}
     btn.disabled    = false;
     btn.textContent = 'Save Changes';
   });
+
+  // ── Edit User modal: service area buttons (delegated — buttons are dynamic) ──
+  document.getElementById('editUserModal').addEventListener('click', async function (e) {
+    var saveBtn   = e.target.closest('.admin-save-areas-btn');
+    var unlockBtn = e.target.closest('.admin-unlock-btn');
+    var lockBtn   = e.target.closest('.admin-lock-btn');
+
+    if (saveBtn) {
+      var cid = saveBtn.dataset.companyId;
+      var ta  = document.getElementById('adminServiceAreaPostcodes_' + cid);
+      if (!ta) return;
+      var postcodes = ta.value.split(/[\s,\n]+/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      try {
+        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, postcodes: postcodes });
+        toast('Service areas updated.');
+      } catch (err) { toast('Failed: ' + err.message, true); }
+      saveBtn.disabled = false; saveBtn.textContent = 'Save Postcodes';
+    }
+
+    if (unlockBtn) {
+      var cid = unlockBtn.dataset.companyId;
+      if (!confirm('Unlock service areas for this company? They will be able to edit them once.')) return;
+      unlockBtn.disabled = true; unlockBtn.textContent = 'Unlocking…';
+      try {
+        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, locked: false });
+        unlockBtn.textContent = 'Unlocked ✓';
+        unlockBtn.className = 'btn btn-sm admin-lock-btn btn-reject';
+        unlockBtn.removeAttribute('data-company-id');
+        unlockBtn.dataset.companyId = cid;
+        unlockBtn.classList.remove('admin-unlock-btn');
+        toast('Service area unlocked.');
+      } catch (err) { toast('Failed: ' + err.message, true); unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock for User'; }
+    }
+
+    if (lockBtn) {
+      var cid = lockBtn.dataset.companyId;
+      lockBtn.disabled = true; lockBtn.textContent = 'Locking…';
+      try {
+        await callEdge({ action: 'update_ppl_service_areas', company_id: cid, locked: true });
+        lockBtn.textContent = 'Locked ✓';
+        toast('Service area locked.');
+      } catch (err) { toast('Failed: ' + err.message, true); lockBtn.disabled = false; lockBtn.textContent = 'Lock'; }
+    }
+  });
+
+  // ── PPL Area Change Requests ──────────────────────────────────────────────
+  var allPplAreaRequests = [];
+
+  async function loadPplAreaRequests() {
+    var loadingEl = document.getElementById('pplAreaReqLoadingState');
+    var listEl    = document.getElementById('pplAreaReqList');
+    var emptyEl   = document.getElementById('pplAreaReqEmptyState');
+    if (!loadingEl) return;
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+    try {
+      var result = await callEdge({ action: 'list_ppl_unlock_requests' });
+      allPplAreaRequests = result.requests || [];
+      var label = document.getElementById('pplAreaReqCountLabel');
+      if (label) label.textContent = allPplAreaRequests.length + ' request' + (allPplAreaRequests.length === 1 ? '' : 's');
+      loadingEl.classList.add('hidden');
+      if (!allPplAreaRequests.length) {
+        emptyEl.classList.remove('hidden');
+      } else {
+        listEl.classList.remove('hidden');
+        renderPplAreaRequests();
+      }
+    } catch (err) { loadingEl.textContent = 'Failed to load: ' + err.message; }
+  }
+
+  function renderPplAreaRequests() {
+    var listEl = document.getElementById('pplAreaReqList');
+    listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+    listEl.innerHTML = '';
+    allPplAreaRequests.forEach(function (r) {
+      var statusColor = r.status === 'approved' ? 'badge-approved' : r.status === 'rejected' ? 'badge-rejected' : 'badge-pending';
+      var row = document.createElement('div');
+      row.className = 'dispute-row';
+      row.innerHTML =
+        '<div class="dispute-header">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="dispute-lead">' + escapeHtml(r.company ? r.company.name : r.company_id) + '</div>' +
+            '<div class="dispute-meta">' + new Date(r.created_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) + '</div>' +
+            '<div class="dispute-badges" style="margin-top:6px"><span class="badge-status ' + statusColor + '">' + escapeHtml(r.status) + '</span></div>' +
+            (r.message ? '<div style="font-size:12px;margin-top:8px;color:var(--text)">' + escapeHtml(r.message) + '</div>' : '') +
+            (r.admin_notes ? '<div style="font-size:11px;margin-top:4px;color:var(--muted)">Admin notes: ' + escapeHtml(r.admin_notes) + '</div>' : '') +
+          '</div>' +
+          (r.status === 'pending' ?
+            '<div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">' +
+              '<button class="btn btn-sm btn-approve area-req-approve" data-id="' + escapeHtml(r.id) + '" type="button">Approve</button>' +
+              '<button class="btn btn-sm btn-reject area-req-reject" data-id="' + escapeHtml(r.id) + '" type="button">Reject</button>' +
+            '</div>' : '') +
+        '</div>';
+
+      if (r.status === 'pending') {
+        row.querySelector('.area-req-approve').addEventListener('click', async function () {
+          var btn = this;
+          btn.disabled = true; btn.textContent = 'Approving…';
+          try {
+            await callEdge({ action: 'resolve_ppl_unlock_request', request_id: r.id, resolution: 'approved' });
+            r.status = 'approved';
+            renderPplAreaRequests();
+            toast('Approved — service area unlocked for ' + (r.company ? r.company.name : 'company') + '.');
+          } catch (err) { toast('Failed: ' + err.message, true); btn.disabled = false; btn.textContent = 'Approve'; }
+        });
+        row.querySelector('.area-req-reject').addEventListener('click', async function () {
+          var btn = this;
+          var notes = prompt('Rejection reason (optional):') || '';
+          btn.disabled = true; btn.textContent = 'Rejecting…';
+          try {
+            await callEdge({ action: 'resolve_ppl_unlock_request', request_id: r.id, resolution: 'rejected', admin_notes: notes });
+            r.status = 'rejected';
+            r.admin_notes = notes;
+            renderPplAreaRequests();
+            toast('Request rejected.');
+          } catch (err) { toast('Failed: ' + err.message, true); btn.disabled = false; btn.textContent = 'Reject'; }
+        });
+      }
+      listEl.appendChild(row);
+    });
+  }
+
+  document.getElementById('refreshPplAreaReqBtn').addEventListener('click', loadPplAreaRequests);
 
   // ── Delete User ───────────────────────────────────────────────────────────
   var pendingDeleteUserId = null;
@@ -1568,6 +1725,9 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('refreshSignupAttemptsBtn').addEventListener('click', loadSignupAttempts);
     document.getElementById('signupAttemptTypeFilter').addEventListener('change', loadSignupAttempts);
     document.getElementById('signupAttemptStatusFilter').addEventListener('change', loadSignupAttempts);
+
+    // 12. Load PPL area change requests panel
+    await loadPplAreaRequests();
 
   } // end boot()
 

@@ -3124,7 +3124,21 @@ async function loadSettings() {
     await loadCustomFields();
     renderSettingsCustomFields();
     loadLeadRoutingUI(company?.settings || {});
-    loadServiceAreasUI(company?.ppl_agreed_postcodes || []);
+
+    // Load service areas with lock state + pending request check
+    const { data: pendingReq } = currentCompanyId
+      ? await sb.from("ppl_area_change_requests")
+          .select("id")
+          .eq("company_id", currentCompanyId)
+          .eq("status", "pending")
+          .maybeSingle()
+      : { data: null };
+    loadServiceAreasUI(
+      company?.ppl_agreed_postcodes || [],
+      company?.ppl_area_locked !== false, // default locked
+      !!pendingReq
+    );
+
     await loadPplOrdersUI();
 
     // AI data sharing toggle
@@ -3324,21 +3338,67 @@ function handleRemoveLogo() {
 }
 
 // ─── PPL Service Areas ────────────────────────────────────────────────────────
-function loadServiceAreasUI(postcodes) {
+function loadServiceAreasUI(postcodes, locked, hasPendingRequest) {
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
   container.innerHTML = "";
-  postcodes.forEach((pc) => _renderServiceAreaTag(container, pc));
-  const note = document.getElementById("serviceAreaAutoNote");
-  if (note) note.style.display = postcodes.length > 0 ? "" : "none";
+  const isLocked = locked !== false;
+  postcodes.forEach((pc) => _renderServiceAreaTag(container, pc, !isLocked));
+
+  const note     = document.getElementById("serviceAreaAutoNote");
+  const badge    = document.getElementById("serviceAreaLockBadge");
+  const lockedEl = document.getElementById("serviceAreaLockedNote");
+  const pendEl   = document.getElementById("serviceAreaPendingNote");
+  const editEl   = document.getElementById("serviceAreaEditSection");
+  const reqBtn   = document.getElementById("requestServiceAreaChangeBtn");
+  const reqForm  = document.getElementById("serviceAreaRequestForm");
+
+  if (note) note.style.display = (!isLocked && postcodes.length > 0) ? "" : "none";
+  if (reqForm) reqForm.style.display = "none";
+
+  if (badge) {
+    badge.style.display = "";
+    if (isLocked) {
+      badge.textContent = "🔒 Locked";
+      badge.style.background = "rgba(185,28,28,.08)";
+      badge.style.color = "#b91c1c";
+      badge.style.borderColor = "rgba(185,28,28,.2)";
+    } else {
+      badge.textContent = "🔓 Unlocked";
+      badge.style.background = "rgba(22,163,74,.08)";
+      badge.style.color = "#15803d";
+      badge.style.borderColor = "rgba(22,163,74,.2)";
+    }
+  }
+
+  if (!isLocked) {
+    if (lockedEl) lockedEl.style.display = "none";
+    if (pendEl)   pendEl.style.display   = "none";
+    if (editEl)   editEl.style.display   = "";
+    if (reqBtn)   reqBtn.style.display   = "none";
+  } else if (hasPendingRequest) {
+    if (lockedEl) lockedEl.style.display = "none";
+    if (pendEl)   pendEl.style.display   = "";
+    if (editEl)   editEl.style.display   = "none";
+    if (reqBtn)   reqBtn.style.display   = "none";
+  } else {
+    if (lockedEl) lockedEl.style.display = "";
+    if (pendEl)   pendEl.style.display   = "none";
+    if (editEl)   editEl.style.display   = "none";
+    if (reqBtn)   reqBtn.style.display   = "";
+  }
 }
 
-function _renderServiceAreaTag(container, postcode) {
+function _renderServiceAreaTag(container, postcode, removable) {
   const tag = document.createElement("span");
   tag.className = "tag";
   tag.dataset.postcode = postcode.toUpperCase();
-  tag.innerHTML = `${postcode.toUpperCase()} <button type="button" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;font-size:13px;opacity:0.6" aria-label="Remove">&times;</button>`;
-  tag.querySelector("button").addEventListener("click", () => tag.remove());
+  if (removable) {
+    tag.innerHTML = `${postcode.toUpperCase()} <button type="button" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;font-size:13px;opacity:0.6" aria-label="Remove">&times;</button>`;
+    tag.querySelector("button").addEventListener("click", () => tag.remove());
+  } else {
+    tag.textContent = postcode.toUpperCase();
+  }
   container.appendChild(tag);
 }
 
@@ -3350,10 +3410,10 @@ function _addServiceAreaFromInput() {
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
   const existing = new Set([...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode));
-  const entries = raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const entries = raw.split(/[\s,]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
   entries.forEach((val) => {
     if (!existing.has(val)) {
-      _renderServiceAreaTag(container, val);
+      _renderServiceAreaTag(container, val, true);
       existing.add(val);
     }
   });
@@ -3365,14 +3425,62 @@ async function handleServiceAreasSave() {
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
   const postcodes = [...container.querySelectorAll(".tag")].map((t) => t.dataset.postcode).filter(Boolean);
+  const btn = document.getElementById("saveServiceAreasBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
-    const { error } = await sb.from("companies").update({ ppl_agreed_postcodes: postcodes }).eq("id", currentCompanyId);
+    const { error } = await sb.from("companies").update({
+      ppl_agreed_postcodes: postcodes,
+      ppl_area_locked: true,
+    }).eq("id", currentCompanyId);
     if (error) { toast(error.message, true); return; }
-    toast("Service areas saved.");
+    toast("Service areas saved and re-locked.");
+    loadServiceAreasUI(postcodes, true, false);
   } catch {
     toast("Failed to save service areas.", true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Save & Re-lock Service Areas"; }
   }
 }
+
+document.getElementById("requestServiceAreaChangeBtn")?.addEventListener("click", () => {
+  const form = document.getElementById("serviceAreaRequestForm");
+  if (form) form.style.display = "";
+  const btn = document.getElementById("requestServiceAreaChangeBtn");
+  if (btn) btn.style.display = "none";
+});
+
+document.getElementById("serviceAreaRequestCancelBtn")?.addEventListener("click", () => {
+  const form = document.getElementById("serviceAreaRequestForm");
+  if (form) form.style.display = "none";
+  const btn = document.getElementById("requestServiceAreaChangeBtn");
+  if (btn) btn.style.display = "";
+});
+
+document.getElementById("serviceAreaRequestSubmitBtn")?.addEventListener("click", async () => {
+  if (!currentCompanyId) return;
+  const msgEl = document.getElementById("serviceAreaRequestMessage");
+  const message = msgEl ? msgEl.value.trim() : "";
+  const btn = document.getElementById("serviceAreaRequestSubmitBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Submitting…"; }
+  try {
+    const { error } = await sb.from("ppl_area_change_requests").insert({
+      company_id: currentCompanyId,
+      message: message || null,
+    });
+    if (error) { toast("Failed to submit request: " + error.message, true); return; }
+    if (msgEl) msgEl.value = "";
+    const form = document.getElementById("serviceAreaRequestForm");
+    if (form) form.style.display = "none";
+    const container = document.getElementById("serviceAreaTagsContainer");
+    const postcodes = [...(container?.querySelectorAll(".tag") || [])].map((t) => t.dataset.postcode).filter(Boolean);
+    loadServiceAreasUI(postcodes, true, true);
+    toast("Change request submitted. An admin will review it shortly.");
+  } catch (e) {
+    toast("Failed to submit request.", true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Submit Request"; }
+  }
+});
 
 // ─── PPL Orders ───────────────────────────────────────────────────────────────
 

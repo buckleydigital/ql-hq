@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
         const [compRes, twilioRes, pplRes, smsRes, leadRes] = await Promise.all([
           adminClient
             .from("companies")
-            .select("id, name, plan, status, email, phone, website_url, service_area, stripe_customer_id, ppl_agreed_postcodes, has_advertising_system, campaign_status, onboarding_completed, lead_goals")
+            .select("id, name, plan, status, email, phone, website_url, service_area, stripe_customer_id, ppl_agreed_postcodes, ppl_area_locked, has_advertising_system, campaign_status, onboarding_completed, lead_goals")
             .eq("id", companyId)
             .maybeSingle(),
           adminClient
@@ -449,6 +449,76 @@ Deno.serve(async (req) => {
         sms_credits:    smsCredits,
         lead_count:     leadCount,
       });
+    }
+
+    // ── action: update_ppl_service_areas ─────────────────────────────────────
+    // Admin: update postcodes and/or lock state for a company.
+    if (action === "update_ppl_service_areas") {
+      const { company_id, postcodes, locked } = body as {
+        company_id?: string;
+        postcodes?: string[];
+        locked?: boolean;
+      };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!company_id || !UUID_RE.test(company_id)) {
+        return json({ error: "company_id must be a valid UUID" }, 400);
+      }
+      const update: Record<string, unknown> = {};
+      if (Array.isArray(postcodes)) update.ppl_agreed_postcodes = postcodes.map((p) => p.trim().toUpperCase()).filter(Boolean);
+      if (locked !== undefined) update.ppl_area_locked = !!locked;
+      if (!Object.keys(update).length) return json({ success: true });
+      const { error: upErr } = await adminClient.from("companies").update(update).eq("id", company_id);
+      if (upErr) return json({ error: "Failed to update: " + upErr.message }, 500);
+      return json({ success: true });
+    }
+
+    // ── action: list_ppl_unlock_requests ─────────────────────────────────────
+    // Admin: list all pending PPL area change requests.
+    if (action === "list_ppl_unlock_requests") {
+      const { data: requests, error: reqErr } = await adminClient
+        .from("ppl_area_change_requests")
+        .select("*, company:companies(id, name)")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (reqErr) return json({ error: "Failed to load requests: " + reqErr.message }, 500);
+      return json({ requests: requests ?? [] });
+    }
+
+    // ── action: resolve_ppl_unlock_request ────────────────────────────────────
+    // Admin: approve or reject a PPL area change request.
+    // Approving sets ppl_area_locked = false on the company so the user can edit.
+    if (action === "resolve_ppl_unlock_request") {
+      const { request_id, resolution, admin_notes } = body as {
+        request_id?: string;
+        resolution?: "approved" | "rejected";
+        admin_notes?: string;
+      };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!request_id || !UUID_RE.test(request_id)) {
+        return json({ error: "request_id must be a valid UUID" }, 400);
+      }
+      if (resolution !== "approved" && resolution !== "rejected") {
+        return json({ error: "resolution must be 'approved' or 'rejected'" }, 400);
+      }
+      // Fetch request to get company_id
+      const { data: req } = await adminClient
+        .from("ppl_area_change_requests")
+        .select("id, company_id")
+        .eq("id", request_id)
+        .maybeSingle();
+      if (!req) return json({ error: "Request not found" }, 404);
+
+      const { error: upErr } = await adminClient
+        .from("ppl_area_change_requests")
+        .update({ status: resolution, admin_notes: admin_notes || null, resolved_at: new Date().toISOString() })
+        .eq("id", request_id);
+      if (upErr) return json({ error: "Failed to update request: " + upErr.message }, 500);
+
+      // Unlock the company when approved
+      if (resolution === "approved") {
+        await adminClient.from("companies").update({ ppl_area_locked: false }).eq("id", req.company_id);
+      }
+      return json({ success: true });
     }
 
     // ── action: list_twilio_numbers ───────────────────────────────────────────
