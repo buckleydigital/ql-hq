@@ -1644,21 +1644,9 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             <div class="panel-b">
               <div class="stack" style="max-width:580px;gap:24px">
 
-                <!-- Step 1: Niche -->
-                <div class="field">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">1. Select Niche</label>
-                  <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
-                </div>
-
-                <!-- Step 2: Sub-Niche (conditional — HVAC / Roofing / Renovation only) -->
-                <div class="field" id="buyLeadsSubNicheField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
-                  <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
-                </div>
-
-                <!-- Step 3: City -->
-                <div class="field" id="buyLeadsCityField" style="display:none">
-                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Select City</label>
+                <!-- Step 1: City -->
+                <div class="field" id="buyLeadsCityField">
+                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">1. Where do you work?</label>
                   <select id="buyLeadsCity" style="margin-top:8px">
                     <option value="">Select a city…</option>
                     <optgroup label="Queensland">
@@ -1689,6 +1677,18 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                       <option value="Canberra">Canberra</option>
                     </optgroup>
                   </select>
+                </div>
+
+                <!-- Step 2: Niche -->
+                <div class="field" id="buyLeadsNicheField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Select Trade</label>
+                  <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+                </div>
+
+                <!-- Step 3: Sub-Niche (conditional — HVAC / Roofing / Renovation only) -->
+                <div class="field" id="buyLeadsSubNicheField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
+                  <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
                 </div>
 
                 <!-- Step 4: Location type -->
