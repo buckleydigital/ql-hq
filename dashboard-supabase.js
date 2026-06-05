@@ -5545,7 +5545,7 @@ async function loadApiKeys() {
         <span>${status}</span>
         <span>Created ${created}</span>
         <span>Last used: ${lastUsed}</span>
-        ${!revoked ? `<button class="btn" style="font-size:11px;padding:4px 10px" onclick="revokeApiKey('${k.id}')">Revoke</button>` : ""}
+        ${!revoked && !k.name.includes('QUOTELEADS KEY') ? `<button class="btn" style="font-size:11px;padding:4px 10px" onclick="revokeApiKey('${k.id}', ${JSON.stringify(k.name)})">Revoke</button>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -5613,7 +5613,8 @@ async function handleCreateApiKey(e) {
   loadApiKeys();
 }
 
-async function revokeApiKey(id) {
+async function revokeApiKey(id, name) {
+  if (name && name.includes('QUOTELEADS KEY')) { toast("This key cannot be revoked.", true); return; }
   if (!confirm("Revoke this API key? Any integrations using it will stop working.")) return;
 
   const { error } = await sb
