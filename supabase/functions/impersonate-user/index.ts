@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
         const [compRes, twilioRes, pplRes, smsRes, leadRes] = await Promise.all([
           adminClient
             .from("companies")
-            .select("id, name, plan, status, email, phone, website_url, service_area, stripe_customer_id, ppl_agreed_postcodes, ppl_area_locked, has_advertising_system, campaign_status, onboarding_completed, lead_goals")
+            .select("*")
             .eq("id", companyId)
             .maybeSingle(),
           adminClient
