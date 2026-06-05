@@ -435,6 +435,42 @@ Deno.serve(async (req) => {
       return json({ success: true });
     }
 
+    // ── action: add_twilio_number ─────────────────────────────────────────────
+    // Manually registers an existing Twilio number and optionally pairs it with a company.
+    if (action === "add_twilio_number") {
+      const { phone_number, friendly_name, company_id } = body as {
+        phone_number?: string;
+        friendly_name?: string;
+        company_id?: string;
+      };
+
+      if (!phone_number || !phone_number.trim()) {
+        return json({ error: "phone_number is required" }, 400);
+      }
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (company_id && !UUID_RE.test(company_id)) {
+        return json({ error: "company_id must be a valid UUID" }, 400);
+      }
+
+      const insert: Record<string, unknown> = { phone_number: phone_number.trim() };
+      if (friendly_name?.trim()) insert.friendly_name = friendly_name.trim();
+      if (company_id) insert.company_id = company_id;
+
+      const { data: newNumber, error: insertErr } = await adminClient
+        .from("twilio_numbers")
+        .insert(insert)
+        .select("id, phone_number, friendly_name, company_id, created_at, company:companies(id, name)")
+        .single();
+
+      if (insertErr) {
+        console.error("add_twilio_number error:", insertErr.message);
+        return json({ error: "Failed to add number: " + insertErr.message }, 500);
+      }
+
+      return json({ success: true, number: newNumber });
+    }
+
     // ── action: list_ppl_orders ───────────────────────────────────────────────
     // Returns all PPL orders across all companies, enriched with company name.
     if (action === "list_ppl_orders") {

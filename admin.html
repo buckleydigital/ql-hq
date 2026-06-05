@@ -240,9 +240,23 @@ h1{font-size:18px;font-weight:500}
           <h2>Twilio Numbers</h2>
           <p id="twilioNumberCountLabel">Loading…</p>
         </div>
-        <button class="btn btn-sm" id="refreshTwilioNumbersBtn" type="button">Refresh</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn2 btn-sm" id="addTwilioNumberBtn" type="button">+ Add Number</button>
+          <button class="btn btn-sm" id="refreshTwilioNumbersBtn" type="button">Refresh</button>
+        </div>
       </div>
       <div class="panel-b">
+        <div id="addTwilioNumberForm" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="newTwilioPhone" placeholder="Phone number (e.g. +61412345678)" style="flex:2;min-width:180px;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px">
+            <input type="text" id="newTwilioFname" placeholder="Friendly name (optional)" style="flex:2;min-width:160px;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px">
+            <select id="newTwilioCompany" style="flex:2;min-width:160px;height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px">
+              <option value="">Unassigned</option>
+            </select>
+            <button class="btn2 btn-sm" id="saveTwilioNumberBtn" type="button">Add</button>
+            <button class="btn btn-sm" id="cancelTwilioNumberBtn" type="button">Cancel</button>
+          </div>
+        </div>
         <div id="twilioNumberLoadingState" class="notice">Loading…</div>
         <div id="twilioNumberList" class="hidden"></div>
         <div id="twilioNumberEmptyState" class="notice hidden">No Twilio numbers found.</div>
@@ -1475,6 +1489,51 @@ h1{font-size:18px;font-weight:500}
   }
 
   document.getElementById('refreshTwilioNumbersBtn').addEventListener('click', loadTwilioNumbers);
+
+  document.getElementById('addTwilioNumberBtn').addEventListener('click', function () {
+    var form = document.getElementById('addTwilioNumberForm');
+    form.classList.remove('hidden');
+    // Populate company dropdown from already-loaded companies list
+    var sel = document.getElementById('newTwilioCompany');
+    sel.innerHTML = '<option value="">Unassigned</option>' +
+      allCompaniesPanel.map(function (c) {
+        return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) + '</option>';
+      }).join('');
+    document.getElementById('newTwilioPhone').focus();
+  });
+
+  document.getElementById('cancelTwilioNumberBtn').addEventListener('click', function () {
+    document.getElementById('addTwilioNumberForm').classList.add('hidden');
+    document.getElementById('newTwilioPhone').value = '';
+    document.getElementById('newTwilioFname').value = '';
+    document.getElementById('newTwilioCompany').value = '';
+  });
+
+  document.getElementById('saveTwilioNumberBtn').addEventListener('click', async function () {
+    var btn = this;
+    var phone     = document.getElementById('newTwilioPhone').value.trim();
+    var fname     = document.getElementById('newTwilioFname').value.trim();
+    var companyId = document.getElementById('newTwilioCompany').value;
+    if (!phone) { toast('Phone number is required.', true); return; }
+    btn.disabled = true; btn.textContent = 'Adding…';
+    try {
+      var result = await callEdge({ action: 'add_twilio_number', phone_number: phone, friendly_name: fname || undefined, company_id: companyId || undefined });
+      // Prepend to list and re-render
+      allTwilioNumbers.unshift(result.number);
+      var label = document.getElementById('twilioNumberCountLabel');
+      if (label) label.textContent = allTwilioNumbers.length + ' number' + (allTwilioNumbers.length === 1 ? '' : 's');
+      document.getElementById('twilioNumberEmptyState').classList.add('hidden');
+      document.getElementById('twilioNumberList').classList.remove('hidden');
+      renderTwilioNumbers();
+      // Reset form
+      document.getElementById('addTwilioNumberForm').classList.add('hidden');
+      document.getElementById('newTwilioPhone').value = '';
+      document.getElementById('newTwilioFname').value = '';
+      document.getElementById('newTwilioCompany').value = '';
+      toast('Number added.');
+    } catch (err) { toast('Failed: ' + err.message, true); }
+    btn.disabled = false; btn.textContent = 'Add';
+  });
 
   // ── PPL Stripe Orders ─────────────────────────────────────────────────────
   var allPplLeadOrders = [];
