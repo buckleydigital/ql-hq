@@ -525,6 +525,21 @@ Deno.serve(async (req) => {
       return json({ order: { ...order, company } });
     }
 
+    // ── action: list_ppl_orders ───────────────────────────────────────────────
+    // Returns all ppl_orders across all companies (admin only, bypasses RLS).
+    if (action === "list_ppl_orders") {
+      const { data: orders, error: ordersErr } = await adminClient
+        .from("ppl_orders")
+        .select("*, company:companies(id, name)")
+        .order("purchased_at", { ascending: false })
+        .limit(500);
+      if (ordersErr) {
+        console.error("list_ppl_orders error:", ordersErr.message);
+        return json({ error: "Failed to load PPL orders" }, 500);
+      }
+      return json({ orders: orders ?? [] });
+    }
+
     // ── action: update_user ───────────────────────────────────────────────────
     // Updates email (auth.users) and/or full_name/is_admin (profiles) for any user.
     if (action === 'update_user') {
