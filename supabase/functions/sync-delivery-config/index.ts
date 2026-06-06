@@ -26,19 +26,44 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) return new Response('Unauthorized', { status: 401 })
 
-    // Load company + current settings
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('id', user.id)
-      .maybeSingle()
+    // Read optional company_id override from request body (used by admin panel)
+    let overrideCompanyId: string | null = null
+    try {
+      const body = await req.json()
+      overrideCompanyId = body?.company_id ?? null
+    } catch (_) { /* no body or invalid JSON — fine */ }
 
-    if (!profile?.company_id) return new Response('Company not found', { status: 404 })
+    let targetCompanyId: string
 
+    if (overrideCompanyId) {
+      // Only internal users (agency staff) may sync on behalf of another company
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('user_type, role')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!profile || (profile.user_type !== 'internal' && !['owner', 'admin'].includes(profile.role))) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      targetCompanyId = overrideCompanyId
+    } else {
+      // Default: sync the calling user's own company
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!profile?.company_id) return new Response('Company not found', { status: 404 })
+      targetCompanyId = profile.company_id
+    }
+
+    // Load company settings + agreed postcodes
     const { data: company } = await supabase
       .from('companies')
-      .select('id, name, settings')
-      .eq('id', profile.company_id)
+      .select('id, name, settings, ppl_agreed_postcodes')
+      .eq('id', targetCompanyId)
       .maybeSingle()
 
     if (!company) return new Response('Company not found', { status: 404 })
@@ -55,9 +80,10 @@ serve(async (req) => {
       body: JSON.stringify({
         ql_hq_company_id: company.id,
         company_name:     company.name,
-        email:            delivery.email      || null,
-        sms_number:       delivery.sms_number || null,
+        email:            delivery.email       || null,
+        sms_number:       delivery.sms_number  || null,
         webhook_url:      delivery.webhook_url || null,
+        postcodes:        company.ppl_agreed_postcodes || [],
       }),
     })
 
