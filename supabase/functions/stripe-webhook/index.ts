@@ -9,6 +9,9 @@ const supabase = createClient(
 )
 const RESEND_API_KEY        = Deno.env.get('RESEND_API_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
+// ql-mc cross-service sync — must be set in Supabase Dashboard → Edge Functions → Secrets
+const QL_MC_API_URL    = Deno.env.get('QL_MC_API_URL')    // https://<mc-project>.supabase.co/functions/v1
+const QL_MC_API_SECRET = Deno.env.get('QL_MC_API_SECRET') // shared secret for ql-hq → ql-mc HTTP calls
 
 serve(async (req) => {
   const sig  = req.headers.get('stripe-signature')!
@@ -135,69 +138,70 @@ async function insertSmsAgentConfig(companyId: string, m: Record<string, string>
   })
 }
 
-// ── ql-mc sync: log PPL order into ppl_order_log ─────────────────────────────
+// ── ql-mc sync: create/update PPL client + log order ──────────────────────────
+//
+// Calls ql-mc’s sync-from-hq edge function via HTTP.
+// Fire-and-forget on failure — ql-hq provisioning must not be blocked by ql-mc.
 async function syncPplOrderToMc(params: {
-  companyId: string
-  quantity: number
-  pricePerLead: number
-  niche: string
-  subNiche: string | null
-  areaCity: string
-  qlHqOrderId: string
+  companyId:       string
+  companyName:     string
+  contactName:     string
+  email:           string
+  phone:           string
+  quantity:        number
+  pricePerLead:    number
+  niche:           string
+  subNiche:        string | null
+  areaCity:        string
+  locationTypeVal: string
+  radiusKm:        number
+  postcodeList:    string
+  qlHqOrderId:     string
 }) {
-  const { companyId, quantity, pricePerLead, niche, subNiche, areaCity, qlHqOrderId } = params
+  if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
+    console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured — skipping ql-mc sync')
+    return
+  }
+
   try {
-    const { data: client } = await supabase
-      .from('clients')
-      .select('id, total_leads_purchased')
-      .eq('ql_hq_company_id', companyId)
-      .eq('type', 'ppl')
-      .maybeSingle()
+    const res = await fetch(`${QL_MC_API_URL}/sync-from-hq`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-secret': QL_MC_API_SECRET,
+      },
+      body: JSON.stringify({
+        action:           'upsert_ppl_client',
+        ql_hq_company_id: params.companyId,
+        company_name:     params.companyName,
+        contact_name:     params.contactName,
+        email:            params.email,
+        phone:            params.phone,
+        niche:            params.niche,
+        sub_niche:        params.subNiche,
+        area_city:        params.areaCity,
+        quantity:         params.quantity,
+        price_per_lead:   params.pricePerLead,
+        location_type:    params.locationTypeVal,
+        radius_km:        params.radiusKm,
+        postcode_list:    params.postcodeList,
+        ql_hq_order_id:   params.qlHqOrderId,
+      }),
+    })
 
-    if (!client) {
-      console.log('No ql-mc client found for company:', companyId, '— skipping mc sync')
-      return
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`ql-mc sync-from-hq returned ${res.status}: ${text}`)
+    } else {
+      const result = await res.json()
+      console.log(`ql-mc client ${result.action || 'synced'} for company:`, params.companyId)
     }
-
-    const today = new Date().toISOString().split('T')[0]
-    const slaDue = new Date()
-    slaDue.setDate(slaDue.getDate() + 14)
-
-    const { error: insertError } = await supabase.from('ppl_order_log').insert([{
-      client_id:   client.id,
-      leads_qty:   quantity,
-      lead_price:  pricePerLead,
-      notes:       `${niche}${subNiche ? ' › ' + subNiche : ''} — ${areaCity} | HQ Order ${qlHqOrderId}`,
-      order_date:  today,
-      status:      'in_progress',
-      sla_due_date: slaDue.toISOString().split('T')[0],
-      created_at:  new Date().toISOString(),
-    }])
-
-    if (insertError) {
-      console.error('ppl_order_log sync error:', insertError.message)
-      return
-    }
-
-    const { count } = await supabase
-      .from('ppl_order_log')
-      .select('id', { count: 'exact', head: true })
-      .eq('client_id', client.id)
-
-    const newTotal = (client.total_leads_purchased || 0) + quantity
-    await supabase.from('clients').update({
-      total_leads_purchased: newTotal,
-      has_reordered:         (count || 0) >= 2,
-      updated_at:            new Date().toISOString(),
-    }).eq('id', client.id)
-
-    console.log('ql-mc ppl_order_log synced for client:', client.id)
   } catch (err) {
-    console.error('syncPplOrderToMc error:', err)
+    console.error('syncPplOrderToMc HTTP error:', err)
   }
 }
 
-// ── PPL payment (existing company buying more leads) ───────────────────────────
+// ── PPL payment (existing company buying more leads) ─────────────────────────
 async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL payment for order:', m.order_id)
   try {
@@ -206,7 +210,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       .update({ status: 'active', stripe_payment_intent_id: session.payment_intent as string })
       .eq('id', m.order_id)
 
-    // Sync postcodes to company service areas if this was a postcode-targeted order
+    // Sync postcodes to company service areas if postcode-targeted
     const { data: orderData } = await supabase
       .from('ppl_lead_orders')
       .select('location_type, postcode_list')
@@ -227,7 +231,6 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', m.order_id)
     }
 
-    // Create ppl_orders row for lead delivery tracking
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
     const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
@@ -239,29 +242,46 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
     })
     if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
 
-    // Sync new order to ql-mc ppl_order_log
-    await syncPplOrderToMc({
-      companyId:    m.company_id,
-      quantity:     parseInt(m.quantity),
-      pricePerLead: parseFloat(m.price_per_lead),
-      niche:        m.niche,
-      subNiche:     m.sub_niche || null,
-      areaCity:     m.area_city,
-      qlHqOrderId:  m.order_id,
-    })
-
     const { data: company } = await supabase
       .from('companies').select('name, email, phone').eq('id', m.company_id).maybeSingle()
 
+    // Sync reorder to ql-mc
+    await syncPplOrderToMc({
+      companyId:       m.company_id,
+      companyName:     company?.name || '',
+      contactName:     '',
+      email:           company?.email || '',
+      phone:           company?.phone || '',
+      quantity:        parseInt(m.quantity),
+      pricePerLead:    parseFloat(m.price_per_lead),
+      niche:           m.niche,
+      subNiche:        m.sub_niche || null,
+      areaCity:        m.area_city,
+      locationTypeVal: m.location_type || 'radius',
+      radiusKm:        parseFloat(m.radius_km || '50'),
+      postcodeList:    m.postcode_list || '',
+      qlHqOrderId:     m.order_id,
+    })
+
+    const totalExGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
+    const locationDetail = m.location_type === 'postcodes'
+      ? `Postcodes — ${m.postcode_list || '(none)'}`
+      : `${m.area_city} — ${m.radius_km || 50}km radius`
+
     await sendInternalEmail(
-      `💰 New PPL order — ${company?.name}`,
-      `<h2>${company?.name} purchased a lead pack.</h2>
-       <p><strong>Niche:</strong> ${m.niche}</p>
-       <p><strong>Area:</strong> ${m.area_city}</p>
-       <p><strong>Quantity:</strong> ${m.quantity} leads</p>
-       <p><strong>Total:</strong> $${(parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)} AUD</p>
-       <p><strong>Email:</strong> ${company?.email}</p>
-       <p><strong>Phone:</strong> ${company?.phone || '—'}</p>`
+      `💰 PPL reorder — ${company?.name}`,
+      `<h2 style="margin:0 0 16px">${company?.name} purchased a new lead pack.</h2>
+       <table style="border-collapse:collapse;font-size:14px">
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${company?.name}</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${company?.email}">${company?.email}</a></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${company?.phone || '—'}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Stripe session</td><td><a href="https://dashboard.stripe.com/payments/${session.payment_intent}">${session.id}</a></td></tr>
+       </table>`
     )
     console.log('PPL order activated:', m.order_id)
   } catch (err) {
@@ -273,11 +293,11 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
   }
 }
 
-// ── PPL signup (new company buying first lead pack from website) ───────────────
+// ── PPL signup (new company, first lead pack from website) ──────────────────
 async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL signup for:', m.email)
   try {
-    // createUser triggers handle_new_user() which auto-creates a company (with slug) + profile
+    // createUser triggers handle_new_user() which auto-creates a company + profile
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: m.email,
       email_confirm: true,
@@ -286,7 +306,6 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     if (authError) throw new Error(`Auth: ${authError.message}`)
     const userId = authData.user.id
 
-    // Fetch the company_id the trigger just created
     const { data: profileData, error: profileFetchError } = await supabase
       .from('profiles')
       .select('company_id')
@@ -299,7 +318,6 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       ? m.postcode_list.split(/[\s,\n]+/).map((p: string) => p.trim()).filter(Boolean)
       : []
 
-    // Update the trigger-created company with PPL-specific fields
     const { error: companyError } = await supabase
       .from('companies')
       .update({
@@ -323,7 +341,6 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       is_active:  true,
     })
 
-    // Create the lead order (already paid)
     const { data: order, error: orderError } = await supabase
       .from('ppl_lead_orders')
       .insert({
@@ -346,7 +363,6 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       .single()
     if (orderError) throw new Error(`ppl_lead_orders insert: ${orderError.message}`)
 
-    // Create ppl_orders row for lead delivery tracking
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
     const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
@@ -363,44 +379,64 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
     }
 
-    // Sync new order to ql-mc ppl_order_log (fire-and-forget — new company won't have a client yet,
-    // but we try in case one was pre-created manually in ql-mc with a ql_hq_company_id)
+    // Sync to ql-mc — creates the client as active_client immediately
     if (order) {
       await syncPplOrderToMc({
-        companyId:    companyId,
-        quantity:     parseInt(m.quantity),
-        pricePerLead: parseFloat(m.price_per_lead),
-        niche:        m.niche,
-        subNiche:     m.sub_niche || null,
-        areaCity:     m.area_city,
-        qlHqOrderId:  order.id,
+        companyId:       companyId,
+        companyName:     m.company,
+        contactName:     `${m.first_name} ${m.last_name}`,
+        email:           m.email,
+        phone:           m.phone,
+        quantity:        parseInt(m.quantity),
+        pricePerLead:    parseFloat(m.price_per_lead),
+        niche:           m.niche,
+        subNiche:        m.sub_niche || null,
+        areaCity:        m.area_city,
+        locationTypeVal: m.location_type || 'radius',
+        radiusKm:        parseFloat(m.radius_km || '50'),
+        postcodeList:    m.postcode_list || '',
+        qlHqOrderId:     order.id,
       })
     }
 
-    // Generate magic link — throws if Supabase auth fails (user can't log in)
     const magicLink = await createMagicLink(m.email)
 
-    // Store for /welcome page polling. Non-blocking: if this fails the email link still works.
     const { error: linkError } = await supabase.from('pending_magic_links').insert({
       stripe_session_id: session.id,
       magic_link:        magicLink,
     })
-    if (linkError) console.error('pending_magic_links insert failed (auto-login polling will not work):', linkError.message)
+    if (linkError) console.error('pending_magic_links insert failed:', linkError.message)
 
-    // Always send the email — magic link URL is valid regardless of DB store above
     await sendPplWelcomeEmail(m.email, m.first_name, m.company, m.niche, m.area_city, m.quantity, magicLink)
+
+    // ── Full-detail internal notification ─────────────────────────────────────
+    const totalExGst  = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
+    const totalIncGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity) * 1.1).toFixed(2)
+    const discountPct = parseFloat(m.discount_percent || '0')
+    const locationDetail = m.location_type === 'postcodes'
+      ? `Postcodes — ${m.postcode_list || '(none supplied)'}`
+      : `${m.area_city} — ${m.radius_km || 50}km radius`
 
     await sendInternalEmail(
       `💰 New PPL signup — ${m.company}`,
-      `<h2>${m.company} signed up and purchased a lead pack.</h2>
-       <p><strong>Name:</strong> ${m.first_name} ${m.last_name}</p>
-       <p><strong>Email:</strong> ${m.email}</p>
-       <p><strong>Phone:</strong> ${m.phone}</p>
-       <p><strong>Niche:</strong> ${m.niche}</p>
-       <p><strong>Area:</strong> ${m.area_city}</p>
-       <p><strong>Quantity:</strong> ${m.quantity} leads</p>`
+      `<h2 style="margin:0 0 16px">${m.company} signed up and paid for a lead pack.</h2>
+       <table style="border-collapse:collapse;font-size:14px">
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${m.company}</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${m.first_name} ${m.last_name}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${m.email}">${m.email}</a></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${m.phone}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
+         ${discountPct > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Volume discount</td><td>${discountPct}% off</td></tr>` : ''}
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Total (inc GST)</td><td>$${totalIncGst} AUD</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">ql-hq company ID</td><td><code>${companyId}</code></td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Stripe session</td><td><a href="https://dashboard.stripe.com/payments/${session.payment_intent}">${session.id}</a></td></tr>
+       </table>`
     )
-    // Mark signup attempt as completed
+
     await supabase.from('signup_attempts').update({ status: 'completed' })
       .eq('stripe_session_id', session.id)
 
@@ -414,9 +450,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
   }
 }
 
-
-
-// ── SMS credits top-up (existing dashboard company) ───────────────────────────
+// ── SMS credits top-up (existing dashboard company) ────────────────────────
 async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('SMS credits top-up for company:', m.company_id, 'credits:', m.credits)
   try {
@@ -442,7 +476,7 @@ async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record
   }
 }
 
-// ── Emails ─────────────────────────────────────────────────────────────────────
+// ── Emails ───────────────────────────────────────────────────────────────────
 
 async function sendPplWelcomeEmail(
   to: string, firstName: string, company: string,
@@ -490,7 +524,6 @@ async function sendPplWelcomeEmail(
     throw new Error(`Resend error ${emailRes.status}: ${errBody}`)
   }
 }
-
 
 async function sendInternalEmail(subject: string, body: string) {
   await fetch('https://api.resend.com/emails', {
