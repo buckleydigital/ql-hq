@@ -39,6 +39,51 @@ async function resolvePrice(niche: string, subNiche: string | null, area: string
   )
 }
 
+// Fire internal notification via the notify-internal edge function
+async function notifyCheckoutStarted(data: {
+  first_name: string; last_name: string; email: string; phone: string
+  company: string; niche: string; sub_niche: string | null; area_city: string
+  location_type: string; radius_km: number; postcode_list: string
+  quantity: number; price_per_lead: number; discount_percent: number
+  stripe_session_id: string
+}) {
+  const totalExGst  = (data.price_per_lead * data.quantity).toFixed(2)
+  const totalIncGst = (data.price_per_lead * data.quantity * 1.1).toFixed(2)
+  const locationDetail = data.location_type === 'postcodes'
+    ? `Postcodes — ${data.postcode_list || '(none)'}`
+    : `${data.area_city} — ${data.radius_km}km radius`
+
+  const subject = `🛒 Checkout started — ${data.company} (${data.email})`
+  const body = `
+    <h2 style="margin:0 0 16px">${data.company} started a PPL checkout — not yet paid.</h2>
+    <table style="border-collapse:collapse;font-size:14px">
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${data.company}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${data.first_name} ${data.last_name}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${data.email}">${data.email}</a></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${data.phone}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${data.niche}${data.sub_niche ? ' › ' + data.sub_niche : ''}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${data.quantity} leads</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${data.price_per_lead.toFixed(2)} AUD</td></tr>
+      ${data.discount_percent > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Volume discount</td><td>${data.discount_percent}% off</td></tr>` : ''}
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Total (inc GST)</td><td>$${totalIncGst} AUD</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Stripe session</td><td><code>${data.stripe_session_id}</code></td></tr>
+    </table>
+    <p style="margin:16px 0 0;font-size:12px;color:#888">Payment has not been received yet. A second notification will fire on completion.</p>
+  `
+
+  // Call the notify-internal edge function in the same Supabase project
+  await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-internal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+    },
+    body: JSON.stringify({ subject, body }),
+  }).catch(err => console.error('notifyCheckoutStarted error (non-fatal):', err))
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -83,7 +128,7 @@ serve(async (req) => {
     const discountPercent = tierRows?.[0]?.discount_percent ?? 0
     const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
 
-    // Capture signup attempt before redirecting — persists even if checkout is abandoned
+    // Capture signup attempt before redirecting
     const { data: attempt } = await supabase
       .from('signup_attempts')
       .insert({
@@ -148,6 +193,20 @@ serve(async (req) => {
     if (attempt?.id) {
       await supabase.from('signup_attempts').update({ stripe_session_id: session.id }).eq('id', attempt.id)
     }
+
+    // Fire-and-forget: notify the team that a checkout session has been created
+    notifyCheckoutStarted({
+      first_name, last_name, email, phone, company,
+      niche: normNiche, sub_niche: normSubNiche,
+      area_city,
+      location_type: location_type || 'radius',
+      radius_km: radius_km ?? 50,
+      postcode_list: postcode_list || '',
+      quantity,
+      price_per_lead: validatedPrice,
+      discount_percent: discountPercent,
+      stripe_session_id: session.id,
+    })
 
     return new Response(
       JSON.stringify({ url: session.url }),
