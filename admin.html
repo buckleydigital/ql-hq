@@ -1119,6 +1119,8 @@ h1{font-size:18px;font-weight:500}
     }
     btn.disabled = false; btn.textContent = 'Save';
   }
+  window.toggleOrderEdit = toggleOrderEdit;
+  window.saveOrderEdit   = saveOrderEdit;
 
   function setAreaLockUI(isLocked) {
     var badge    = document.getElementById('editUserAreaLockBadge');
