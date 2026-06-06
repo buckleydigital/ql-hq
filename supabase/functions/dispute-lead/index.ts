@@ -36,7 +36,31 @@ function normaliseE164(raw: string): string {
   return phone;
 }
 
-// ─── Veriphone lookup ─────────────────────────────────────────────────────────
+// ─── Email helper ─────────────────────────────────────────────────────────────
+
+async function sendEmail(params: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl    = Deno.env.get("SUPABASE_URL");
+  if (!serviceRoleKey || !supabaseUrl) return;
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/resend-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify(params),
+    });
+  } catch (err) {
+    console.error("sendEmail failed:", err);
+  }
+}
+
+// ─── Veriphone lookup (with retry) ───────────────────────────────────────────
 
 interface VeriphoneResult {
   valid: boolean;
@@ -53,20 +77,27 @@ async function checkVeriphone(phone: string): Promise<VeriphoneResult> {
   }
 
   const url = `https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(phone)}&key=${key}`;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`Veriphone HTTP ${res.status}`);
-    const data = await res.json() as Record<string, unknown>;
-    return {
-      valid:         data.phone_valid === true,
-      type:          (data.phone_type as string) ?? null,
-      international: (data.international_number as string) ?? null,
-      raw:           data,
-    };
-  } catch (err) {
-    console.error("Veriphone error:", err);
-    return { valid: false, type: null, international: null, raw: { error: String(err) } };
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`Veriphone HTTP ${res.status}`);
+      const data = await res.json() as Record<string, unknown>;
+      return {
+        valid:         data.phone_valid === true,
+        type:          (data.phone_type as string) ?? null,
+        international: (data.international_number as string) ?? null,
+        raw:           data,
+      };
+    } catch (err) {
+      console.warn(`Veriphone attempt ${attempt + 1} failed:`, err);
+      if (attempt === 2) {
+        return { valid: false, type: null, international: null, raw: { error: String(err), retries: 2 } };
+      }
+    }
   }
+  return { valid: false, type: null, international: null, raw: { error: "unreachable" } };
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -185,7 +216,7 @@ Deno.serve(async (req) => {
     // ── Fetch company config ──────────────────────────────────────────────────
     const { data: company } = await db
       .from("companies")
-      .select("ppl_agreed_postcodes, ppl_scrub_cap_pct")
+      .select("ppl_agreed_postcodes, ppl_scrub_cap_pct, email, name")
       .eq("id", companyId)
       .single();
 
@@ -288,6 +319,47 @@ Deno.serve(async (req) => {
     const { data: scrubUsage } = await db
       .rpc("get_ppl_scrub_usage", { p_company_id: companyId });
 
+    // ── Notifications ─────────────────────────────────────────────────────────
+    const internalEmail = Deno.env.get("INTERNAL_NOTIFICATION_EMAIL") ?? "admin@quoteleadshq.com";
+    const reasonLabel   = reason.replace(/_/g, " ");
+    const leadName      = lead.name ?? "Unknown lead";
+    const companyName   = company?.name ?? companyId;
+
+    await sendEmail({
+      to:      internalEmail,
+      subject: `New PPL dispute — ${reasonLabel} · ${disputeStatus.replace(/_/g, " ")} · ${companyName}`,
+      html: `<p>A new PPL lead dispute has been raised.</p>
+             <ul>
+               <li><strong>Lead:</strong> ${leadName}</li>
+               <li><strong>Company:</strong> ${companyName}</li>
+               <li><strong>Reason:</strong> ${reasonLabel}</li>
+               <li><strong>Status:</strong> ${disputeStatus.replace(/_/g, " ")}</li>
+             </ul>`,
+    });
+
+    if (company?.email) {
+      if (disputeStatus === "auto_approved") {
+        await sendEmail({
+          to:      company.email,
+          subject: "Your lead dispute has been approved",
+          html: `<p>Hi,</p>
+                 <p>Your dispute for lead <strong>${leadName}</strong> (reason: ${reasonLabel}) has been <strong>automatically approved</strong>.</p>
+                 <p>Our team will be in touch shortly to arrange a credit or replacement lead.</p>
+                 <p>— QuoteLeadsHQ</p>`,
+        });
+      } else {
+        const canEscalate = reason === "outside_agreed_criteria";
+        await sendEmail({
+          to:      company.email,
+          subject: "Your lead dispute was not approved automatically",
+          html: `<p>Hi,</p>
+                 <p>Your dispute for lead <strong>${leadName}</strong> (reason: ${reasonLabel}) was <strong>not approved</strong> by the automated check.</p>
+                 ${canEscalate ? "<p>If you believe this is incorrect, you can send this dispute for manual review from your dashboard.</p>" : ""}
+                 <p>— QuoteLeadsHQ</p>`,
+        });
+      }
+    }
+
     return json({
       dispute_id:              dispute.id,
       status:                  disputeStatus,
@@ -305,63 +377,80 @@ Deno.serve(async (req) => {
 });
 
 // ─── Manual review escalation ─────────────────────────────────────────────────
+// Uses an atomic Postgres function to check the scrub cap and update the
+// dispute status in a single transaction, preventing race conditions where two
+// concurrent requests could both pass the cap check.
 
 async function handleManualReview(
   db: ReturnType<typeof createClient>,
   disputeId: string,
   companyId: string,
-  userId: string,
+  _userId: string,
 ): Promise<Response> {
   if (!disputeId) return json({ error: "dispute_id is required" }, 400);
 
-  // Fetch the dispute
-  const { data: dispute, error: fetchErr } = await db
-    .from("lead_disputes")
-    .select("id, company_id, reason, status, lead_id")
-    .eq("id", disputeId)
-    .single();
+  const { data: result, error: rpcErr } = await db
+    .rpc("escalate_to_manual_review", {
+      p_dispute_id: disputeId,
+      p_company_id: companyId,
+    });
 
-  if (fetchErr || !dispute) return json({ error: "Dispute not found" }, 404);
-  if (dispute.company_id !== companyId) return json({ error: "Forbidden" }, 403);
-
-  if (dispute.reason !== "outside_agreed_criteria") {
-    return json({ error: "Only outside_agreed_criteria disputes can be sent for manual review" }, 422);
-  }
-
-  if (!["auto_approved", "auto_rejected"].includes(dispute.status)) {
-    return json({ error: `Dispute is already in status: ${dispute.status}` }, 409);
-  }
-
-  // Check scrub cap
-  const { data: scrubUsage } = await db
-    .rpc("get_ppl_scrub_usage", { p_company_id: companyId });
-
-  if (scrubUsage?.cap_exceeded) {
-    return json({
-      error:        "Scrub cap exceeded",
-      scrub_usage:  scrubUsage,
-      cap_exceeded: true,
-    }, 422);
-  }
-
-  // Escalate
-  const { error: updateErr } = await db
-    .from("lead_disputes")
-    .update({
-      status:     "pending_manual_review",
-      scrub_cap_pct:  scrubUsage?.scrub_cap_pct ?? null,
-      scrub_used_pct: scrubUsage?.scrub_used_pct ?? null,
-    })
-    .eq("id", disputeId);
-
-  if (updateErr) {
-    console.error("Manual review update error:", updateErr);
+  if (rpcErr) {
+    console.error("escalate_to_manual_review error:", rpcErr);
     return json({ error: "Failed to escalate dispute" }, 500);
   }
 
+  if (result?.error) {
+    return json(
+      {
+        error: result.error,
+        ...(result.cap_exceeded ? { cap_exceeded: true, scrub_usage: result.scrub_usage } : {}),
+      },
+      result.code ?? 422,
+    );
+  }
+
+  // Send notifications after successful escalation
+  const { data: dispute } = await db
+    .from("lead_disputes")
+    .select("lead_id, company_id")
+    .eq("id", disputeId)
+    .single();
+
+  if (dispute) {
+    const [{ data: company }, { data: lead }] = await Promise.all([
+      db.from("companies").select("email, name").eq("id", dispute.company_id).single(),
+      db.from("leads").select("name").eq("id", dispute.lead_id).single(),
+    ]);
+
+    const internalEmail = Deno.env.get("INTERNAL_NOTIFICATION_EMAIL") ?? "admin@quoteleadshq.com";
+    const leadName      = lead?.name ?? "Unknown lead";
+    const companyName   = company?.name ?? companyId;
+
+    await Promise.all([
+      sendEmail({
+        to:      internalEmail,
+        subject: `PPL dispute sent for manual review · ${companyName}`,
+        html: `<p><strong>${companyName}</strong> has escalated a dispute to manual review.</p>
+               <ul>
+                 <li><strong>Lead:</strong> ${leadName}</li>
+                 <li><strong>Dispute ID:</strong> ${disputeId}</li>
+               </ul>`,
+      }),
+      company?.email ? sendEmail({
+        to:      company.email,
+        subject: "Your dispute has been sent for manual review",
+        html: `<p>Hi,</p>
+               <p>Your dispute for lead <strong>${leadName}</strong> has been submitted for manual review by our team.</p>
+               <p>We'll notify you once a decision has been made.</p>
+               <p>— QuoteLeadsHQ</p>`,
+      }) : Promise.resolve(),
+    ]);
+  }
+
   return json({
-    dispute_id:   disputeId,
-    status:       "pending_manual_review",
-    scrub_usage:  scrubUsage,
+    dispute_id:  disputeId,
+    status:      "pending_manual_review",
+    scrub_usage: result.scrub_usage,
   });
 }

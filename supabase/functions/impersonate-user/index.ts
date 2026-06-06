@@ -14,6 +14,28 @@ function json(data: unknown, status = 200) {
   });
 }
 
+async function sendEmail(params: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl    = Deno.env.get("SUPABASE_URL");
+  if (!serviceRoleKey || !supabaseUrl) return;
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/resend-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify(params),
+    });
+  } catch (err) {
+    console.error("sendEmail failed:", err);
+  }
+}
+
 // ── Verify caller JWT and resolve their auth.users record ─────────────────────
 async function resolveCallerUser(
   authHeader: string,
@@ -225,7 +247,10 @@ Deno.serve(async (req) => {
           lead_id,
           company_id,
           raised_by,
-          resolved_by
+          resolved_by,
+          action_taken_at,
+          action_type,
+          action_taken_by
         `)
         .order("created_at", { ascending: false })
         .limit(500);
@@ -243,6 +268,7 @@ Deno.serve(async (req) => {
       const userIds     = [...new Set([
         ...disputes.map((d: { raised_by: string | null }) => d.raised_by).filter(Boolean),
         ...disputes.map((d: { resolved_by: string | null }) => d.resolved_by).filter(Boolean),
+        ...disputes.map((d: { action_taken_by: string | null }) => d.action_taken_by).filter(Boolean),
       ])] as string[];
 
       const [{ data: leads }, { data: companies }, { data: profiles }] = await Promise.all([
@@ -261,12 +287,14 @@ Deno.serve(async (req) => {
         scrub_used_pct: number | null; resolution_notes: string | null;
         resolved_at: string | null; created_at: string; updated_at: string;
         lead_id: string; company_id: string; raised_by: string | null; resolved_by: string | null;
+        action_taken_at: string | null; action_type: string | null; action_taken_by: string | null;
       }) => ({
         ...d,
-        lead:          leadMap[d.lead_id]    ?? null,
-        company:       companyMap[d.company_id] ?? null,
-        raised_by_profile:   profileMap[d.raised_by ?? ""] ?? null,
-        resolved_by_profile: profileMap[d.resolved_by ?? ""] ?? null,
+        lead:                    leadMap[d.lead_id]             ?? null,
+        company:                 companyMap[d.company_id]       ?? null,
+        raised_by_profile:       profileMap[d.raised_by ?? ""]        ?? null,
+        resolved_by_profile:     profileMap[d.resolved_by ?? ""]      ?? null,
+        action_taken_by_profile: profileMap[d.action_taken_by ?? ""]  ?? null,
       }));
 
       return json({ disputes: enriched });
@@ -295,7 +323,7 @@ Deno.serve(async (req) => {
       // Fetch dispute to confirm it exists and is in a resolvable state
       const { data: dispute, error: fetchErr } = await adminClient
         .from("lead_disputes")
-        .select("id, status")
+        .select("id, status, company_id, lead_id, reason")
         .eq("id", dispute_id)
         .maybeSingle();
 
@@ -323,7 +351,98 @@ Deno.serve(async (req) => {
         return json({ error: "Failed to resolve dispute" }, 500);
       }
 
+      // Notify company of the resolution outcome
+      const [{ data: resolvedCompany }, { data: resolvedLead }] = await Promise.all([
+        adminClient.from("companies").select("email, name").eq("id", dispute.company_id).single(),
+        adminClient.from("leads").select("name").eq("id", dispute.lead_id).single(),
+      ]);
+      if (resolvedCompany?.email) {
+        const leadName    = resolvedLead?.name ?? "Unknown lead";
+        const reasonLabel = (dispute.reason as string).replace(/_/g, " ");
+        const approved    = resolution === "manual_approved";
+        await sendEmail({
+          to:      resolvedCompany.email,
+          subject: approved ? "Your lead dispute has been approved" : "Your lead dispute has been rejected",
+          html: `<p>Hi,</p>
+                 <p>Your dispute for lead <strong>${leadName}</strong> (reason: ${reasonLabel}) has been <strong>${approved ? "approved" : "rejected"}</strong> by our team.</p>
+                 ${approved ? "<p>Our team will be in touch to arrange a credit or replacement lead.</p>" : ""}
+                 ${notes?.trim() ? `<p>Notes: ${notes.trim()}</p>` : ""}
+                 <p>— QuoteLeadsHQ</p>`,
+        });
+      }
+
       return json({ dispute_id, status: resolution });
+    }
+
+    // ── action: take_dispute_action ───────────────────────────────────────────
+    // Records a credit or replacement action for an approved dispute and notifies
+    // the company.
+    if (action === "take_dispute_action") {
+      const { dispute_id: actionDisputeId, action_type, action_notes } = body as {
+        dispute_id?: string;
+        action_type?: string;
+        action_notes?: string;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!actionDisputeId || !UUID_RE.test(actionDisputeId)) {
+        return json({ error: "dispute_id must be a valid UUID" }, 400);
+      }
+      if (!action_type || !["credit_issued", "replacement_sent"].includes(action_type)) {
+        return json({ error: "action_type must be 'credit_issued' or 'replacement_sent'" }, 400);
+      }
+      if (action_notes !== undefined && typeof action_notes === "string" && action_notes.length > 2000) {
+        return json({ error: "action_notes must be 2000 characters or fewer" }, 400);
+      }
+
+      const { data: actionDispute, error: actionFetchErr } = await adminClient
+        .from("lead_disputes")
+        .select("id, status, company_id, lead_id, reason, action_taken_at")
+        .eq("id", actionDisputeId)
+        .maybeSingle();
+
+      if (actionFetchErr || !actionDispute) return json({ error: "Dispute not found" }, 404);
+      if (!["auto_approved", "manual_approved"].includes(actionDispute.status)) {
+        return json({ error: "Can only take action on approved disputes" }, 422);
+      }
+      if (actionDispute.action_taken_at) {
+        return json({ error: "Action already recorded for this dispute" }, 409);
+      }
+
+      const { error: actionUpdateErr } = await adminClient
+        .from("lead_disputes")
+        .update({
+          action_taken_at: new Date().toISOString(),
+          action_type,
+          action_taken_by: caller.id,
+        })
+        .eq("id", actionDisputeId);
+
+      if (actionUpdateErr) {
+        console.error("take_dispute_action update error:", actionUpdateErr.message);
+        return json({ error: "Failed to record action" }, 500);
+      }
+
+      const [{ data: actionCompany }, { data: actionLead }] = await Promise.all([
+        adminClient.from("companies").select("email, name").eq("id", actionDispute.company_id).single(),
+        adminClient.from("leads").select("name").eq("id", actionDispute.lead_id).single(),
+      ]);
+
+      if (actionCompany?.email) {
+        const actionLabel = action_type === "credit_issued" ? "credit" : "replacement lead";
+        const leadName    = actionLead?.name ?? "Unknown lead";
+        const reasonLabel = (actionDispute.reason as string).replace(/_/g, " ");
+        await sendEmail({
+          to:      actionCompany.email,
+          subject: `PPL dispute actioned — ${actionLabel} issued`,
+          html: `<p>Hi,</p>
+                 <p>We've processed your approved dispute for lead <strong>${leadName}</strong> (reason: ${reasonLabel}).</p>
+                 <p>A <strong>${actionLabel}</strong> has been issued${action_notes?.trim() ? ": " + action_notes.trim() : "."}</p>
+                 <p>— QuoteLeadsHQ</p>`,
+        });
+      }
+
+      return json({ dispute_id: actionDisputeId, action_type, actioned_at: new Date().toISOString() });
     }
 
     // ── action: list_companies ────────────────────────────────────────────────

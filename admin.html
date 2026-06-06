@@ -113,6 +113,8 @@ h1{font-size:18px;font-weight:500}
 [data-theme=dark] .btn-approve{color:#4ade80}
 .btn-reject{background:rgba(185,28,28,.08);border-color:rgba(185,28,28,.25);color:#b91c1c}
 [data-theme=dark] .btn-reject{color:#f87171}
+.btn-action{background:rgba(79,70,229,.08);border-color:rgba(79,70,229,.25);color:#4338ca}
+[data-theme=dark] .btn-action{color:#818cf8}
 .dispute-autocheck{margin-top:10px;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-family:monospace;display:none}
 .dispute-toggle{font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;margin-top:6px;text-decoration:underline}
 .filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -548,6 +550,29 @@ h1{font-size:18px;font-weight:500}
       <button class="btn btn-sm" id="modalCancelBtn" type="button">Cancel</button>
       <button class="btn btn-sm btn-reject" id="modalRejectBtn" type="button">Reject dispute</button>
       <button class="btn btn-sm btn-approve" id="modalApproveBtn" type="button">Approve dispute</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Take dispute action modal ─────────────────────────────────────────────── -->
+<div id="actionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="actionModalTitle">
+  <div class="modal">
+    <h3 id="actionModalTitle">Issue credit / replacement</h3>
+    <p id="actionModalDesc" style="font-size:12px;color:var(--muted);margin-bottom:14px"></p>
+    <div class="form-row" style="margin-bottom:4px">
+      <label class="form-label" for="actionType">Action type</label>
+      <select id="actionType" class="filter-select" style="width:100%;height:38px">
+        <option value="credit_issued">Credit issued</option>
+        <option value="replacement_sent">Replacement lead sent</option>
+      </select>
+    </div>
+    <div class="form-row" style="margin-top:10px;margin-bottom:4px">
+      <label class="form-label" for="actionNotes">Notes <span style="font-weight:400">(optional)</span></label>
+      <textarea id="actionNotes" placeholder="e.g. Credit of $X applied to account…" maxlength="2000"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="actionModalCancelBtn" type="button">Cancel</button>
+      <button class="btn btn-sm btn-approve" id="actionModalConfirmBtn" type="button">Confirm action</button>
     </div>
   </div>
 </div>
@@ -1404,8 +1429,17 @@ h1{font-size:18px;font-weight:500}
       ? '<button class="btn btn-sm resolve-btn" data-id="' + escapeHtml(d.id) + '" data-lead="' + leadName + '" type="button">Resolve</button>'
       : '';
 
+    var canTakeAction = ['auto_approved', 'manual_approved'].includes(d.status) && !d.action_taken_at;
+    var actionBtn = canTakeAction
+      ? '<button class="btn btn-sm btn-action action-btn" data-id="' + escapeHtml(d.id) + '" data-lead="' + leadName + '" type="button">Issue Credit / Replacement</button>'
+      : '';
+
     var resolutionNote = (d.status === 'manual_approved' || d.status === 'manual_rejected') && d.resolution_notes
       ? '<div style="margin-top:8px;font-size:11px;color:var(--muted)">Resolution: ' + escapeHtml(d.resolution_notes) + '</div>'
+      : '';
+
+    var actionedNote = d.action_taken_at
+      ? '<div style="margin-top:6px;font-size:11px;color:var(--muted)">Actioned: ' + escapeHtml(d.action_type ? d.action_type.replace(/_/g, ' ') : 'yes') + ' on ' + new Date(d.action_taken_at).toLocaleDateString('en-AU') + '</div>'
       : '';
 
     var autoCheckStr = d.auto_check_result ? JSON.stringify(d.auto_check_result, null, 2) : '';
@@ -1423,10 +1457,11 @@ h1{font-size:18px;font-weight:500}
             '<span class="badge-status ' + disputeStatusClass(d.status) + '">' + escapeHtml(disputeStatusLabel(d.status)) + '</span>' +
           '</div>' +
           resolutionNote +
+          actionedNote +
           (autoCheckStr ? '<button class="dispute-toggle" data-target="' + toggleId + '" type="button">Show auto-check</button>' : '') +
           (autoCheckStr ? '<pre class="dispute-autocheck" id="' + toggleId + '">' + escapeHtml(autoCheckStr) + '</pre>' : '') +
         '</div>' +
-        '<div class="dispute-actions">' + resolveBtn + '</div>' +
+        '<div class="dispute-actions">' + actionBtn + resolveBtn + '</div>' +
       '</div>';
 
     var toggle = row.querySelector('.dispute-toggle');
@@ -1444,6 +1479,13 @@ h1{font-size:18px;font-weight:500}
     if (resolveEl) {
       resolveEl.addEventListener('click', function () {
         openResolveModal(this.dataset.id, this.dataset.lead);
+      });
+    }
+
+    var actionEl = row.querySelector('.action-btn');
+    if (actionEl) {
+      actionEl.addEventListener('click', function () {
+        openActionModal(this.dataset.id, this.dataset.lead);
       });
     }
 
@@ -1528,7 +1570,49 @@ h1{font-size:18px;font-weight:500}
     if (e.target === this) closeResolveModal();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeResolveModal();
+    if (e.key === 'Escape') { closeResolveModal(); closeActionModal(); }
+  });
+
+  // ── Take action modal ──────────────────────────────────────────────────────
+
+  var pendingAction = null;
+
+  function openActionModal(disputeId, leadDesc) {
+    pendingAction = { disputeId: disputeId, leadDesc: leadDesc };
+    document.getElementById('actionModalDesc').textContent = 'Dispute for: ' + leadDesc;
+    document.getElementById('actionType').value = 'credit_issued';
+    document.getElementById('actionNotes').value = '';
+    document.getElementById('actionModal').classList.remove('hidden');
+    document.getElementById('actionType').focus();
+  }
+
+  function closeActionModal() {
+    pendingAction = null;
+    document.getElementById('actionModal').classList.add('hidden');
+  }
+
+  async function submitAction() {
+    if (!pendingAction) return;
+    var actionType = document.getElementById('actionType').value;
+    var notes = document.getElementById('actionNotes').value.trim();
+    var disputeId = pendingAction.disputeId;
+    document.getElementById('actionModalConfirmBtn').disabled = true;
+    try {
+      await callEdge({ action: 'take_dispute_action', dispute_id: disputeId, action_type: actionType, action_notes: notes || undefined });
+      toast('Action recorded and company notified.');
+      closeActionModal();
+      await loadDisputes();
+    } catch (err) {
+      toast(err.message || 'Failed to record action.', true);
+    } finally {
+      document.getElementById('actionModalConfirmBtn').disabled = false;
+    }
+  }
+
+  document.getElementById('actionModalConfirmBtn').addEventListener('click', submitAction);
+  document.getElementById('actionModalCancelBtn').addEventListener('click', closeActionModal);
+  document.getElementById('actionModal').addEventListener('click', function (e) {
+    if (e.target === this) closeActionModal();
   });
 
   document.getElementById('disputeStatusFilter').addEventListener('change', applyDisputeFilter);
