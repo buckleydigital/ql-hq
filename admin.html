@@ -1102,8 +1102,7 @@ h1{font-size:18px;font-weight:500}
     if (isNaN(delivered) || isNaN(total) || total < 1) { toast('Invalid values', true); return; }
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      var result = await callEdge({ action: 'update_ppl_order', order_id: orderId, delivered_leads: delivered, total_leads: total, notes: notes });
-      if (result && result.error) throw new Error(result.error);
+      await callEdge({ action: 'update_ppl_order', order_id: orderId, delivered_leads: delivered, total_leads: total, notes: notes });
       // Update the summary text and progress bar in-place
       var pct = total > 0 ? Math.min(100, Math.round(delivered / total * 100)) : 0;
       var summary = row.querySelector('.ud-order-summary');

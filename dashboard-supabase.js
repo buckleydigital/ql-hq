@@ -3175,10 +3175,10 @@ async function loadSettings() {
       if (error) { toast("Failed to save delivery settings.", true); return; }
 
       // Push to ql-mc (fire and forget — don't block on failure)
-      const { data: { session } } = await sb.auth.getSession();
-      fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
+      const { data: _sdRes } = await sb.auth.getSession();
+      if (_sdRes?.session) fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_sdRes.session.access_token}`, "apikey": SUPABASE_ANON_KEY },
       }).catch(err => console.warn("sync-delivery-config:", err));
 
       toast("Delivery settings saved.");
