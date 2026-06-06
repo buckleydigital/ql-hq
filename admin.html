@@ -1045,19 +1045,31 @@ h1{font-size:18px;font-weight:500}
         var pct = o.total_leads > 0 ? Math.min(100, Math.round(o.delivered_leads / o.total_leads * 100)) : 0;
         var dueD = o.purchased_at ? new Date(o.purchased_at) : null;
         if (dueD) dueD.setDate(dueD.getDate() + 14);
-        html += '<div class="ud-order">' +
+        html += '<div class="ud-order" id="ud-order-' + o.id + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">' +
-            '<span style="font-size:12px;font-weight:600">' + o.delivered_leads + ' / ' + o.total_leads + ' leads</span>' +
-            '<span class="badge-status ' + pplStatusClass(o.status) + '">' + escapeHtml(o.status) + '</span>' +
+            '<span class="ud-order-summary" style="font-size:12px;font-weight:600">' + o.delivered_leads + ' / ' + o.total_leads + ' leads</span>' +
+            '<div style="display:flex;gap:6px;align-items:center">' +
+              '<span class="badge-status ' + pplStatusClass(o.status) + ' ud-order-status-badge">' + escapeHtml(o.status) + '</span>' +
+              '<button onclick="toggleOrderEdit(\'' + o.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);cursor:pointer;color:var(--muted)">Edit</button>' +
+            '</div>' +
           '</div>' +
           '<div style="background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-bottom:5px">' +
-            '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
+            '<div class="ud-order-bar" style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
           '</div>' +
           '<div style="font-size:11px;color:var(--muted)">' +
             (o.purchased_at ? 'Purchased ' + new Date(o.purchased_at).toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '') +
             (dueD ? ' · Due ' + dueD.toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'}) : '') +
           '</div>' +
-          (o.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + escapeHtml(o.notes) + '</div>' : '') +
+          (o.notes ? '<div class="ud-order-notes" style="font-size:11px;color:var(--muted);margin-top:3px">' + escapeHtml(o.notes) + '</div>' : '') +
+          '<div class="ud-order-edit" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px">' +
+            '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+              '<label style="font-size:10px;color:var(--muted);flex:1">Delivered<input type="number" min="0" value="' + o.delivered_leads + '" data-field="delivered_leads" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+              '<label style="font-size:10px;color:var(--muted);flex:1">Total<input type="number" min="1" value="' + o.total_leads + '" data-field="total_leads" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+            '</div>' +
+            '<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px">Notes<input type="text" value="' + escapeHtml(o.notes || '') + '" data-field="notes" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+            '<button onclick="saveOrderEdit(\'' + o.id + '\', this)" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>' +
+            '<button onclick="toggleOrderEdit(\'' + o.id + '\')" style="font-size:11px;padding:4px 10px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;margin-left:6px;color:var(--muted)">Cancel</button>' +
+          '</div>' +
         '</div>';
       });
     } else {
@@ -1069,6 +1081,44 @@ h1{font-size:18px;font-weight:500}
     html += '<div class="ud-kv">' + ud_kv('All Leads', d.lead_count !== undefined ? d.lead_count : '—') + '</div>';
 
     return html;
+  }
+
+  function toggleOrderEdit(orderId) {
+    var row = document.getElementById('ud-order-' + orderId);
+    if (!row) return;
+    var editDiv = row.querySelector('.ud-order-edit');
+    editDiv.style.display = editDiv.style.display === 'none' ? '' : 'none';
+  }
+
+  async function saveOrderEdit(orderId, btn) {
+    var row = document.getElementById('ud-order-' + orderId);
+    if (!row) return;
+    var deliveredInput = row.querySelector('[data-field="delivered_leads"]');
+    var totalInput     = row.querySelector('[data-field="total_leads"]');
+    var notesInput     = row.querySelector('[data-field="notes"]');
+    var delivered = parseInt(deliveredInput.value);
+    var total     = parseInt(totalInput.value);
+    var notes     = notesInput.value.trim() || null;
+    if (isNaN(delivered) || isNaN(total) || total < 1) { toast('Invalid values', true); return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      var result = await callEdge({ action: 'update_ppl_order', order_id: orderId, delivered_leads: delivered, total_leads: total, notes: notes });
+      if (result && result.error) throw new Error(result.error);
+      // Update the summary text and progress bar in-place
+      var pct = total > 0 ? Math.min(100, Math.round(delivered / total * 100)) : 0;
+      var summary = row.querySelector('.ud-order-summary');
+      if (summary) summary.textContent = delivered + ' / ' + total + ' leads';
+      var bar = row.querySelector('.ud-order-bar');
+      if (bar) bar.style.width = pct + '%';
+      var statusBadge = row.querySelector('.ud-order-status-badge');
+      var newStatus = delivered >= total ? 'completed' : 'active';
+      if (statusBadge) { statusBadge.textContent = newStatus; statusBadge.className = 'badge-status ' + pplStatusClass(newStatus) + ' ud-order-status-badge'; }
+      toast('Order updated.');
+      toggleOrderEdit(orderId);
+    } catch(err) {
+      toast('Failed: ' + err.message, true);
+    }
+    btn.disabled = false; btn.textContent = 'Save';
   }
 
   function setAreaLockUI(isLocked) {

@@ -451,6 +451,36 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── action: update_ppl_order ─────────────────────────────────────────────
+    // Admin: manually set delivered_leads / total_leads / notes on a ppl_order.
+    if (action === "update_ppl_order") {
+      const { order_id, delivered_leads, total_leads, notes } = body as {
+        order_id?: string;
+        delivered_leads?: number;
+        total_leads?: number;
+        notes?: string;
+      };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!order_id || !UUID_RE.test(order_id)) {
+        return json({ error: "order_id must be a valid UUID" }, 400);
+      }
+      const upd: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (delivered_leads !== undefined) upd.delivered_leads = Math.max(0, Math.floor(Number(delivered_leads)));
+      if (total_leads     !== undefined) upd.total_leads     = Math.max(1, Math.floor(Number(total_leads)));
+      if (notes           !== undefined) upd.notes           = notes ?? null;
+      // Auto-set status based on counts if both are present
+      if (upd.delivered_leads !== undefined && upd.total_leads !== undefined) {
+        upd.status = (upd.delivered_leads as number) >= (upd.total_leads as number) ? "completed" : "active";
+      } else if (upd.delivered_leads !== undefined) {
+        // Fetch current total to decide status
+        const { data: cur } = await adminClient.from("ppl_orders").select("total_leads").eq("id", order_id).maybeSingle();
+        if (cur) upd.status = (upd.delivered_leads as number) >= cur.total_leads ? "completed" : "active";
+      }
+      const { error: upErr } = await adminClient.from("ppl_orders").update(upd).eq("id", order_id);
+      if (upErr) return json({ error: "Failed to update: " + upErr.message }, 500);
+      return json({ success: true });
+    }
+
     // ── action: update_ppl_service_areas ─────────────────────────────────────
     // Admin: update postcodes and/or lock state for a company.
     if (action === "update_ppl_service_areas") {
