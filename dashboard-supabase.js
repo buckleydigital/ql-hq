@@ -1729,7 +1729,7 @@ async function handleLeadSave(e) {
     postcode:       document.getElementById("leadPostcode")?.value || null,
     address:        document.getElementById("leadAddress")?.value || null,
     source:         document.getElementById("leadSource")?.value || null,
-    is_ppl:         (document.getElementById("leadSource")?.value || "").toLowerCase() === "ppl",
+    is_ppl:         ["ppl", "quoteleads ppl"].includes((document.getElementById("leadSource")?.value || "").toLowerCase()),
     pipeline_stage: stageKey(document.getElementById("leadStatus")?.value || "New Lead"),
     value:          Number(document.getElementById("leadValue")?.value) || null,
     notes:          document.getElementById("leadNotes")?.value || null,
