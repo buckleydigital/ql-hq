@@ -278,6 +278,23 @@ h1{font-size:18px;font-weight:500}
             </div>
           </div>
 
+          <!-- PPL Order -->
+          <div class="form-section">PPL Order</div>
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-row">
+              <label class="form-label" for="newPplTotalLeads">Total Leads <span style="font-weight:400">(optional — leave blank to skip)</span></label>
+              <input class="form-input" id="newPplTotalLeads" type="number" min="1" step="1" placeholder="e.g. 20">
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newPplDueDate">Due Date</label>
+              <input class="form-input" id="newPplDueDate" type="date">
+            </div>
+            <div class="form-row" style="grid-column:1/-1">
+              <label class="form-label" for="newPplNotes">Order Notes <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newPplNotes" type="text" placeholder="e.g. June batch — 20 roofing leads">
+            </div>
+          </div>
+
           <button class="btn2 btn-sm" type="submit" id="createAccountBtn">Create Account</button>
         </form>
       </div>
@@ -939,6 +956,9 @@ h1{font-size:18px;font-weight:500}
       if (opts.user_phone)       payload.user_phone       = opts.user_phone;
       if (opts.role)                payload.role                = opts.role;
       if (opts.twilio_phone_number) payload.twilio_phone_number = opts.twilio_phone_number;
+      if (typeof opts.ppl_total_leads === 'number') payload.ppl_total_leads = opts.ppl_total_leads;
+      if (opts.ppl_due_date) payload.ppl_due_date = opts.ppl_due_date;
+      if (opts.ppl_notes)    payload.ppl_notes    = opts.ppl_notes;
     }
 
     var res = await fetch(SUPABASE_URL + '/functions/v1/create-user-silent', {
@@ -979,6 +999,9 @@ h1{font-size:18px;font-weight:500}
     var userPhone      = document.getElementById('newUserPhone').value.trim();
     var userRole       = document.getElementById('newUserRole').value;
     var twilioPhone    = document.getElementById('newTwilioPhoneInput').value.trim();
+    var pplTotalRaw    = document.getElementById('newPplTotalLeads').value.trim();
+    var pplDueDate     = document.getElementById('newPplDueDate').value;
+    var pplNotes       = document.getElementById('newPplNotes').value.trim();
 
     if (!name || !email || !password) {
       toast('Please fill in all fields.', true);
@@ -991,6 +1014,21 @@ h1{font-size:18px;font-weight:500}
     if (password.length < 8) {
       toast('Password must be at least 8 characters.', true);
       return;
+    }
+
+    // PPL order is all-or-nothing: filling either field requires both
+    var wantsPplOrder = !!(pplTotalRaw || pplDueDate);
+    var pplTotalLeads = null;
+    if (wantsPplOrder) {
+      pplTotalLeads = parseInt(pplTotalRaw, 10);
+      if (!pplTotalLeads || pplTotalLeads < 1) {
+        toast('PPL order: please enter a valid number of leads.', true);
+        return;
+      }
+      if (!pplDueDate) {
+        toast('PPL order: please select a due date.', true);
+        return;
+      }
     }
 
     btn.disabled = true;
@@ -1007,16 +1045,29 @@ h1{font-size:18px;font-weight:500}
         user_phone:          userPhone || undefined,
         role:                userRole || undefined,
         twilio_phone_number: twilioPhone || undefined,
+        ppl_total_leads:     wantsPplOrder ? pplTotalLeads : undefined,
+        ppl_due_date:        wantsPplOrder ? pplDueDate : undefined,
+        ppl_notes:           (wantsPplOrder && pplNotes) ? pplNotes : undefined,
       });
+      var warnings = [];
       if (result.email_sent === false) {
-        toast('Account created but welcome email failed to send — check edge function logs. (' + (result.email_error || 'unknown error') + ')', true);
+        warnings.push('welcome email failed (' + (result.email_error || 'unknown error') + ')');
+      }
+      if (result.ppl_order_created === false) {
+        warnings.push('PPL order failed (' + (result.ppl_order_error || 'unknown error') + ') — add it from the PPL Orders panel');
+      }
+      if (warnings.length) {
+        toast('Account created, but: ' + warnings.join('; '), true);
       } else {
-        toast('Account created for ' + result.user.email + ' — welcome email sent.');
+        toast('Account created for ' + result.user.email + ' — welcome email sent' + (result.ppl_order_created ? ' + PPL order added' : '') + '.');
       }
       document.getElementById('createAccountForm').reset();
 
       // Refresh Twilio panel if a number was entered so it appears immediately
       if (twilioPhone) loadTwilioNumbers();
+
+      // Refresh PPL orders panel so the new order appears immediately
+      if (result.ppl_order_created) loadPplOrders();
 
       // Refresh user list so the new account appears immediately
       var listResult = await callEdge({ action: 'list' });
