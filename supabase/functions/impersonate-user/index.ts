@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // ── CORS headers ──────────────────────────────────────────────────────────────
 const corsHeaders = {
@@ -29,6 +29,51 @@ async function resolveCallerUser(
     console.warn("auth.getUser() threw:", (e as Error).message);
   }
   return null;
+}
+
+// ── Keep sms_agent_config.twilio_number in step with twilio_numbers ──────────
+// Fills the company's agent config with the assigned number, but never
+// overwrites a number that is already configured.
+async function syncAgentTwilioNumber(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+  phoneNumber: string,
+): Promise<void> {
+  try {
+    const { data: cfg, error: cfgErr } = await adminClient
+      .from("sms_agent_config")
+      .select("id, twilio_number")
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (cfgErr) {
+      console.warn("syncAgentTwilioNumber lookup failed:", cfgErr.message);
+      return;
+    }
+    if (cfg) {
+      if (!cfg.twilio_number) {
+        const { error: upErr } = await adminClient
+          .from("sms_agent_config")
+          .update({ twilio_number: phoneNumber })
+          .eq("id", cfg.id);
+        if (upErr) console.warn("syncAgentTwilioNumber update failed:", upErr.message);
+      }
+    } else {
+      // Mirror provision_sms_for_company() defaults: inactive until configured.
+      const { error: insErr } = await adminClient
+        .from("sms_agent_config")
+        .insert({
+          company_id: companyId,
+          name: "Default SMS Agent",
+          auto_reply: false,
+          is_active: false,
+          lead_scoring_enabled: false,
+          twilio_number: phoneNumber,
+        });
+      if (insErr) console.warn("syncAgentTwilioNumber insert failed:", insErr.message);
+    }
+  } catch (e) {
+    console.warn("syncAgentTwilioNumber threw:", (e as Error).message);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -592,6 +637,17 @@ Deno.serve(async (req) => {
 
       if (!Object.keys(update).length) return json({ success: true });
 
+      // Snapshot the row before reassignment so the agent configs can be synced.
+      let prevRow: { phone_number: string; company_id: string | null } | null = null;
+      if (company_id !== undefined) {
+        const { data } = await adminClient
+          .from("twilio_numbers")
+          .select("phone_number, company_id")
+          .eq("id", number_id)
+          .maybeSingle();
+        prevRow = data as typeof prevRow;
+      }
+
       const { error: updateErr } = await adminClient
         .from("twilio_numbers")
         .update(update)
@@ -600,6 +656,22 @@ Deno.serve(async (req) => {
       if (updateErr) {
         console.error("update_twilio_number error:", updateErr.message);
         return json({ error: "Failed to update number: " + updateErr.message }, 500);
+      }
+
+      // Keep sms_agent_config wired to the numbers companies actually own.
+      if (company_id !== undefined && prevRow) {
+        const newCompanyId = company_id || null;
+        if (prevRow.company_id && prevRow.company_id !== newCompanyId) {
+          // Number moved away — clear the old company's config if it used it.
+          await adminClient
+            .from("sms_agent_config")
+            .update({ twilio_number: null })
+            .eq("company_id", prevRow.company_id)
+            .eq("twilio_number", prevRow.phone_number);
+        }
+        if (newCompanyId) {
+          await syncAgentTwilioNumber(adminClient, newCompanyId, prevRow.phone_number);
+        }
       }
 
       return json({ success: true });
@@ -636,6 +708,10 @@ Deno.serve(async (req) => {
       if (insertErr) {
         console.error("add_twilio_number error:", insertErr.message);
         return json({ error: "Failed to add number: " + insertErr.message }, 500);
+      }
+
+      if (company_id) {
+        await syncAgentTwilioNumber(adminClient, company_id, phone_number.trim());
       }
 
       return json({ success: true, number: newNumber });

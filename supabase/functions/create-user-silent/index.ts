@@ -123,6 +123,51 @@ async function resolveCallerUser(
   return null;
 }
 
+// ── Keep sms_agent_config.twilio_number in step with twilio_numbers ──────────
+// Fills the company's agent config with the assigned number, but never
+// overwrites a number that is already configured.
+async function syncAgentTwilioNumber(
+  adminClient: ReturnType<typeof createClient>,
+  companyId: string,
+  phoneNumber: string,
+): Promise<void> {
+  try {
+    const { data: cfg, error: cfgErr } = await adminClient
+      .from("sms_agent_config")
+      .select("id, twilio_number")
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (cfgErr) {
+      console.warn("syncAgentTwilioNumber lookup failed:", cfgErr.message);
+      return;
+    }
+    if (cfg) {
+      if (!cfg.twilio_number) {
+        const { error: upErr } = await adminClient
+          .from("sms_agent_config")
+          .update({ twilio_number: phoneNumber })
+          .eq("id", cfg.id);
+        if (upErr) console.warn("syncAgentTwilioNumber update failed:", upErr.message);
+      }
+    } else {
+      // Mirror provision_sms_for_company() defaults: inactive until configured.
+      const { error: insErr } = await adminClient
+        .from("sms_agent_config")
+        .insert({
+          company_id: companyId,
+          name: "Default SMS Agent",
+          auto_reply: false,
+          is_active: false,
+          lead_scoring_enabled: false,
+          twilio_number: phoneNumber,
+        });
+      if (insErr) console.warn("syncAgentTwilioNumber insert failed:", insErr.message);
+    }
+  } catch (e) {
+    console.warn("syncAgentTwilioNumber threw:", (e as Error).message);
+  }
+}
+
 Deno.serve(async (req) => {
   // ── CORS preflight ──────────────────────────────────────────────────────────
   if (req.method === "OPTIONS") {
@@ -286,12 +331,16 @@ Deno.serve(async (req) => {
       }
 
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let assignedTwilioPhone: string | null = null;
       if (typeof twilio_number_id === "string" && UUID_RE.test(twilio_number_id)) {
-        const { error: tnErr } = await adminClient
+        const { data: tnRow, error: tnErr } = await adminClient
           .from("twilio_numbers")
           .update({ company_id: companyId })
-          .eq("id", twilio_number_id);
+          .eq("id", twilio_number_id)
+          .select("phone_number")
+          .maybeSingle();
         if (tnErr) console.warn("Twilio assignment failed (non-fatal):", tnErr.message);
+        else assignedTwilioPhone = (tnRow?.phone_number as string) || null;
       } else if (
         typeof twilio_phone_number === "string" && twilio_phone_number.trim()
       ) {
@@ -309,12 +358,20 @@ Deno.serve(async (req) => {
             .update({ company_id: companyId })
             .eq("id", existingNums[0].id);
           if (tnErr) console.warn("Twilio assignment failed (non-fatal):", tnErr.message);
+          else assignedTwilioPhone = phone;
         } else {
           const { error: tnErr } = await adminClient
             .from("twilio_numbers")
             .insert({ phone_number: phone, company_id: companyId });
           if (tnErr) console.warn("Twilio insert failed (non-fatal):", tnErr.message);
+          else assignedTwilioPhone = phone;
         }
+      }
+
+      // Wire the assigned number into the company's SMS agent config so the
+      // account is send-ready without a second manual step.
+      if (assignedTwilioPhone) {
+        await syncAgentTwilioNumber(adminClient, companyId, assignedTwilioPhone);
       }
     }
 
