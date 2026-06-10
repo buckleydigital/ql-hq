@@ -273,10 +273,8 @@ h1{font-size:18px;font-weight:500}
               </select>
             </div>
             <div class="form-row" style="grid-column:1/-1">
-              <label class="form-label" for="newTwilioAssign">Assign Twilio Number <span style="font-weight:400">(optional — shows unassigned numbers)</span></label>
-              <select class="form-input" id="newTwilioAssign">
-                <option value="">None (assign later)</option>
-              </select>
+              <label class="form-label" for="newTwilioPhoneInput">Twilio Number <span style="font-weight:400">(optional — assigned to the company; added to the pool if it's a new number)</span></label>
+              <input class="form-input" id="newTwilioPhoneInput" type="tel" placeholder="+61412345678">
             </div>
           </div>
 
@@ -939,8 +937,8 @@ h1{font-size:18px;font-weight:500}
       if (opts.website_url)      payload.website_url      = opts.website_url;
       if (opts.service_area)     payload.service_area     = opts.service_area;
       if (opts.user_phone)       payload.user_phone       = opts.user_phone;
-      if (opts.role)             payload.role             = opts.role;
-      if (opts.twilio_number_id) payload.twilio_number_id = opts.twilio_number_id;
+      if (opts.role)                payload.role                = opts.role;
+      if (opts.twilio_phone_number) payload.twilio_phone_number = opts.twilio_phone_number;
     }
 
     var res = await fetch(SUPABASE_URL + '/functions/v1/create-user-silent', {
@@ -980,7 +978,7 @@ h1{font-size:18px;font-weight:500}
     var serviceArea    = document.getElementById('newCompanyServiceArea').value.trim();
     var userPhone      = document.getElementById('newUserPhone').value.trim();
     var userRole       = document.getElementById('newUserRole').value;
-    var twilioNumId    = document.getElementById('newTwilioAssign').value;
+    var twilioPhone    = document.getElementById('newTwilioPhoneInput').value.trim();
 
     if (!name || !email || !password) {
       toast('Please fill in all fields.', true);
@@ -1006,9 +1004,9 @@ h1{font-size:18px;font-weight:500}
         company_email:    companyEmail || undefined,
         website_url:      websiteUrl || undefined,
         service_area:     serviceArea || undefined,
-        user_phone:       userPhone || undefined,
-        role:             userRole || undefined,
-        twilio_number_id: twilioNumId || undefined,
+        user_phone:          userPhone || undefined,
+        role:                userRole || undefined,
+        twilio_phone_number: twilioPhone || undefined,
       });
       if (result.email_sent === false) {
         toast('Account created but welcome email failed to send — check edge function logs. (' + (result.email_error || 'unknown error') + ')', true);
@@ -1016,6 +1014,9 @@ h1{font-size:18px;font-weight:500}
         toast('Account created for ' + result.user.email + ' — welcome email sent.');
       }
       document.getElementById('createAccountForm').reset();
+
+      // Refresh Twilio panel if a number was entered so it appears immediately
+      if (twilioPhone) loadTwilioNumbers();
 
       // Refresh user list so the new account appears immediately
       var listResult = await callEdge({ action: 'list' });
@@ -2027,7 +2028,6 @@ h1{font-size:18px;font-weight:500}
       allTwilioNumbers = result.numbers || [];
       var label = document.getElementById('twilioNumberCountLabel');
       if (label) label.textContent = allTwilioNumbers.length + ' number' + (allTwilioNumbers.length === 1 ? '' : 's');
-      populateCreateFormTwilioSelect();
       loadingEl.classList.add('hidden');
       if (!allTwilioNumbers.length) {
         emptyEl.classList.remove('hidden');
@@ -2083,20 +2083,6 @@ h1{font-size:18px;font-weight:500}
       });
       listEl.appendChild(row);
     });
-  }
-
-  function populateCreateFormTwilioSelect() {
-    var sel = document.getElementById('newTwilioAssign');
-    if (!sel) return;
-    while (sel.options.length > 1) sel.remove(1);
-    allTwilioNumbers
-      .filter(function (n) { return !n.company_id; })
-      .forEach(function (n) {
-        var opt = document.createElement('option');
-        opt.value = n.id;
-        opt.textContent = n.phone_number + (n.friendly_name ? ' — ' + n.friendly_name : '');
-        sel.appendChild(opt);
-      });
   }
 
   document.getElementById('refreshTwilioNumbersBtn').addEventListener('click', loadTwilioNumbers);

@@ -188,12 +188,14 @@ Deno.serve(async (req) => {
       user_phone?: unknown;
       role?: unknown;
       twilio_number_id?: unknown;
+      twilio_phone_number?: unknown;
     };
 
     const {
       email, name, password,
       company_name, company_phone, company_email,
-      plan, website_url, service_area, user_phone, role, twilio_number_id,
+      plan, website_url, service_area, user_phone, role,
+      twilio_number_id, twilio_phone_number,
     } = body;
 
     if (!email || typeof email !== "string") {
@@ -290,6 +292,29 @@ Deno.serve(async (req) => {
           .update({ company_id: companyId })
           .eq("id", twilio_number_id);
         if (tnErr) console.warn("Twilio assignment failed (non-fatal):", tnErr.message);
+      } else if (
+        typeof twilio_phone_number === "string" && twilio_phone_number.trim()
+      ) {
+        // Manual entry: assign the existing pool number if it matches, else
+        // create a new twilio_numbers row owned by the new company.
+        const phone = twilio_phone_number.trim().slice(0, 32);
+        const { data: existingNums } = await adminClient
+          .from("twilio_numbers")
+          .select("id")
+          .eq("phone_number", phone)
+          .limit(1);
+        if (existingNums && existingNums.length) {
+          const { error: tnErr } = await adminClient
+            .from("twilio_numbers")
+            .update({ company_id: companyId })
+            .eq("id", existingNums[0].id);
+          if (tnErr) console.warn("Twilio assignment failed (non-fatal):", tnErr.message);
+        } else {
+          const { error: tnErr } = await adminClient
+            .from("twilio_numbers")
+            .insert({ phone_number: phone, company_id: companyId });
+          if (tnErr) console.warn("Twilio insert failed (non-fatal):", tnErr.message);
+        }
       }
     }
 
