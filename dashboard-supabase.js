@@ -3743,7 +3743,6 @@ async function loadAiSettings() {
       setCheckboxValue("aiOnsiteEnabled", data.onsite_enabled);
       setCheckboxValue("aiQuoteDraftingEnabled", data.quote_drafting_enabled);
       setCheckboxValue("aiLeadScoringEnabled", data.lead_scoring_enabled);
-      setCheckboxValue("aiAutoCallInbound", data.auto_call_inbound);
       setCheckboxValue("aiAutoSendWelcome", data.auto_send_welcome);
       
       // Call-back settings
@@ -3896,7 +3895,6 @@ async function handleAiSettingsSave(e) {
     onsite_enabled:         document.getElementById("aiOnsiteEnabled")?.checked ?? false,
     quote_drafting_enabled: document.getElementById("aiQuoteDraftingEnabled")?.checked ?? false,
     lead_scoring_enabled:   document.getElementById("aiLeadScoringEnabled")?.checked ?? true,
-    auto_call_inbound:     document.getElementById("aiAutoCallInbound")?.checked ?? false,
     auto_send_welcome:     document.getElementById("aiAutoSendWelcome")?.checked ?? false,
     
     // Call-back settings
