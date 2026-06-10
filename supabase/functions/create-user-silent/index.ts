@@ -179,9 +179,22 @@ Deno.serve(async (req) => {
       email?: unknown;
       name?: unknown;
       password?: unknown;
+      company_name?: unknown;
+      company_phone?: unknown;
+      company_email?: unknown;
+      plan?: unknown;
+      website_url?: unknown;
+      service_area?: unknown;
+      user_phone?: unknown;
+      role?: unknown;
+      twilio_number_id?: unknown;
     };
 
-    const { email, name, password } = body;
+    const {
+      email, name, password,
+      company_name, company_phone, company_email,
+      plan, website_url, service_area, user_phone, role, twilio_number_id,
+    } = body;
 
     if (!email || typeof email !== "string") {
       return json({ error: "email is required" }, 400);
@@ -221,6 +234,78 @@ Deno.serve(async (req) => {
         { error: createError?.message || "Failed to create user" },
         500,
       );
+    }
+
+    // ── Update company and profile with additional details ────────────────────
+    // handle_new_user() trigger runs synchronously with the INSERT so the profile
+    // and company rows exist immediately. Poll briefly for replication safety.
+    const newUserId = newUser.user.id;
+    let companyId: string | null = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 200));
+      const { data: profileRow } = await adminClient
+        .from("profiles")
+        .select("company_id")
+        .eq("id", newUserId)
+        .maybeSingle();
+      if (profileRow?.company_id) {
+        companyId = profileRow.company_id;
+        break;
+      }
+    }
+
+    if (companyId) {
+      const companyPatch: Record<string, unknown> = {};
+      if (typeof company_name === "string" && company_name.trim()) {
+        companyPatch.name = company_name.trim().slice(0, 200);
+      }
+      if (typeof company_phone === "string" && company_phone.trim()) {
+        companyPatch.phone = company_phone.trim();
+      }
+      if (typeof company_email === "string" && company_email.trim()) {
+        const ce = company_email.trim().toLowerCase();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ce)) companyPatch.email = ce;
+      }
+      if (plan === "managed" || plan === "ppl") {
+        companyPatch.plan = plan as string;
+      }
+      if (typeof website_url === "string" && website_url.trim()) {
+        companyPatch.website_url = website_url.trim();
+      }
+      if (typeof service_area === "string" && service_area.trim()) {
+        companyPatch.service_area = service_area.trim();
+      }
+      if (Object.keys(companyPatch).length) {
+        const { error: compErr } = await adminClient
+          .from("companies")
+          .update(companyPatch)
+          .eq("id", companyId);
+        if (compErr) console.warn("Company patch failed (non-fatal):", compErr.message);
+      }
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (typeof twilio_number_id === "string" && UUID_RE.test(twilio_number_id)) {
+        const { error: tnErr } = await adminClient
+          .from("twilio_numbers")
+          .update({ company_id: companyId })
+          .eq("id", twilio_number_id);
+        if (tnErr) console.warn("Twilio assignment failed (non-fatal):", tnErr.message);
+      }
+    }
+
+    const profilePatch: Record<string, unknown> = {};
+    if (typeof user_phone === "string" && user_phone.trim()) {
+      profilePatch.phone = user_phone.trim();
+    }
+    if (role === "owner" || role === "admin" || role === "member") {
+      profilePatch.role = role as string;
+    }
+    if (Object.keys(profilePatch).length) {
+      const { error: profErr } = await adminClient
+        .from("profiles")
+        .update(profilePatch)
+        .eq("id", newUserId);
+      if (profErr) console.warn("Profile patch failed (non-fatal):", profErr.message);
     }
 
     // ── Generate a one-time magic login link for the new user ─────────────────

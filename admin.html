@@ -88,6 +88,8 @@ h1{font-size:18px;font-weight:500}
 .pw-wrap .form-input{padding-right:38px}
 .pw-toggle{position:absolute;right:10px;background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;color:var(--muted)}
 .pw-toggle:hover{color:var(--text)}
+.form-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:16px 0 8px;padding-top:16px;border-top:1px solid var(--border)}
+.form-section:first-child{margin-top:0;padding-top:0;border-top:none}
 
 /* ── Disputes ────────────────────────────────────────────────────── */
 .dispute-row{padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface-2);margin-bottom:8px}
@@ -200,6 +202,9 @@ h1{font-size:18px;font-weight:500}
       </div>
       <div class="panel-b">
         <form id="createAccountForm" autocomplete="off" novalidate>
+
+          <!-- Account -->
+          <div class="form-section" style="margin-top:0;padding-top:0;border-top:none">Account</div>
           <div class="form-grid" style="margin-bottom:12px">
             <div class="form-row">
               <label class="form-label" for="newUserName">Full Name</label>
@@ -210,7 +215,7 @@ h1{font-size:18px;font-weight:500}
               <input class="form-input" id="newUserEmail" type="email" placeholder="jane@example.com" required>
             </div>
           </div>
-          <div class="form-row" style="margin-bottom:16px">
+          <div class="form-row" style="margin-bottom:4px">
             <label class="form-label" for="newUserPassword">Password <span style="font-weight:400">(min 8 characters)</span></label>
             <div class="pw-wrap">
               <input class="form-input" id="newUserPassword" type="password" placeholder="Set their password" required minlength="8">
@@ -219,6 +224,62 @@ h1{font-size:18px;font-weight:500}
               </button>
             </div>
           </div>
+
+          <!-- Company -->
+          <div class="form-section">Company</div>
+          <div class="form-grid" style="margin-bottom:4px">
+            <div class="form-row">
+              <label class="form-label" for="newCompanyName">Company Name <span style="color:var(--accent);font-weight:400">required</span></label>
+              <input class="form-input" id="newCompanyName" type="text" placeholder="Acme Roofing Co." required>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyPlan">Plan</label>
+              <select class="form-input" id="newCompanyPlan">
+                <option value="managed">Managed</option>
+                <option value="ppl">Pay Per Lead (PPL)</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyPhone">Company Phone <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newCompanyPhone" type="tel" placeholder="+61412345678">
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyEmail">Company Email <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newCompanyEmail" type="email" placeholder="info@acme.com">
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyWebsite">Website URL <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newCompanyWebsite" type="url" placeholder="https://acme.com">
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyServiceArea">Service Area <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newCompanyServiceArea" type="text" placeholder="e.g. Brisbane">
+            </div>
+          </div>
+
+          <!-- Optional Details -->
+          <div class="form-section">User &amp; Twilio</div>
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-row">
+              <label class="form-label" for="newUserPhone">User Phone <span style="font-weight:400">(optional)</span></label>
+              <input class="form-input" id="newUserPhone" type="tel" placeholder="+61412345678">
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newUserRole">Role</label>
+              <select class="form-input" id="newUserRole">
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+              </select>
+            </div>
+            <div class="form-row" style="grid-column:1/-1">
+              <label class="form-label" for="newTwilioAssign">Assign Twilio Number <span style="font-weight:400">(optional — shows unassigned numbers)</span></label>
+              <select class="form-input" id="newTwilioAssign">
+                <option value="">None (assign later)</option>
+              </select>
+            </div>
+          </div>
+
           <button class="btn2 btn-sm" type="submit" id="createAccountBtn">Create Account</button>
         </form>
       </div>
@@ -865,9 +926,22 @@ h1{font-size:18px;font-weight:500}
   }
 
   // ── Create Account (No Email) ─────────────────────────────────────────────
-  async function callCreateUserSilent(name, email, password) {
+  async function callCreateUserSilent(name, email, password, opts) {
     var token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
+
+    var payload = { name: name, email: email, password: password };
+    if (opts) {
+      if (opts.company_name)     payload.company_name     = opts.company_name;
+      if (opts.company_phone)    payload.company_phone    = opts.company_phone;
+      if (opts.company_email)    payload.company_email    = opts.company_email;
+      if (opts.plan)             payload.plan             = opts.plan;
+      if (opts.website_url)      payload.website_url      = opts.website_url;
+      if (opts.service_area)     payload.service_area     = opts.service_area;
+      if (opts.user_phone)       payload.user_phone       = opts.user_phone;
+      if (opts.role)             payload.role             = opts.role;
+      if (opts.twilio_number_id) payload.twilio_number_id = opts.twilio_number_id;
+    }
 
     var res = await fetch(SUPABASE_URL + '/functions/v1/create-user-silent', {
       method: 'POST',
@@ -876,7 +950,7 @@ h1{font-size:18px;font-weight:500}
         'Authorization': 'Bearer ' + token,
         'apikey':        SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ name: name, email: email, password: password }),
+      body: JSON.stringify(payload),
     });
 
     var text = await res.text();
@@ -898,8 +972,22 @@ h1{font-size:18px;font-weight:500}
     var email    = document.getElementById('newUserEmail').value.trim();
     var password = document.getElementById('newUserPassword').value;
 
+    var companyName    = document.getElementById('newCompanyName').value.trim();
+    var companyPlan    = document.getElementById('newCompanyPlan').value;
+    var companyPhone   = document.getElementById('newCompanyPhone').value.trim();
+    var companyEmail   = document.getElementById('newCompanyEmail').value.trim();
+    var websiteUrl     = document.getElementById('newCompanyWebsite').value.trim();
+    var serviceArea    = document.getElementById('newCompanyServiceArea').value.trim();
+    var userPhone      = document.getElementById('newUserPhone').value.trim();
+    var userRole       = document.getElementById('newUserRole').value;
+    var twilioNumId    = document.getElementById('newTwilioAssign').value;
+
     if (!name || !email || !password) {
       toast('Please fill in all fields.', true);
+      return;
+    }
+    if (!companyName) {
+      toast('Company name is required.', true);
       return;
     }
     if (password.length < 8) {
@@ -911,7 +999,17 @@ h1{font-size:18px;font-weight:500}
     btn.textContent = 'Creating…';
 
     try {
-      var result = await callCreateUserSilent(name, email, password);
+      var result = await callCreateUserSilent(name, email, password, {
+        company_name:     companyName,
+        plan:             companyPlan || undefined,
+        company_phone:    companyPhone || undefined,
+        company_email:    companyEmail || undefined,
+        website_url:      websiteUrl || undefined,
+        service_area:     serviceArea || undefined,
+        user_phone:       userPhone || undefined,
+        role:             userRole || undefined,
+        twilio_number_id: twilioNumId || undefined,
+      });
       if (result.email_sent === false) {
         toast('Account created but welcome email failed to send — check edge function logs. (' + (result.email_error || 'unknown error') + ')', true);
       } else {
@@ -1929,6 +2027,7 @@ h1{font-size:18px;font-weight:500}
       allTwilioNumbers = result.numbers || [];
       var label = document.getElementById('twilioNumberCountLabel');
       if (label) label.textContent = allTwilioNumbers.length + ' number' + (allTwilioNumbers.length === 1 ? '' : 's');
+      populateCreateFormTwilioSelect();
       loadingEl.classList.add('hidden');
       if (!allTwilioNumbers.length) {
         emptyEl.classList.remove('hidden');
@@ -1984,6 +2083,20 @@ h1{font-size:18px;font-weight:500}
       });
       listEl.appendChild(row);
     });
+  }
+
+  function populateCreateFormTwilioSelect() {
+    var sel = document.getElementById('newTwilioAssign');
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    allTwilioNumbers
+      .filter(function (n) { return !n.company_id; })
+      .forEach(function (n) {
+        var opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.phone_number + (n.friendly_name ? ' — ' + n.friendly_name : '');
+        sel.appendChild(opt);
+      });
   }
 
   document.getElementById('refreshTwilioNumbersBtn').addEventListener('click', loadTwilioNumbers);
