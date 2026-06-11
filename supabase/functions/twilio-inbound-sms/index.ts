@@ -8,7 +8,7 @@
 //  1. Parse Twilio webhook payload (From, To, Body)
 //  2. Look up company by the Twilio number (sms_agent_config.twilio_number)
 //  3. Check SMS credits are topped up
-//  4. Check AI settings (auto_reply, callback, onsite, quote drafting)
+//  4. Check AI settings (auto_reply, out_of_hours_only, callback, onsite, quote drafting)
 //  5. Find or create the lead by phone number
 //  6. Check per-lead AI toggle
 //  7. Get/create conversation + message history
@@ -592,6 +592,22 @@ async function validateTwilioSignature(
 }
 
 // =============================================================================
+// Out-of-hours gate (AEST / UTC+10, no DST)
+// =============================================================================
+// Returns true when the current time is outside Mon–Fri 9:00am–5:00pm AEST.
+// Uses a fixed UTC+10 offset (Australia/Brisbane) so behaviour is consistent
+// year-round and unaffected by NSW/VIC daylight-saving transitions.
+function isOutOfHoursAEST(): boolean {
+  const nowUtcMs = Date.now();
+  const aestOffsetMs = 10 * 60 * 60 * 1000; // UTC+10
+  const aest = new Date(nowUtcMs + aestOffsetMs);
+  const day = aest.getUTCDay(); // 0=Sun … 6=Sat
+  if (day === 0 || day === 6) return true; // weekend
+  const minutes = aest.getUTCHours() * 60 + aest.getUTCMinutes();
+  return minutes < 9 * 60 || minutes >= 17 * 60; // before 9am or 5pm+
+}
+
+// =============================================================================
 // Main handler
 // =============================================================================
 Deno.serve(async (req) => {
@@ -670,6 +686,12 @@ Deno.serve(async (req) => {
     // 4. Check AI settings
     if (!smsConfig.auto_reply) {
       // AI is off globally — just store the message, don't reply
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
+      return twimlResponse("");
+    }
+
+    if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
+      // Outside configured hours — store but don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
       return twimlResponse("");
     }
