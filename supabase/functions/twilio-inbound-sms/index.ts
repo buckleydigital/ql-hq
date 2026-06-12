@@ -23,7 +23,7 @@
 // 16. Store outbound message
 // =============================================================================
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 // ── Inline email templates (avoids local-file import that breaks deployment) ──
 const _BRAND_COLOR = "#1f6fff";
@@ -696,26 +696,29 @@ Deno.serve(async (req) => {
       return twimlResponse("");
     }
 
-    // 5. Find or create lead by phone number in this company
-    let { data: lead } = await db
-      .from("leads")
-      .select("*")
-      .eq("company_id", companyId)
-      .eq("phone", fromNumber)
-      .limit(1)
-      .single();
+    // 5. Find or create lead by phone number in this company.
+    // Twilio reports From in E.164 (+61412345678) but older leads may be
+    // stored without the + or in AU local format (0412345678) — try all three
+    // so replies thread onto the existing lead instead of forking a new one.
+    const phoneCandidates = [fromNumber, fromNumber.replace(/^\+/, "")];
+    if (fromNumber.startsWith("+61")) {
+      phoneCandidates.push("0" + fromNumber.slice(3));
+    }
 
-    if (!lead) {
-      // Also try without the + prefix for flexibility
-      const { data: leadAlt } = await db
+    // deno-lint-ignore no-explicit-any
+    let lead: any = null;
+    for (const candidate of phoneCandidates) {
+      const { data: match } = await db
         .from("leads")
         .select("*")
         .eq("company_id", companyId)
-        .eq("phone", fromNumber.replace(/^\+/, ""))
+        .eq("phone", candidate)
         .limit(1)
         .single();
-
-      lead = leadAlt;
+      if (match) {
+        lead = match;
+        break;
+      }
     }
 
     if (!lead) {

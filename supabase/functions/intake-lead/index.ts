@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +11,17 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// Normalise an Australian phone number to E.164 (+61…). Stored on the lead in
+// this format so twilio-inbound-sms can match replies back to the same lead —
+// Twilio always reports From in E.164.
+function toE164AU(p: string): string {
+  const cleaned = p.replace(/[\s\-().]/g, "");
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("61")) return "+" + cleaned;
+  if (cleaned.startsWith("0")) return "+61" + cleaned.slice(1);
+  return "+" + cleaned;
 }
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -72,7 +83,9 @@ Deno.serve(async (req) => {
     }
 
     const resolvedPhone =
-      typeof phone === "string" && phone.trim() ? phone.trim() : null;
+      typeof phone === "string" && phone.trim()
+        ? toE164AU(phone.trim())
+        : null;
     const resolvedEmail =
       typeof email === "string" && email.trim()
         ? email.trim().toLowerCase()
@@ -180,13 +193,24 @@ Deno.serve(async (req) => {
 
     const leadId = lead.id as string;
 
-    maybeSendWelcomeSms(
+    // Keep the welcome SMS alive past the response: waitUntil lets the edge
+    // runtime finish the send after we return; without it the isolate can be
+    // torn down mid-flight, so fall back to awaiting inline.
+    const welcomePromise = maybeSendWelcomeSms(
       db,
       company_id,
       leadId,
       resolvedFirstName,
       resolvedPhone,
     );
+    const runtime = (globalThis as Record<string, unknown>).EdgeRuntime as
+      | { waitUntil?: (p: Promise<unknown>) => void }
+      | undefined;
+    if (runtime?.waitUntil) {
+      runtime.waitUntil(welcomePromise);
+    } else {
+      await welcomePromise;
+    }
 
     return json({ success: true, lead_id: leadId });
   } catch (err) {
@@ -195,98 +219,108 @@ Deno.serve(async (req) => {
   }
 });
 
-function maybeSendWelcomeSms(
+async function maybeSendWelcomeSms(
   db: ReturnType<typeof createClient>,
   companyId: string,
   leadId: string,
   firstName: string,
   phone: string | null,
-): void {
+): Promise<void> {
   if (!phone) return;
 
-  (async () => {
-    try {
-      const { data: smsConfig } = await db
-        .from("sms_agent_config")
-        .select(
-          "ai_enabled, auto_send_welcome, welcome_message, twilio_number",
-        )
-        .eq("company_id", companyId)
-        .eq("is_active", true)
-        .limit(1)
-        .single();
+  try {
+    // Note: ai_enabled lives on leads, not sms_agent_config — selecting it
+    // here used to 400 the whole query and silently kill every welcome SMS.
+    const { data: smsConfig, error: cfgErr } = await db
+      .from("sms_agent_config")
+      .select("auto_send_welcome, welcome_message, twilio_number")
+      .eq("company_id", companyId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
 
-      if (!smsConfig) return;
-      if (!smsConfig.ai_enabled) return;
-      if (!smsConfig.auto_send_welcome) return;
-      if (!smsConfig.twilio_number) return;
+    if (cfgErr) {
+      console.warn("Welcome SMS config lookup failed:", cfgErr.message);
+      return;
+    }
+    if (!smsConfig) return;
+    if (!smsConfig.auto_send_welcome) return;
+    if (!smsConfig.twilio_number) return;
 
-      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-      const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
-      if (!twilioSid || !twilioAuth) {
-        console.warn("Twilio credentials not configured — skipping welcome SMS");
-        return;
-      }
+    const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+    if (!twilioSid || !twilioAuth) {
+      console.warn("Twilio credentials not configured — skipping welcome SMS");
+      return;
+    }
 
-      const { data: creditOk } = await db.rpc("deduct_sms_credit", {
-        p_company_id: companyId,
-      });
-      if (!creditOk) {
-        console.warn("No SMS credits for company:", companyId);
-        return;
-      }
+    const { data: creditOk } = await db.rpc("deduct_sms_credit", {
+      p_company_id: companyId,
+    });
+    if (!creditOk) {
+      console.warn("No SMS credits for company:", companyId);
+      return;
+    }
 
-      const template =
-        typeof smsConfig.welcome_message === "string" &&
-        smsConfig.welcome_message.trim()
-          ? smsConfig.welcome_message
-          : "Hi {{first_name}}, thanks for reaching out!";
+    const template =
+      typeof smsConfig.welcome_message === "string" &&
+      smsConfig.welcome_message.trim()
+        ? smsConfig.welcome_message
+        : "Hi {{first_name}}, thanks for reaching out!";
 
-      const messageBody = template.replace(/\{\{first_name\}\}/gi, firstName);
+    const messageBody = template.replace(/\{\{first_name\}\}/gi, firstName);
 
-      const toE164AU = (p: string): string => {
-        const cleaned = p.replace(/[\s\-().]/g, "");
-        if (cleaned.startsWith("+")) return cleaned;
-        if (cleaned.startsWith("61")) return "+" + cleaned;
-        if (cleaned.startsWith("0")) return "+61" + cleaned.slice(1);
-        return "+" + cleaned;
-      };
+    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+    const twilioRes = await fetch(twilioUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${twilioSid}:${twilioAuth}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        To: toE164AU(phone),
+        From: smsConfig.twilio_number,
+        Body: messageBody,
+      }).toString(),
+    });
 
-      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
-      const twilioRes = await fetch(twilioUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${btoa(`${twilioSid}:${twilioAuth}`)}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          To: toE164AU(phone),
-          From: smsConfig.twilio_number,
-          Body: messageBody,
-        }).toString(),
-      });
+    if (!twilioRes.ok) {
+      const errText = await twilioRes.text().catch(() => "");
 
-      if (!twilioRes.ok) {
-        const errText = await twilioRes.text().catch(() => "");
-
-        await db
-          .rpc("refund_sms_credit", { p_company_id: companyId })
-          .catch((e: unknown) =>
-            console.warn(
-              "Failed to refund SMS credit:",
-              (e as Error).message,
-            ),
-          );
-
-        console.warn(
-          "Welcome SMS Twilio error:",
-          twilioRes.status,
-          errText,
+      await db
+        .rpc("refund_sms_credit", { p_company_id: companyId })
+        .catch((e: unknown) =>
+          console.warn(
+            "Failed to refund SMS credit:",
+            (e as Error).message,
+          ),
         );
-        return;
-      }
 
-      const { data: conv } = await db
+      console.warn(
+        "Welcome SMS Twilio error:",
+        twilioRes.status,
+        errText,
+      );
+      return;
+    }
+
+    // Reuse the lead's open SMS conversation if one exists (e.g. they texted
+    // first) so the welcome message lands in the same thread the inbound
+    // handler uses, instead of forking a duplicate conversation.
+    const { data: existingConv } = await db
+      .from("conversations")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("lead_id", leadId)
+      .eq("channel", "sms")
+      .eq("is_open", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let conversationId: string | null = (existingConv?.id as string) || null;
+    if (!conversationId) {
+      const { data: conv, error: convErr } = await db
         .from("conversations")
         .insert({
           company_id: companyId,
@@ -298,20 +332,36 @@ function maybeSendWelcomeSms(
         })
         .select("id")
         .single();
-
-      if (conv?.id) {
-        await db.from("messages").insert({
-          conversation_id: conv.id,
-          direction: "outbound",
-          body: messageBody,
-          channel: "sms",
-          is_ai_generated: true,
-          agent_type: "ai",
-          metadata: { welcome: true },
-        });
+      if (convErr) {
+        console.warn("Welcome SMS conversation insert failed:", convErr.message);
+        return;
       }
-    } catch (err) {
-      console.warn("maybeSendWelcomeSms error:", err);
+      conversationId = (conv?.id as string) || null;
     }
-  })();
+
+    if (conversationId) {
+      const { error: msgErr } = await db.from("messages").insert({
+        conversation_id: conversationId,
+        direction: "outbound",
+        body: messageBody,
+        channel: "sms",
+        is_ai_generated: true,
+        agent_type: "ai",
+        metadata: { welcome: true },
+      });
+      if (msgErr) {
+        console.warn("Welcome SMS message insert failed:", msgErr.message);
+      }
+
+      await db
+        .from("conversations")
+        .update({
+          last_message: messageBody,
+          last_message_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId);
+    }
+  } catch (err) {
+    console.warn("maybeSendWelcomeSms error:", err);
+  }
 }
