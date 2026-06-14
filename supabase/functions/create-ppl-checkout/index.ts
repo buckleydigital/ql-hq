@@ -84,7 +84,9 @@ serve(async (req) => {
 
     if (!company) throw new Error('Company not found')
 
-    const locationDesc = location_type === 'postcodes'
+    const locationDesc = location_type === 'statewide'
+      ? `${area_city} — State Wide coverage`
+      : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} — ${radius_km ?? 50}km radius`
 
@@ -103,7 +105,7 @@ serve(async (req) => {
         area: area_city,
         area_city,
         location_type: location_type || 'radius',
-        radius_km: location_type !== 'postcodes' ? (radius_km ?? 50) : null,
+        radius_km: (location_type === 'postcodes' || location_type === 'statewide') ? null : (radius_km ?? 50),
         postcode_list: location_type === 'postcodes' ? postcode_list : null,
         quantity,
         price_per_lead: validatedPrice,

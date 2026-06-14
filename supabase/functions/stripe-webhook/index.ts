@@ -264,7 +264,9 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
     })
 
     const totalExGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
-    const locationDetail = m.location_type === 'postcodes'
+    const locationDetail = m.location_type === 'statewide'
+      ? `${m.area_city} — State Wide`
+      : m.location_type === 'postcodes'
       ? `Postcodes — ${m.postcode_list || '(none)'}`
       : `${m.area_city} — ${m.radius_km || 50}km radius`
 
@@ -350,7 +352,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         area:           m.area_city,
         area_city:      m.area_city,
         location_type:  m.location_type || 'radius',
-        radius_km:      m.location_type !== 'postcodes' ? parseFloat(m.radius_km || '50') : null,
+        radius_km:      (m.location_type === 'postcodes' || m.location_type === 'statewide') ? null : parseFloat(m.radius_km || '50'),
         postcode_list:  m.location_type === 'postcodes' ? m.postcode_list : null,
         quantity:       parseInt(m.quantity),
         price_per_lead: parseFloat(m.price_per_lead),
@@ -413,7 +415,9 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     const totalExGst  = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
     const totalIncGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity) * 1.1).toFixed(2)
     const discountPct = parseFloat(m.discount_percent || '0')
-    const locationDetail = m.location_type === 'postcodes'
+    const locationDetail = m.location_type === 'statewide'
+      ? `${m.area_city} — State Wide`
+      : m.location_type === 'postcodes'
       ? `Postcodes — ${m.postcode_list || '(none supplied)'}`
       : `${m.area_city} — ${m.radius_km || 50}km radius`
 

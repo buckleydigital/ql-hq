@@ -49,7 +49,9 @@ async function notifyCheckoutStarted(data: {
 }) {
   const totalExGst  = (data.price_per_lead * data.quantity).toFixed(2)
   const totalIncGst = (data.price_per_lead * data.quantity * 1.1).toFixed(2)
-  const locationDetail = data.location_type === 'postcodes'
+  const locationDetail = data.location_type === 'statewide'
+    ? `${data.area_city} — State Wide`
+    : data.location_type === 'postcodes'
     ? `Postcodes — ${data.postcode_list || '(none)'}`
     : `${data.area_city} — ${data.radius_km}km radius`
 
@@ -144,7 +146,9 @@ serve(async (req) => {
       .select('id')
       .single()
 
-    const locationDesc = location_type === 'postcodes'
+    const locationDesc = location_type === 'statewide'
+      ? `${area_city} — State Wide coverage`
+      : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} — ${radius_km ?? 50}km radius`
 

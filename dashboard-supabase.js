@@ -6582,7 +6582,9 @@ function renderBuyLeadsOrders(orders) {
     </tr></thead><tbody>
     ${active.map(o => {
       const city = o.area_city || o.area || '—';
-      const coverage = o.location_type === 'postcodes'
+      const coverage = o.location_type === 'statewide'
+        ? 'State wide'
+        : o.location_type === 'postcodes'
         ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
         : `${o.radius_km || 50}km radius`;
       const nicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');

@@ -2230,7 +2230,9 @@ h1{font-size:18px;font-weight:500}
   function renderPplLeadOrderRow(o) {
     var companyName = o.company ? escapeHtml(o.company.name || 'Unknown') : 'Unknown';
     var niche       = nicheLabel(o.niche) + (o.sub_niche ? ' › ' + nicheLabel(o.sub_niche) : '');
-    var locDesc     = o.location_type === 'postcodes'
+    var locDesc     = o.location_type === 'statewide'
+      ? escapeHtml(o.area_city || '') + ' — State Wide'
+      : o.location_type === 'postcodes'
       ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
       : escapeHtml(o.area_city || '') + ' — ' + (o.radius_km || 50) + 'km radius';
     var created = o.created_at
