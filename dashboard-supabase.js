@@ -6132,6 +6132,8 @@ let _blNiche         = null;
 let _blSubNiche      = null;
 let _blCity          = null;
 let _blLocType       = 'radius';
+let _blStatewide     = false;       // true when an entire state is selected
+let _blCovMode       = 'radius';    // remembers radius/postcodes when not state-wide
 let _blPPL           = null;
 let _blQty           = 10;
 let _blDiscount      = 0;
@@ -6175,6 +6177,7 @@ async function loadBuyLeads() {
   _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {};
   _blDiscountTiers = tiers || [];
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _blStatewide = false; _blCovMode = 'radius';
   _blQty = _blDiscountTiers[0]?.min_quantity ?? 10;
   _blDiscount = 0;
 
@@ -6187,7 +6190,14 @@ async function loadBuyLeads() {
   document.getElementById('buyLeadsSummary').style.display = 'none';
 
   const cityEl = document.getElementById('buyLeadsCity');
-  if (cityEl) { cityEl.value = ''; cityEl.onchange = () => { _blCity = cityEl.value || null; buyLeadsOnCityChange(); }; }
+  if (cityEl) {
+    cityEl.value = '';
+    cityEl.onchange = () => {
+      _blCity = cityEl.value || null;
+      _blStatewide = !!cityEl.value && cityEl.selectedOptions[0]?.dataset.statewide === '1';
+      buyLeadsOnCityChange();
+    };
+  }
 
   renderBuyLeadsNiches();
   renderBuyLeadsOrders(orders || []);
@@ -6316,7 +6326,7 @@ function buyLeadsSelectNiche(niche) {
     // Go straight to coverage
     document.getElementById('buyLeadsLocationField').style.display = '';
     document.getElementById('buyLeadsQtyField').style.display = '';
-    buyLeadsSetLocType(_blLocType);
+    buyLeadsApplyCoverageMode();
     renderBuyLeadsPacks();
     wireCustomQtyInput();
   }
@@ -6341,7 +6351,7 @@ function buyLeadsSelectSubNiche(subNicheId) {
   document.getElementById('buyLeadsLocationField').style.display = '';
   document.getElementById('buyLeadsQtyField').style.display = '';
   document.getElementById('buyLeadsSummary').style.display = 'none';
-  buyLeadsSetLocType(_blLocType);
+  buyLeadsApplyCoverageMode();
   renderBuyLeadsPacks();
   wireCustomQtyInput();
 }
@@ -6409,6 +6419,7 @@ async function buyLeadsOnCityChange() {
       renderBuyLeadsSubNiches(_blNiche);
       if (_blSubNiche) blFetchSubNichePrice(_blNiche, _blSubNiche);
     }
+    buyLeadsApplyCoverageMode();
   }
   buyLeadsUpdateSummary();
 }
@@ -6433,8 +6444,30 @@ function buyLeadsOnCustomQtyChange() {
   buyLeadsUpdateSummary();
 }
 
+// Locks coverage to "state-wide" when an entire state is selected; otherwise
+// restores the Radius / Postcode controls for a specific city.
+function buyLeadsApplyCoverageMode() {
+  const toggle = document.getElementById('buyLeadsLocToggle');
+  const sPanel = document.getElementById('locStatewidePanel');
+  if (_blStatewide) {
+    _blLocType = 'statewide';
+    if (toggle) toggle.style.display = 'none';
+    document.getElementById('locRadiusPanel').style.display    = 'none';
+    document.getElementById('locPostcodesPanel').style.display = 'none';
+    if (sPanel) sPanel.style.display = '';
+    const nm = document.getElementById('buyLeadsStatewideName');
+    if (nm) nm.textContent = _blCity || 'this state';
+    buyLeadsUpdateSummary();
+  } else {
+    if (toggle) toggle.style.display = '';
+    if (sPanel) sPanel.style.display = 'none';
+    buyLeadsSetLocType(_blCovMode);
+  }
+}
+
 function buyLeadsSetLocType(type) {
   _blLocType = type;
+  _blCovMode = type;
   const isRadius = type === 'radius';
 
   const rBtn = document.getElementById('locTypeRadius');
@@ -6454,7 +6487,9 @@ function buyLeadsUpdateSummary() {
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
 
   let coverage = '';
-  if (_blLocType === 'postcodes') {
+  if (_blStatewide) {
+    coverage = 'State wide';
+  } else if (_blLocType === 'postcodes') {
     const raw = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
     const count = raw ? raw.split(/[\s,]+/).filter(Boolean).length : 0;
     if (!count) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
@@ -6478,6 +6513,8 @@ function buyLeadsUpdateSummary() {
       subNicheRow.style.display = 'none';
     }
   }
+  const cityLbl = document.getElementById('buyLeadsSumCityLbl');
+  if (cityLbl) cityLbl.textContent = _blStatewide ? 'State' : 'City';
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
   document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
