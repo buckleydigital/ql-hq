@@ -35,6 +35,7 @@ const ICONS = {
   sun:             `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`,
   moon:            `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`,
   trash:           `<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>`,
+  lock:            `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`,
   edit:            `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`,
   mail:            `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>`,
   phone:           `<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>`,
@@ -1601,6 +1602,30 @@ async function filterLeadsTable(filter, btnEl) {
   renderLeadsTable(filtered);
 }
 
+// ─── QuoteLeads PPL lock ──────────────────────────────────────────────────────
+// Leads sourced from 'QuoteLeads PPL' are billable/disputable and must stay
+// faithful to what was delivered, so they are partially locked in the UI: only
+// status, value, address and notes may be edited, identifying fields
+// (name/email/phone/source) are read-only, and the lead cannot be deleted.
+// Disputes are unaffected.
+const PPL_LOCKED_SOURCE = "quoteleads ppl";
+function isPplLocked(lead) {
+  return (lead?.source || "").trim().toLowerCase() === PPL_LOCKED_SOURCE;
+}
+// Fields that are NOT editable on a locked lead, per modal.
+const PPL_LOCKED_LEADMODAL_FIELDS = ["leadName", "leadEmail", "leadPhone", "leadSource"];
+const PPL_LOCKED_OPP_FIELDS       = ["oppOverviewName", "oppOverviewEmail", "oppOverviewPhone", "oppOverviewSource"];
+// Disable/re-enable a set of field element IDs. Always called with the correct
+// boolean so state resets when the reused modal DOM shows a non-locked lead.
+function setFieldsLocked(ids, locked) {
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = locked;
+    el.title = locked ? "Locked on QuoteLeads PPL leads" : "";
+  });
+}
+
 function renderLeadsTable(leads) {
   const tbody = document.getElementById("leadsTableBody");
   const empty  = document.getElementById("leadsEmptyState");
@@ -1617,6 +1642,7 @@ function renderLeadsTable(leads) {
     const isStale = !['closed_won','closed_lost'].includes(l.pipeline_stage) && ageHrs > 72;
     const urgencyClass = status === 'hot' ? 'lead-hot' : status === 'warm' ? 'lead-warm' : 'lead-cold';
     const staleHtml = isStale ? `<span class="stale-badge">${Math.floor(ageHrs/24)}d</span>` : '';
+    const locked = isPplLocked(l);
     return `
     <tr class="${urgencyClass}">
       <td><strong>${esc(l.name) || "—"}${staleHtml}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
@@ -1631,8 +1657,10 @@ function renderLeadsTable(leads) {
       <td>
         <div style="display:flex;gap:6px">
           <button class="iconbtn" onclick="openOpportunityModal('${l.id}')" type="button" title="View Details"><span class="icon" data-icon="eye"></span></button>
-          <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button" title="Edit"><span class="icon" data-icon="edit"></span></button>
-          <button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>
+          <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button" title="${locked ? 'Edit (status, value, address & notes only)' : 'Edit'}"><span class="icon" data-icon="edit"></span></button>
+          ${locked
+            ? `<span class="iconbtn" title="QuoteLeads PPL lead — can't be deleted" style="opacity:.4;cursor:not-allowed"><span class="icon" data-icon="lock"></span></span>`
+            : `<button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>`}
         </div>
       </td>
     </tr>`;
@@ -1657,6 +1685,8 @@ function resetLeadForm() {
   // Hide dispute button for new leads — PPL flag is only set server-side
   _currentDisputeLeadId = null;
   document.getElementById("openDisputeFromLead")?.classList.add("hidden");
+  // Re-enable any fields that a previously-viewed locked lead disabled
+  setFieldsLocked(PPL_LOCKED_LEADMODAL_FIELDS, false);
   renderCustomFieldInputs();
 }
 
@@ -1689,6 +1719,13 @@ async function openEditLead(id) {
   if (leadNotes) leadNotes.value = l.notes || "";
   
   await renderCustomFieldInputs(l.custom_data || {});
+
+  // QuoteLeads PPL: only status, value, address & notes are editable. Lock the
+  // identifying fields and custom data; keep dispute + call log available below.
+  const pplLocked = isPplLocked(l);
+  setFieldsLocked(PPL_LOCKED_LEADMODAL_FIELDS, pplLocked);
+  document.querySelectorAll('#leadModal [name^="cf_"]').forEach((el) => { el.disabled = pplLocked; });
+  if (leadModalTitle) leadModalTitle.textContent = pplLocked ? "Edit Lead · QuoteLeads PPL (limited editing)" : "Edit Lead";
 
   // PPL features — dispute button + call log (source === 'PPL')
   _currentDisputeLeadId = l.id;
@@ -1743,6 +1780,16 @@ async function handleLeadSave(e) {
       toast("Postcode cannot be removed from a PPL lead.", true);
       return;
     }
+    // QuoteLeads PPL: only status, value, address & notes are editable —
+    // never persist changes to the identifying fields or source.
+    if (isPplLocked(existingLead)) {
+      delete payload.name;
+      delete payload.email;
+      delete payload.phone;
+      delete payload.source;
+      delete payload.is_ppl;
+      delete payload.custom_data;
+    }
   }
 
   try {
@@ -1780,6 +1827,10 @@ async function handleLeadSave(e) {
 }
 
 async function deleteLead(id) {
+  if (isPplLocked(allLeads.find((x) => x.id === id))) {
+    toast("QuoteLeads PPL leads can't be deleted.", true);
+    return;
+  }
   confirmAction("Delete this lead? This cannot be undone.", async () => {
     try {
       const { error } = await sb.from("leads").delete().eq("id", id);
@@ -4919,6 +4970,11 @@ async function openOpportunityModal(leadId) {
   setOppField("oppOverviewAiSummary", lead.ai_summary || "No AI summary yet.");
   setOppField("oppOverviewNotes", lead.notes || "");
 
+  // QuoteLeads PPL: only status, value, address & notes are editable here.
+  const oppLocked = isPplLocked(lead);
+  setFieldsLocked(PPL_LOCKED_OPP_FIELDS, oppLocked);
+  if (oppModalSubtitle && oppLocked) oppModalSubtitle.textContent += " · 🔒 QuoteLeads PPL (limited editing)";
+
   // Wire inline save button (Change 6)
   const saveBtn = document.getElementById('oppSaveInlineBtn');
   if (saveBtn) {
@@ -4937,6 +4993,13 @@ async function openOpportunityModal(leadId) {
         address:        document.getElementById('oppOverviewAddress')?.value || null,
         notes:          document.getElementById('oppOverviewNotes')?.value || null,
       };
+      // QuoteLeads PPL: never persist identifying-field or source changes.
+      if (isPplLocked(lead)) {
+        delete payload.name;
+        delete payload.email;
+        delete payload.phone;
+        delete payload.source;
+      }
       try {
         const { error } = await sb.from('leads').update(payload).eq('id', leadId);
         if (error) { toast(error.message, true); return; }
