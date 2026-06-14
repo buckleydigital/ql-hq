@@ -1613,7 +1613,7 @@ function isPplLocked(lead) {
   return (lead?.source || "").trim().toLowerCase() === PPL_LOCKED_SOURCE;
 }
 // Fields that are NOT editable on a locked lead, per modal.
-const PPL_LOCKED_LEADMODAL_FIELDS = ["leadName", "leadEmail", "leadPhone", "leadSource"];
+const PPL_LOCKED_LEADMODAL_FIELDS = ["leadName", "leadEmail", "leadPhone", "leadSource", "leadPostcode"];
 const PPL_LOCKED_OPP_FIELDS       = ["oppOverviewName", "oppOverviewEmail", "oppOverviewPhone", "oppOverviewSource"];
 // Disable/re-enable a set of field element IDs. Always called with the correct
 // boolean so state resets when the reused modal DOM shows a non-locked lead.
@@ -1773,22 +1773,23 @@ async function handleLeadSave(e) {
     custom_data,
   };
 
-  // Block clearing the postcode on an existing PPL lead
+  // Per-lead edit restrictions for PPL leads
   if (id) {
     const existingLead = allLeads.find((x) => x.id === id);
-    if (existingLead?.is_ppl && !payload.postcode) {
-      toast("Postcode cannot be removed from a PPL lead.", true);
-      return;
-    }
-    // QuoteLeads PPL: only status, value, address & notes are editable —
-    // never persist changes to the identifying fields or source.
     if (isPplLocked(existingLead)) {
+      // QuoteLeads PPL: only status, value, address & notes are editable —
+      // never persist changes to identifying fields, source or postcode.
       delete payload.name;
       delete payload.email;
       delete payload.phone;
       delete payload.source;
+      delete payload.postcode;
       delete payload.is_ppl;
       delete payload.custom_data;
+    } else if (existingLead?.is_ppl && !payload.postcode) {
+      // Plain PPL leads: block clearing the postcode.
+      toast("Postcode cannot be removed from a PPL lead.", true);
+      return;
     }
   }
 
