@@ -38,11 +38,16 @@ Deno.serve(async (req: Request) => {
     const companyId = ql_hq_company_id.trim()
 
     // ── action: scrub ─────────────────────────────────────────────────────────
-    // Decrement delivered_leads on the most relevant ppl_order when a lead
-    // is scrubbed in ql-mc. Tries active orders first, falls back to the most
-    // recently completed one (in case scrub tips it back under the threshold).
+    // A lead was scrubbed in ql-mc — pull the delivered count back by one on the
+    // most relevant order. We mirror this onto BOTH order tables independently:
+    //   • ppl_orders.delivered_leads      (admin fulfillment tracker)
+    //   • ppl_lead_orders.delivered_count (client dashboard order)
+    // Each is guarded: if that table has no matching row for the company, it's
+    // skipped silently so nothing breaks. Prefer the oldest active order, fall
+    // back to the most recently completed/fulfilled one (in case the scrub tips
+    // it back under the threshold and should reopen).
     if (action === 'scrub') {
-      // Prefer oldest active order; fall back to most recent completed
+      // ── ppl_orders (admin) ──────────────────────────────────────────────────
       let { data: order } = await supabase
         .from('ppl_orders')
         .select('id, delivered_leads, total_leads, status')
@@ -64,20 +69,57 @@ Deno.serve(async (req: Request) => {
         order = completed
       }
 
-      if (!order) return json({ ok: true, note: 'no ppl_order found' })
+      let delivered_leads: number | null = null
+      if (order) {
+        const newDelivered = Math.max(0, order.delivered_leads - 1)
+        // If we're pulling back below total, reopen a completed order
+        const newStatus = order.status === 'completed' && newDelivered < order.total_leads
+          ? 'active'
+          : order.status
+        await supabase
+          .from('ppl_orders')
+          .update({ delivered_leads: newDelivered, status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', order.id)
+        delivered_leads = newDelivered
+      }
 
-      const newDelivered = Math.max(0, order.delivered_leads - 1)
-      // If we're pulling back below total, reopen a completed order
-      const newStatus = order.status === 'completed' && newDelivered < order.total_leads
-        ? 'active'
-        : order.status
+      // ── ppl_lead_orders (client dashboard) — independent + guarded ──────────
+      let { data: leadOrder } = await supabase
+        .from('ppl_lead_orders')
+        .select('id, delivered_count, quantity, status')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
 
-      await supabase
-        .from('ppl_orders')
-        .update({ delivered_leads: newDelivered, status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', order.id)
+      if (!leadOrder) {
+        const { data: fulfilled } = await supabase
+          .from('ppl_lead_orders')
+          .select('id, delivered_count, quantity, status')
+          .eq('company_id', companyId)
+          .eq('status', 'fulfilled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        leadOrder = fulfilled
+      }
 
-      return json({ ok: true, delivered_leads: newDelivered })
+      let delivered_count: number | null = null
+      if (leadOrder) {
+        const newCount = Math.max(0, leadOrder.delivered_count - 1)
+        // If we're pulling back below quantity, reopen a fulfilled order
+        const newStatus = leadOrder.status === 'fulfilled' && newCount < leadOrder.quantity
+          ? 'active'
+          : leadOrder.status
+        await supabase
+          .from('ppl_lead_orders')
+          .update({ delivered_count: newCount, status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', leadOrder.id)
+        delivered_count = newCount
+      }
+
+      return json({ ok: true, delivered_leads, delivered_count })
     }
 
     // ── default action: sync delivery config + postcodes ─────────────────────
