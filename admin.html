@@ -2090,15 +2090,16 @@ h1{font-size:18px;font-weight:500}
       return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || '(no name)') + ' (' + escapeHtml(c.plan || '') + ')</option>';
     }).join('');
     listEl.innerHTML = vas.map(function (v) {
-      return '<div class="card" style="margin-bottom:12px;background:var(--bg2,#1b1b22)" data-va="' + escapeHtml(v.id) + '">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
-          '<div><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong> <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
-          '<button class="btn btn-sm btn-danger va-remove-btn" type="button">Remove VA</button>' +
+      return '<div data-va="' + escapeHtml(v.id) + '" style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
+          '<div style="font-size:13px"><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong>&nbsp; <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
+          '<button class="btn btn-danger btn-sm va-remove-btn" type="button">Remove VA</button>' +
         '</div>' +
-        '<div class="va-assigns" style="margin:10px 0">Loading clients…</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-          '<select class="form-input va-assign-picker" style="max-width:340px">' + compOptions + '</select>' +
-          '<button class="btn btn-sm va-assign-btn" type="button">Assign</button>' +
+        '<div class="form-label" style="margin-bottom:8px">Assigned clients</div>' +
+        '<div class="va-assigns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">Loading…</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<select class="form-input va-assign-picker" style="flex:1;min-width:220px;max-width:360px">' + compOptions + '</select>' +
+          '<button class="btn2 btn-sm va-assign-btn" type="button">Assign</button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -2118,10 +2119,11 @@ h1{font-size:18px;font-weight:500}
     try {
       var res = await callVaEdge({ action: 'list_assignments', va_user_id: vaId });
       var comps = res.companies || [];
-      if (!comps.length) { container.innerHTML = '<span style="color:var(--muted)">No clients assigned.</span>'; return; }
+      if (!comps.length) { container.innerHTML = '<span style="color:var(--muted);font-size:12px">No clients assigned yet.</span>'; return; }
       container.innerHTML = comps.map(function (c) {
-        return '<span class="badge" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--border);border-radius:100px" data-company="' + escapeHtml(c.id) + '">' +
-          escapeHtml(c.name || '(no name)') + ' <span style="cursor:pointer;color:var(--accent);font-weight:700" class="va-unassign">×</span></span>';
+        return '<span data-company="' + escapeHtml(c.id) + '" style="display:inline-flex;align-items:center;gap:7px;padding:4px 6px 4px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:11.5px">' +
+          escapeHtml(c.name || '(no name)') +
+          '<span class="va-unassign" title="Unassign" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;color:var(--muted);font-weight:700;line-height:1">×</span></span>';
       }).join('');
       container.querySelectorAll('[data-company]').forEach(function (chip) {
         chip.querySelector('.va-unassign').addEventListener('click', function () {
