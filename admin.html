@@ -155,6 +155,12 @@ h1{font-size:18px;font-weight:500}
   .form-grid{grid-template-columns:1fr}
   .dispute-header{flex-direction:column}
 }
+.avail-mini{border-collapse:collapse}
+.avail-mini th{font-size:9px;color:var(--muted);font-weight:600;padding:2px 3px;text-align:center}
+.avail-mini td{border:1px solid var(--border);width:18px;height:15px}
+.avail-mini .ah{border:none;font-size:9px;color:var(--muted);text-align:right;padding-right:5px;width:auto;height:auto}
+.avail-mini .cell{background:var(--surface-2)}
+.avail-mini .cell.on{background:var(--accent)}
 </style>
 </head>
 <body>
@@ -387,6 +393,20 @@ h1{font-size:18px;font-weight:500}
         </div>
         <div id="vaLoadingState" class="notice">Loading VAs…</div>
         <div id="vaList" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- VA Availability panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>VA Availability</h2>
+          <p>When each VA is available to take calls (times in AEST).</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="vaAvailLoading" class="notice">Loading availability…</div>
+        <div id="vaAvailList" class="hidden"></div>
       </div>
     </div>
 
@@ -2050,6 +2070,9 @@ h1{font-size:18px;font-weight:500}
     // 13. Load Virtual Assistants panel
     await loadVaPanel();
 
+    // 14. Load VA Availability panel
+    await loadVaAvailability();
+
   } // end boot()
 
   // ── Virtual Assistants ────────────────────────────────────────────────────
@@ -2095,6 +2118,49 @@ h1{font-size:18px;font-weight:500}
       listEl.classList.remove('hidden');
     } catch (err) {
       loadingEl.textContent = 'Failed to load VAs: ' + err.message;
+    }
+  }
+
+  // ── VA Availability (read-only weekly grid per VA) ──────────────────────────
+  var _avDays  = [['mon','M'],['tue','T'],['wed','W'],['thu','T'],['fri','F'],['sat','S'],['sun','S']];
+  var _avHours = [8,9,10,11,12,13,14,15,16,17,18,19];
+  function _avHourLabel(h) { var ap = h < 12 ? 'a' : 'p'; var hh = h % 12 === 0 ? 12 : h % 12; return hh + ap; }
+  function avMiniGrid(slots) {
+    var set = {};
+    (slots || []).forEach(function (s) { set[s] = true; });
+    var h = '<table class="avail-mini"><thead><tr><th class="ah"></th>' +
+      _avDays.map(function (d) { return '<th>' + d[1] + '</th>'; }).join('') + '</tr></thead><tbody>';
+    _avHours.forEach(function (hr) {
+      h += '<tr><td class="ah">' + _avHourLabel(hr) + '</td>' +
+        _avDays.map(function (d) { var id = d[0] + '-' + hr; return '<td class="cell' + (set[id] ? ' on' : '') + '"></td>'; }).join('') +
+        '</tr>';
+    });
+    return h + '</tbody></table>';
+  }
+
+  async function loadVaAvailability() {
+    var loadingEl = document.getElementById('vaAvailLoading');
+    var listEl    = document.getElementById('vaAvailList');
+    if (!loadingEl || !listEl) return;
+    try {
+      var res = await callVaEdge({ action: 'list_availability' });
+      var vas = res.availability || [];
+      if (!vas.length) {
+        listEl.innerHTML = '<div class="notice">No VAs yet.</div>';
+      } else {
+        listEl.innerHTML = vas.map(function (v) {
+          var slots = Array.isArray(v.slots) ? v.slots : [];
+          var none = slots.length === 0;
+          return '<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px">' +
+            '<div style="font-size:13px;margin-bottom:' + (none ? '0' : '10px') + '"><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong>&nbsp; <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
+            (none ? '<div style="color:var(--muted);font-size:12px">No availability set.</div>' : '<div style="overflow-x:auto">' + avMiniGrid(slots) + '</div>') +
+          '</div>';
+        }).join('');
+      }
+      loadingEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load availability: ' + err.message;
     }
   }
 

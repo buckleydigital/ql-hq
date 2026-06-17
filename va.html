@@ -41,6 +41,19 @@
   .note{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
   .note-meta{font-size:11px;color:var(--ink3);margin-top:6px}
   .gate{display:flex;align-items:center;justify-content:center;min-height:60vh;color:var(--ink3)}
+  .vanav{display:flex;gap:6px;margin-bottom:18px}
+  .vanav button{font:inherit;font-size:13px;padding:8px 16px;border-radius:9px;border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
+  .vanav button.active{background:var(--card);color:var(--ink);border-color:var(--accent)}
+  .avail{border-collapse:collapse;width:100%;max-width:600px}
+  .avail th{font-size:11px;color:var(--ink3);font-weight:600;padding:5px 4px;text-align:center}
+  .avail td{border:1px solid var(--bd);height:28px}
+  .avail .avail-h{border:none;width:58px;font-size:11px;color:var(--ink3);text-align:right;padding-right:10px}
+  .avail-cell{cursor:pointer;background:var(--bg2);transition:background .08s}
+  .avail-cell:hover{background:var(--bd)}
+  .avail-cell.on{background:var(--accent)}
+  .avail.ro .avail-cell{cursor:default}
+  .avail.ro .avail-cell:hover{background:var(--bg2)}
+  .avail.ro .avail-cell.on{background:var(--accent)}
   .hidden{display:none}
 </style>
 </head>
@@ -49,6 +62,11 @@
   <div class="topbar">
     <h1>VA Panel <span class="pill">Virtual Assistant</span></h1>
     <button class="btn" id="logoutBtn" type="button">Log out</button>
+  </div>
+
+  <div class="vanav hidden" id="vaNav">
+    <button id="navClients" class="active" type="button">My Clients</button>
+    <button id="navAvail" type="button">My Availability</button>
   </div>
 
   <div id="gate" class="gate">Loading…</div>
@@ -63,6 +81,17 @@
   <div id="detailView" class="hidden">
     <button class="btn" id="backBtn" type="button" style="margin-bottom:14px">← All clients</button>
     <div id="detailBody"></div>
+  </div>
+
+  <!-- AVAILABILITY -->
+  <div id="availView" class="hidden">
+    <p class="muted" style="margin-top:0">Tap the hours you're available to take calls each week. Your admin sees this. <span style="color:var(--ink3)">(Times in AEST)</span></p>
+    <div id="availGrid" style="overflow-x:auto"></div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-p" id="saveAvailBtn" type="button">Save availability</button>
+      <button class="btn" id="clearAvailBtn" type="button">Clear all</button>
+      <span class="muted" id="availStatus"></span>
+    </div>
   </div>
 </div>
 
@@ -90,12 +119,76 @@
     return { ok: res.ok, status: res.status, data };
   }
 
+  // ─── Availability ─────────────────────────────────────────────────────────
+  const AV_DAYS = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+  const AV_HOURS = [8,9,10,11,12,13,14,15,16,17,18,19];
+  const hourLabel = (h) => { const ap = h < 12 ? 'AM' : 'PM'; const hh = h % 12 === 0 ? 12 : h % 12; return hh + ' ' + ap; };
+  let _availSet = new Set();
+  let _availLoaded = false;
+
+  function setNav(which) {
+    $('navClients').classList.toggle('active', which === 'clients');
+    $('navAvail').classList.toggle('active', which === 'avail');
+  }
+
+  function avGridHtml(selected, readOnly) {
+    let h = '<table class="avail' + (readOnly ? ' ro' : '') + '"><thead><tr><th class="avail-h"></th>' +
+      AV_DAYS.map((d) => '<th>' + d[1] + '</th>').join('') + '</tr></thead><tbody>';
+    AV_HOURS.forEach((hr) => {
+      h += '<tr><td class="avail-h">' + hourLabel(hr) + '</td>' +
+        AV_DAYS.map((d) => { const id = d[0] + '-' + hr; return '<td class="avail-cell' + (selected.has(id) ? ' on' : '') + '" data-slot="' + id + '"></td>'; }).join('') +
+        '</tr>';
+    });
+    return h + '</tbody></table>';
+  }
+
+  function renderAvailGrid() {
+    const g = $('availGrid');
+    g.innerHTML = avGridHtml(_availSet, false);
+    g.querySelectorAll('.avail-cell').forEach((cell) => {
+      cell.addEventListener('click', () => {
+        const id = cell.dataset.slot;
+        if (_availSet.has(id)) { _availSet.delete(id); cell.classList.remove('on'); }
+        else { _availSet.add(id); cell.classList.add('on'); }
+        $('availStatus').textContent = 'Unsaved changes';
+      });
+    });
+  }
+
+  async function showAvail() {
+    $('listView').classList.add('hidden');
+    $('detailView').classList.add('hidden');
+    $('availView').classList.remove('hidden');
+    setNav('avail');
+    window.scrollTo(0, 0);
+    if (!_availLoaded) {
+      $('availGrid').innerHTML = '<div class="muted">Loading…</div>';
+      const { ok, data } = await vaApi({ action: 'get_availability' });
+      _availSet = new Set(ok && Array.isArray(data.slots) ? data.slots : []);
+      _availLoaded = true;
+      renderAvailGrid();
+      $('availStatus').textContent = '';
+    }
+  }
+
+  async function saveAvailability() {
+    const btn = $('saveAvailBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const { ok, data } = await vaApi({ action: 'set_availability', slots: [..._availSet] });
+    btn.disabled = false; btn.textContent = 'Save availability';
+    $('availStatus').textContent = ok ? 'Saved ✓' : ('Error: ' + (data.error || 'could not save'));
+  }
+
   async function init() {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; return; }
     $('logoutBtn').addEventListener('click', async () => { await sb.auth.signOut(); location.href = 'index.html'; });
     $('backBtn').addEventListener('click', showList);
+    $('navClients').addEventListener('click', showList);
+    $('navAvail').addEventListener('click', showAvail);
+    $('saveAvailBtn').addEventListener('click', saveAvailability);
+    $('clearAvailBtn').addEventListener('click', () => { _availSet.clear(); renderAvailGrid(); $('availStatus').textContent = 'Unsaved changes'; });
     loadClients();
   }
 
@@ -110,12 +203,15 @@
     }
     _clients = data.clients || [];
     $('gate').classList.add('hidden');
+    $('vaNav').classList.remove('hidden');
     showList();
   }
 
   function showList() {
+    $('availView').classList.add('hidden');
     $('detailView').classList.add('hidden');
     $('listView').classList.remove('hidden');
+    setNav('clients');
     const el = $('clientList');
     if (!_clients.length) { el.innerHTML = '<div class="card empty">No clients assigned to you yet.</div>'; return; }
     $('listSub').textContent = `${_clients.length} client${_clients.length !== 1 ? 's' : ''} assigned to you.`;
@@ -137,8 +233,10 @@
 
   async function openClient(companyId) {
     $('detailBody').innerHTML = '<div class="card empty">Loading…</div>';
+    $('availView').classList.add('hidden');
     $('listView').classList.add('hidden');
     $('detailView').classList.remove('hidden');
+    setNav('clients');
     window.scrollTo(0, 0);
     const { ok, data } = await vaApi({ action: 'get_client', company_id: companyId });
     if (!ok) { $('detailBody').innerHTML = `<div class="card empty">${esc(data.error || 'Could not load client.')}</div>`; return; }

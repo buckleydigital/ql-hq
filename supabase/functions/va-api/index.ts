@@ -106,9 +106,27 @@ Deno.serve(async (req) => {
     const { action } = body as { action?: string };
 
     // ───────────────────────────── VA ACTIONS ──────────────────────────────
-    const VA_ACTIONS = new Set(["list_clients", "get_client", "add_note"]);
+    const VA_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability"]);
     if (VA_ACTIONS.has(action || "")) {
       if (!isVa) return json({ error: "Forbidden: VA access required" }, 403);
+
+      // ── Weekly call availability (no client assignment needed) ──────────────
+      if (action === "get_availability") {
+        const { data: av } = await adminClient
+          .from("va_availability").select("slots").eq("va_user_id", caller.id).maybeSingle();
+        return json({ slots: av?.slots || [] });
+      }
+      if (action === "set_availability") {
+        const raw = (body as { slots?: unknown }).slots;
+        const slots = Array.isArray(raw)
+          ? raw.filter((s): s is string => typeof s === "string" && /^(mon|tue|wed|thu|fri|sat|sun)-\d{1,2}$/.test(s)).slice(0, 200)
+          : [];
+        const { error } = await adminClient
+          .from("va_availability")
+          .upsert({ va_user_id: caller.id, slots, updated_at: new Date().toISOString() }, { onConflict: "va_user_id" });
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, slots });
+      }
 
       // The exact set of companies this VA is allowed to see.
       const { data: assigns } = await adminClient
@@ -285,6 +303,21 @@ Deno.serve(async (req) => {
       const { error } = await adminClient.from("va_assignments").delete().eq("va_user_id", va_user_id).eq("company_id", company_id);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
+    }
+
+    if (action === "list_availability") {
+      const { data: vas } = await adminClient.from("profiles").select("id, full_name").eq("is_va", true);
+      const ids = (vas || []).map((v: { id: string }) => v.id);
+      const emails = await emailMap(adminClient, ids);
+      const { data: avail } = await adminClient
+        .from("va_availability").select("va_user_id, slots")
+        .in("va_user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+      const amap: Record<string, unknown> = {};
+      for (const a of avail || []) amap[a.va_user_id as string] = a.slots;
+      const list = (vas || []).map((v: Record<string, unknown>) => ({
+        id: v.id, full_name: v.full_name, email: emails[v.id as string] || "", slots: amap[v.id as string] || [],
+      }));
+      return json({ availability: list });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);
