@@ -885,20 +885,20 @@ async function showApp() {
     return;
   }
 
-  // Virtual Assistants use their own panel (va.html), never the client dashboard.
-  // Run as a separate, defensive query so a not-yet-migrated DB (no is_va column)
-  // can never break a normal login. Super-admins are never redirected.
+  // VAs can use BOTH the client dashboard and their VA panel — reveal a
+  // "VA Panel" link in the sidebar for them (no forced redirect). Defensive
+  // query so a not-yet-migrated DB (no is_va column) can never break login.
   try {
     const { data: vaRow } = await sb
       .from("profiles")
-      .select("is_va, is_admin")
+      .select("is_va")
       .eq("id", currentUser.id)
       .maybeSingle();
-    if (vaRow && vaRow.is_va === true && vaRow.is_admin !== true) {
-      window.location.href = "va.html";
-      return;
+    if (vaRow && vaRow.is_va === true) {
+      const vaLink = document.getElementById("navVaPanel");
+      if (vaLink) vaLink.style.display = "flex";
     }
-  } catch (e) { /* is_va column not present yet — ignore and load normally */ }
+  } catch (e) { /* is_va column not present yet — ignore */ }
 
   try {
     const { data: profile, error: profileError } = await sb
