@@ -145,9 +145,11 @@ Deno.serve(async (req) => {
           .in("id", ids)
           .order("name", { ascending: true });
 
+        // Lead counts come from ppl_orders (the real fulfilment orders), NOT
+        // ppl_lead_orders (Stripe checkouts — many clients have none).
         const { data: orders } = await adminClient
-          .from("ppl_lead_orders")
-          .select("company_id, quantity, delivered_count, status")
+          .from("ppl_orders")
+          .select("company_id, total_leads, delivered_leads, status")
           .in("company_id", ids);
 
         const { data: notes } = await adminClient
@@ -159,8 +161,8 @@ Deno.serve(async (req) => {
         for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0 };
         for (const o of orders || []) {
           const a = agg[o.company_id as string]; if (!a) continue;
-          a.totalLeads += (o.quantity as number) || 0;
-          a.delivered += (o.delivered_count as number) || 0;
+          a.totalLeads += (o.total_leads as number) || 0;
+          a.delivered += (o.delivered_leads as number) || 0;
           if (o.status === "active") a.activeOrders += 1;
         }
         for (const n of notes || []) { const a = agg[n.company_id as string]; if (a) a.notes += 1; }
