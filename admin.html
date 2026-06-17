@@ -368,6 +368,28 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Virtual Assistants panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Virtual Assistants</h2>
+          <p id="vaCountLabel">Loading…</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div class="form-row" style="margin-bottom:16px">
+          <label class="form-label" for="vaUserPicker">Make a user a VA</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="form-input" id="vaUserPicker" style="max-width:360px"><option value="">Loading users…</option></select>
+            <button class="btn2 btn-sm" id="vaMakeBtn" type="button">Make VA</button>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin:6px 0 0">A VA only sees the client companies you assign below — never anyone else's, and they can't edit client accounts.</p>
+        </div>
+        <div id="vaLoadingState" class="notice">Loading VAs…</div>
+        <div id="vaList" class="hidden"></div>
+      </div>
+    </div>
+
     <!-- PPL Pricing panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -2010,7 +2032,138 @@ h1{font-size:18px;font-weight:500}
     // 12. Load PPL area change requests panel
     await loadPplAreaRequests();
 
+    // 13. Load Virtual Assistants panel
+    await loadVaPanel();
+
   } // end boot()
+
+  // ── Virtual Assistants ────────────────────────────────────────────────────
+  // All VA operations go through the dedicated `va-api` edge function (service
+  // role, is_admin-gated). No existing data or RLS is touched.
+  async function callVaEdge(body) {
+    var token = await getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+    var res = await fetch(SUPABASE_URL + '/functions/v1/va-api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(body),
+    });
+    var data;
+    try { data = JSON.parse(await res.text()); } catch (e) { throw new Error('Server returned non-JSON (HTTP ' + res.status + ')'); }
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  }
+
+  var _vaCompanies = [];   // all companies, for the assignment pickers
+
+  async function loadVaPanel() {
+    var loadingEl = document.getElementById('vaLoadingState');
+    var listEl    = document.getElementById('vaList');
+    if (!loadingEl || !listEl) return;
+    try {
+      var usersRes = await callVaEdge({ action: 'list_users' });
+      var compRes  = await callVaEdge({ action: 'list_companies' });
+      var vasRes   = await callVaEdge({ action: 'list_vas' });
+      _vaCompanies = compRes.companies || [];
+
+      // Populate the "make a user a VA" picker with non-VA users.
+      var picker = document.getElementById('vaUserPicker');
+      var nonVa = (usersRes.users || []).filter(function (u) { return !u.is_va; });
+      picker.innerHTML = '<option value="">Select a user…</option>' + nonVa.map(function (u) {
+        return '<option value="' + escapeHtml(u.id) + '">' + escapeHtml((u.full_name || '(no name)') + ' — ' + (u.email || '')) + '</option>';
+      }).join('');
+
+      renderVaList(vasRes.vas || []);
+      var label = document.getElementById('vaCountLabel');
+      if (label) label.textContent = (vasRes.vas || []).length + ' VA' + ((vasRes.vas || []).length === 1 ? '' : 's');
+      loadingEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load VAs: ' + err.message;
+    }
+  }
+
+  function renderVaList(vas) {
+    var listEl = document.getElementById('vaList');
+    if (!vas.length) { listEl.innerHTML = '<div class="notice">No VAs yet. Pick a user above and click "Make VA".</div>'; return; }
+    var compOptions = '<option value="">Assign a client…</option>' + _vaCompanies.map(function (c) {
+      return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || '(no name)') + ' (' + escapeHtml(c.plan || '') + ')</option>';
+    }).join('');
+    listEl.innerHTML = vas.map(function (v) {
+      return '<div class="card" style="margin-bottom:12px;background:var(--bg2,#1b1b22)" data-va="' + escapeHtml(v.id) + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+          '<div><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong> <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
+          '<button class="btn btn-sm btn-danger va-remove-btn" type="button">Remove VA</button>' +
+        '</div>' +
+        '<div class="va-assigns" style="margin:10px 0">Loading clients…</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<select class="form-input va-assign-picker" style="max-width:340px">' + compOptions + '</select>' +
+          '<button class="btn btn-sm va-assign-btn" type="button">Assign</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    listEl.querySelectorAll('[data-va]').forEach(function (row) {
+      var vaId = row.getAttribute('data-va');
+      loadVaAssignments(vaId, row.querySelector('.va-assigns'));
+      row.querySelector('.va-remove-btn').addEventListener('click', function () { removeVa(vaId, row); });
+      row.querySelector('.va-assign-btn').addEventListener('click', function () {
+        var sel = row.querySelector('.va-assign-picker');
+        if (sel.value) assignClient(vaId, sel.value, row);
+      });
+    });
+  }
+
+  async function loadVaAssignments(vaId, container) {
+    try {
+      var res = await callVaEdge({ action: 'list_assignments', va_user_id: vaId });
+      var comps = res.companies || [];
+      if (!comps.length) { container.innerHTML = '<span style="color:var(--muted)">No clients assigned.</span>'; return; }
+      container.innerHTML = comps.map(function (c) {
+        return '<span class="badge" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--border);border-radius:100px" data-company="' + escapeHtml(c.id) + '">' +
+          escapeHtml(c.name || '(no name)') + ' <span style="cursor:pointer;color:var(--accent);font-weight:700" class="va-unassign">×</span></span>';
+      }).join('');
+      container.querySelectorAll('[data-company]').forEach(function (chip) {
+        chip.querySelector('.va-unassign').addEventListener('click', function () {
+          unassignClient(vaId, chip.getAttribute('data-company'), container);
+        });
+      });
+    } catch (err) {
+      container.innerHTML = '<span style="color:var(--muted)">Could not load: ' + escapeHtml(err.message) + '</span>';
+    }
+  }
+
+  async function assignClient(vaId, companyId, row) {
+    try { await callVaEdge({ action: 'assign', va_user_id: vaId, company_id: companyId });
+      await loadVaAssignments(vaId, row.querySelector('.va-assigns'));
+      row.querySelector('.va-assign-picker').value = '';
+      toast('Client assigned');
+    } catch (err) { toast('Assign failed: ' + err.message, true); }
+  }
+
+  async function unassignClient(vaId, companyId, container) {
+    try { await callVaEdge({ action: 'unassign', va_user_id: vaId, company_id: companyId });
+      await loadVaAssignments(vaId, container);
+      toast('Client unassigned');
+    } catch (err) { toast('Unassign failed: ' + err.message, true); }
+  }
+
+  async function removeVa(vaId, row) {
+    if (!confirm('Remove VA status from this user? Their client assignments will be cleared.')) return;
+    try { await callVaEdge({ action: 'set_va', user_id: vaId, is_va: false });
+      toast('VA removed'); await loadVaPanel();
+    } catch (err) { toast('Failed: ' + err.message, true); }
+  }
+
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'vaMakeBtn') {
+      var sel = document.getElementById('vaUserPicker');
+      if (!sel.value) { toast('Pick a user first', true); return; }
+      callVaEdge({ action: 'set_va', user_id: sel.value, is_va: true })
+        .then(function () { toast('VA created'); return loadVaPanel(); })
+        .catch(function (err) { toast('Failed: ' + err.message, true); });
+    }
+  });
 
   // ── Companies ─────────────────────────────────────────────────────────────
   var allCompaniesPanel = [];
