@@ -749,6 +749,21 @@ h1{font-size:18px;font-weight:500}
   </div>
 </div>
 
+<!-- ── Delete Company confirmation modal ─────────────────────────────────────── -->
+<div id="deleteCompanyModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:420px">
+    <h3 style="color:#b91c1c">Delete Company</h3>
+    <p id="deleteCompanyModalText" style="font-size:13px;color:var(--muted);margin-bottom:10px"></p>
+    <div class="notice warn" style="margin-bottom:16px;font-size:12px">
+      This permanently deletes the company and <strong>all of its users, orders, leads and data</strong>. <strong>This cannot be undone.</strong>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="deleteCompanyCancelBtn" type="button">Cancel</button>
+      <button class="btn btn-sm btn-reject" id="deleteCompanyConfirmBtn" type="button" disabled>Delete Company</button>
+    </div>
+  </div>
+</div>
+
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -2187,15 +2202,100 @@ h1{font-size:18px;font-weight:500}
   }
 
   function renderCompanyRow(c) {
+    var plan = c.plan || 'free';
     var row = document.createElement('div');
     row.className = 'user-row';
     row.innerHTML =
       '<div class="user-info">' +
         '<div class="user-name">' + escapeHtml(c.name || '(no name)') + '</div>' +
         '<div class="user-meta">' + escapeHtml(c.email || '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<select class="form-input company-plan-select" style="height:32px;width:auto;font-size:12px">' +
+          '<option value="free"'    + (plan === 'free'    ? ' selected' : '') + '>Free</option>' +
+          '<option value="managed"' + (plan === 'managed' ? ' selected' : '') + '>Managed</option>' +
+          '<option value="ppl"'     + (plan === 'ppl'     ? ' selected' : '') + '>PPL</option>' +
+        '</select>' +
+        '<button class="btn btn-sm btn-reject company-delete-btn" type="button">Delete</button>' +
       '</div>';
+    row.querySelector('.company-plan-select').addEventListener('change', function () {
+      updateCompanyPlan(c, this.value, this);
+    });
+    row.querySelector('.company-delete-btn').addEventListener('click', function () {
+      openDeleteCompanyModal(c);
+    });
     return row;
   }
+
+  async function updateCompanyPlan(c, plan, selectEl) {
+    var prev = c.plan || 'free';
+    if (plan === prev) return;
+    selectEl.disabled = true;
+    try {
+      await callEdge({ action: 'update_company', company_id: c.id, plan: plan });
+      c.plan = plan;
+      toast('Plan set to ' + plan + '.');
+    } catch (err) {
+      toast('Failed to update plan: ' + err.message, true);
+      selectEl.value = prev;
+    } finally {
+      selectEl.disabled = false;
+    }
+  }
+
+  // ── Delete Company (mirrors the Delete User 3-second confirmation) ──────────
+  var pendingDeleteCompanyId = null;
+  var deleteCompanyTimer = null;
+
+  function openDeleteCompanyModal(c) {
+    pendingDeleteCompanyId = c.id;
+    document.getElementById('deleteCompanyModalText').textContent =
+      'You are about to delete ' + (c.name || '(no name)') + (c.email ? ' (' + c.email + ')' : '') + '.';
+    var btn = document.getElementById('deleteCompanyConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Delete Company (wait 3s…)';
+    document.getElementById('deleteCompanyModal').classList.remove('hidden');
+    clearTimeout(deleteCompanyTimer);
+    deleteCompanyTimer = setTimeout(function () {
+      btn.disabled = false;
+      btn.textContent = 'Yes, Delete Forever';
+    }, 3000);
+  }
+
+  function closeDeleteCompanyModal() {
+    document.getElementById('deleteCompanyModal').classList.add('hidden');
+    pendingDeleteCompanyId = null;
+    clearTimeout(deleteCompanyTimer);
+    var btn = document.getElementById('deleteCompanyConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Delete Company';
+  }
+
+  document.getElementById('deleteCompanyCancelBtn').addEventListener('click', closeDeleteCompanyModal);
+  document.getElementById('deleteCompanyModal').addEventListener('click', function (e) {
+    if (e.target === this) closeDeleteCompanyModal();
+  });
+
+  document.getElementById('deleteCompanyConfirmBtn').addEventListener('click', async function () {
+    if (!pendingDeleteCompanyId) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    var cid = pendingDeleteCompanyId;
+    try {
+      await callEdge({ action: 'delete_company', company_id: cid });
+      allCompaniesPanel = allCompaniesPanel.filter(function (x) { return x.id !== cid; });
+      closeDeleteCompanyModal();
+      applyCompanyFilter(document.getElementById('companySearchInput').value);
+      var label = document.getElementById('companyCountLabel');
+      if (label) label.textContent = allCompaniesPanel.length + ' compan' + (allCompaniesPanel.length === 1 ? 'y' : 'ies');
+      toast('Company deleted.');
+    } catch (err) {
+      toast('Failed to delete: ' + err.message, true);
+      btn.disabled = false;
+      btn.textContent = 'Yes, Delete Forever';
+    }
+  });
 
   function applyCompanyFilter(q) {
     var query   = (q || '').trim().toLowerCase();

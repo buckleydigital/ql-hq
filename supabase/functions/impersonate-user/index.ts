@@ -401,9 +401,9 @@ Deno.serve(async (req) => {
       if (!company_id || !UUID_RE.test(company_id)) {
         return json({ error: "company_id must be a valid UUID" }, 400);
       }
-      const VALID_PLANS = ["managed", "ppl"];
+      const VALID_PLANS = ["free", "managed", "ppl"];
       if (plan !== undefined && !VALID_PLANS.includes(plan)) {
-        return json({ error: "plan must be 'managed' or 'ppl'" }, 400);
+        return json({ error: "plan must be 'free', 'managed' or 'ppl'" }, 400);
       }
 
       const update: Record<string, unknown> = {};
@@ -897,6 +897,48 @@ Deno.serve(async (req) => {
       if (deleteErr) {
         console.error("delete_user error:", deleteErr.message);
         return json({ error: "Failed to delete user: " + deleteErr.message }, 500);
+      }
+
+      return json({ success: true });
+    }
+
+    // ── action: delete_company ────────────────────────────────────────────────
+    // Permanently delete a company and ALL its data. Deleting the company row
+    // cascades every company-scoped table (profiles, ppl orders, va assignments,
+    // notes, etc.); we then remove the company's auth users so none are orphaned.
+    // Already gated to super-admins (is_admin check at the top of this function).
+    if (action === "delete_company") {
+      const { company_id } = body as { company_id?: string };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!company_id || !UUID_RE.test(company_id)) {
+        return json({ error: "company_id must be a valid UUID" }, 400);
+      }
+
+      // Never let an admin delete the company they belong to (would delete them).
+      const { data: myProfile } = await adminClient
+        .from("profiles").select("company_id").eq("id", caller.id).maybeSingle();
+      if (myProfile?.company_id === company_id) {
+        return json({ error: "Cannot delete your own company" }, 400);
+      }
+
+      // Capture the company's users before the cascade removes their profiles.
+      const { data: members } = await adminClient
+        .from("profiles").select("id").eq("company_id", company_id);
+      const memberIds = (members || []).map((m: { id: string }) => m.id);
+
+      // Delete the company — cascades all company-scoped rows.
+      const { error: delErr } = await adminClient
+        .from("companies").delete().eq("id", company_id);
+      if (delErr) {
+        console.error("delete_company error:", delErr.message);
+        return json({ error: "Failed to delete company: " + delErr.message }, 500);
+      }
+
+      // Best-effort cleanup of the now-orphaned auth users.
+      for (const uid of memberIds) {
+        if (uid === caller.id) continue;
+        const { error: authErr } = await adminClient.auth.admin.deleteUser(uid);
+        if (authErr) console.warn("delete_company: auth cleanup failed for", uid, authErr.message);
       }
 
       return json({ success: true });
