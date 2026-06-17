@@ -885,9 +885,11 @@ async function showApp() {
     return;
   }
 
-  // VAs can use BOTH the client dashboard and their VA panel — reveal a
-  // "VA Panel" link in the sidebar for them (no forced redirect). Defensive
-  // query so a not-yet-migrated DB (no is_va column) can never break login.
+  // The "VA Panel" sidebar link is for VAs ONLY. Reveal it for a VA; for every
+  // other user type strip it out of the DOM entirely so it can never be seen.
+  // (va.html itself is also server-side gated to is_va.) Defensive query so a
+  // not-yet-migrated DB (no is_va column) can never break login.
+  const _vaLink = document.getElementById("navVaPanel");
   try {
     const { data: vaRow } = await sb
       .from("profiles")
@@ -895,10 +897,13 @@ async function showApp() {
       .eq("id", currentUser.id)
       .maybeSingle();
     if (vaRow && vaRow.is_va === true) {
-      const vaLink = document.getElementById("navVaPanel");
-      if (vaLink) vaLink.style.display = "flex";
+      if (_vaLink) _vaLink.style.display = "flex";
+    } else if (_vaLink) {
+      _vaLink.remove();
     }
-  } catch (e) { /* is_va column not present yet — ignore */ }
+  } catch (e) {
+    if (_vaLink) _vaLink.remove();   // can't confirm VA status → never show it
+  }
 
   try {
     const { data: profile, error: profileError } = await sb
