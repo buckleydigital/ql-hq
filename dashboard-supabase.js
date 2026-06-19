@@ -3234,27 +3234,48 @@ async function loadSettings() {
     if (deliverySmsEl)     deliverySmsEl.value     = delivery.sms_number  || "";
     if (deliveryWebhookEl) deliveryWebhookEl.value = delivery.webhook_url || "";
 
-    document.getElementById("leadDeliveryForm")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email       = deliveryEmailEl?.value.trim()   || null;
-      const sms_number  = deliverySmsEl?.value.trim()     || null;
-      const webhook_url = deliveryWebhookEl?.value.trim() || null;
+    // Lead Delivery — save. Bind once for the page's lifetime (loadSettings runs
+    // on every visit to this page; a guard stops duplicate listeners stacking,
+    // and avoids the old `{ once: true }` that broke the 2nd save in a visit).
+    const leadDeliveryForm = document.getElementById("leadDeliveryForm");
+    if (leadDeliveryForm && !leadDeliveryForm.dataset.bound) {
+      leadDeliveryForm.dataset.bound = "1";
+      leadDeliveryForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email       = document.getElementById("deliveryEmail")?.value.trim()   || null;
+        const sms_number  = document.getElementById("deliverySms")?.value.trim()     || null;
+        const webhook_url = document.getElementById("deliveryWebhook")?.value.trim() || null;
 
-      // Save to companies.settings
-      const { data: cur } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
-      const merged = { ...(cur?.settings || {}), lead_delivery: { email, sms_number, webhook_url } };
-      const { error } = await sb.from("companies").update({ settings: merged }).eq("id", currentCompanyId);
-      if (error) { toast("Failed to save delivery settings.", true); return; }
+        const saveBtn = leadDeliveryForm.querySelector('button[type="submit"]');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+        try {
+          // 1. Save to ql-hq (the source of truth for the client's preference)
+          const { data: cur } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
+          const merged = { ...(cur?.settings || {}), lead_delivery: { email, sms_number, webhook_url } };
+          const { error } = await sb.from("companies").update({ settings: merged }).eq("id", currentCompanyId);
+          if (error) { toast("Failed to save delivery settings.", true); return; }
 
-      // Push to ql-mc (fire and forget — don't block on failure)
-      const { data: _sdRes } = await sb.auth.getSession();
-      if (_sdRes?.session) fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_sdRes.session.access_token}`, "apikey": SUPABASE_ANON_KEY },
-      }).catch(err => console.warn("sync-delivery-config:", err));
+          // 2. Sync to ql-mc, which is what actually delivers leads. Awaited so
+          //    the toast reflects whether the change really propagated.
+          let synced = false;
+          const { data: _sdRes } = await sb.auth.getSession();
+          if (_sdRes?.session) {
+            try {
+              const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_sdRes.session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+              });
+              synced = res.ok;
+            } catch (err) { console.warn("sync-delivery-config:", err); }
+          }
 
-      toast("Delivery settings saved.");
-    }, { once: true });
+          if (synced) toast("Delivery settings saved.");
+          else toast("Saved, but syncing to the delivery system failed — please save again.", true);
+        } finally {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Delivery Settings"; }
+        }
+      });
+    }
   } catch (err) {
     toast("Failed to load settings.", true);
   }
