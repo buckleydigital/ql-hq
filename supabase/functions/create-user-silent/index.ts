@@ -1,34 +1,32 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// ── Welcome email ─────────────────────────────────────────────────────────────
-function maskPassword(pw: string): string {
-  if (pw.length <= 3) return "***";
-  return pw.slice(0, 3) + "*".repeat(Math.min(pw.length - 3, 8));
-}
-
-async function sendWelcomeEmail(
+// ── Account-setup email ───────────────────────────────────────────────────────
+// The account is created WITHOUT a password. The user clicks the setup link
+// (a Supabase recovery link) which lands them on the dashboard, fires the
+// PASSWORD_RECOVERY event, and shows the "choose a password" modal.
+async function sendSetupEmail(
   resendApiKey: string,
   email: string,
   name: string,
-  password: string,
-  magicLink: string | null,
+  setupLink: string | null,
 ): Promise<void> {
-  const loginSection = magicLink
-    ? `<a href="${magicLink}"
-         style="display:inline-block;background:#1f6fff;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;margin-bottom:16px">
-         Click here to log in instantly &rarr;
-       </a>
-       <p style="margin:0 0 24px;font-size:12px;color:#9ca3af">
-         This one-time login link expires in 24 hours. After that, use your email and password above.
-       </p>`
-    : `<a href="https://app.quoteleadshq.com/dashboard.html"
+  const ctaSection = setupLink
+    ? `<a href="${setupLink}"
          style="display:inline-block;background:#1f6fff;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600">
-         Log in to QuoteLeadsHQ
-       </a>`;
+         Set your password &rarr;
+       </a>
+       <p style="margin:16px 0 0;font-size:12px;color:#9ca3af">
+         This link expires in 1 hour. If it expires, ask your admin to resend it, or use “Forgot password” on the login page.
+       </p>`
+    : `<p style="margin:0;font-size:14px;color:#374151">
+         To finish setting up, go to
+         <a href="https://app.quoteleadshq.com/dashboard.html" style="color:#1f6fff">app.quoteleadshq.com</a>
+         and use “Forgot password” to choose your password.
+       </p>`;
 
-  const loginText = magicLink
-    ? `One-time login link (expires in 24h): ${magicLink}\n\nAfter it expires, log in at https://app.quoteleadshq.com/dashboard.html`
-    : `Log in at https://app.quoteleadshq.com/dashboard.html`;
+  const ctaText = setupLink
+    ? `Set your password (expires in 1 hour): ${setupLink}\n\nIf it expires, use "Forgot password" at https://app.quoteleadshq.com/dashboard.html`
+    : `To finish setting up, go to https://app.quoteleadshq.com/dashboard.html and use "Forgot password" to choose your password.`;
 
   const html = `
 <html><body style="margin:0;padding:0;background:#f3f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
@@ -39,24 +37,16 @@ async function sendWelcomeEmail(
   <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600">QuoteLeadsHQ</h1>
 </td></tr>
 <tr><td style="padding:32px">
-  <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Your account is ready</h2>
+  <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Welcome — let's set up your account</h2>
   <p style="margin:0 0 16px;font-size:14px;color:#374151">Hi ${name},</p>
   <p style="margin:0 0 24px;font-size:14px;color:#374151">
-    An account has been created for you on QuoteLeadsHQ. Your login details are below.
+    An account has been created for you on QuoteLeadsHQ. Click the button below to choose your password and log in.
   </p>
   <table cellpadding="0" cellspacing="0" style="background:#f8f9fb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:24px;width:100%">
-    <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Email</td></tr>
-    <tr><td style="font-size:15px;color:#111827;font-weight:600;padding-bottom:14px">${email}</td></tr>
-    <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Password</td></tr>
-    <tr><td style="font-size:15px;color:#111827;font-weight:600;font-family:monospace">${maskPassword(password)}</td></tr>
+    <tr><td style="font-size:13px;color:#6b7280;padding-bottom:6px">Your login email</td></tr>
+    <tr><td style="font-size:15px;color:#111827;font-weight:600">${email}</td></tr>
   </table>
-  <p style="margin:0 0 4px;font-size:13px;color:#6b7280">
-    Your password starts with the characters shown above. For security, please change it after your first login via <strong>Settings → Change Password</strong>.
-  </p>
-  <p style="margin:0 0 16px;font-size:12px;color:#9ca3af">
-    If you need your full password, contact the person who created your account.
-  </p>
-  ${loginSection}
+  ${ctaSection}
 </td></tr>
 <tr><td style="padding:16px 32px;background:#f8f9fb;border-top:1px solid #e5e7eb">
   <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center">
@@ -80,9 +70,9 @@ async function sendWelcomeEmail(
     body: JSON.stringify({
       from: fromAddress,
       to: [email],
-      subject: "Your QuoteLeadsHQ account has been created",
+      subject: "Set up your QuoteLeadsHQ account",
       html,
-      text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nEmail: ${email}\nPassword: starts with ${maskPassword(password)} — contact your admin for the full password.\n\nPlease change your password after your first login.\n\n${loginText}`,
+      text: `Hi ${name},\n\nAn account has been created for you on QuoteLeadsHQ.\n\nYour login email: ${email}\n\n${ctaText}`,
     }),
   });
 
@@ -223,7 +213,6 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as {
       email?: unknown;
       name?: unknown;
-      password?: unknown;
       company_name?: unknown;
       company_phone?: unknown;
       company_email?: unknown;
@@ -240,7 +229,7 @@ Deno.serve(async (req) => {
     };
 
     const {
-      email, name, password,
+      email, name,
       company_name, company_phone, company_email,
       plan, website_url, service_area, user_phone, role,
       twilio_number_id, twilio_phone_number,
@@ -256,12 +245,8 @@ Deno.serve(async (req) => {
     if (name.trim().length > 120) {
       return json({ error: "name must be 120 characters or fewer" }, 400);
     }
-    if (!password || typeof password !== "string" || password.length < 8) {
-      return json({ error: "password must be at least 8 characters" }, 400);
-    }
-    if (password.length > 72) {
-      return json({ error: "password must be 72 characters or fewer" }, 400);
-    }
+    // No password is set here: the account is created passwordless and the user
+    // chooses their own password via the setup (recovery) link emailed below.
 
     const sanitizedEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitizedEmail)) {
@@ -297,13 +282,12 @@ Deno.serve(async (req) => {
         : null;
     }
 
-    // ── Create the user with a pre-set password ───────────────────────────────
-    // email_confirm: true marks the address as verified immediately.
-    // No invite, no magic-link, no email of any kind is sent.
+    // ── Create the user WITHOUT a password ────────────────────────────────────
+    // email_confirm: true marks the address as verified immediately. The user
+    // sets their own password via the recovery link emailed at the end.
     const { data: newUser, error: createError } =
       await adminClient.auth.admin.createUser({
         email: sanitizedEmail,
-        password,
         email_confirm: true,
         user_metadata: { full_name: name.trim() },
       });
@@ -446,27 +430,27 @@ Deno.serve(async (req) => {
       if (profErr) console.warn("Profile patch failed (non-fatal):", profErr.message);
     }
 
-    // ── Generate a one-time magic login link for the new user ─────────────────
-    // This lets them click straight into the dashboard without typing credentials.
-    // The link is single-use and expires automatically (Supabase default: 24h).
-    let magicLink: string | null = null;
+    // ── Generate a one-time setup (recovery) link for the new user ────────────
+    // Lands on dashboard.html, which fires PASSWORD_RECOVERY and shows the
+    // "choose a password" modal. Single-use; expires automatically (default 1h).
+    let setupLink: string | null = null;
     try {
       const { data: linkData, error: linkErr } =
         await adminClient.auth.admin.generateLink({
-          type: "magiclink",
+          type: "recovery",
           email: sanitizedEmail,
           options: { redirectTo: "https://app.quoteleadshq.com/dashboard.html" },
         });
       if (!linkErr && linkData?.properties?.action_link) {
-        magicLink = linkData.properties.action_link;
+        setupLink = linkData.properties.action_link;
       } else if (linkErr) {
-        console.warn("Magic link generation failed (non-fatal):", linkErr.message);
+        console.warn("Setup link generation failed (non-fatal):", linkErr.message);
       }
     } catch (e) {
-      console.warn("Magic link generation threw (non-fatal):", (e as Error).message);
+      console.warn("Setup link generation threw (non-fatal):", (e as Error).message);
     }
 
-    // ── Send welcome email with login credentials ──────────────────────────────
+    // ── Send the account-setup email ──────────────────────────────────────────
     // Awaited so the promise completes before the handler returns — Deno's
     // serverless runtime does not guarantee background tasks finish after the
     // response is sent. Email failure is non-fatal: the account is still created.
@@ -475,12 +459,11 @@ Deno.serve(async (req) => {
     try {
       const resendApiKey = Deno.env.get("RESEND_API_KEY");
       if (!resendApiKey) throw new Error("RESEND_API_KEY is not configured");
-      await sendWelcomeEmail(
+      await sendSetupEmail(
         resendApiKey,
         sanitizedEmail,
         name.trim(),
-        password,
-        magicLink,
+        setupLink,
       );
       emailSent = true;
     } catch (e) {
