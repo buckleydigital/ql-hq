@@ -36,7 +36,7 @@ serve(async (req) => {
 
   const { data: rows, error } = await supabase
     .from('ppl_pricing')
-    .select('price_per_lead, sub_niche, area')
+    .select('price_per_lead, sub_niche, area, sold_out')
     .eq('niche', niche)
 
   if (error) {
@@ -82,6 +82,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       price_per_lead: pricing.price_per_lead,
+      sold_out: pricing.sold_out === true,
       discount_tiers: tiers || [],
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

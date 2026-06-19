@@ -2603,7 +2603,7 @@ h1{font-size:18px;font-weight:500}
     var el = document.getElementById('pplPricingTable');
     if (!el) return;
     try {
-      var { data, error } = await sb.from('ppl_pricing').select('id, niche, sub_niche, area, price_per_lead').order('niche').order('sub_niche').order('area');
+      var { data, error } = await sb.from('ppl_pricing').select('id, niche, sub_niche, area, price_per_lead, sold_out').order('niche').order('sub_niche').order('area');
       if (error) throw error;
       allPricingRows = data || [];
       applyPricingFilter();
@@ -2667,6 +2667,7 @@ h1{font-size:18px;font-weight:500}
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Sub-Niche</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">City</th>' +
         '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Price / Lead (AUD)</th>' +
+        '<th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border)">Sold Out</th>' +
         '<th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>' +
       '</tr></thead><tbody>' +
       rows.map(function (p) {
@@ -2677,6 +2678,7 @@ h1{font-size:18px;font-weight:500}
           '<td style="padding:8px 10px">' + subNicheLabel + '</td>' +
           '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="sold_out" data-id="' + p.id + '"' + (p.sold_out ? ' checked' : '') + ' style="width:17px;height:17px;cursor:pointer"></td>' +
           '<td style="padding:8px 10px;display:flex;gap:6px">' +
             '<button class="btn2 btn-sm" onclick="savePricingRow(\'' + p.id + '\')">Save</button>' +
             '<button class="btn btn-sm btn-danger" onclick="deletePricingRow(\'' + p.id + '\')">Delete</button>' +
@@ -2869,9 +2871,10 @@ h1{font-size:18px;font-weight:500}
     if (!row) return;
     var price_per_lead = parseFloat(row.querySelector('[data-field="price_per_lead"]').value);
     if (isNaN(price_per_lead) || price_per_lead <= 0) { toast('Invalid price.', true); return; }
-    var { error } = await sb.from('ppl_pricing').update({ price_per_lead }).eq('id', id);
+    var sold_out = !!row.querySelector('[data-field="sold_out"]')?.checked;
+    var { error } = await sb.from('ppl_pricing').update({ price_per_lead, sold_out }).eq('id', id);
     if (error) { toast(error.message, true); return; }
-    toast('Pricing saved.');
+    toast(sold_out ? 'Saved — marked SOLD OUT.' : 'Pricing saved.');
   };
 
   async function loadSignupAttempts() {
