@@ -20,13 +20,13 @@ async function sendSetupEmail(
        </p>`
     : `<p style="margin:0;font-size:14px;color:#374151">
          To finish setting up, go to
-         <a href="https://app.quoteleadshq.com/dashboard.html" style="color:#1f6fff">app.quoteleadshq.com</a>
+         <a href="https://quoteleadshq.com/dashboard" style="color:#1f6fff">quoteleadshq.com/dashboard</a>
          and use “Forgot password” to choose your password.
        </p>`;
 
   const ctaText = setupLink
-    ? `Set your password (expires in 1 hour): ${setupLink}\n\nIf it expires, use "Forgot password" at https://app.quoteleadshq.com/dashboard.html`
-    : `To finish setting up, go to https://app.quoteleadshq.com/dashboard.html and use "Forgot password" to choose your password.`;
+    ? `Set your password (expires in 1 hour): ${setupLink}\n\nIf it expires, use "Forgot password" at https://quoteleadshq.com/dashboard`
+    : `To finish setting up, go to https://quoteleadshq.com/dashboard and use "Forgot password" to choose your password.`;
 
   const html = `
 <html><body style="margin:0;padding:0;background:#f3f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
@@ -439,7 +439,7 @@ Deno.serve(async (req) => {
         await adminClient.auth.admin.generateLink({
           type: "recovery",
           email: sanitizedEmail,
-          options: { redirectTo: "https://app.quoteleadshq.com/dashboard.html" },
+          options: { redirectTo: "https://quoteleadshq.com/dashboard" },
         });
       if (!linkErr && linkData?.properties?.action_link) {
         setupLink = linkData.properties.action_link;
