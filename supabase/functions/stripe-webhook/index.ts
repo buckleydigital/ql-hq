@@ -82,6 +82,30 @@ async function createMagicLink(email: string): Promise<string> {
   return data.properties.action_link
 }
 
+function buildSmsPrompts(company: string, niche: string): { system_prompt: string; welcome_message: string } {
+  const system_prompt =
+    `You are a friendly and knowledgeable assistant for ${company}. Your job is to nurture ${niche} leads via SMS, answer questions naturally, and guide them toward booking a callback with the ${company} team.
+
+Personality: Warm, helpful, conversational and never salesy. Knowledgeable about ${niche} without being overly technical. Use natural Australian language, not American English. Keep every message to 1-3 sentences maximum - this is SMS not email.
+
+Your only goal: Move every lead toward booking a callback with the ${company} team. Work toward this naturally in every conversation without being pushy.
+
+What you can help with: General ${niche} questions. For financing specifics always defer to the team.
+
+Rules: Never quote specific prices - always defer to the team. Never guarantee anything. If you don't know something say "great question, our team can answer that properly on a quick call." If someone says not interested, acknowledge it politely and close the conversation. Always end with a soft nudge toward booking a callback if they're interested. If someone is clearly ready to talk, stop nurturing and go straight to booking the call.
+
+Opening message: Introduce yourself as a consultant from ${company}, thank them for their interest in ${niche} services, and ask what questions they have while letting them know you can help get their consultation organised.
+
+Booking a callback: The best next step is a quick 10-minute call with one of our team members - they can give you an accurate estimate. When suits you best, mornings or afternoons?
+
+Escalate to a human immediately if: The lead mentions a complaint, asks about an existing job, is clearly ready to buy right now, asks for the owner or manager, or mentions anything legal or billing related. Do not attempt to handle these yourself.`
+
+  const welcome_message =
+    `Hi, thanks for reaching out to ${company}. We just wanted to confirm you're looking for a ${niche} quote - is that correct?`
+
+  return { system_prompt, welcome_message }
+}
+
 function buildSystemPrompt(m: Record<string, string>): string {
   return `You are a friendly and professional sales assistant for ${m.company}, a ${m.industry} business based in ${m.service_location}.
 
@@ -329,10 +353,28 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         plan:               'ppl',
         status:             'active',
         stripe_customer_id: session.customer as string,
+        niche:              m.niche || null,
         ...(signupPostcodes.length > 0 && { ppl_agreed_postcodes: signupPostcodes }),
       })
       .eq('id', companyId)
     if (companyError) throw new Error(`Company: ${companyError.message}`)
+
+    // Bake system_prompt and welcome_message into the SMS agent config row
+    // that was created by the DB trigger when the user was provisioned.
+    if (m.company && m.niche) {
+      const { system_prompt, welcome_message } = buildSmsPrompts(m.company, m.niche)
+      const { data: agentCfg } = await supabase
+        .from('sms_agent_config')
+        .select('id')
+        .eq('company_id', companyId)
+        .maybeSingle()
+      if (agentCfg) {
+        await supabase
+          .from('sms_agent_config')
+          .update({ system_prompt, welcome_message })
+          .eq('id', agentCfg.id)
+      }
+    }
 
     await supabase.from('profiles').upsert({
       id:         userId,
