@@ -251,6 +251,10 @@ h1{font-size:18px;font-weight:500}
               <label class="form-label" for="newCompanyServiceArea">Service Area <span style="font-weight:400">(optional)</span></label>
               <input class="form-input" id="newCompanyServiceArea" type="text" placeholder="e.g. Brisbane">
             </div>
+            <div class="form-row">
+              <label class="form-label" for="newCompanyNiche">Niche <span style="font-weight:400">(optional — used to personalise the SMS agent)</span></label>
+              <input class="form-input" id="newCompanyNiche" type="text" placeholder="e.g. solar, roofing, pest control">
+            </div>
           </div>
 
           <!-- Optional Details -->
@@ -1000,6 +1004,7 @@ h1{font-size:18px;font-weight:500}
       if (opts.plan)             payload.plan             = opts.plan;
       if (opts.website_url)      payload.website_url      = opts.website_url;
       if (opts.service_area)     payload.service_area     = opts.service_area;
+      if (opts.niche)            payload.niche            = opts.niche;
       if (opts.user_phone)       payload.user_phone       = opts.user_phone;
       if (opts.role)                payload.role                = opts.role;
       if (opts.twilio_phone_number) payload.twilio_phone_number = opts.twilio_phone_number;
@@ -1042,6 +1047,7 @@ h1{font-size:18px;font-weight:500}
     var companyEmail   = document.getElementById('newCompanyEmail').value.trim();
     var websiteUrl     = document.getElementById('newCompanyWebsite').value.trim();
     var serviceArea    = document.getElementById('newCompanyServiceArea').value.trim();
+    var companyNiche   = document.getElementById('newCompanyNiche').value.trim();
     var userPhone      = document.getElementById('newUserPhone').value.trim();
     var userRole       = document.getElementById('newUserRole').value;
     var twilioPhone    = document.getElementById('newTwilioPhoneInput').value.trim();
@@ -1084,6 +1090,7 @@ h1{font-size:18px;font-weight:500}
         company_email:    companyEmail || undefined,
         website_url:      websiteUrl || undefined,
         service_area:     serviceArea || undefined,
+        niche:            companyNiche || undefined,
         user_phone:          userPhone || undefined,
         role:                userRole || undefined,
         twilio_phone_number: twilioPhone || undefined,

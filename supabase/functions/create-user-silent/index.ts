@@ -113,34 +113,74 @@ async function resolveCallerUser(
   return null;
 }
 
-// ── Keep sms_agent_config.twilio_number in step with twilio_numbers ──────────
-// Fills the company's agent config with the assigned number, but never
-// overwrites a number that is already configured.
-async function syncAgentTwilioNumber(
+// ── Build SMS agent system prompt and welcome message ─────────────────────────
+function buildSmsPrompts(
+  company: string,
+  niche: string,
+): { system_prompt: string; welcome_message: string } {
+  const system_prompt =
+    `You are a friendly and knowledgeable assistant for ${company}. Your job is to nurture ${niche} leads via SMS, answer questions naturally, and guide them toward booking a callback with the ${company} team.
+
+Personality: Warm, helpful, conversational and never salesy. Knowledgeable about ${niche} without being overly technical. Use natural Australian language, not American English. Keep every message to 1-3 sentences maximum - this is SMS not email.
+
+Your only goal: Move every lead toward booking a callback with the ${company} team. Work toward this naturally in every conversation without being pushy.
+
+What you can help with: General ${niche} questions. For financing specifics always defer to the team.
+
+Rules: Never quote specific prices - always defer to the team. Never guarantee anything. If you don't know something say "great question, our team can answer that properly on a quick call." If someone says not interested, acknowledge it politely and close the conversation. Always end with a soft nudge toward booking a callback if they're interested. If someone is clearly ready to talk, stop nurturing and go straight to booking the call.
+
+Opening message: Introduce yourself as a consultant from ${company}, thank them for their interest in ${niche} services, and ask what questions they have while letting them know you can help get their consultation organised.
+
+Booking a callback: The best next step is a quick 10-minute call with one of our team members - they can give you an accurate estimate. When suits you best, mornings or afternoons?
+
+Escalate to a human immediately if: The lead mentions a complaint, asks about an existing job, is clearly ready to buy right now, asks for the owner or manager, or mentions anything legal or billing related. Do not attempt to handle these yourself.`;
+
+  const welcome_message =
+    `Hi, thanks for reaching out to ${company}. We just wanted to confirm you're looking for a ${niche} quote - is that correct?`;
+
+  return { system_prompt, welcome_message };
+}
+
+// ── Provision sms_agent_config with prompts and optional Twilio number ────────
+// Always called after account creation. Sets system_prompt, welcome_message,
+// and twilio_number on the existing config row (created by trigger) without
+// overwriting fields that are already customised.
+async function provisionSmsAgentConfig(
   adminClient: ReturnType<typeof createClient>,
   companyId: string,
-  phoneNumber: string,
+  companyName: string | null,
+  niche: string | null,
+  twilioPhone: string | null,
 ): Promise<void> {
   try {
     const { data: cfg, error: cfgErr } = await adminClient
       .from("sms_agent_config")
-      .select("id, twilio_number")
+      .select("id, system_prompt, welcome_message, twilio_number")
       .eq("company_id", companyId)
       .maybeSingle();
     if (cfgErr) {
-      console.warn("syncAgentTwilioNumber lookup failed:", cfgErr.message);
+      console.warn("provisionSmsAgentConfig lookup failed:", cfgErr.message);
       return;
     }
+
+    const patch: Record<string, unknown> = {};
+    if (companyName && niche) {
+      const { system_prompt, welcome_message } = buildSmsPrompts(companyName, niche);
+      patch.system_prompt = system_prompt;
+      patch.welcome_message = welcome_message;
+    }
+    if (twilioPhone && !cfg?.twilio_number) {
+      patch.twilio_number = twilioPhone;
+    }
+    if (!Object.keys(patch).length) return;
+
     if (cfg) {
-      if (!cfg.twilio_number) {
-        const { error: upErr } = await adminClient
-          .from("sms_agent_config")
-          .update({ twilio_number: phoneNumber })
-          .eq("id", cfg.id);
-        if (upErr) console.warn("syncAgentTwilioNumber update failed:", upErr.message);
-      }
+      const { error: upErr } = await adminClient
+        .from("sms_agent_config")
+        .update(patch)
+        .eq("id", cfg.id);
+      if (upErr) console.warn("provisionSmsAgentConfig update failed:", upErr.message);
     } else {
-      // Mirror provision_sms_for_company() defaults: inactive until configured.
       const { error: insErr } = await adminClient
         .from("sms_agent_config")
         .insert({
@@ -149,12 +189,12 @@ async function syncAgentTwilioNumber(
           auto_reply: false,
           is_active: false,
           lead_scoring_enabled: false,
-          twilio_number: phoneNumber,
+          ...patch,
         });
-      if (insErr) console.warn("syncAgentTwilioNumber insert failed:", insErr.message);
+      if (insErr) console.warn("provisionSmsAgentConfig insert failed:", insErr.message);
     }
   } catch (e) {
-    console.warn("syncAgentTwilioNumber threw:", (e as Error).message);
+    console.warn("provisionSmsAgentConfig threw:", (e as Error).message);
   }
 }
 
@@ -219,6 +259,7 @@ Deno.serve(async (req) => {
       plan?: unknown;
       website_url?: unknown;
       service_area?: unknown;
+      niche?: unknown;
       user_phone?: unknown;
       role?: unknown;
       twilio_number_id?: unknown;
@@ -231,7 +272,7 @@ Deno.serve(async (req) => {
     const {
       email, name,
       company_name, company_phone, company_email,
-      plan, website_url, service_area, user_phone, role,
+      plan, website_url, service_area, niche, user_phone, role,
       twilio_number_id, twilio_phone_number,
       ppl_total_leads, ppl_due_date, ppl_notes,
     } = body;
@@ -322,10 +363,15 @@ Deno.serve(async (req) => {
     let pplOrderError: string | null = null;
 
     if (companyId) {
+      const effectiveCompanyName = (typeof company_name === "string" && company_name.trim())
+        ? company_name.trim().slice(0, 200)
+        : null;
+      const effectiveNiche = (typeof niche === "string" && niche.trim())
+        ? niche.trim().slice(0, 200)
+        : null;
+
       const companyPatch: Record<string, unknown> = {};
-      if (typeof company_name === "string" && company_name.trim()) {
-        companyPatch.name = company_name.trim().slice(0, 200);
-      }
+      if (effectiveCompanyName) companyPatch.name = effectiveCompanyName;
       if (typeof company_phone === "string" && company_phone.trim()) {
         companyPatch.phone = company_phone.trim();
       }
@@ -342,6 +388,7 @@ Deno.serve(async (req) => {
       if (typeof service_area === "string" && service_area.trim()) {
         companyPatch.service_area = service_area.trim();
       }
+      if (effectiveNiche) companyPatch.niche = effectiveNiche;
       if (Object.keys(companyPatch).length) {
         const { error: compErr } = await adminClient
           .from("companies")
@@ -408,11 +455,16 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Wire the assigned number into the company's SMS agent config so the
-      // account is send-ready without a second manual step.
-      if (assignedTwilioPhone) {
-        await syncAgentTwilioNumber(adminClient, companyId, assignedTwilioPhone);
-      }
+      // Bake system_prompt and welcome_message into the SMS agent config, and
+      // wire any assigned Twilio number so the account is send-ready without
+      // a second manual step.
+      await provisionSmsAgentConfig(
+        adminClient,
+        companyId,
+        effectiveCompanyName,
+        effectiveNiche,
+        assignedTwilioPhone,
+      );
     }
 
     const profilePatch: Record<string, unknown> = {};
