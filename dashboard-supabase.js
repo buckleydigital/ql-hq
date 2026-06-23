@@ -6161,6 +6161,7 @@ async function skipReviewRequest(requestId) {
 // Buy Leads helpers
 // =============================================================================
 function nicheLabel(niche) {
+  if (niche === 'solar_battery') return 'Solar + Battery';
   return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
 

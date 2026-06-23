@@ -40,6 +40,11 @@ async function resolvePrice(niche: string, subNiche: string | null, area: string
 }
 
 // Fire internal notification via the notify-internal edge function
+// Internal ops emails show solar_battery as solar_and_battery
+function emailNiche(niche: string | null | undefined): string {
+  return niche === 'solar_battery' ? 'solar_and_battery' : (niche || '')
+}
+
 async function notifyCheckoutStarted(data: {
   first_name: string; last_name: string; email: string; phone: string
   company: string; niche: string; sub_niche: string | null; area_city: string
@@ -63,7 +68,7 @@ async function notifyCheckoutStarted(data: {
       <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${data.first_name} ${data.last_name}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${data.email}">${data.email}</a></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${data.phone}</td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${data.niche}${data.sub_niche ? ' › ' + data.sub_niche : ''}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(data.niche)}${data.sub_niche ? ' › ' + data.sub_niche : ''}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${data.quantity} leads</strong></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${data.price_per_lead.toFixed(2)} AUD</td></tr>

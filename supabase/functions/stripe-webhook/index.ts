@@ -301,7 +301,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
          <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${company?.name}</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${company?.email}">${company?.email}</a></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${company?.phone || '—'}</td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(m.niche)}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
@@ -471,7 +471,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
          <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${m.first_name} ${m.last_name}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${m.email}">${m.email}</a></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${m.phone}</td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(m.niche)}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
@@ -569,6 +569,11 @@ async function sendPplWelcomeEmail(
     const errBody = await emailRes.text()
     throw new Error(`Resend error ${emailRes.status}: ${errBody}`)
   }
+}
+
+// Internal ops emails show solar_battery as solar_and_battery
+function emailNiche(niche: string | null | undefined): string {
+  return niche === 'solar_battery' ? 'solar_and_battery' : (niche || '')
 }
 
 async function sendInternalEmail(subject: string, body: string) {
