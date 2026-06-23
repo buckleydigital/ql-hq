@@ -6181,6 +6181,7 @@ let _blQty           = 10;
 let _blDiscount      = 0;
 let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
+let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
 const _pplOrdersCache = new Map();
 
 // Sub-niche definitions per parent niche
@@ -6216,7 +6217,7 @@ async function loadBuyLeads() {
     sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
   ]);
 
-  _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {};
+  _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {};
   _blDiscountTiers = tiers || [];
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blStatewide = false; _blCovMode = 'radius';
@@ -6255,6 +6256,14 @@ function renderBuyLeadsNiches() {
   if (!el) return;
   el.innerHTML = BL_NICHES.map(niche => {
     const label = nicheLabel(niche);
+    // Sold out for this city — render greyed out, non-selectable, no price.
+    if (_blSoldOut[niche]) {
+      return `<button type="button" disabled
+        id="nicheCard-${niche}"
+        style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+        ${label} — <span style="color:#f87171">Sold out</span>
+      </button>`;
+    }
     const price = _blCityPrices[niche];
     const priceNote = _blCity
       ? (price ? ` — $${price}/lead` : ' — loading…')
@@ -6285,6 +6294,14 @@ function renderBuyLeadsSubNiches(niche) {
   </button>`;
 
   html += subs.map(s => {
+    // Sold out for this city — render greyed out, non-selectable, no price.
+    if (_blSoldOut[niche + ':' + s.id]) {
+      return `<button type="button" disabled
+        id="subNicheCard-${s.id}"
+        style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+        ${s.label} — <span style="color:#f87171">Sold out</span>
+      </button>`;
+    }
     const cached    = _blCitySubPrices[niche + ':' + s.id];
     const priceNote = cached != null ? ` — $${cached}/lead` : (_blCity ? ' — loading…' : '');
     const isSel     = _blSubNiche === s.id;
@@ -6304,14 +6321,23 @@ function renderBuyLeadsSubNiches(niche) {
 
 async function blFetchSubNichePrice(niche, subNicheId) {
   const cacheKey = niche + ':' + subNicheId;
-  if (_blCitySubPrices[cacheKey] != null || !_blCity) return;
+  if (_blCitySubPrices[cacheKey] != null || _blSoldOut[cacheKey] || !_blCity) return;
   try {
     const r = await fetch(
       `${SUPABASE_URL}/functions/v1/get-ppl-pricing?niche=${encodeURIComponent(niche)}&sub_niche=${encodeURIComponent(subNicheId)}&area=${encodeURIComponent(_blCity)}`
     );
     if (!r.ok) return;
     const d = await r.json();
-    if (d.price_per_lead != null) {
+    if (d.sold_out === true) {
+      _blSoldOut[cacheKey] = true;
+      // If this sub-niche is currently selected, drop it back to "Any".
+      if (_blNiche === niche && _blSubNiche === subNicheId) {
+        _blSubNiche = null;
+        _blPPL = _blCityPrices[niche] ?? null;
+        buyLeadsUpdateSummary();
+      }
+      renderBuyLeadsSubNiches(niche);
+    } else if (d.price_per_lead != null) {
       _blCitySubPrices[cacheKey] = d.price_per_lead;
       renderBuyLeadsSubNiches(niche);
       // If this sub-niche is currently selected, update PPL
@@ -6348,6 +6374,7 @@ function renderBuyLeadsPacks() {
 }
 
 function buyLeadsSelectNiche(niche) {
+  if (_blSoldOut[niche]) return;   // sold out for this city — not selectable
   _blNiche    = niche;
   _blSubNiche = null;
   _blPPL      = _blCityPrices[niche] ?? null;
@@ -6375,6 +6402,7 @@ function buyLeadsSelectNiche(niche) {
 }
 
 function buyLeadsSelectSubNiche(subNicheId) {
+  if (subNicheId && _blSoldOut[_blNiche + ':' + subNicheId]) return;   // sold out — not selectable
   _blSubNiche = subNicheId;
 
   // Resolve price: use cached city-specific price or fall back to parent niche price
@@ -6421,7 +6449,7 @@ function blGetTierForQty(qty) {
 async function buyLeadsOnCityChange() {
   const city = _blCity;
   if (!city) {
-    _blCityPrices = {}; _blCitySubPrices = {};
+    _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {};
     document.getElementById('buyLeadsNicheField').style.display = 'none';
     document.getElementById('buyLeadsSubNicheField').style.display = 'none';
     document.getElementById('buyLeadsLocationField').style.display = 'none';
@@ -6431,7 +6459,7 @@ async function buyLeadsOnCityChange() {
   }
 
   // Show niche field with loading placeholders
-  _blCityPrices = {};
+  _blCityPrices = {}; _blSoldOut = {};
   renderBuyLeadsNiches();
   document.getElementById('buyLeadsNicheField').style.display = '';
 
@@ -6440,14 +6468,17 @@ async function buyLeadsOnCityChange() {
     BL_NICHES.map(niche =>
       fetch(`${SUPABASE_URL}/functions/v1/get-ppl-pricing?niche=${encodeURIComponent(niche)}&area=${encodeURIComponent(city)}`)
         .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => ({ niche, price: d.price_per_lead, tiers: d.discount_tiers }))
+        .then(d => ({ niche, price: d.price_per_lead, soldOut: d.sold_out === true, tiers: d.discount_tiers }))
     )
   );
 
   results.forEach(r => {
-    if (r.status === 'fulfilled' && r.value.price != null) {
+    if (r.status !== 'fulfilled') return;
+    if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers;
+    if (r.value.soldOut) {
+      _blSoldOut[r.value.niche] = true;
+    } else if (r.value.price != null) {
       _blCityPrices[r.value.niche] = r.value.price;
-      if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers;
     }
   });
 
@@ -6455,13 +6486,24 @@ async function buyLeadsOnCityChange() {
 
   // If niche already selected (city changed after), re-resolve PPL and re-render sub-niches
   if (_blNiche) {
-    _blPPL = _blCityPrices[_blNiche] || null;
-    _blCitySubPrices = {};
-    if (NICHE_SUB_NICHES[_blNiche]) {
-      renderBuyLeadsSubNiches(_blNiche);
-      if (_blSubNiche) blFetchSubNichePrice(_blNiche, _blSubNiche);
+    if (_blSoldOut[_blNiche]) {
+      // The trade the user had selected is sold out for this city — drop the
+      // selection so they can't proceed on a greyed-out card.
+      _blNiche = null; _blSubNiche = null; _blPPL = null;
+      document.getElementById('buyLeadsSubNicheField').style.display = 'none';
+      document.getElementById('buyLeadsLocationField').style.display = 'none';
+      document.getElementById('buyLeadsQtyField').style.display = 'none';
+      document.getElementById('buyLeadsSummary').style.display = 'none';
+      renderBuyLeadsNiches();
+    } else {
+      _blPPL = _blCityPrices[_blNiche] || null;
+      _blCitySubPrices = {};
+      if (NICHE_SUB_NICHES[_blNiche]) {
+        renderBuyLeadsSubNiches(_blNiche);
+        if (_blSubNiche) blFetchSubNichePrice(_blNiche, _blSubNiche);
+      }
+      buyLeadsApplyCoverageMode();
     }
-    buyLeadsApplyCoverageMode();
   }
   buyLeadsUpdateSummary();
 }
@@ -6583,6 +6625,9 @@ async function startPplCheckout() {
   const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
 
   if (!_blNiche || !_blCity) { toast('Please select a niche and city.', true); return; }
+  if (_blSoldOut[_blNiche] || (_blSubNiche && _blSoldOut[_blNiche + ':' + _blSubNiche])) {
+    toast('That trade is sold out in this area. Please choose another.', true); return;
+  }
   if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
 
   const btn = document.getElementById('buyLeadsCheckoutBtn');
