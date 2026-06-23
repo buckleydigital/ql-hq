@@ -543,7 +543,7 @@ async function sendPplWelcomeEmail(
           <div style="padding:36px">
             <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">Your leads are on their way, ${firstName}.</h1>
             <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
-              Your ${company} workspace is live and your first batch of ${quantity} ${niche} leads for ${city} will start arriving within 7–14 days.
+              Your ${company} workspace is live and your first batch of ${quantity} ${niche === 'solar_battery' ? 'Solar + Battery' : niche} leads for ${city} will start arriving within 7–14 days.
             </p>
             <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
               Access My Dashboard →
