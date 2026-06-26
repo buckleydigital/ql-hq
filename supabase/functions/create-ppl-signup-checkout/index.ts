@@ -1,5 +1,5 @@
 // New-company PPL signup checkout.
-// Called from quoteleads.com.au — no auth required.
+// Called from quoteleads.com.au - no auth required.
 // Company + user are created by the stripe-webhook on payment completion.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -55,14 +55,14 @@ async function notifyCheckoutStarted(data: {
   const totalExGst  = (data.price_per_lead * data.quantity).toFixed(2)
   const totalIncGst = (data.price_per_lead * data.quantity * 1.1).toFixed(2)
   const locationDetail = data.location_type === 'statewide'
-    ? `${data.area_city} — State Wide`
+    ? `${data.area_city} - State Wide`
     : data.location_type === 'postcodes'
-    ? `Postcodes — ${data.postcode_list || '(none)'}`
-    : `${data.area_city} — ${data.radius_km}km radius`
+    ? `Postcodes - ${data.postcode_list || '(none)'}`
+    : `${data.area_city} - ${data.radius_km}km radius`
 
-  const subject = `🛒 Checkout started — ${data.company} (${data.email})`
+  const subject = `🛒 Checkout started - ${data.company} (${data.email})`
   const body = `
-    <h2 style="margin:0 0 16px">${data.company} started a PPL checkout — not yet paid.</h2>
+    <h2 style="margin:0 0 16px">${data.company} started a PPL checkout - not yet paid.</h2>
     <table style="border-collapse:collapse;font-size:14px">
       <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${data.company}</strong></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${data.first_name} ${data.last_name}</td></tr>
@@ -117,13 +117,13 @@ serve(async (req) => {
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
     const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
 
-    // Validate price from DB — never trust client
+    // Validate price from DB - never trust client
     const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
     if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
 
-    // Derive discount server-side — never trust a client-supplied value
+    // Derive discount server-side - never trust a client-supplied value
     const { data: tierRows } = await supabase
       .from('volume_discount_tiers')
       .select('min_quantity, discount_percent')
@@ -152,10 +152,10 @@ serve(async (req) => {
       .single()
 
     const locationDesc = location_type === 'statewide'
-      ? `${area_city} — State Wide coverage`
+      ? `${area_city} - State Wide coverage`
       : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
-      : `${area_city} — ${radius_km ?? 50}km radius`
+      : `${area_city} - ${radius_km ?? 50}km radius`
 
     const nicheDisplay = [normNiche, normSubNiche]
       .filter(Boolean)

@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Manual SMS Send
+// QuoteLeadsHQ - Manual SMS Send
 // =============================================================================
 // Allows company users to manually send an SMS to a lead from the dashboard.
 // Messages are sent via Twilio and stored in the conversation history.

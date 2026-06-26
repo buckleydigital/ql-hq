@@ -87,7 +87,7 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
   }
 
   function fmtDate(iso) {
-    if (!iso) return "—";
+    if (!iso) return "-";
     return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
   }
 
@@ -177,14 +177,14 @@ body{font-family:"Poppins",sans-serif;font-size:14px;background:radial-gradient(
     card.innerHTML =
       '<div class="quote-header">' +
         '<div>' +
-          '<h1>Quote #' + esc(q.quote_number || "—") + '</h1>' +
+          '<h1>Quote #' + esc(q.quote_number || "-") + '</h1>' +
           '<p>' + esc(co.name || "Company") + '</p>' +
         '</div>' +
         '<div>' + logoHtml + '</div>' +
       '</div>' +
       '<div class="quote-body">' +
         '<div class="quote-row"><span class="label">Status</span><span class="' + statusClass(q.status) + ' status-badge">' + esc(q.status || "Draft") + '</span></div>' +
-        '<div class="quote-row"><span class="label">Prepared For</span><span class="value">' + esc(lead.name || lead.email || "—") + '</span></div>' +
+        '<div class="quote-row"><span class="label">Prepared For</span><span class="value">' + esc(lead.name || lead.email || "-") + '</span></div>' +
         (co.email ? '<div class="quote-row"><span class="label">Contact</span><span class="value">' + esc(co.email) + (co.phone ? " · " + esc(co.phone) : "") + '</span></div>' : '') +
         abnHtml +
         '<div class="quote-row"><span class="label">Date Issued</span><span class="value">' + fmtDate(q.created_at) + '</span></div>' +

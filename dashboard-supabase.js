@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Dashboard Client (UPDATED WITH AI SETTINGS FIXES)
+// QuoteLeadsHQ - Dashboard Client (UPDATED WITH AI SETTINGS FIXES)
 // =============================================================================
 // This file contains fixes for:
 // 1. AI Settings form with all required fields
@@ -90,7 +90,7 @@ const STAGE_FROM_LABEL = Object.fromEntries(
 
 const DEFAULT_TAX_RATE = 10;
 
-function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "—"; }
+function stageLabel(dbVal) { return STAGE_LABELS[dbVal] || dbVal || "-"; }
 function stageKey(label)   { return STAGE_FROM_LABEL[label] || label; }
 
 // AI status helper: derive heat label from score, or use stored ai_status
@@ -113,7 +113,7 @@ function aiStatusChipClass(lead) {
 }
 
 function aiScoreDisplay(lead) {
-  if (lead.ai_score == null) return "—";
+  if (lead.ai_score == null) return "-";
   const status = lead.ai_status || aiStatusFromScore(lead.ai_score);
   const labels = { hot: "Hot", warm: "Warm", cold: "Cold", new: "New" };
   return `${labels[status] || status} ${lead.ai_score}/100`;
@@ -148,7 +148,7 @@ async function getAccessToken(forceRefresh = false) {
       return refreshed?.access_token || null;
     }
   } catch (e) {
-    // Decode failed — token may be corrupt; try refreshing instead of using it as-is
+    // Decode failed - token may be corrupt; try refreshing instead of using it as-is
     console.warn("JWT decode check failed, refreshing token:", e);
     const { data: { session: refreshed } } = await sb.auth.refreshSession();
     return refreshed?.access_token || null;
@@ -176,7 +176,7 @@ function edgeFetch(fnName, body, token) {
 
 async function edgeFn(fnName, body) {
   let token = await getAccessToken();
-  if (!token) throw new Error("Not authenticated — please log in again.");
+  if (!token) throw new Error("Not authenticated - please log in again.");
 
   let res = await edgeFetch(fnName, body, token);
 
@@ -184,7 +184,7 @@ async function edgeFn(fnName, body) {
   if (res.status === 401) {
     console.warn(`[edgeFn] ${fnName} returned 401, refreshing token and retrying…`);
     token = await getAccessToken(true);
-    if (!token) throw new Error("Not authenticated — please log in again.");
+    if (!token) throw new Error("Not authenticated - please log in again.");
 
     res = await edgeFetch(fnName, body, token);
   }
@@ -254,7 +254,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Set up auth state listener FIRST (before checking session)
   sb.auth.onAuthStateChange((event, session) => {
-    // Handle password recovery flow — show reset modal
+    // Handle password recovery flow - show reset modal
     if (event === "PASSWORD_RECOVERY") {
       currentUser = session?.user || null;
       showApp();
@@ -417,7 +417,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         passwordInput && (passwordInput.disabled = false);
         if (window.turnstile) turnstile.reset(loginForm.querySelector('.cf-turnstile'));
       } else if (data?.session?.user) {
-        // Navigate immediately — don't wait for onAuthStateChange
+        // Navigate immediately - don't wait for onAuthStateChange
         currentUser = data.session.user;
         authInitialized = true;
         showApp();
@@ -467,7 +467,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    // Get Turnstile token (optional — server skips CAPTCHA verification
+    // Get Turnstile token (optional - server skips CAPTCHA verification
     // when CF_TURNSTILE_SECRET is not configured).
     const turnstileInput = forgotPasswordForm.querySelector('[name="cf-turnstile-response"]');
     const cfToken = turnstileInput ? turnstileInput.value : "";
@@ -799,19 +799,19 @@ function cap(s) {
 }
 
 function fmt(val) {
-  if (!val && val !== 0) return "—";
+  if (!val && val !== 0) return "-";
   return new Intl.NumberFormat("en-AU", {
     style: "currency", currency: "AUD", maximumFractionDigits: 0,
   }).format(val);
 }
 
 function fmtDate(d) {
-  if (!d) return "—";
+  if (!d) return "-";
   return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function fmtTime(d) {
-  if (!d) return "—";
+  if (!d) return "-";
   return new Date(d).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
@@ -914,7 +914,7 @@ async function showApp() {
 
     if (profileError) {
       console.error("Profile fetch error:", profileError);
-      toast("Error loading your profile — please refresh the page.", true);
+      toast("Error loading your profile - please refresh the page.", true);
     }
 
     // Store user role and admin status
@@ -1003,7 +1003,7 @@ async function showApp() {
       }
     }
     if (urlParams.get('ppl_cancelled') === 'true') {
-      toast('Order cancelled — no charge was made.');
+      toast('Order cancelled - no charge was made.');
       history.replaceState({}, '', window.location.pathname);
     }
 
@@ -1028,7 +1028,7 @@ const PAGE_META = {
   sales:              ["Sales",             "Closed won and lost performance summary."],
   notifications:      ["Notifications",    "AI activity and goal completions."],
   conversations:      ["Conversations",     "SMS threads with leads."],
-  "bulk-sms":         ["Broadcast",          "Database reactivation — send personalized SMS to multiple leads."],
+  "bulk-sms":         ["Broadcast",          "Database reactivation - send personalized SMS to multiple leads."],
   "general-settings": ["Account",           "Manage your company and personal profile."],
   "ai-settings":      ["Automation",        "Configure your SMS agent and AI SMS number."],
   "ai-insights":      ["Performance",       "See how your AI agents are improving over time."],
@@ -1227,7 +1227,7 @@ async function loadDashboard() {
       aiChip.style.borderColor = aiOn ? "rgba(22,163,74,.3)" : "rgba(220,38,38,.3)";
       aiChip.style.background  = aiOn ? "rgba(22,163,74,.08)" : "rgba(220,38,38,.08)";
     }
-    if (aiNote) aiNote.textContent = aiOn ? "Your automation is running." : "AI agent is paused — go to Automations to enable it.";
+    if (aiNote) aiNote.textContent = aiOn ? "Your automation is running." : "AI agent is paused - go to Automations to enable it.";
 
     // ── Exception queue ────────────────────────────────────────────────────
     const exceptions = [];
@@ -1242,7 +1242,7 @@ async function loadDashboard() {
     const threeDaysAgo = new Date(Date.now() - 3 * 864e5);
     const staleQuotes = allQuotes.filter(q => q.status === "sent" && new Date(q.created_at) < threeDaysAgo);
     if (staleQuotes.length) exceptions.push({
-      icon: "!", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted — over 3 days old`,
+      icon: "!", msg: `${staleQuotes.length} quote${staleQuotes.length > 1 ? "s" : ""} sent but not accepted - over 3 days old`,
       action: "Follow Up", page: "quotes"
     });
 
@@ -1300,7 +1300,7 @@ function renderRecentLeads(leads) {
   }
   el.innerHTML = `<div class="list">${leads.map((l) => `
     <div class="item" style="grid-template-columns:1.6fr 1fr 1fr">
-      <div><h3>${esc(l.name || "—")}</h3><p>${esc(l.email || "—")}</p></div>
+      <div><h3>${esc(l.name || "-")}</h3><p>${esc(l.email || "-")}</p></div>
       <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
       <div><p style="font-size:11px;color:var(--muted)">${fmtDate(l.created_at)}</p></div>
     </div>`).join("")}</div>`;
@@ -1320,7 +1320,7 @@ function renderPipelineSnapshot(leads) {
     return `<div class="item" style="grid-template-columns:1.4fr 80px 110px">
       <div><h3>${stageLabel(s)}</h3></div>
       <div><p>${items.length} lead${items.length === 1 ? "" : "s"}</p></div>
-      <div><p>${val ? fmt(val) : "—"}</p></div>
+      <div><p>${val ? fmt(val) : "-"}</p></div>
     </div>`;
   }).join("");
 }
@@ -1369,8 +1369,8 @@ async function loadHotLeads() {
       return `<div class="row" style="border-left:3px solid ${borderColor};border-radius:0 12px 12px 0;cursor:pointer;grid-template-columns:1.3fr 1fr auto auto"
                    onclick="openOpportunityModal('${l.id}')">
         <div>
-          <strong style="font-size:13px">${esc(l.name || '—')}</strong>
-          <span class="muted">${esc(l.phone || l.email || '—')}</span>
+          <strong style="font-size:13px">${esc(l.name || '-')}</strong>
+          <span class="muted">${esc(l.phone || l.email || '-')}</span>
         </div>
         <div>
           <span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span>
@@ -1416,13 +1416,13 @@ async function loadActiveOrdersDash() {
   body.innerHTML = orders.map(o => {
     const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
     const bar    = pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
-    const city   = o.area_city || o.area || "—";
+    const city   = o.area_city || o.area || "-";
     const badge  = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
     return `<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
           ${badge}
-          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
+          <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} - ${city}</span>
         </div>
         <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;margin-bottom:6px">
           <div style="width:${pct}%;height:100%;background:${bar};border-radius:4px;transition:width .3s"></div>
@@ -1665,21 +1665,21 @@ function renderLeadsTable(leads) {
     const locked = isPplLocked(l);
     return `
     <tr class="${urgencyClass}">
-      <td><strong>${esc(l.name) || "—"}${staleHtml}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
-      <td><strong>${esc(l.email) || "—"}</strong>${l.phone ? `<span class="muted">${esc(l.phone)}</span>` : ""}</td>
-      <td><strong>${esc(l.address) || "—"}</strong>${l.postcode ? `<span class="muted">${esc(l.postcode)}</span>` : ""}</td>
-      <td>${l.source ? `<span class="chip">${esc(l.source)}</span>` : "—"}</td>
+      <td><strong>${esc(l.name) || "-"}${staleHtml}</strong><span class="muted">${fmtDate(l.created_at)}</span></td>
+      <td><strong>${esc(l.email) || "-"}</strong>${l.phone ? `<span class="muted">${esc(l.phone)}</span>` : ""}</td>
+      <td><strong>${esc(l.address) || "-"}</strong>${l.postcode ? `<span class="muted">${esc(l.postcode)}</span>` : ""}</td>
+      <td>${l.source ? `<span class="chip">${esc(l.source)}</span>` : "-"}</td>
       <td><span class="chip">${stageLabel(l.pipeline_stage)}</span></td>
       <td><span class="chip ${aiStatusChipClass(l)}">${aiScoreDisplay(l)}</span></td>
       <td><span class="chip ${aiStatusChipClass(l)}">${aiStatusLabel(l)}</span></td>
-      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.ai_summary || '')}">${esc(l.ai_summary) || "—"}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.ai_summary || '')}">${esc(l.ai_summary) || "-"}</td>
       <td style="font-size:12px;color:var(--muted)">${renderCustomDataSummary(l.custom_data)}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="iconbtn" onclick="openOpportunityModal('${l.id}')" type="button" title="View Details"><span class="icon" data-icon="eye"></span></button>
           <button class="iconbtn" onclick="openEditLead('${l.id}')" type="button" title="${locked ? 'Edit (status, value, address & notes only)' : 'Edit'}"><span class="icon" data-icon="edit"></span></button>
           ${locked
-            ? `<span class="iconbtn" title="QuoteLeads PPL lead — can't be deleted" style="opacity:.4;cursor:not-allowed"><span class="icon" data-icon="lock"></span></span>`
+            ? `<span class="iconbtn" title="QuoteLeads PPL lead - can't be deleted" style="opacity:.4;cursor:not-allowed"><span class="icon" data-icon="lock"></span></span>`
             : `<button class="iconbtn btn-danger" onclick="deleteLead('${l.id}')" type="button" title="Delete"><span class="icon" data-icon="trash"></span></button>`}
         </div>
       </td>
@@ -1689,10 +1689,10 @@ function renderLeadsTable(leads) {
 }
 
 function renderCustomDataSummary(data) {
-  if (!data || !Object.keys(data).length) return "—";
+  if (!data || !Object.keys(data).length) return "-";
   return Object.entries(data).slice(0, 2).map(([, v]) => {
     const display = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v ?? "");
-    return `<div>${esc(display) || "—"}</div>`;
+    return `<div>${esc(display) || "-"}</div>`;
   }).join("");
 }
 
@@ -1702,7 +1702,7 @@ function resetLeadForm() {
   const leadModalTitle = document.getElementById("leadModalTitle");
   if (leadId) leadId.value = "";
   if (leadModalTitle) leadModalTitle.textContent = "New Lead";
-  // Hide dispute button for new leads — PPL flag is only set server-side
+  // Hide dispute button for new leads - PPL flag is only set server-side
   _currentDisputeLeadId = null;
   document.getElementById("openDisputeFromLead")?.classList.add("hidden");
   // Re-enable any fields that a previously-viewed locked lead disabled
@@ -1747,7 +1747,7 @@ async function openEditLead(id) {
   document.querySelectorAll('#leadModal [name^="cf_"]').forEach((el) => { el.disabled = pplLocked; });
   if (leadModalTitle) leadModalTitle.textContent = pplLocked ? "Edit Lead · QuoteLeads PPL (limited editing)" : "Edit Lead";
 
-  // PPL features — dispute button + call log (source === 'PPL')
+  // PPL features - dispute button + call log (source === 'PPL')
   _currentDisputeLeadId = l.id;
   _pplEligibility       = null;
   const isPpl        = l.is_ppl === true;
@@ -1767,7 +1767,7 @@ async function openEditLead(id) {
 async function handleLeadSave(e) {
   e.preventDefault();
   if (!currentCompanyId) {
-    toast("Session error — please refresh the page and try again.", true);
+    toast("Session error - please refresh the page and try again.", true);
     return;
   }
   const id = document.getElementById("leadId")?.value;
@@ -1797,7 +1797,7 @@ async function handleLeadSave(e) {
   if (id) {
     const existingLead = allLeads.find((x) => x.id === id);
     if (isPplLocked(existingLead)) {
-      // QuoteLeads PPL: only status, value, address & notes are editable —
+      // QuoteLeads PPL: only status, value, address & notes are editable -
       // never persist changes to identifying fields, source or postcode.
       delete payload.name;
       delete payload.email;
@@ -1993,10 +1993,10 @@ function renderDisputeResult(payload) {
   if (banner) {
     if (approved) {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20";
-      banner.innerHTML = "<strong>Dispute Approved</strong> — The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
+      banner.innerHTML = "<strong>Dispute Approved</strong> - The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
     } else {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d";
-      banner.innerHTML = "<strong>Dispute Not Approved</strong> — The automated check could not confirm an issue with this lead.";
+      banner.innerHTML = "<strong>Dispute Not Approved</strong> - The automated check could not confirm an issue with this lead.";
     }
   }
 
@@ -2090,12 +2090,12 @@ async function sendDisputeManualReview() {
 
     if (!res.ok) {
       if (payload.cap_exceeded) {
-        toast("Scrub cap exceeded — manual review cannot be submitted.", true);
+        toast("Scrub cap exceeded - manual review cannot be submitted.", true);
         renderScrubBar(payload.scrub_usage);
       } else {
         toast(payload.error || "Failed to submit manual review.", true);
       }
-      if (btn) { btn.disabled = false; btn.textContent = "Confirm — Send for Manual Review"; }
+      if (btn) { btn.disabled = false; btn.textContent = "Confirm - Send for Manual Review"; }
       return;
     }
 
@@ -2106,7 +2106,7 @@ async function sendDisputeManualReview() {
     );
   } catch (err) {
     toast("Network error. Please try again.", true);
-    if (btn) { btn.disabled = false; btn.textContent = "Confirm — Send for Manual Review"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Confirm - Send for Manual Review"; }
     console.error("Manual review error:", err);
   }
 }
@@ -2257,7 +2257,7 @@ function applyDisputeEligibilityToModal(elig) {
 
   if (!elig || elig.error) return;
 
-  // Window closed — block everything
+  // Window closed - block everything
   if (!elig.dispute_window_open) {
     if (strip) {
       strip.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:6px;padding:10px;font-size:12px;color:#7f1d1d">
@@ -2269,7 +2269,7 @@ function applyDisputeEligibilityToModal(elig) {
     return;
   }
 
-  // Window open — show days remaining
+  // Window open - show days remaining
   const days    = elig.days_remaining;
   const urgency = days <= 1 ? "#7f1d1d" : days <= 2 ? "#78350f" : "#1b5e20";
   const bg      = days <= 1 ? "#fdecea" : days <= 2 ? "#fff8e1" : "#e8f5e9";
@@ -2280,14 +2280,14 @@ function applyDisputeEligibilityToModal(elig) {
     </div>`;
   }
 
-  // 24h call rule — grey out invalid_number if not eligible
+  // 24h call rule - grey out invalid_number if not eligible
   if (!elig.call_within_24h) {
     if (invLabel) invLabel.style.opacity = "0.5";
     const radio = invLabel?.querySelector('input[type="radio"]');
     if (radio)  radio.disabled = true;
     if (invNote) {
       invNote.classList.remove("hidden");
-      invNote.textContent = "Not available — no call attempt was logged within 24 hours of lead delivery. Log a call first, or choose a different reason.";
+      invNote.textContent = "Not available - no call attempt was logged within 24 hours of lead delivery. Log a call first, or choose a different reason.";
     }
   } else {
     if (invLabel) invLabel.style.opacity = "";
@@ -2375,7 +2375,7 @@ async function populateLeadSelector(selectId) {
       .order("created_at", { ascending: false });
     const sel = document.getElementById(selectId);
     if (sel && leads) {
-      sel.innerHTML = `<option value="">— Select a lead —</option>` +
+      sel.innerHTML = `<option value="">- Select a lead -</option>` +
         leads.map((l) => {
           const label = l.name || l.email || l.id;
           const sub = l.phone ? ` · ${l.phone}` : "";
@@ -2466,7 +2466,7 @@ function recalcQuoteTotals() {
   const taxMode = document.getElementById("quoteLineTaxMode")?.value || "exclusive";
   let tax, total;
   if (taxMode === "inclusive") {
-    // Prices already include GST — back-calculate the tax component
+    // Prices already include GST - back-calculate the tax component
     total = subtotal;
     tax = subtotal - (subtotal / (1 + taxRate / 100));
     subtotal = total - tax;
@@ -2739,8 +2739,8 @@ function buildKanban(leads) {
                    ondragend="kanbanDragEnd(event)"
                    onclick="openOpportunityModal('${l.id}')"
                    style="position:relative;cursor:pointer">
-                <h3>${l.name || "—"}</h3>
-                <p>${l.email || l.phone || "—"}</p>
+                <h3>${l.name || "-"}</h3>
+                <p>${l.email || l.phone || "-"}</p>
                 <span class="money">${l.value ? fmt(l.value) : "No value set"}</span>
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
                   ${l.ai_score != null ? `<span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span>` : '<span></span>'}
@@ -2857,7 +2857,7 @@ async function loadQuotes() {
       const itemCount = Array.isArray(q.line_items) ? q.line_items.length : 0;
       return `
       <div class="row" style="grid-template-columns:1.4fr .7fr .6fr auto">
-        <div><strong style="font-size:13px">Quote #${esc(q.quote_number || q.id.slice(0,8))}</strong><span class="muted">${esc(lead.name || lead.email || lead.phone || "—")}${itemCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}</span></div>
+        <div><strong style="font-size:13px">Quote #${esc(q.quote_number || q.id.slice(0,8))}</strong><span class="muted">${esc(lead.name || lead.email || lead.phone || "-")}${itemCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : ""}</span></div>
         <div><span class="chip">${cap(q.status || "draft")}</span></div>
         <div><strong style="font-size:13px">${fmt(q.total)}</strong><span class="muted">${fmtDate(q.created_at)}${q.valid_until ? ` · Valid: ${fmtDate(q.valid_until)}` : ""}</span></div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -2960,7 +2960,7 @@ async function downloadQuotePDF(quoteId) {
     doc.setFontSize(10);
     doc.setFont(undefined, "normal");
     doc.text("Status: " + (q.status || "Draft").toUpperCase(), 14, y);
-    doc.text("Date: " + (q.created_at ? new Date(q.created_at).toLocaleDateString("en-AU") : "—"), pw - 14, y, { align: "right" });
+    doc.text("Date: " + (q.created_at ? new Date(q.created_at).toLocaleDateString("en-AU") : "-"), pw - 14, y, { align: "right" });
     y += 6;
     if (meta.show_valid_until !== false && q.valid_until) {
       doc.text("Valid Until: " + new Date(q.valid_until).toLocaleDateString("en-AU"), 14, y);
@@ -2973,7 +2973,7 @@ async function downloadQuotePDF(quoteId) {
     doc.text("Prepared For:", 14, y);
     y += 5;
     doc.setFont(undefined, "normal");
-    doc.text(lead.name || "—", 14, y); y += 5;
+    doc.text(lead.name || "-", 14, y); y += 5;
     if (lead.email) { doc.text(lead.email, 14, y); y += 5; }
     if (lead.phone) { doc.text(lead.phone, 14, y); y += 5; }
     if (lead.address) { doc.text(lead.address, 14, y); y += 5; }
@@ -3092,7 +3092,7 @@ async function loadSales() {
       </div>
       ${leads.length ? `<div class="table-lite">${leads.map((l) => `
         <div class="row" style="cursor:pointer" onclick="openEditSale('${l.id}')">
-          <div><strong style="font-size:13px">${l.name || "—"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
+          <div><strong style="font-size:13px">${l.name || "-"}</strong><span class="muted">${fmtDate(l.created_at)}</span></div>
           <div><span class="chip">${stageLabel(l.pipeline_stage)}</span></div>
           <div><strong style="font-size:13px">${fmt(l.value)}</strong></div>
         </div>`).join("")}</div>`
@@ -3152,7 +3152,7 @@ async function loadAppointments() {
           <strong style="font-size:13px">${fmtDate(a.start_time)}</strong>
           <span class="muted">${fmtTime(a.start_time)}${a.end_time ? ` – ${fmtTime(a.end_time)}` : ""}</span>
         </div>
-        <div><span class="muted">${esc(a.location || "—")}</span></div>
+        <div><span class="muted">${esc(a.location || "-")}</span></div>
       </div>`).join("")}</div>`;
 
     renderPagination("appointmentsPagination", appointmentsPage, count, PER_PAGE, (page) => {
@@ -3225,7 +3225,7 @@ async function loadSettings() {
       toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
     }, { once: true });
 
-    // Lead Delivery — load
+    // Lead Delivery - load
     const delivery = company?.settings?.lead_delivery || {};
     const deliveryEmailEl   = document.getElementById("deliveryEmail");
     const deliverySmsEl     = document.getElementById("deliverySms");
@@ -3234,7 +3234,7 @@ async function loadSettings() {
     if (deliverySmsEl)     deliverySmsEl.value     = delivery.sms_number  || "";
     if (deliveryWebhookEl) deliveryWebhookEl.value = delivery.webhook_url || "";
 
-    // Lead Delivery — save. Bind once for the page's lifetime (loadSettings runs
+    // Lead Delivery - save. Bind once for the page's lifetime (loadSettings runs
     // on every visit to this page; a guard stops duplicate listeners stacking,
     // and avoids the old `{ once: true }` that broke the 2nd save in a visit).
     const leadDeliveryForm = document.getElementById("leadDeliveryForm");
@@ -3270,7 +3270,7 @@ async function loadSettings() {
           }
 
           if (synced) toast("Delivery settings saved.");
-          else toast("Saved, but syncing to the delivery system failed — please save again.", true);
+          else toast("Saved, but syncing to the delivery system failed - please save again.", true);
         } finally {
           if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Delivery Settings"; }
         }
@@ -3605,7 +3605,7 @@ async function loadPplOrdersUI() {
     const isPending = o.status === "pending";
     const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
     const colour = o.status === "cancelled" ? "#9e9e9e" : pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
-    const city   = o.area_city || o.area || "—";
+    const city   = o.area_city || o.area || "-";
     const statusBadge = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
 
     if (isPending) {
@@ -3615,7 +3615,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} - ${city}</span>
             </div>
             <div style="font-size:12px;color:var(--muted)">
               ${fmt(o.total_amount || 0)} · ${o.quantity} leads · ${new Date(o.created_at).toLocaleDateString("en-AU", { day:"numeric", month:"short", year:"numeric" })}
@@ -3639,7 +3639,7 @@ async function loadPplOrdersUI() {
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               ${statusBadge}
-              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} — ${city}</span>
+              <span style="font-size:13px;font-weight:600">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} - ${city}</span>
             </div>
             <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">
               ${o.delivered_count} / ${o.quantity}
@@ -3807,7 +3807,7 @@ async function handlePasswordChange(e) {
 }
 
 // =============================================================================
-// AI SETTINGS — UPDATED WITH ALL REQUIRED FIELDS
+// AI SETTINGS - UPDATED WITH ALL REQUIRED FIELDS
 // =============================================================================
 
 async function loadAiSettings() {
@@ -3869,7 +3869,7 @@ async function loadAiSettings() {
       // Update prompt help text
       const promptHelp = document.getElementById("aiPromptHelp");
       if (promptHelp) {
-        promptHelp.textContent = "Add extra instructions for the AI — e.g. specific services to promote, things to avoid, or how to handle objections.";
+        promptHelp.textContent = "Add extra instructions for the AI - e.g. specific services to promote, things to avoid, or how to handle objections.";
       }
 
     }
@@ -3972,7 +3972,7 @@ async function handleAiSettingsSave(e) {
   e.preventDefault();
   
   const isActive = document.getElementById("aiEnabled")?.checked ?? true;
-  // Callbacks are the minimum requirement when AI is active — force it on.
+  // Callbacks are the minimum requirement when AI is active - force it on.
   const callbackEnabled = isActive
     ? true
     : (document.getElementById("aiCallbackEnabled")?.checked ?? false);
@@ -4112,7 +4112,7 @@ async function loadTwilioNumbers() {
     el.innerHTML = `<div class="table-lite">${data.map((n) => `
       <div class="row">
         <div><strong style="font-size:13px">${esc(n.phone_number)}</strong></div>
-        <div><span class="muted">${esc(n.friendly_name || "—")}</span></div>
+        <div><span class="muted">${esc(n.friendly_name || "-")}</span></div>
         <button class="iconbtn btn-danger" onclick="deleteTwilioNumber('${n.id}')" type="button">
           <span class="icon" data-icon="trash"></span>
         </button>
@@ -4174,7 +4174,7 @@ async function loadWorkflowRuns() {
     el.innerHTML = runs.map((run) => `
       <div class="run">
         <h3>${esc(run.workflow_type)} <span class="chip">${cap(run.status)}</span></h3>
-        <p>Model: ${esc(run.model) || "—"} · Key Source: ${esc(run.key_source) || "—"}</p>
+        <p>Model: ${esc(run.model) || "-"} · Key Source: ${esc(run.key_source) || "-"}</p>
         <p style="margin-top:4px;"><span class="muted">${fmtDate(run.created_at)}</span></p>
         ${run.error_text ? `<p style="color:#c53535;margin-top:4px;">Error: ${esc(run.error_text)}</p>` : ''}
       </div>
@@ -4261,7 +4261,7 @@ function renderTeamMembersList(profiles, invites, reps) {
 
     return `
     <div class="team-row" style="flex-wrap:wrap">
-      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "—"}</strong>${p.phone ? `<span class="muted" style="display:block;margin-top:2px">${esc(p.phone)}</span>` : ""}</div>
+      <div style="flex:1;min-width:150px"><strong style="font-size:13px">${esc(p.full_name) || "-"}</strong>${p.phone ? `<span class="muted" style="display:block;margin-top:2px">${esc(p.phone)}</span>` : ""}</div>
       <div><span class="chip">${esc(p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "Member")}</span></div>
       <div><span class="chip ${p.is_active ? "" : "chip-pending"}">${p.is_active ? "Active" : "Inactive"}</span></div>
       <div>
@@ -4550,7 +4550,7 @@ async function openNewConvModal() {
 
     const sel = document.getElementById("newConvLeadSelect");
     if (sel && leads) {
-      sel.innerHTML = `<option value="">— Select a lead —</option>` +
+      sel.innerHTML = `<option value="">- Select a lead -</option>` +
         leads.map((l) => {
           const label = l.name || l.email || l.id;
           const sub   = l.phone ? ` · ${l.phone}` : "";
@@ -4584,7 +4584,7 @@ async function handleNewConversation(e) {
       await loadConversations();
       const item = document.querySelector(`.conv-item[data-conv-id="${existing.id}"]`);
       if (item) item.click();
-      toast("Conversation already exists — opened.");
+      toast("Conversation already exists - opened.");
       return;
     }
 
@@ -4841,7 +4841,7 @@ async function updateBulkSmsLeadCount() {
     const noPhoneEl = document.getElementById("bulkSmsNoPhone");
     const sendBtn = document.getElementById("bulkSmsSendBtn");
     if (countEl) countEl.textContent = bulkSmsLeads.length;
-    if (noPhoneEl) noPhoneEl.textContent = noPhone > 0 ? `(${noPhone} skipped — no phone number)` : "";
+    if (noPhoneEl) noPhoneEl.textContent = noPhone > 0 ? `(${noPhone} skipped - no phone number)` : "";
     if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0 || !document.getElementById("bulkSmsMessage")?.value?.trim();
 
     // Populate preview lead selector
@@ -5001,7 +5001,7 @@ async function openOpportunityModal(leadId) {
   setOppField("oppOverviewName", lead.name || "");
   setOppField("oppOverviewEmail", lead.email || "");
   setOppField("oppOverviewPhone", lead.phone || "");
-  // Status is now a select — set its value
+  // Status is now a select - set its value
   const statusSel = document.getElementById("oppOverviewStatus");
   if (statusSel) statusSel.value = stageLabel(lead.pipeline_stage) || "New Lead";
   setOppField("oppOverviewSource", lead.source || "");
@@ -5127,7 +5127,7 @@ async function loadOppQuotes(leadId) {
       return `
       <div class="run">
         <h3>Quote #${q.quote_number || q.id.slice(0, 8)} <span class="chip">${cap(q.status || "draft")}</span></h3>
-        <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "—"}${itemCount ? ` · ${itemCount} line item${itemCount > 1 ? "s" : ""}` : ""}</p>
+        <p><strong>Total:</strong> ${q.total ? fmt(q.total) : "-"}${itemCount ? ` · ${itemCount} line item${itemCount > 1 ? "s" : ""}` : ""}</p>
         <p style="margin-top:4px;"><span class="muted">Created: ${fmtDate(q.created_at)}${q.sent_at ? ` · Sent: ${fmtDate(q.sent_at)}` : ""}${q.accepted_at ? ` · Accepted: ${fmtDate(q.accepted_at)}` : ""}${q.valid_until ? ` · Valid until: ${fmtDate(q.valid_until)}` : ""}</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
           ${isDraft ? `<button class="btn2" style="padding:4px 10px;font-size:11px" onclick="approveAndSendQuote('${q.id}')">Approve & Send</button>` : ""}
@@ -5200,7 +5200,7 @@ async function approveAndSendQuote(quoteId) {
     if (quote.status !== "draft") { toast("Only draft quotes can be approved.", true); return; }
 
     const lead = quote.leads || {};
-    if (!lead.phone) { toast("Lead has no phone number — cannot send SMS.", true); return; }
+    if (!lead.phone) { toast("Lead has no phone number - cannot send SMS.", true); return; }
 
     // 2. Update quote status to "sent"
     const { error: updateErr } = await sb
@@ -5433,9 +5433,9 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
     cards.push({
       title: "AI Coverage",
       body: isAbove
-        ? `Your AI is handling ${pct}% of leads — above the benchmark. ${benchText} High coverage keeps response times fast and booking rates consistent.`
+        ? `Your AI is handling ${pct}% of leads - above the benchmark. ${benchText} High coverage keeps response times fast and booking rates consistent.`
         : pct >= 40
-        ? `Your AI is handling ${pct}% of leads. ${benchText} Increasing coverage reduces response time — a key driver of conversion.`
+        ? `Your AI is handling ${pct}% of leads. ${benchText} Increasing coverage reduces response time - a key driver of conversion.`
         : `Your AI is handling only ${pct}% of leads. ${benchText} Enabling AI on more leads is one of the fastest wins available.`,
       action: pct < 40 ? "Enable AI on more leads via individual lead settings or your default AI toggle." : null,
       type: isAbove ? "good" : pct >= 40 ? "warn" : "alert",
@@ -5481,11 +5481,11 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
     cards.push({
       title: "Win Rate",
       body: isAbove
-        ? `You're closing ${winRate}% of qualified leads — above the benchmark. ${benchText} Strong quote follow-up or competitive pricing is driving this.`
+        ? `You're closing ${winRate}% of qualified leads - above the benchmark. ${benchText} Strong quote follow-up or competitive pricing is driving this.`
         : winRate >= 25
         ? `You're closing ${winRate}% of qualified leads. ${benchText} Consistent follow-up after quoting is the #1 lever for improvement.`
         : `A ${winRate}% win rate is below the benchmark. ${benchText} Review quote presentation, pricing, and follow-up speed.`,
-      action: winRate < 25 ? "Check how many sent quotes have no follow-up SMS — use Quotes to trigger automated follow-ups." : null,
+      action: winRate < 25 ? "Check how many sent quotes have no follow-up SMS - use Quotes to trigger automated follow-ups." : null,
       type: isAbove ? "good" : winRate >= 25 ? "warn" : "alert",
       metric: `${winRate}%`,
       metricLabel: `${won} of ${won + lost} closed`,
@@ -5548,7 +5548,7 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   if (!bm && niche && cards.length > 0) {
     cards.push({
       title: "Niche Benchmarks Coming Soon",
-      body: `Once 10+ ${nicheLabel} businesses on QuoteLeads have enough pipeline data, you'll see how you compare to your peers — callback rates, win rates, deal values, and more. Your data contributes automatically if you've opted in under Account Settings.`,
+      body: `Once 10+ ${nicheLabel} businesses on QuoteLeads have enough pipeline data, you'll see how you compare to your peers - callback rates, win rates, deal values, and more. Your data contributes automatically if you've opted in under Account Settings.`,
       type: "info",
       metric: null,
     });
@@ -5714,7 +5714,7 @@ async function handleCreateApiKey(e) {
   document.getElementById("apiKeyCreatedPanel").style.display = "";
   document.getElementById("apiKeyRawValue").textContent = rawToken;
 
-  toast("API key created! Copy it now — it won't be shown again.");
+  toast("API key created! Copy it now - it won't be shown again.");
   loadApiKeys();
 }
 
@@ -5860,7 +5860,7 @@ async function loadWebhookDeliveries() {
   const rows = data.map((d) => {
     const ts = new Date(d.created_at).toLocaleString();
     const statusColor = d.success ? "var(--green)" : "var(--red, #e74c3c)";
-    const url = d.webhook_endpoints?.url || "—";
+    const url = d.webhook_endpoints?.url || "-";
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px">
       <div style="flex:1;display:flex;gap:12px;align-items:center">
         <span style="color:${statusColor};font-weight:600">${d.response_status || "ERR"}</span>
@@ -5875,7 +5875,7 @@ async function loadWebhookDeliveries() {
 }
 
 // ─── Reviews ──────────────────────────────────────────────────────────────────
-const DEFAULT_REVIEW_MESSAGE = "Hi {{first_name}}, thank you for choosing us! We'd love your feedback — please leave us a Google review: {{review_link}}";
+const DEFAULT_REVIEW_MESSAGE = "Hi {{first_name}}, thank you for choosing us! We'd love your feedback - please leave us a Google review: {{review_link}}";
 
 async function loadReviews() {
   if (!currentCompanyId) return;
@@ -5941,11 +5941,11 @@ function renderReviewRequestsTable(requests) {
 
   const rows = requests.map((r) => {
     const name = `${r.leads?.first_name || ""} ${r.leads?.last_name || ""}`.trim() || "Unknown";
-    const phone = r.leads?.phone || "—";
+    const phone = r.leads?.phone || "-";
     const statusColors = { pending: "var(--yellow)", sent: "var(--green)", skipped: "var(--text-3)", failed: "var(--red)" };
     const statusColor = statusColors[r.status] || "var(--text-2)";
-    const scheduled = r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString() : "—";
-    const sentAt = r.sent_at ? new Date(r.sent_at).toLocaleDateString() : "—";
+    const scheduled = r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString() : "-";
+    const sentAt = r.sent_at ? new Date(r.sent_at).toLocaleDateString() : "-";
 
     let actions = "";
     if (r.status === "pending") {
@@ -6256,17 +6256,17 @@ function renderBuyLeadsNiches() {
   if (!el) return;
   el.innerHTML = BL_NICHES.map(niche => {
     const label = nicheLabel(niche);
-    // Sold out for this city — render greyed out, non-selectable, no price.
+    // Sold out for this city - render greyed out, non-selectable, no price.
     if (_blSoldOut[niche]) {
       return `<button type="button" disabled
         id="nicheCard-${niche}"
         style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-        ${label} — <span style="color:#f87171">Sold out</span>
+        ${label} - <span style="color:#f87171">Sold out</span>
       </button>`;
     }
     const price = _blCityPrices[niche];
     const priceNote = _blCity
-      ? (price ? ` — $${price}/lead` : ' — loading…')
+      ? (price ? ` - $${price}/lead` : ' - loading…')
       : '';
     const isSelected = niche === _blNiche;
     return `<button type="button" onclick="buyLeadsSelectNiche('${niche}')"
@@ -6284,7 +6284,7 @@ function renderBuyLeadsSubNiches(niche) {
   if (!field || !el || !subs) { if (field) field.style.display = 'none'; return; }
 
   const parentPPL = _blCityPrices[niche] ?? null;
-  const anyNote   = parentPPL != null ? ` — $${parentPPL}/lead` : '';
+  const anyNote   = parentPPL != null ? ` - $${parentPPL}/lead` : '';
   const isAny     = _blSubNiche === null;
 
   let html = `<button type="button" onclick="buyLeadsSelectSubNiche(null)"
@@ -6294,16 +6294,16 @@ function renderBuyLeadsSubNiches(niche) {
   </button>`;
 
   html += subs.map(s => {
-    // Sold out for this city — render greyed out, non-selectable, no price.
+    // Sold out for this city - render greyed out, non-selectable, no price.
     if (_blSoldOut[niche + ':' + s.id]) {
       return `<button type="button" disabled
         id="subNicheCard-${s.id}"
         style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-        ${s.label} — <span style="color:#f87171">Sold out</span>
+        ${s.label} - <span style="color:#f87171">Sold out</span>
       </button>`;
     }
     const cached    = _blCitySubPrices[niche + ':' + s.id];
-    const priceNote = cached != null ? ` — $${cached}/lead` : (_blCity ? ' — loading…' : '');
+    const priceNote = cached != null ? ` - $${cached}/lead` : (_blCity ? ' - loading…' : '');
     const isSel     = _blSubNiche === s.id;
     return `<button type="button" onclick="buyLeadsSelectSubNiche('${s.id}')"
       id="subNicheCard-${s.id}"
@@ -6374,7 +6374,7 @@ function renderBuyLeadsPacks() {
 }
 
 function buyLeadsSelectNiche(niche) {
-  if (_blSoldOut[niche]) return;   // sold out for this city — not selectable
+  if (_blSoldOut[niche]) return;   // sold out for this city - not selectable
   _blNiche    = niche;
   _blSubNiche = null;
   _blPPL      = _blCityPrices[niche] ?? null;
@@ -6402,7 +6402,7 @@ function buyLeadsSelectNiche(niche) {
 }
 
 function buyLeadsSelectSubNiche(subNicheId) {
-  if (subNicheId && _blSoldOut[_blNiche + ':' + subNicheId]) return;   // sold out — not selectable
+  if (subNicheId && _blSoldOut[_blNiche + ':' + subNicheId]) return;   // sold out - not selectable
   _blSubNiche = subNicheId;
 
   // Resolve price: use cached city-specific price or fall back to parent niche price
@@ -6487,7 +6487,7 @@ async function buyLeadsOnCityChange() {
   // If niche already selected (city changed after), re-resolve PPL and re-render sub-niches
   if (_blNiche) {
     if (_blSoldOut[_blNiche]) {
-      // The trade the user had selected is sold out for this city — drop the
+      // The trade the user had selected is sold out for this city - drop the
       // selection so they can't proceed on a greyed-out card.
       _blNiche = null; _blSubNiche = null; _blPPL = null;
       document.getElementById('buyLeadsSubNicheField').style.display = 'none';
@@ -6672,12 +6672,12 @@ function renderBuyLeadsOrders(orders) {
 
   let html = '';
 
-  // Pending (incomplete checkout) — shown as banners above the table
+  // Pending (incomplete checkout) - shown as banners above the table
   if (pending.length) {
     html += pending.map(o => {
-      const city  = o.area_city || o.area || '—';
+      const city  = o.area_city || o.area || '-';
       const pendingNicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
-      const label = `${pendingNicheDisplay} — ${city} — ${o.quantity} leads — ${fmt(o.total_amount)}`;
+      const label = `${pendingNicheDisplay} - ${city} - ${o.quantity} leads - ${fmt(o.total_amount)}`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div>
@@ -6693,7 +6693,7 @@ function renderBuyLeadsOrders(orders) {
     }).join('');
   }
 
-  // Active / fulfilled / cancelled orders — table
+  // Active / fulfilled / cancelled orders - table
   if (active.length) {
     html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
       <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
@@ -6705,7 +6705,7 @@ function renderBuyLeadsOrders(orders) {
       <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Date</th>
     </tr></thead><tbody>
     ${active.map(o => {
-      const city = o.area_city || o.area || '—';
+      const city = o.area_city || o.area || '-';
       const coverage = o.location_type === 'statewide'
         ? 'State wide'
         : o.location_type === 'postcodes'
@@ -6800,7 +6800,7 @@ window.deletePendingOrderFromSettings = deletePendingOrderFromSettings;
 // =============================================================================
 
 // =============================================================================
-// Add to Home Screen (PWA install prompt — shown once per new device/user)
+// Add to Home Screen (PWA install prompt - shown once per new device/user)
 // =============================================================================
 
 let _a2hsDeferredPrompt = null;
@@ -6832,10 +6832,10 @@ async function _markA2hsDismissed(userId) {
 }
 
 function maybeShowInstallPrompt(userId, alreadyDismissed) {
-  // Desktop browsers — home screen prompt is not relevant
+  // Desktop browsers - home screen prompt is not relevant
   if (!isMobileDevice()) return;
 
-  // Already installed as a standalone app — no need to prompt
+  // Already installed as a standalone app - no need to prompt
   if (isInStandaloneMode()) return;
 
   // DB says this user has already seen and dismissed the banner
@@ -6855,7 +6855,7 @@ function maybeShowInstallPrompt(userId, alreadyDismissed) {
     if (instructions) instructions.textContent = 'Tap the Share button (↑) in Safari then "Add to Home Screen".';
     setTimeout(() => { banner.style.display = ''; }, 1500);
   } else if (_a2hsDeferredPrompt) {
-    if (instructions) instructions.textContent = 'Install for quick access — works like a native app, no app store needed.';
+    if (instructions) instructions.textContent = 'Install for quick access - works like a native app, no app store needed.';
     if (installBtn) installBtn.style.display = '';
     if (installBtn) installBtn.addEventListener('click', async () => {
       banner.style.display = 'none';

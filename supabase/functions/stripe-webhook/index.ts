@@ -9,7 +9,7 @@ const supabase = createClient(
 )
 const RESEND_API_KEY        = Deno.env.get('RESEND_API_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
-// ql-mc cross-service sync — must be set in Supabase Dashboard → Edge Functions → Secrets
+// ql-mc cross-service sync - must be set in Supabase Dashboard → Edge Functions → Secrets
 const QL_MC_API_URL    = Deno.env.get('QL_MC_API_URL')    // https://<mc-project>.supabase.co/functions/v1
 const QL_MC_API_SECRET = Deno.env.get('QL_MC_API_SECRET') // shared secret for ql-hq → ql-mc HTTP calls
 
@@ -109,7 +109,7 @@ Escalate to a human immediately if: The lead mentions a complaint, asks about an
 function buildSystemPrompt(m: Record<string, string>): string {
   return `You are a friendly and professional sales assistant for ${m.company}, a ${m.industry} business based in ${m.service_location}.
 
-Your job is to qualify inbound leads via SMS. Keep messages short, warm and conversational — never more than 2-3 sentences.
+Your job is to qualify inbound leads via SMS. Keep messages short, warm and conversational - never more than 2-3 sentences.
 
 Key details:
 - Business: ${m.company}
@@ -165,7 +165,7 @@ async function insertSmsAgentConfig(companyId: string, m: Record<string, string>
 // ── ql-mc sync: create/update PPL client + log order ──────────────────────────
 //
 // Calls ql-mc’s sync-from-hq edge function via HTTP.
-// Fire-and-forget on failure — ql-hq provisioning must not be blocked by ql-mc.
+// Fire-and-forget on failure - ql-hq provisioning must not be blocked by ql-mc.
 async function syncPplOrderToMc(params: {
   companyId:       string
   companyName:     string
@@ -183,7 +183,7 @@ async function syncPplOrderToMc(params: {
   qlHqOrderId:     string
 }) {
   if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
-    console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured — skipping ql-mc sync')
+    console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured - skipping ql-mc sync')
     return
   }
 
@@ -262,7 +262,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       total_leads: parseInt(m.quantity),
       due_date:    dueDate.toISOString().split('T')[0],
       status:      'active',
-      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} — ${m.area_city}`,
+      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${m.area_city}`,
     })
     if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
 
@@ -289,18 +289,18 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
 
     const totalExGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
     const locationDetail = m.location_type === 'statewide'
-      ? `${m.area_city} — State Wide`
+      ? `${m.area_city} - State Wide`
       : m.location_type === 'postcodes'
-      ? `Postcodes — ${m.postcode_list || '(none)'}`
-      : `${m.area_city} — ${m.radius_km || 50}km radius`
+      ? `Postcodes - ${m.postcode_list || '(none)'}`
+      : `${m.area_city} - ${m.radius_km || 50}km radius`
 
     await sendInternalEmail(
-      `💰 PPL reorder — ${company?.name}`,
+      `💰 PPL reorder - ${company?.name}`,
       `<h2 style="margin:0 0 16px">${company?.name} purchased a new lead pack.</h2>
        <table style="border-collapse:collapse;font-size:14px">
          <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${company?.name}</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${company?.email}">${company?.email}</a></td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${company?.phone || '—'}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${company?.phone || '-'}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(m.niche)}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
@@ -313,7 +313,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
   } catch (err) {
     console.error('handlePplPayment error:', err)
     await sendInternalEmail(
-      `⚠️ PPL payment processing failed — order ${m.order_id}`,
+      `⚠️ PPL payment processing failed - order ${m.order_id}`,
       `<p>Error: ${String(err)}</p><p>Order ID: ${m.order_id}</p><p>Company ID: ${m.company_id}</p>`
     )
   }
@@ -414,7 +414,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       total_leads: parseInt(m.quantity),
       due_date:    dueDate.toISOString().split('T')[0],
       status:      'active',
-      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} — ${m.area_city}`,
+      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${m.area_city}`,
     })
     if (pplOrderError) throw new Error(`ppl_orders insert: ${pplOrderError.message}`)
 
@@ -423,7 +423,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
     }
 
-    // Sync to ql-mc — creates the client as active_client immediately
+    // Sync to ql-mc - creates the client as active_client immediately
     if (order) {
       await syncPplOrderToMc({
         companyId:       companyId,
@@ -458,13 +458,13 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     const totalIncGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity) * 1.1).toFixed(2)
     const discountPct = parseFloat(m.discount_percent || '0')
     const locationDetail = m.location_type === 'statewide'
-      ? `${m.area_city} — State Wide`
+      ? `${m.area_city} - State Wide`
       : m.location_type === 'postcodes'
-      ? `Postcodes — ${m.postcode_list || '(none supplied)'}`
-      : `${m.area_city} — ${m.radius_km || 50}km radius`
+      ? `Postcodes - ${m.postcode_list || '(none supplied)'}`
+      : `${m.area_city} - ${m.radius_km || 50}km radius`
 
     await sendInternalEmail(
-      `💰 New PPL signup — ${m.company}`,
+      `💰 New PPL signup - ${m.company}`,
       `<h2 style="margin:0 0 16px">${m.company} signed up and paid for a lead pack.</h2>
        <table style="border-collapse:collapse;font-size:14px">
          <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${m.company}</strong></td></tr>
@@ -490,7 +490,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
   } catch (err) {
     console.error('handlePplSignupPayment error:', err)
     await sendInternalEmail(
-      `⚠️ PPL signup provisioning failed — ${m.email}`,
+      `⚠️ PPL signup provisioning failed - ${m.email}`,
       `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
     )
   }
@@ -509,14 +509,14 @@ async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record
       .from('companies').select('name, email').eq('id', m.company_id).maybeSingle()
 
     await sendInternalEmail(
-      `📱 SMS credits top-up — ${company?.name}`,
+      `📱 SMS credits top-up - ${company?.name}`,
       `<p>${company?.name} purchased ${credits} SMS credits.</p><p><strong>Email:</strong> ${company?.email}</p>`
     )
     console.log('SMS credits added:', credits, 'to', m.company_id)
   } catch (err) {
     console.error('handleSmsCreditsTopUp error:', err)
     await sendInternalEmail(
-      `⚠️ SMS credits top-up failed — company ${m.company_id}`,
+      `⚠️ SMS credits top-up failed - company ${m.company_id}`,
       `<p>Error: ${String(err)}</p><p>Credits: ${m.credits}</p><p>Stripe Session: ${session.id}</p>`
     )
   }

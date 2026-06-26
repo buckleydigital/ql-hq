@@ -1,5 +1,5 @@
 // =============================================================================
-// va-api — Virtual Assistant API
+// va-api - Virtual Assistant API
 // =============================================================================
 // One edge function powering two callers, both verified server-side via the
 // service role (never trusting the client):
@@ -17,7 +17,7 @@
 //     • assign / unassign → manage a VA's company assignments
 //     • list_assignments  → companies assigned to a given VA
 //
-// No existing RLS policy is involved — this mirrors how impersonate-user backs
+// No existing RLS policy is involved - this mirrors how impersonate-user backs
 // the /admin panel, so client + super-admin behaviour is unchanged.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
           .order("name", { ascending: true });
 
         // Lead counts come from ppl_orders (the real fulfilment orders), NOT
-        // ppl_lead_orders (Stripe checkouts — many clients have none).
+        // ppl_lead_orders (Stripe checkouts - many clients have none).
         const { data: orders } = await adminClient
           .from("ppl_orders")
           .select("company_id, total_leads, delivered_leads, status")

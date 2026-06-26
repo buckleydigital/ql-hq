@@ -90,8 +90,8 @@ Deno.serve(async (req) => {
     }
 
     // ── Build two Supabase clients ────────────────────────────────────────────
-    // userClient: runs as the calling user — used only for JWT validation.
-    // adminClient: uses the service role key — NEVER returned to the client.
+    // userClient: runs as the calling user - used only for JWT validation.
+    // adminClient: uses the service role key - NEVER returned to the client.
     const userClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
         return json({ error: "Invalid email address" }, 400);
       }
 
-      // Step 1: generate a magic-link — does NOT send any email.
+      // Step 1: generate a magic-link - does NOT send any email.
       const { data: linkData, error: linkError } =
         await adminClient.auth.admin.generateLink({
           type: "magiclink",
@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
 
       const hashedToken = linkData.properties.hashed_token;
 
-      // Step 2: exchange the hashed_token for a live session — still
+      // Step 2: exchange the hashed_token for a live session - still
       // server-side, never leaves this function until it is a session object.
       const { data: otpData, error: otpError } =
         await adminClient.auth.verifyOtp({
@@ -244,13 +244,13 @@ Deno.serve(async (req) => {
         return json({ error: "Failed to create impersonation session" }, 500);
       }
 
-      // Return only the session — service role key is never included.
+      // Return only the session - service role key is never included.
       return json({ session: otpData.session });
     }
 
     // ── action: list_disputes ─────────────────────────────────────────────────
     // Returns all lead disputes across every company (admin view).
-    // All reads happen via the service-role client — RLS is bypassed server-side
+    // All reads happen via the service-role client - RLS is bypassed server-side
     // and no sensitive keys are ever returned to the browser.
     if (action === "list_disputes") {
       const { data: disputes, error: disputeErr } = await adminClient
@@ -662,7 +662,7 @@ Deno.serve(async (req) => {
       if (company_id !== undefined && prevRow) {
         const newCompanyId = company_id || null;
         if (prevRow.company_id && prevRow.company_id !== newCompanyId) {
-          // Number moved away — clear the old company's config if it used it.
+          // Number moved away - clear the old company's config if it used it.
           await adminClient
             .from("sms_agent_config")
             .update({ twilio_number: null })
@@ -926,7 +926,7 @@ Deno.serve(async (req) => {
         .from("profiles").select("id").eq("company_id", company_id);
       const memberIds = (members || []).map((m: { id: string }) => m.id);
 
-      // Delete the company — cascades all company-scoped rows.
+      // Delete the company - cascades all company-scoped rows.
       const { error: delErr } = await adminClient
         .from("companies").delete().eq("id", company_id);
       if (delErr) {

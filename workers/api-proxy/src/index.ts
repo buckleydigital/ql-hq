@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Cloudflare Worker API Proxy
+// QuoteLeadsHQ - Cloudflare Worker API Proxy
 // =============================================================================
 // Reverse-proxy that maps clean URLs to the Supabase Edge Function backend.
 //

@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const companyId = ql_hq_company_id.trim()
 
     // ── action: scrub ─────────────────────────────────────────────────────────
-    // A lead was scrubbed in ql-mc — pull the delivered count back by one on the
+    // A lead was scrubbed in ql-mc - pull the delivered count back by one on the
     // most relevant order. We mirror this onto BOTH order tables independently:
     //   • ppl_orders.delivered_leads      (admin fulfillment tracker)
     //   • ppl_lead_orders.delivered_count (client dashboard order)
@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
         delivered_leads = newDelivered
       }
 
-      // ── ppl_lead_orders (client dashboard) — independent + guarded ──────────
+      // ── ppl_lead_orders (client dashboard) - independent + guarded ──────────
       let { data: leadOrder } = await supabase
         .from('ppl_lead_orders')
         .select('id, delivered_count, quantity, status')

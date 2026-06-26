@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Verify Cloudflare Turnstile Token
+// QuoteLeadsHQ - Verify Cloudflare Turnstile Token
 // =============================================================================
 // Lightweight endpoint that validates a Turnstile CAPTCHA token server-side.
 // Used by the login form (which calls Supabase Auth SDK directly and has no

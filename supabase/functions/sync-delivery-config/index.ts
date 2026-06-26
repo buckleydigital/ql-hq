@@ -31,7 +31,7 @@ serve(async (req) => {
     try {
       const body = await req.json()
       overrideCompanyId = body?.company_id ?? null
-    } catch (_) { /* no body or invalid JSON — fine */ }
+    } catch (_) { /* no body or invalid JSON - fine */ }
 
     let targetCompanyId: string
 

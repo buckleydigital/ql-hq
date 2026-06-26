@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Send Password Reset via Resend
+// QuoteLeadsHQ - Send Password Reset via Resend
 // =============================================================================
 // Same pattern as invite-rep:
 //   1. admin.generateLink({ type: "recovery", redirectTo: dashboard.html })
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Generate recovery link — same approach as invite-rep.
+    // Generate recovery link - same approach as invite-rep.
     // action_link is a full Supabase URL that redirects to SITE_URL/dashboard.html
     // after verifying the token server-side, firing PASSWORD_RECOVERY in onAuthStateChange.
     const { data: linkData, error: linkError } =
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       });
 
     if (!linkData?.properties?.action_link) {
-      // User doesn't exist or other error — return 200 to prevent email enumeration
+      // User doesn't exist or other error - return 200 to prevent email enumeration
       console.log("send-password-rest: generateLink failed:", linkError?.message ?? "no action_link");
       return new Response(
         JSON.stringify({ success: true }),

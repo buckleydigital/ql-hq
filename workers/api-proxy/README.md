@@ -1,4 +1,4 @@
-# QuoteLeadsHQ — API Proxy (Cloudflare Worker)
+# QuoteLeadsHQ - API Proxy (Cloudflare Worker)
 
 Reverse-proxy that gives the REST API a clean, branded URL:
 

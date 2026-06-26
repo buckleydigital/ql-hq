@@ -14,7 +14,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Credit packs — cents (AUD ex-GST)
+// Credit packs - cents (AUD ex-GST)
 const PACKS: Record<string, { credits: number; cents: number; label: string }> = {
   '100':  { credits: 100,  cents:  1000, label: '100 SMS Credits'   },
   '500':  { credits: 500,  cents:  4500, label: '500 SMS Credits'   },

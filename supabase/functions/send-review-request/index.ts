@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Send Review Request (Scheduled)
+// QuoteLeadsHQ - Send Review Request (Scheduled)
 // =============================================================================
 // Processes pending review requests that are due for sending.
 // Called via cron job (pg_cron or external scheduler) or manually.
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
         });
         if (!creditOk) {
           console.warn(`No SMS credits for company ${request.company_id}`);
-          continue; // Don't fail — try again later when credits replenished
+          continue; // Don't fail - try again later when credits replenished
         }
 
         // Send via Twilio

@@ -39,7 +39,7 @@ serve(async (req) => {
     })
   }
 
-  // Webhook hasn't fired yet — tell client to keep polling
+  // Webhook hasn't fired yet - tell client to keep polling
   if (!data) {
     return new Response(JSON.stringify({ pending: true }), {
       status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -49,12 +49,12 @@ serve(async (req) => {
   // Expired
   if (new Date(data.expires_at) < new Date()) {
     await supabase.from('pending_magic_links').delete().eq('stripe_session_id', sessionId)
-    return new Response(JSON.stringify({ error: 'Link expired — check your email.' }), {
+    return new Response(JSON.stringify({ error: 'Link expired - check your email.' }), {
       status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  // One-time use — delete after retrieval
+  // One-time use - delete after retrieval
   await supabase.from('pending_magic_links').delete().eq('stripe_session_id', sessionId)
 
   return new Response(JSON.stringify({ url: data.magic_link }), {

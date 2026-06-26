@@ -58,13 +58,13 @@ serve(async (req) => {
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
     const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
 
-    // Always validate price from DB — never trust client.
+    // Always validate price from DB - never trust client.
     const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
     if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
 
-    // Derive discount server-side — never trust a client-supplied value
+    // Derive discount server-side - never trust a client-supplied value
     const { data: tierRows } = await supabase
       .from('volume_discount_tiers')
       .select('min_quantity, discount_percent')
@@ -85,10 +85,10 @@ serve(async (req) => {
     if (!company) throw new Error('Company not found')
 
     const locationDesc = location_type === 'statewide'
-      ? `${area_city} — State Wide coverage`
+      ? `${area_city} - State Wide coverage`
       : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
-      : `${area_city} — ${radius_km ?? 50}km radius`
+      : `${area_city} - ${radius_km ?? 50}km radius`
 
     const nicheDisplay = [normNiche, normSubNiche]
       .filter(Boolean)

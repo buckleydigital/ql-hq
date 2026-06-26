@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Twilio Inbound SMS Webhook
+// QuoteLeadsHQ - Twilio Inbound SMS Webhook
 // =============================================================================
 // Replaces the full Make.com workflow. Receives inbound SMS from Twilio,
 // runs the AI nurturing pipeline, and replies via Twilio.
@@ -187,7 +187,7 @@ async function fireWebhooks(
 
 /**
  * Send a notification email via Resend to company owners/admins.
- * Non-blocking — failures are logged but never interrupt the SMS flow.
+ * Non-blocking - failures are logged but never interrupt the SMS flow.
  */
 async function sendNotificationEmail(
   db: SupabaseClient,
@@ -196,7 +196,7 @@ async function sendNotificationEmail(
 ): Promise<void> {
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) return; // Resend not configured — skip silently
+    if (!resendApiKey) return; // Resend not configured - skip silently
 
     // Look up owners and admins for this company via auth.users join
     const { data: ownerProfiles } = await db
@@ -401,15 +401,15 @@ function buildSystemPrompt(
     }
   } else if (callbackEnabled && onsiteEnabled) {
     // No quoting, but callbacks and on-site are ON
-    goalSection = `Your goal: offer for a team member to give them a call or come out for a visit. Do NOT ask for job details, sizing, or scope — that is for the team to handle on the call or visit. Simply confirm interest and lock in a time.`;
+    goalSection = `Your goal: offer for a team member to give them a call or come out for a visit. Do NOT ask for job details, sizing, or scope - that is for the team to handle on the call or visit. Simply confirm interest and lock in a time.`;
   } else if (callbackEnabled) {
     // Only callbacks ON
-    goalSection = `Your goal: schedule a time for one of the team to call them back. Do NOT ask for job details, sizing, or scope — just confirm interest and lock in a call time.`;
+    goalSection = `Your goal: schedule a time for one of the team to call them back. Do NOT ask for job details, sizing, or scope - just confirm interest and lock in a call time.`;
   } else if (onsiteEnabled) {
     // Only on-site ON
-    goalSection = `Your goal: schedule a time for one of the team to come out for a visit. Do NOT ask for job details, sizing, or scope — just confirm interest and lock in a visit time.`;
+    goalSection = `Your goal: schedule a time for one of the team to come out for a visit. Do NOT ask for job details, sizing, or scope - just confirm interest and lock in a visit time.`;
   } else {
-    // Nothing enabled — just answer questions
+    // Nothing enabled - just answer questions
     goalSection = `Your goal: answer any questions the lead has about ${service} and let them know the team will be in touch.`;
   }
 
@@ -461,15 +461,15 @@ ON-SITE VISITS:
 
   const leadNameLine = leadFirstName
     ? `The lead's name is ${leadFirstName}.`
-    : `The lead's name is unknown — do not use a name.`;
+    : `The lead's name is unknown - do not use a name.`;
 
-  const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person — casual, warm, brief.
+  const bakedPrompt = `You are a friendly assistant for ${companyName} (${area}), handling SMS enquiries about ${service}. Text like a real person - casual, warm, brief.
 
 ${leadNameLine}
 
 RULES (never break these):
 1. Keep every reply under 2 short sentences. Be concise.
-2. Never repeat yourself. Read the conversation history — if you already said something, move forward, don't say it again.
+2. Never repeat yourself. Read the conversation history - if you already said something, move forward, don't say it again.
 3. Never mention AI, automation, software, settings, or internal processes.
 4. Never use emojis, asterisks, bullet points, or markdown.
 5. Never use filler phrases like "grab the details", "nail down the details", "how does time sound", "does that work", "whenever is convenient", "quick chat", "see how we can assist", "we usually just".
@@ -652,18 +652,18 @@ Deno.serve(async (req) => {
     // Requests that fail signature validation are always rejected.
     const canonicalWebhookUrl = Deno.env.get("TWILIO_WEBHOOK_URL");
     if (!canonicalWebhookUrl) {
-      console.error("TWILIO_WEBHOOK_URL is not set — rejecting request. Set this secret to enable the inbound SMS webhook.");
+      console.error("TWILIO_WEBHOOK_URL is not set - rejecting request. Set this secret to enable the inbound SMS webhook.");
       return twimlResponse("");
     }
     try {
       const twilioAuthForValidation = await resolveKey(db, companyId, "twilio_auth", "");
       const isValid = await validateTwilioSignature(req, rawBody, twilioAuthForValidation, canonicalWebhookUrl);
       if (!isValid) {
-        console.error("Twilio signature validation failed — request rejected");
+        console.error("Twilio signature validation failed - request rejected");
         return twimlResponse("");
       }
     } catch (err) {
-      console.error("Twilio signature validation error — request rejected:", (err as Error).message);
+      console.error("Twilio signature validation error - request rejected:", (err as Error).message);
       return twimlResponse("");
     }
 
@@ -685,20 +685,20 @@ Deno.serve(async (req) => {
 
     // 4. Check AI settings
     if (!smsConfig.auto_reply) {
-      // AI is off globally — just store the message, don't reply
+      // AI is off globally - just store the message, don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
       return twimlResponse("");
     }
 
     if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
-      // Outside configured hours — store but don't reply
+      // Outside configured hours - store but don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
       return twimlResponse("");
     }
 
     // 5. Find or create lead by phone number in this company.
     // Twilio reports From in E.164 (+61412345678) but older leads may be
-    // stored without the + or in AU local format (0412345678) — try all three
+    // stored without the + or in AU local format (0412345678) - try all three
     // so replies thread onto the existing lead instead of forking a new one.
     const phoneCandidates = [fromNumber, fromNumber.replace(/^\+/, "")];
     if (fromNumber.startsWith("+61")) {
@@ -977,7 +977,7 @@ Deno.serve(async (req) => {
         },
       }).catch((err: unknown) => console.error("Failed to create notification:", err));
 
-      // Send email notification via Resend — must be awaited so Deno Deploy
+      // Send email notification via Resend - must be awaited so Deno Deploy
       // doesn't recycle the isolate before the email is actually sent.
       const companyData = smsConfig.companies || {};
       const companyName = String(companyData.name || "Your company");
@@ -1027,7 +1027,7 @@ Deno.serve(async (req) => {
             .join("\n"),
         };
 
-        // Async call — don't await, don't block the SMS reply
+        // Async call - don't await, don't block the SMS reply
         fetch(`${SUPABASE_URL}/functions/v1/quote-draft`, {
           method: "POST",
           headers: {

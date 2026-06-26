@@ -1,10 +1,10 @@
 // =============================================================================
-// QuoteLeadsHQ — Demo Request (public landing page form)
+// QuoteLeadsHQ - Demo Request (public landing page form)
 // =============================================================================
 // Validates Cloudflare Turnstile token, then inserts a demo_request row.
 //
 // Payload: { name, email, phone?, company?, cf_turnstile_response }
-// No auth required — this is a public endpoint.
+// No auth required - this is a public endpoint.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";

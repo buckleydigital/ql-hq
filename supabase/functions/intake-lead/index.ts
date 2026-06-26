@@ -14,7 +14,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 // Normalise an Australian phone number to E.164 (+61…). Stored on the lead in
-// this format so twilio-inbound-sms can match replies back to the same lead —
+// this format so twilio-inbound-sms can match replies back to the same lead -
 // Twilio always reports From in E.164.
 function toE164AU(p: string): string {
   const cleaned = p.replace(/[\s\-().]/g, "");
@@ -229,7 +229,7 @@ async function maybeSendWelcomeSms(
   if (!phone) return;
 
   try {
-    // Note: ai_enabled lives on leads, not sms_agent_config — selecting it
+    // Note: ai_enabled lives on leads, not sms_agent_config - selecting it
     // here used to 400 the whole query and silently kill every welcome SMS.
     const { data: smsConfig, error: cfgErr } = await db
       .from("sms_agent_config")
@@ -250,7 +250,7 @@ async function maybeSendWelcomeSms(
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
     if (!twilioSid || !twilioAuth) {
-      console.warn("Twilio credentials not configured — skipping welcome SMS");
+      console.warn("Twilio credentials not configured - skipping welcome SMS");
       return;
     }
 

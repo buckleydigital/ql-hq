@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Public Quote Viewer
+// QuoteLeadsHQ - Public Quote Viewer
 // =============================================================================
 // Unauthenticated edge function for external quote recipients.
 //
@@ -7,7 +7,7 @@
 // POST { token, action: "accept" }    → Marks quote as accepted
 // POST { token, action: "decline" }   → Marks quote as declined
 //
-// No auth required — uses service role internally.
+// No auth required - uses service role internally.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";

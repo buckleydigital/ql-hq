@@ -1,12 +1,12 @@
 // =============================================================================
-// QuoteLeadsHQ — Sign-Up with Activation Key
+// QuoteLeadsHQ - Sign-Up with Activation Key
 // =============================================================================
 // Creates a new user account after validating the activation key server-side.
 // The activation key is stored as a Supabase Edge Function secret
 // (SIGNUP_ACTIVATION_KEY) and is never exposed to the client.
 //
 // Payload: { email, password, full_name, company_name, activation_key, cf_turnstile_response }
-// No auth required — this is a public endpoint for unauthenticated users.
+// No auth required - this is a public endpoint for unauthenticated users.
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      `New user created: ${newUser.user.id} (${email}) — company: ${company_name}`,
+      `New user created: ${newUser.user.id} (${email}) - company: ${company_name}`,
     );
 
     // The handle_new_user() database trigger automatically:

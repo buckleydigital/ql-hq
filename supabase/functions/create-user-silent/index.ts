@@ -37,7 +37,7 @@ async function sendSetupEmail(
   <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600">QuoteLeadsHQ</h1>
 </td></tr>
 <tr><td style="padding:32px">
-  <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Welcome — let's set up your account</h2>
+  <h2 style="margin:0 0 16px;font-size:18px;color:#111827">Welcome - let's set up your account</h2>
   <p style="margin:0 0 16px;font-size:14px;color:#374151">Hi ${name},</p>
   <p style="margin:0 0 24px;font-size:14px;color:#374151">
     An account has been created for you on QuoteLeadsHQ. Click the button below to choose your password and log in.
@@ -212,8 +212,8 @@ Deno.serve(async (req) => {
     }
 
     // ── Build two Supabase clients ────────────────────────────────────────────
-    // userClient: runs as the calling user — used only for JWT validation.
-    // adminClient: uses the service role key — NEVER returned to the client.
+    // userClient: runs as the calling user - used only for JWT validation.
+    // adminClient: uses the service role key - NEVER returned to the client.
     const userClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -503,7 +503,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Send the account-setup email ──────────────────────────────────────────
-    // Awaited so the promise completes before the handler returns — Deno's
+    // Awaited so the promise completes before the handler returns - Deno's
     // serverless runtime does not guarantee background tasks finish after the
     // response is sent. Email failure is non-fatal: the account is still created.
     let emailSent = false;

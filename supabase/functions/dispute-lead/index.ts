@@ -1,10 +1,10 @@
 // =============================================================================
-// QuoteLeadsHQ — Dispute Lead
+// QuoteLeadsHQ - Dispute Lead
 // =============================================================================
 // Handles PPL lead dispute submissions with three auto-checked reasons:
-//   • invalid_number        — validates phone via Veriphone API (E164)
-//   • duplicate             — checks for same phone in company's lead pool
-//   • outside_agreed_criteria — checks postcode against company's agreed list
+//   • invalid_number        - validates phone via Veriphone API (E164)
+//   • duplicate             - checks for same phone in company's lead pool
+//   • outside_agreed_criteria - checks postcode against company's agreed list
 //
 // A second action (send_for_manual_review) can escalate an
 // outside_agreed_criteria dispute to pending_manual_review after
@@ -48,7 +48,7 @@ interface VeriphoneResult {
 async function checkVeriphone(phone: string): Promise<VeriphoneResult> {
   const key = Deno.env.get("VERIPHONE_API_KEY");
   if (!key) {
-    console.warn("VERIPHONE_API_KEY not set — skipping live check");
+    console.warn("VERIPHONE_API_KEY not set - skipping live check");
     return { valid: false, type: null, international: null, raw: { error: "api_key_missing" } };
   }
 
@@ -78,14 +78,14 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ error: "Missing auth header" }, 401);
 
-  // Authenticated client — respects RLS
+  // Authenticated client - respects RLS
   const userClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: authHeader } } },
   );
 
-  // Service-role client — used for writes that bypass RLS
+  // Service-role client - used for writes that bypass RLS
   const db = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
 
     } else if (reason === "duplicate") {
       if (!lead.phone) {
-        autoCheckResult = { checked: false, note: "Lead has no phone number — cannot check for duplicates" };
+        autoCheckResult = { checked: false, note: "Lead has no phone number - cannot check for duplicates" };
         disputeStatus = "auto_rejected";
       } else {
         const normalised = normaliseE164(lead.phone);
@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
         postcode_outside:   isOutside,
         no_config:          noConfig,
         note: noConfig
-          ? "No agreed postcodes configured for this company — manual review required"
+          ? "No agreed postcodes configured for this company - manual review required"
           : isOutside
             ? "Lead postcode is outside the company's agreed territory"
             : "Lead postcode is within the company's agreed territory",

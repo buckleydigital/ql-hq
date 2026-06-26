@@ -106,9 +106,9 @@
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const fmtMoney = (v) => v != null ? '$' + Number(v).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:2}) : '—';
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'}) : '—';
-  const planBadge = (p) => { const k = p === 'managed' ? 'managed' : p === 'ppl' ? 'ppl' : 'other'; const label = p === 'managed' ? 'Managed' : p === 'ppl' ? 'PPL' : (p || '—'); return `<span class="badge ${k}">${esc(label)}</span>`; };
+  const fmtMoney = (v) => v != null ? '$' + Number(v).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-';
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'}) : '-';
+  const planBadge = (p) => { const k = p === 'managed' ? 'managed' : p === 'ppl' ? 'ppl' : 'other'; const label = p === 'managed' ? 'Managed' : p === 'ppl' ? 'PPL' : (p || '-'); return `<span class="badge ${k}">${esc(label)}</span>`; };
 
   async function vaApi(body) {
     const { data: { session } } = await sb.auth.getSession();
@@ -255,14 +255,14 @@
     // PPL orders (the real fulfilment orders) are the primary view.
     const orders = (d.orders || []).length ? `
       <table><thead><tr><th>Order</th><th>Leads</th><th>Status</th><th>Due</th><th>Purchased</th></tr></thead><tbody>
-      ${d.orders.map(o => `<tr><td>${esc(o.notes || '—')}</td><td>${o.delivered_leads || 0}/${o.total_leads || 0}</td><td>${esc(o.status || '—')}</td><td>${fmtDate(o.due_date)}</td><td>${fmtDate(o.created_at)}</td></tr>`).join('')}
+      ${d.orders.map(o => `<tr><td>${esc(o.notes || '-')}</td><td>${o.delivered_leads || 0}/${o.total_leads || 0}</td><td>${esc(o.status || '-')}</td><td>${fmtDate(o.due_date)}</td><td>${fmtDate(o.created_at)}</td></tr>`).join('')}
       </tbody></table>` : '<div class="muted">No PPL orders.</div>';
 
     // Stripe checkout orders only shown when they exist (most clients have none).
     const stripeOrders = (d.lead_orders || []).length ? `
       <div class="sec-title">Stripe checkout orders</div>
       <table><thead><tr><th>Niche</th><th>Area</th><th>Qty</th><th>Delivered</th><th>$/lead</th><th>Status</th><th>Date</th></tr></thead><tbody>
-      ${d.lead_orders.map(o => `<tr><td>${esc(o.niche || '—')}</td><td>${esc(o.area || '—')}</td><td>${o.quantity || 0}</td><td>${o.delivered_count || 0}/${o.quantity || 0}</td><td>${fmtMoney(o.price_per_lead)}</td><td>${esc(o.status || '—')}</td><td>${fmtDate(o.created_at)}</td></tr>`).join('')}
+      ${d.lead_orders.map(o => `<tr><td>${esc(o.niche || '-')}</td><td>${esc(o.area || '-')}</td><td>${o.quantity || 0}</td><td>${o.delivered_count || 0}/${o.quantity || 0}</td><td>${fmtMoney(o.price_per_lead)}</td><td>${esc(o.status || '-')}</td><td>${fmtDate(o.created_at)}</td></tr>`).join('')}
       </tbody></table>` : '';
 
     const notes = (d.notes || []).map(n => `
@@ -272,9 +272,9 @@
       <div class="card">
         <div class="client-name" style="font-size:18px">${esc(c.name || '(no name)')} ${planBadge(c.plan)}</div>
         <div class="sec-title">Contact</div>
-        <div class="kv"><span class="k">Company email</span><span>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</span></div>
-        <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '—')}</span></div>
-        <div class="kv"><span class="k">Website</span><span>${c.domain ? `<a href="${esc(c.domain)}" target="_blank" rel="noopener">${esc(c.domain)}</a>` : '—'}</span></div>
+        <div class="kv"><span class="k">Company email</span><span>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '-'}</span></div>
+        <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '-')}</span></div>
+        <div class="kv"><span class="k">Website</span><span>${c.domain ? `<a href="${esc(c.domain)}" target="_blank" rel="noopener">${esc(c.domain)}</a>` : '-'}</span></div>
         <div class="sec-title">People</div>
         ${contacts}
       </div>

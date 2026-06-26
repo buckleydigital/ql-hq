@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
 
     // Create-or-find the invited user.
     // Try to create first; if the user already exists Supabase returns an
-    // error containing "already been registered" — we then fall back to a
+    // error containing "already been registered" - we then fall back to a
     // targeted listUsers lookup.
     let newUserId: string;
     let isNewUser = false;
@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
       createError &&
       /already|exists|duplicate|unique/i.test(createError.message || "")
     ) {
-      // User already exists — look them up by paginating through auth users.
+      // User already exists - look them up by paginating through auth users.
       // The Supabase JS admin API does not support server-side email filtering,
       // so we page through 1000 at a time and stop as soon as we find a match.
       let found: { id: string; email?: string } | undefined;
@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
       actionLink = linkData.properties.action_link;
     } else {
       console.warn(`generateLink(${linkType}) failed:`, linkError?.message || "no action_link");
-      // Fallback: try "recovery" type — works for both confirmed & unconfirmed
+      // Fallback: try "recovery" type - works for both confirmed & unconfirmed
       const { data: fallbackData, error: fallbackError } =
         await adminClient.auth.admin.generateLink({
           type: "recovery",
@@ -268,10 +268,10 @@ Deno.serve(async (req) => {
     // Send branded invite email via Resend
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
-      console.error("RESEND_API_KEY is not configured — invite email will not be sent");
-      emailError = emailError || "Unable to send invitation email — please contact support";
+      console.error("RESEND_API_KEY is not configured - invite email will not be sent");
+      emailError = emailError || "Unable to send invitation email - please contact support";
     } else if (!actionLink) {
-      console.error("No invite link available — Resend API will not be called");
+      console.error("No invite link available - Resend API will not be called");
       emailError = emailError || "Failed to generate invitation link";
     } else {
       try {

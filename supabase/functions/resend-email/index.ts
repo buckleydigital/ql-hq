@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Resend Email Sender
+// QuoteLeadsHQ - Resend Email Sender
 // =============================================================================
 // Centralised email sending via Resend (https://resend.com).
 // Called internally by other edge functions (twilio-inbound-sms, quote-draft,
@@ -10,11 +10,11 @@
 //
 // Payload:
 // {
-//   to:       string | string[],   — recipient email(s)
-//   subject:  string,              — email subject
-//   html:     string,              — email body (HTML)
-//   text?:    string,              — plain-text fallback (optional)
-//   reply_to?: string,             — reply-to address (optional)
+//   to:       string | string[],   - recipient email(s)
+//   subject:  string,              - email subject
+//   html:     string,              - email body (HTML)
+//   text?:    string,              - plain-text fallback (optional)
+//   reply_to?: string,             - reply-to address (optional)
 // }
 // =============================================================================
 
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Send email via Resend API — sender is always the platform default
+    // Send email via Resend API - sender is always the platform default
     const resendPayload: Record<string, unknown> = {
       from: DEFAULT_FROM,
       to: Array.isArray(to) ? to : [to],

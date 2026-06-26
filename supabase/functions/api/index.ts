@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Public REST API Gateway
+// QuoteLeadsHQ - Public REST API Gateway
 // =============================================================================
 // Authenticated via Bearer token (company_api_tokens).
 // Routes:

@@ -1,5 +1,5 @@
 // =============================================================================
-// AI Learner — Automated Knowledge Extraction Pipeline
+// AI Learner - Automated Knowledge Extraction Pipeline
 // =============================================================================
 // Triggered when key outcome events occur (closed_won, closed_lost,
 // quote.accepted, appointment.booked). Analyzes the full interaction history
@@ -25,7 +25,7 @@ const MAX_STYLE_LEARNINGS = 5;
 // Minimum interval between stats recomputations per company (in minutes)
 const STATS_THROTTLE_MINUTES = 60;
 
-// Milliseconds in one hour — used for time-window calculations
+// Milliseconds in one hour - used for time-window calculations
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 // Use the cheaper mini model for structured extraction tasks
@@ -237,7 +237,7 @@ Identify 1-2 specific style characteristics that contributed to success:
 
 Return a JSON array with objects having:
 - category: always "style_preference"
-- insight: a concise, actionable style instruction (e.g., "Keep SMS replies under 10 words for this company's customers — they respond best to very brief, direct messages.")
+- insight: a concise, actionable style instruction (e.g., "Keep SMS replies under 10 words for this company's customers - they respond best to very brief, direct messages.")
 - tags: relevant tags like "tone", "length", "follow-up", "formality"
 - source_type: "sms"
 
@@ -489,7 +489,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ── Verify internal caller — must supply the service role key as Bearer token ──
+  // ── Verify internal caller - must supply the service role key as Bearer token ──
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const authHeader = req.headers.get("Authorization") || "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "");
@@ -545,7 +545,7 @@ Deno.serve(async (req) => {
 
       if ((recentAnalysisCount ?? 0) > 0) {
         console.log(
-          `Lead ${leadId} already analyzed within ${DEDUP_WINDOW_HOURS}h — skipping OpenAI extraction`,
+          `Lead ${leadId} already analyzed within ${DEDUP_WINDOW_HOURS}h - skipping OpenAI extraction`,
         );
       } else {
         const openaiKey = await resolveOpenAIKey(db, companyId);
@@ -610,7 +610,7 @@ Deno.serve(async (req) => {
               }
             }
 
-            // ── Style calibration (throttled — skip if we already have enough) ──
+            // ── Style calibration (throttled - skip if we already have enough) ──
             const { count: styleCount } = await db
               .from("company_knowledge")
               .select("id", { count: "exact", head: true })
@@ -660,7 +660,7 @@ Deno.serve(async (req) => {
               }
             } else {
               console.log(
-                `Company ${companyId} already has ${styleCount} style learnings — skipping style calibration`,
+                `Company ${companyId} already has ${styleCount} style learnings - skipping style calibration`,
               );
             }
           }
@@ -670,7 +670,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Recompute performance stats (throttled — max once per hour) ──────────
+    // ── Recompute performance stats (throttled - max once per hour) ──────────
     try {
       const throttleCutoff = new Date(
         Date.now() - STATS_THROTTLE_MINUTES * 60 * 1000,
@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
         await computePerformanceStats(db, companyId);
       } else {
         console.log(
-          `Stats for ${companyId} computed recently (${recentStats.computed_at}) — skipping recomputation`,
+          `Stats for ${companyId} computed recently (${recentStats.computed_at}) - skipping recomputation`,
         );
       }
     } catch (statsErr) {

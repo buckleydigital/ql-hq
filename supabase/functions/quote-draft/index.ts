@@ -1,5 +1,5 @@
 // =============================================================================
-// QuoteLeadsHQ — Quote Draft Generator
+// QuoteLeadsHQ - Quote Draft Generator
 // =============================================================================
 // Triggered by twilio-inbound-sms when AI detects the lead is ready for a quote.
 // Receives conversation context and creates a draft quote with AI-extracted details.
@@ -7,10 +7,10 @@
 // Payload from twilio-inbound-sms:
 // {
 //   company_id, lead_id, conversation_id,
-//   quote_context,          — AI summary of what needs quoting
+//   quote_context,          - AI summary of what needs quoting
 //   lead_name, lead_phone,
-//   service_type,           — from lead or company config
-//   conversation_summary    — last 10 messages formatted as text
+//   service_type,           - from lead or company config
+//   conversation_summary    - last 10 messages formatted as text
 // }
 //
 // Uses the company's quote_pricing_config to generate line items via OpenAI.
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // ── Verify internal caller — must supply the service role key as Bearer token ──
+  // ── Verify internal caller - must supply the service role key as Bearer token ──
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const authHeader = req.headers.get("Authorization") || "";
   const callerToken = authHeader.replace(/^Bearer\s+/i, "");
@@ -218,7 +218,7 @@ Return ONLY a valid JSON array, no other text.`;
                 }));
                 subtotal = Math.round(lineItems.reduce((sum, li) => sum + (Number(li.subtotal) || 0), 0) * 100) / 100;
                 if (taxMode === "inclusive") {
-                  // Prices already include GST — back-calculate
+                  // Prices already include GST - back-calculate
                   total = subtotal;
                   tax = Math.round((subtotal - subtotal / (1 + taxRate / 100)) * 100) / 100;
                   subtotal = Math.round((total - tax) * 100) / 100;
@@ -293,7 +293,7 @@ Return ONLY a valid JSON array, no other text.`;
       lead_id,
       type: "quote_drafted",
       title: `AI drafted a quote for ${lead_name || "a lead"}`,
-      message: quote_context || "Quote drafted from SMS conversation — review and approve to send.",
+      message: quote_context || "Quote drafted from SMS conversation - review and approve to send.",
       metadata: {
         quote_id: quote.id,
         quote_number: quoteNumber,
