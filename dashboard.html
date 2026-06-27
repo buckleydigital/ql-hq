@@ -443,7 +443,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .empty p{max-width:340px;text-align:center;line-height:1.6}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20260623a"></script>
+<script defer src="./dashboard-supabase.js?v=20260627a"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -764,7 +764,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       <!-- Leads -->
       <div id="page-leads" class="page hidden">
         <section class="panel">
-          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button></div></div>
+          <div class="panel-h"><div><h2>Leads</h2><p>Capture name, email, phone, postcode, address, source, and custom fields.</p></div><div class="actions"><button id="exportLeadsBtn" class="btn" type="button" onclick="exportLeadsCSV(this)">Export CSV</button><button id="openCustomFieldModalFromLeads" class="btn" type="button">Add Custom Field</button></div></div>
           <div class="panel-b">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
               <button class="btn active" data-lead-filter="all" onclick="filterLeadsTable('all',this)" type="button">All</button>

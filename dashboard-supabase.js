@@ -1597,6 +1597,97 @@ async function loadLeads() {
   }
 }
 
+// Export every lead belonging to the signed-in user's company to a CSV file.
+// Scoping: the query is constrained to `currentCompanyId` and row-level
+// security further restricts rows to what this account is permitted to see,
+// so a user only ever exports their own account's leads. The full set is
+// fetched in pages (PostgREST caps each response at 1000 rows) so the export
+// is not limited to the page currently shown in the table.
+async function exportLeadsCSV(btn) {
+  if (!currentCompanyId) return;
+  const label = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = "Exporting..."; }
+  try {
+    await loadCustomFields();
+
+    const PAGE = 1000;
+    let from = 0;
+    let rows = [];
+    while (true) {
+      const { data, error } = await sb
+        .from("leads")
+        .select("*")
+        .eq("company_id", currentCompanyId)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) { toast(error.message, true); return; }
+      const batch = data || [];
+      rows = rows.concat(batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+
+    if (!rows.length) { toast("No leads to export.", true); return; }
+
+    const cols = [
+      ["id", "ID"],
+      ["name", "Name"],
+      ["email", "Email"],
+      ["phone", "Phone"],
+      ["address", "Address"],
+      ["postcode", "Postcode"],
+      ["source", "Source"],
+      ["pipeline_stage", "Status"],
+      ["value", "Value"],
+      ["ai_score", "AI Score"],
+      ["ai_status", "AI Status"],
+      ["ai_summary", "AI Summary"],
+      ["notes", "Notes"],
+      ["created_at", "Created"],
+    ];
+
+    const csvCell = (val) => {
+      let s = val == null ? "" : String(val);
+      if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+
+    const header = cols.map(([, h]) => h)
+      .concat(customFields.map((f) => f.label))
+      .map(csvCell).join(",");
+
+    const lines = rows.map((l) => {
+      const base = cols.map(([k]) => {
+        if (k === "pipeline_stage") return stageLabel(l[k]);
+        return l[k];
+      });
+      const custom = customFields.map((f) => {
+        const v = l.custom_data ? l.custom_data[f.key] : undefined;
+        return typeof v === "object" && v !== null ? JSON.stringify(v) : v;
+      });
+      return base.concat(custom).map(csvCell).join(",");
+    });
+
+    // Prepend a BOM so Excel opens UTF-8 content correctly.
+    const csv = "﻿" + [header, ...lines].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${rows.length} lead${rows.length === 1 ? "" : "s"}.`);
+  } catch (err) {
+    console.error("Export leads error:", err);
+    toast("Failed to export leads.", true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
 let _leadsFilter = 'all';
 let _allLeadsForFilter = [];
 
