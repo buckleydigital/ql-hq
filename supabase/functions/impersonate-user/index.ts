@@ -717,6 +717,95 @@ Deno.serve(async (req) => {
       return json({ success: true, number: newNumber });
     }
 
+    // ── action: delete_twilio_number ──────────────────────────────────────────
+    // Removes a Twilio number from the pool. Best-effort releases the number on
+    // Twilio (to stop billing) when its SID and account credentials are known,
+    // clears any agent config that referenced it, then deletes the DB row.
+    if (action === "delete_twilio_number") {
+      const { number_id, release_on_twilio } = body as {
+        number_id?: string;
+        release_on_twilio?: boolean;
+      };
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!number_id || !UUID_RE.test(number_id)) {
+        return json({ error: "number_id must be a valid UUID" }, 400);
+      }
+
+      // Snapshot the row so we can release it on Twilio and unwire agent configs.
+      const { data: row, error: rowErr } = await adminClient
+        .from("twilio_numbers")
+        .select("id, phone_number, company_id, twilio_sid")
+        .eq("id", number_id)
+        .maybeSingle();
+
+      if (rowErr) {
+        console.error("delete_twilio_number lookup error:", rowErr.message);
+        return json({ error: "Failed to load number: " + rowErr.message }, 500);
+      }
+      if (!row) {
+        return json({ error: "Number not found" }, 404);
+      }
+
+      const numberRow = row as {
+        phone_number: string;
+        company_id: string | null;
+        twilio_sid: string | null;
+      };
+
+      // Best-effort release the number on Twilio so billing stops. Defaults to
+      // true; callers can pass release_on_twilio: false to only drop the record.
+      let twilioReleased = false;
+      let twilioError: string | null = null;
+      const shouldRelease = release_on_twilio !== false;
+      if (shouldRelease && numberRow.twilio_sid) {
+        const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+        if (accountSid && authToken) {
+          try {
+            const creds = btoa(`${accountSid}:${authToken}`);
+            const relRes = await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${numberRow.twilio_sid}.json`,
+              { method: "DELETE", headers: { Authorization: `Basic ${creds}` } },
+            );
+            // 204 = released; 404 = already gone on Twilio, treat as released.
+            if (relRes.status === 204 || relRes.status === 404) {
+              twilioReleased = true;
+            } else {
+              twilioError = `Twilio returned HTTP ${relRes.status}`;
+              console.warn("delete_twilio_number: " + twilioError);
+            }
+          } catch (e) {
+            twilioError = (e as Error).message;
+            console.warn("delete_twilio_number: Twilio release threw:", twilioError);
+          }
+        } else {
+          twilioError = "Twilio credentials not configured";
+          console.warn("delete_twilio_number: " + twilioError);
+        }
+      }
+
+      // Unwire any agent config still pointing at this number.
+      const { error: cfgErr } = await adminClient
+        .from("sms_agent_config")
+        .update({ twilio_number: null })
+        .eq("twilio_number", numberRow.phone_number);
+      if (cfgErr) console.warn("delete_twilio_number: agent unwire failed:", cfgErr.message);
+
+      // Drop the pool record.
+      const { error: delErr } = await adminClient
+        .from("twilio_numbers")
+        .delete()
+        .eq("id", number_id);
+
+      if (delErr) {
+        console.error("delete_twilio_number error:", delErr.message);
+        return json({ error: "Failed to delete number: " + delErr.message }, 500);
+      }
+
+      return json({ success: true, twilio_released: twilioReleased, twilio_error: twilioError });
+    }
+
     // ── action: list_ppl_orders ───────────────────────────────────────────────
     // Returns all PPL orders across all companies, enriched with company name.
     if (action === "list_ppl_orders") {

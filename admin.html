@@ -2423,6 +2423,7 @@ h1{font-size:18px;font-weight:500}
             }).join('') +
           '</select>' +
           '<button class="btn2 btn-sm twilio-save-btn" type="button">Save</button>' +
+          '<button class="btn btn-sm btn-reject twilio-delete-btn" type="button">Delete</button>' +
         '</div>';
 
       row.querySelector('.twilio-save-btn').addEventListener('click', async function () {
@@ -2440,6 +2441,31 @@ h1{font-size:18px;font-weight:500}
           toast('Number updated.');
         } catch (err) { toast('Failed: ' + err.message, true); }
         btn.disabled = false; btn.textContent = 'Save';
+      });
+
+      row.querySelector('.twilio-delete-btn').addEventListener('click', async function () {
+        var btn = this;
+        if (!confirm('Delete ' + (n.phone_number || 'this number') + '?\n\nThis releases the number on Twilio (billing stops) and removes it from the pool. This cannot be undone.')) return;
+        btn.disabled = true; btn.textContent = 'Deleting…';
+        try {
+          var res = await callEdge({ action: 'delete_twilio_number', number_id: n.id });
+          allTwilioNumbers = allTwilioNumbers.filter(function (x) { return x.id !== n.id; });
+          var label = document.getElementById('twilioNumberCountLabel');
+          if (label) label.textContent = allTwilioNumbers.length + ' number' + (allTwilioNumbers.length === 1 ? '' : 's');
+          if (!allTwilioNumbers.length) {
+            document.getElementById('twilioNumberList').classList.add('hidden');
+            document.getElementById('twilioNumberEmptyState').classList.remove('hidden');
+          }
+          renderTwilioNumbers();
+          if (res && res.twilio_released === false && res.twilio_error) {
+            toast('Number removed, but Twilio release failed: ' + res.twilio_error, true);
+          } else {
+            toast('Number deleted.');
+          }
+        } catch (err) {
+          toast('Failed: ' + err.message, true);
+          btn.disabled = false; btn.textContent = 'Delete';
+        }
       });
       listEl.appendChild(row);
     });
