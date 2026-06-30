@@ -144,6 +144,8 @@ Deno.serve(async (req) => {
         role: string | null;
         is_admin: boolean;
         created_at: string;
+        inactive_marked_at: string | null;
+        deletion_notice_sent_at: string | null;
       }> = [];
 
       let page = 1;
@@ -162,7 +164,7 @@ Deno.serve(async (req) => {
         const ids = pageData.users.map((u: { id: string }) => u.id);
         const { data: profiles } = await adminClient
           .from("profiles")
-          .select("id, full_name, company_id, role, is_admin")
+          .select("id, full_name, company_id, role, is_admin, inactive_marked_at, deletion_notice_sent_at")
           .in("id", ids);
 
         const profileMap = Object.fromEntries(
@@ -172,6 +174,8 @@ Deno.serve(async (req) => {
             company_id: string | null;
             role: string | null;
             is_admin: boolean;
+            inactive_marked_at: string | null;
+            deletion_notice_sent_at: string | null;
           }) => [p.id, p]),
         );
 
@@ -185,6 +189,8 @@ Deno.serve(async (req) => {
             role: p?.role ?? null,
             is_admin: p?.is_admin ?? false,
             created_at: u.created_at ?? "",
+            inactive_marked_at: p?.inactive_marked_at ?? null,
+            deletion_notice_sent_at: p?.deletion_notice_sent_at ?? null,
           });
         }
 
@@ -1031,6 +1037,141 @@ Deno.serve(async (req) => {
       }
 
       return json({ success: true });
+    }
+
+    // ── action: mark_inactive ────────────────────────────────────────────────
+    // Sets or clears the inactive_marked_at timestamp on a user's profile.
+    if (action === "mark_inactive") {
+      const { user_id, inactive } = body as { user_id?: string; inactive?: boolean };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user_id || !UUID_RE.test(user_id)) {
+        return json({ error: "user_id must be a valid UUID" }, 400);
+      }
+      if (user_id === caller.id) {
+        return json({ error: "Cannot mark yourself inactive" }, 400);
+      }
+
+      const update: Record<string, unknown> = inactive === false
+        ? { inactive_marked_at: null, deletion_notice_sent_at: null, deletion_token: null }
+        : { inactive_marked_at: new Date().toISOString() };
+
+      const { error: upErr } = await adminClient
+        .from("profiles")
+        .update(update)
+        .eq("id", user_id);
+      if (upErr) {
+        console.error("mark_inactive error:", upErr.message);
+        return json({ error: "Failed to update: " + upErr.message }, 500);
+      }
+
+      return json({ success: true, inactive_marked_at: inactive === false ? null : update.inactive_marked_at });
+    }
+
+    // ── action: send_deletion_notice ─────────────────────────────────────────
+    // Sends a 7-day deletion warning email and generates a magic link for
+    // instant account deletion. Records the timestamp and token on the profile.
+    if (action === "send_deletion_notice") {
+      const { user_id } = body as { user_id?: string };
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user_id || !UUID_RE.test(user_id)) {
+        return json({ error: "user_id must be a valid UUID" }, 400);
+      }
+      if (user_id === caller.id) {
+        return json({ error: "Cannot send deletion notice to yourself" }, 400);
+      }
+
+      // Look up the user's email and profile
+      const { data: { user: targetUser }, error: userErr } =
+        await adminClient.auth.admin.getUserById(user_id);
+      if (userErr || !targetUser) {
+        return json({ error: "User not found" }, 404);
+      }
+      const { data: targetProfile } = await adminClient
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user_id)
+        .maybeSingle();
+
+      // Generate a unique deletion token
+      const deletionToken = crypto.randomUUID();
+
+      // Save the token and notice timestamp
+      const { error: upErr } = await adminClient
+        .from("profiles")
+        .update({
+          deletion_notice_sent_at: new Date().toISOString(),
+          deletion_token: deletionToken,
+        })
+        .eq("id", user_id);
+      if (upErr) {
+        console.error("send_deletion_notice update error:", upErr.message);
+        return json({ error: "Failed to update profile: " + upErr.message }, 500);
+      }
+
+      // Build delete-now URL
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const deleteNowUrl = `${supabaseUrl}/functions/v1/delete-account?token=${deletionToken}`;
+
+      // Build the email
+      const userName = targetProfile?.full_name || "there";
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f3f5f9">
+<div style="max-width:520px;margin:40px auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 4px 16px rgba(0,0,0,.06)">
+  <h1 style="font-size:20px;color:#121826;margin:0 0 16px">Account Inactivity Notice</h1>
+  <p style="font-size:14px;color:#555;line-height:1.7;margin:0 0 16px">
+    Hi ${userName},
+  </p>
+  <p style="font-size:14px;color:#555;line-height:1.7;margin:0 0 16px">
+    Your QuoteLeadsHQ account has been inactive for 30 days. As a result, <strong>your account and all associated data will be permanently deleted in 7 days</strong>.
+  </p>
+  <p style="font-size:14px;color:#555;line-height:1.7;margin:0 0 16px">
+    If you'd like to keep your account, simply <strong>log in</strong> before the 7-day period ends. We also recommend exporting any leads you may need.
+  </p>
+  <p style="font-size:14px;color:#555;line-height:1.7;margin:0 0 24px">
+    If you'd prefer to delete your account immediately instead of waiting 7 days, you can do so using the link below:
+  </p>
+  <div style="text-align:center;margin:0 0 24px">
+    <a href="${deleteNowUrl}" style="display:inline-block;background:#b91c1c;color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600">
+      Delete My Account Now
+    </a>
+  </div>
+  <p style="font-size:12px;color:#999;line-height:1.6;margin:0">
+    If you did not expect this email or believe this is a mistake, please contact us at support@quoteleadshq.com.
+  </p>
+</div>
+</body>
+</html>`.trim();
+
+      const emailText = `Hi ${userName},\n\nYour QuoteLeadsHQ account has been inactive for 30 days. Your account and all associated data will be permanently deleted in 7 days.\n\nIf you'd like to keep your account, simply log in before the 7-day period ends. We also recommend exporting any leads you may need.\n\nTo delete your account immediately: ${deleteNowUrl}\n\nIf you believe this is a mistake, contact support@quoteleadshq.com.`;
+
+      // Send via resend-email edge function
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const emailRes = await fetch(`${supabaseUrl}/functions/v1/resend-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          to: targetUser.email,
+          subject: "Your QuoteLeadsHQ account will be deleted in 7 days",
+          html: emailHtml,
+          text: emailText,
+        }),
+      });
+
+      const emailData = await emailRes.json().catch(() => ({}));
+      const emailSent = emailRes.ok && emailData.success;
+
+      return json({
+        success: true,
+        email_sent: emailSent,
+        email_error: emailSent ? undefined : (emailData.error || "Unknown email error"),
+        deletion_notice_sent_at: new Date().toISOString(),
+      });
     }
 
     // ── Unknown action ────────────────────────────────────────────────────────

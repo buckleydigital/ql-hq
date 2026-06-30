@@ -58,6 +58,12 @@ h1{font-size:18px;font-weight:500}
 [data-theme=dark] .tag-admin{color:#f87171}
 .tag-owner{background:rgba(31,111,255,.1);border-color:rgba(31,111,255,.3);color:#1d4ed8}
 [data-theme=dark] .tag-owner{color:#60a5fa}
+.tag-inactive{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);color:#92400e}
+[data-theme=dark] .tag-inactive{color:#fbbf24}
+.tag-deletion{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#b91c1c}
+[data-theme=dark] .tag-deletion{color:#f87171}
+.btn-warn{color:#92400e;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06)}
+[data-theme=dark] .btn-warn{color:#fbbf24}
 
 /* ── Toasts ──────────────────────────────────────────────────────── */
 .toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
@@ -778,6 +784,22 @@ h1{font-size:18px;font-weight:500}
   </div>
 </div>
 
+<!-- ── Deletion Notice confirmation modal ──────────────────────────────────── -->
+<div id="deletionNoticeModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:480px">
+    <h3 style="color:#b91c1c">Send 7-Day Deletion Notice</h3>
+    <p id="deletionNoticeModalText" style="font-size:13px;color:var(--muted);margin-bottom:10px"></p>
+    <div class="notice warn" style="margin-bottom:16px;font-size:12px">
+      This will email the user that their account has been inactive for 30 days and will be <strong>permanently deleted in 7 days</strong>.
+      The email includes a link to <strong>instantly delete</strong> their account and advises them to log in and export leads if needed.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sm" id="deletionNoticeCancelBtn" type="button">Cancel</button>
+      <button class="btn btn-sm btn-reject" id="deletionNoticeConfirmBtn" type="button">Yes, Send Deletion Notice</button>
+    </div>
+  </div>
+</div>
+
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -889,11 +911,40 @@ h1{font-size:18px;font-weight:500}
       .replace(/"/g, '&quot;');
   }
 
+  function inactiveDaysAgo(isoDate) {
+    if (!isoDate) return null;
+    var diff = Date.now() - new Date(isoDate).getTime();
+    return Math.floor(diff / 86400000);
+  }
+
   function renderUserRow(u) {
     var tags = '';
     if (u.is_admin) tags += '<span class="tag tag-admin">super-admin</span>';
     if (u.role === 'owner') tags += '<span class="tag tag-owner">owner</span>';
     if (u.role && u.role !== 'owner') tags += '<span class="tag">' + escapeHtml(u.role) + '</span>';
+
+    var inactiveDays = inactiveDaysAgo(u.inactive_marked_at);
+    var hasInactive = inactiveDays !== null;
+    var hasDeletionNotice = !!u.deletion_notice_sent_at;
+    var deletionDays = inactiveDaysAgo(u.deletion_notice_sent_at);
+
+    if (hasDeletionNotice) {
+      var daysLeft = Math.max(0, 7 - deletionDays);
+      tags += '<span class="tag tag-deletion">deletion in ' + daysLeft + 'd</span>';
+    } else if (hasInactive) {
+      var countdownDays = Math.max(0, 30 - inactiveDays);
+      tags += '<span class="tag tag-inactive">inactive ' + inactiveDays + 'd (' + countdownDays + 'd left)</span>';
+    }
+
+    var inactiveBtn = '';
+    if (hasInactive && !hasDeletionNotice) {
+      inactiveBtn = '<button class="btn btn-sm btn-warn send-notice-btn" type="button">Send 7d Notice</button>' +
+                    '<button class="btn btn-sm unmark-inactive-btn" type="button">Unmark</button>';
+    } else if (hasDeletionNotice) {
+      inactiveBtn = '<button class="btn btn-sm unmark-inactive-btn" type="button">Cancel Deletion</button>';
+    } else {
+      inactiveBtn = '<button class="btn btn-sm mark-inactive-btn" type="button">Mark Inactive</button>';
+    }
 
     var row = document.createElement('div');
     row.className = 'user-row';
@@ -904,7 +955,8 @@ h1{font-size:18px;font-weight:500}
         '<div class="user-meta">' + escapeHtml(u.email) + '</div>' +
         (tags ? '<div class="user-tags">' + tags + '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:6px">' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        inactiveBtn +
         '<button class="btn btn-sm edit-user-btn" type="button">Edit</button>' +
         '<button class="btn2 btn-sm login-as-btn" type="button">Login as</button>' +
         '<button class="btn btn-sm btn-reject delete-user-btn" type="button">Delete</button>' +
@@ -919,6 +971,28 @@ h1{font-size:18px;font-weight:500}
     row.querySelector('.delete-user-btn').addEventListener('click', function () {
       openDeleteUserModal(u);
     });
+
+    var markBtn = row.querySelector('.mark-inactive-btn');
+    if (markBtn) {
+      markBtn.addEventListener('click', function () {
+        handleMarkInactive(u, this);
+      });
+    }
+
+    var unmarkBtn = row.querySelector('.unmark-inactive-btn');
+    if (unmarkBtn) {
+      unmarkBtn.addEventListener('click', function () {
+        handleUnmarkInactive(u, this);
+      });
+    }
+
+    var noticeBtn = row.querySelector('.send-notice-btn');
+    if (noticeBtn) {
+      noticeBtn.addEventListener('click', function () {
+        openDeletionNoticeModal(u);
+      });
+    }
+
     return row;
   }
 
@@ -1615,6 +1689,76 @@ h1{font-size:18px;font-weight:500}
       btn.disabled    = false;
       btn.textContent = 'Yes, Delete Forever';
     }
+  });
+
+  // ── Mark Inactive / Deletion Notice ────────────────────────────────────────
+
+  async function handleMarkInactive(u, btn) {
+    if (!confirm('Mark ' + (u.full_name || u.email) + ' as inactive? This starts a 30-day countdown.')) return;
+    btn.disabled = true; btn.textContent = 'Marking…';
+    try {
+      var result = await callEdge({ action: 'mark_inactive', user_id: u.id, inactive: true });
+      u.inactive_marked_at = result.inactive_marked_at;
+      applyFilter(document.getElementById('searchInput').value);
+      toast('User marked inactive. 30-day countdown started.');
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+      btn.disabled = false; btn.textContent = 'Mark Inactive';
+    }
+  }
+
+  async function handleUnmarkInactive(u, btn) {
+    btn.disabled = true; btn.textContent = 'Removing…';
+    try {
+      await callEdge({ action: 'mark_inactive', user_id: u.id, inactive: false });
+      u.inactive_marked_at = null;
+      u.deletion_notice_sent_at = null;
+      applyFilter(document.getElementById('searchInput').value);
+      toast('Inactive status cleared.');
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+      btn.disabled = false; btn.textContent = 'Unmark';
+    }
+  }
+
+  var pendingDeletionNoticeUser = null;
+
+  function openDeletionNoticeModal(u) {
+    pendingDeletionNoticeUser = u;
+    document.getElementById('deletionNoticeModalText').textContent =
+      'Send a 7-day deletion notice to ' + (u.full_name || '(no name)') + ' (' + u.email + ')?';
+    document.getElementById('deletionNoticeModal').classList.remove('hidden');
+  }
+
+  function closeDeletionNoticeModal() {
+    pendingDeletionNoticeUser = null;
+    document.getElementById('deletionNoticeModal').classList.add('hidden');
+  }
+
+  document.getElementById('deletionNoticeCancelBtn').addEventListener('click', closeDeletionNoticeModal);
+  document.getElementById('deletionNoticeModal').addEventListener('click', function (e) {
+    if (e.target === this) closeDeletionNoticeModal();
+  });
+
+  document.getElementById('deletionNoticeConfirmBtn').addEventListener('click', async function () {
+    if (!pendingDeletionNoticeUser) return;
+    var btn = this;
+    var u = pendingDeletionNoticeUser;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      var result = await callEdge({ action: 'send_deletion_notice', user_id: u.id });
+      u.deletion_notice_sent_at = result.deletion_notice_sent_at;
+      closeDeletionNoticeModal();
+      applyFilter(document.getElementById('searchInput').value);
+      if (result.email_sent) {
+        toast('Deletion notice sent to ' + u.email + '. 7-day countdown started.');
+      } else {
+        toast('7-day countdown started, but email failed: ' + (result.email_error || 'unknown'), true);
+      }
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+    }
+    btn.disabled = false; btn.textContent = 'Yes, Send Deletion Notice';
   });
 
   // ── Disputes ──────────────────────────────────────────────────────────────
