@@ -393,18 +393,20 @@ function buildSystemPrompt(
   if (quoteDrafting) {
     // Quoting is ON → probe for job details so a quote can be drafted
     goalSection = `Your goal: gather enough detail about what the lead needs so the team can prepare a quote. Ask short, specific questions one at a time (e.g. "What size is the roof?" or "How many rooms?"). Once you have enough info, reply with something like "Nice one, we'll get a rough estimate over to you shortly." Never promise exact pricing.`;
-    if (callbackEnabled) {
+    if (callbackEnabled && onsiteEnabled) {
       goalSection += `\nIf the lead would rather just chat to someone, offer a call instead of continuing to gather details.`;
+    } else if (callbackEnabled) {
+      goalSection += `\nIf the lead would rather just chat to someone, let them know the team will give them a call shortly. Do not offer specific times.`;
     }
     if (onsiteEnabled) {
       goalSection += `\nIf the job sounds like it needs a look in person, offer for one of the team to come out.`;
     }
   } else if (callbackEnabled && onsiteEnabled) {
     // No quoting, but callbacks and on-site are ON
-    goalSection = `Your goal: offer for a team member to give them a call or come out for a visit. Do NOT ask for job details, sizing, or scope - that is for the team to handle on the call or visit. Simply confirm interest and lock in a time.`;
+    goalSection = `Your goal: offer for a team member to give them a call or come out for a visit. Do NOT ask for job details, sizing, or scope - that is for the team to handle on the call or visit. For callbacks, once interest is confirmed just let them know the team will be in touch shortly. For on-site visits, lock in a day and time.`;
   } else if (callbackEnabled) {
     // Only callbacks ON
-    goalSection = `Your goal: schedule a time for one of the team to call them back. Do NOT ask for job details, sizing, or scope - just confirm interest and lock in a call time.`;
+    goalSection = `Your goal: confirm the lead is interested and let them know the team will be in touch shortly. Do NOT ask for job details, sizing, or scope. Do NOT offer or suggest specific days, times, or time slots for a callback - the team will handle scheduling. Once interest is confirmed, simply say something like "Nice one, the team will give you a call shortly." and end the conversation naturally.`;
   } else if (onsiteEnabled) {
     // Only on-site ON
     goalSection = `Your goal: schedule a time for one of the team to come out for a visit. Do NOT ask for job details, sizing, or scope - just confirm interest and lock in a visit time.`;
@@ -413,9 +415,11 @@ function buildSystemPrompt(
     goalSection = `Your goal: answer any questions the lead has about ${service} and let them know the team will be in touch.`;
   }
 
-  // Callback scheduling rules (only when enabled)
+  // Callback scheduling rules — only used when on-site is also enabled
+  // (so the AI needs to coordinate specific times). When callback-only,
+  // the goal already tells the AI to just say "the team will be in touch".
   let callbackRules = "";
-  if (callbackEnabled) {
+  if (callbackEnabled && onsiteEnabled) {
     callbackRules = `
 CALLBACK SCHEDULING:
 Available days: ${callbackDaysList}. Hours: ${callbackStart}–${callbackEnd}.
@@ -423,6 +427,12 @@ Available days: ${callbackDaysList}. Hours: ${callbackStart}–${callbackEnd}.
 - If they give a specific time on a valid day within hours, confirm it.
 - If outside hours or days, suggest the nearest valid alternative.
 - Once a callback is confirmed, just acknowledge it: "Sorted, the team will call you {day} at {time}." Do NOT then ask if they need anything else.`;
+  } else if (callbackEnabled) {
+    callbackRules = `
+CALLBACK RULES:
+- Do NOT suggest, offer, or mention specific days, times, or time windows for a callback.
+- Never say things like "we'll call you Wednesday" or "how does 2pm sound".
+- Once the lead confirms interest, simply let them know the team will be in touch shortly and wrap up.`;
   }
 
   // On-site scheduling rules (only when enabled)
@@ -443,7 +453,8 @@ ON-SITE VISITS:
   const actionEnum = ["none", callbackEnabled && "callback", onsiteEnabled && "onsite", quoteDrafting && "quote"]
     .filter(Boolean).join("|");
   const actionDescParts = [
-    callbackEnabled && `"callback" if a call time was confirmed`,
+    callbackEnabled && onsiteEnabled && `"callback" if a call time was confirmed`,
+    callbackEnabled && !onsiteEnabled && `"callback" if the lead confirmed interest in a call back`,
     onsiteEnabled && `"onsite" if an on-site visit was confirmed`,
     quoteDrafting && `"quote" if enough detail gathered for a quote`,
   ].filter(Boolean) as string[];
