@@ -1249,6 +1249,7 @@ h1{font-size:18px;font-weight:500}
     if (c) {
       html += '<div class="ud-section">Company</div>';
       html += '<div class="ud-kv">';
+      html += ud_kv('Company ID', c.id);
       html += ud_kv('Name', c.name);
       html += ud_kv('Plan', c.plan);
       html += ud_kv('Status', c.status);
@@ -1348,6 +1349,66 @@ h1{font-size:18px;font-weight:500}
     // Leads total
     html += '<div class="ud-section">Total Leads in System</div>';
     html += '<div class="ud-kv">' + ud_kv('All Leads', d.lead_count !== undefined ? d.lead_count : '-') + '</div>';
+
+    // AI SMS Prompt
+    if (c) {
+      html += '<div class="ud-section">AI SMS Prompt</div>';
+      html += '<div id="adminSmsPromptWrap" data-company-id="' + escapeHtml(c.id) + '">' +
+        '<div class="notice" style="font-size:12px;margin-bottom:8px" id="adminSmsPromptLoading">Loading SMS config…</div>' +
+        '<textarea id="adminSmsPrompt" class="form-input" style="display:none;width:100%;height:120px;resize:vertical;font-family:monospace;font-size:12px;padding:10px" placeholder="No AI SMS prompt configured"></textarea>' +
+        '<div style="margin-top:8px;display:none" id="adminSmsPromptActions">' +
+          '<button class="btn2 btn-sm" id="adminSmsPromptSaveBtn" type="button">Save Prompt</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // API Keys
+    if (c) {
+      html += '<div class="ud-section">API Keys</div>';
+      html += '<div id="adminApiKeysWrap" data-company-id="' + escapeHtml(c.id) + '">' +
+        '<div class="notice" style="font-size:12px" id="adminApiKeysLoading">Loading API keys…</div>' +
+        '<div id="adminApiKeysList" style="display:none"></div>' +
+        '<div style="margin-top:10px">' +
+          '<button class="btn2 btn-sm" id="adminCreateApiKeyBtn" type="button" style="display:none">+ New API Key</button>' +
+        '</div>' +
+        '<div id="adminApiKeyForm" class="hidden" style="margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)">' +
+          '<div class="form-row" style="margin-bottom:8px">' +
+            '<label class="form-label">Key Name</label>' +
+            '<input class="form-input" id="adminApiKeyName" type="text" placeholder="e.g. Zapier Integration" maxlength="100">' +
+          '</div>' +
+          '<div class="form-row" style="margin-bottom:8px">' +
+            '<label class="form-label">Expires</label>' +
+            '<select class="form-input" id="adminApiKeyExpiry" style="height:34px">' +
+              '<option value="">Never</option>' +
+              '<option value="30">30 days</option>' +
+              '<option value="90">90 days</option>' +
+              '<option value="365">365 days</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-row" style="margin-bottom:8px">' +
+            '<label class="form-label">Scopes</label>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:12px">' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="leads:read" checked> leads:read</label>' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="leads:write"> leads:write</label>' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="quotes:read" checked> quotes:read</label>' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="appointments:read" checked> appointments:read</label>' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="pipeline:read" checked> pipeline:read</label>' +
+              '<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="admin-api-scope" value="sms:send"> sms:send</label>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button class="btn2 btn-sm" id="adminApiKeySubmitBtn" type="button">Create Key</button>' +
+            '<button class="btn btn-sm" id="adminApiKeyCancelBtn" type="button">Cancel</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="adminApiKeyCreatedPanel" class="hidden" style="margin-top:10px;padding:12px;border:1px solid rgba(22,163,74,.3);border-radius:10px;background:rgba(22,163,74,.06)">' +
+          '<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:#15803d">API Key Created - Copy it now!</div>' +
+          '<div style="font-family:monospace;font-size:12px;word-break:break-all;background:var(--surface);padding:8px 10px;border-radius:6px;border:1px solid var(--border);user-select:all;cursor:text" id="adminApiKeyRawValue"></div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:6px">This key will not be shown again. Make sure to copy it.</div>' +
+          '<button class="btn btn-sm" id="adminApiKeyDoneBtn" type="button" style="margin-top:8px">Done</button>' +
+        '</div>' +
+      '</div>';
+    }
 
     return html;
   }
@@ -1460,6 +1521,10 @@ h1{font-size:18px;font-weight:500}
     callEdge({ action: 'get_user_details', user_id: u.id }).then(function(d) {
       if (editingUserId !== u.id) return;
       document.getElementById('editUserDetailsBody').innerHTML = renderUserDetailsBody(d);
+      if (d.company && d.company.id) {
+        initAdminSmsPrompt(d.company.id);
+        initAdminApiKeys(d.company.id);
+      }
     }).catch(function() {});
   }
 
@@ -1474,6 +1539,160 @@ h1{font-size:18px;font-weight:500}
       editingUserId = null; editingCompanyId = null;
     }
   });
+
+  // ── Admin SMS Prompt ────────────────────────────────────────────────────────
+  function initAdminSmsPrompt(companyId) {
+    var loading = document.getElementById('adminSmsPromptLoading');
+    var textarea = document.getElementById('adminSmsPrompt');
+    var actions = document.getElementById('adminSmsPromptActions');
+    if (!loading || !textarea) return;
+
+    callEdge({ action: 'get_sms_config', company_id: companyId }).then(function(res) {
+      loading.style.display = 'none';
+      textarea.style.display = '';
+      actions.style.display = '';
+      textarea.value = (res.config && res.config.system_prompt) || '';
+    }).catch(function(err) {
+      loading.textContent = 'Failed to load: ' + err.message;
+    });
+
+    var saveBtn = document.getElementById('adminSmsPromptSaveBtn');
+    if (saveBtn) {
+      saveBtn.onclick = function() {
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+        callEdge({ action: 'update_sms_config', company_id: companyId, system_prompt: textarea.value })
+          .then(function() { toast('SMS prompt saved.'); })
+          .catch(function(err) { toast('Failed: ' + err.message, true); })
+          .finally(function() { saveBtn.disabled = false; saveBtn.textContent = 'Save Prompt'; });
+      };
+    }
+  }
+
+  // ── Admin API Keys ──────────────────────────────────────────────────────────
+  function initAdminApiKeys(companyId) {
+    var loading = document.getElementById('adminApiKeysLoading');
+    var listEl = document.getElementById('adminApiKeysList');
+    var createBtn = document.getElementById('adminCreateApiKeyBtn');
+    if (!loading || !listEl) return;
+
+    function loadKeys() {
+      callEdge({ action: 'get_company_api_keys', company_id: companyId }).then(function(res) {
+        loading.style.display = 'none';
+        listEl.style.display = '';
+        createBtn.style.display = '';
+        var keys = res.keys || [];
+        if (!keys.length) {
+          listEl.innerHTML = '<div class="notice" style="font-size:12px">No API keys yet.</div>';
+          return;
+        }
+        var html = '';
+        keys.forEach(function(k) {
+          var revoked = !!k.revoked_at;
+          var expired = k.expires_at && new Date(k.expires_at) < new Date();
+          var status = revoked ? 'Revoked' : expired ? 'Expired' : 'Active';
+          var statusColor = revoked || expired ? 'var(--muted)' : '#15803d';
+          var lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px' + (revoked ? ';opacity:.5' : '') + '">' +
+            '<div style="flex:1">' +
+              '<strong>' + escapeHtml(k.name) + '</strong>' +
+              ' <span style="font-family:monospace;font-size:11px;color:var(--muted)">' + escapeHtml(k.token_prefix) + '…</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--muted)">' +
+              '<span style="color:' + statusColor + '">' + status + '</span>' +
+              '<span>Last used: ' + lastUsed + '</span>' +
+              (!revoked ? '<button class="btn btn-sm admin-revoke-key-btn" data-key-id="' + k.id + '" data-key-name="' + escapeHtml(k.name) + '" type="button" style="font-size:10px;padding:2px 8px">Revoke</button>' : '') +
+            '</div>' +
+          '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.querySelectorAll('.admin-revoke-key-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var keyId = this.getAttribute('data-key-id');
+            var keyName = this.getAttribute('data-key-name');
+            if (!confirm('Revoke API key "' + keyName + '"? Integrations using it will stop working.')) return;
+            callEdge({ action: 'revoke_company_api_key', key_id: keyId })
+              .then(function() { toast('API key revoked.'); loadKeys(); })
+              .catch(function(err) { toast('Failed: ' + err.message, true); });
+          });
+        });
+      }).catch(function(err) {
+        loading.textContent = 'Failed to load: ' + err.message;
+      });
+    }
+
+    loadKeys();
+
+    if (createBtn) {
+      createBtn.onclick = function() {
+        document.getElementById('adminApiKeyForm').classList.remove('hidden');
+        document.getElementById('adminApiKeyCreatedPanel').classList.add('hidden');
+        createBtn.style.display = 'none';
+      };
+    }
+
+    var cancelBtn = document.getElementById('adminApiKeyCancelBtn');
+    if (cancelBtn) {
+      cancelBtn.onclick = function() {
+        document.getElementById('adminApiKeyForm').classList.add('hidden');
+        createBtn.style.display = '';
+      };
+    }
+
+    var doneBtn = document.getElementById('adminApiKeyDoneBtn');
+    if (doneBtn) {
+      doneBtn.onclick = function() {
+        document.getElementById('adminApiKeyCreatedPanel').classList.add('hidden');
+        createBtn.style.display = '';
+      };
+    }
+
+    var submitBtn = document.getElementById('adminApiKeySubmitBtn');
+    if (submitBtn) {
+      submitBtn.onclick = async function() {
+        var name = document.getElementById('adminApiKeyName').value.trim();
+        if (!name) { toast('Key name is required', true); return; }
+        var scopes = [];
+        document.querySelectorAll('.admin-api-scope:checked').forEach(function(el) { scopes.push(el.value); });
+        if (!scopes.length) { toast('Select at least one scope', true); return; }
+        var expiryDays = document.getElementById('adminApiKeyExpiry').value;
+        var expiresAt = null;
+        if (expiryDays) {
+          var d = new Date();
+          d.setDate(d.getDate() + parseInt(expiryDays));
+          expiresAt = d.toISOString();
+        }
+        var rawBytes = new Uint8Array(48);
+        crypto.getRandomValues(rawBytes);
+        var rawToken = 'qlhq_' + Array.from(rawBytes, function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+        var tokenPrefix = rawToken.slice(0, 12);
+        var encoder = new TextEncoder();
+        var hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(rawToken));
+        var tokenHash = Array.from(new Uint8Array(hashBuffer), function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+
+        submitBtn.disabled = true; submitBtn.textContent = 'Creating…';
+        callEdge({
+          action: 'create_company_api_key',
+          company_id: companyId,
+          name: name,
+          scopes: scopes,
+          expires_at: expiresAt,
+          token_hash: tokenHash,
+          token_prefix: tokenPrefix
+        }).then(function() {
+          document.getElementById('adminApiKeyForm').classList.add('hidden');
+          document.getElementById('adminApiKeyCreatedPanel').classList.remove('hidden');
+          document.getElementById('adminApiKeyRawValue').textContent = rawToken;
+          document.getElementById('adminApiKeyName').value = '';
+          toast('API key created! Copy it now.');
+          loadKeys();
+        }).catch(function(err) {
+          toast('Failed: ' + err.message, true);
+        }).finally(function() {
+          submitBtn.disabled = false; submitBtn.textContent = 'Create Key';
+        });
+      };
+    }
+  }
 
   // ── Service area buttons (static IDs - always present in modal HTML) ──────
   document.getElementById('editUserSaveAreaBtn').addEventListener('click', async function () {
@@ -2407,6 +2626,7 @@ h1{font-size:18px;font-weight:500}
       '<div class="user-info">' +
         '<div class="user-name">' + escapeHtml(c.name || '(no name)') + '</div>' +
         '<div class="user-meta">' + escapeHtml(c.email || '') + '</div>' +
+        '<div class="user-meta" style="font-family:monospace;font-size:10px;margin-top:2px;color:var(--muted);user-select:all;cursor:text" title="Company ID">' + escapeHtml(c.id || '') + '</div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<select class="form-input company-plan-select" style="height:32px;width:auto;font-size:12px">' +
