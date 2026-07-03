@@ -6253,6 +6253,7 @@ async function skipReviewRequest(requestId) {
 // =============================================================================
 function nicheLabel(niche) {
   if (niche === 'solar_battery' || niche === 'solar-battery') return 'Solar + Battery';
+  if (niche === 'battery_retrofit' || niche === 'battery-retrofit') return 'Battery Retrofit';
   return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
 
@@ -6340,7 +6341,7 @@ async function loadBuyLeads() {
   document.getElementById('buyLeadsPostcodes')?.addEventListener('input', buyLeadsUpdateSummary);
 }
 
-const BL_NICHES = ['solar', 'solar-battery', 'roofing', 'hvac', 'renovation'];
+const BL_NICHES = ['solar', 'solar-battery', 'roofing', 'hvac', 'renovation', 'battery-retrofit'];
 
 function renderBuyLeadsNiches() {
   const el = document.getElementById('buyLeadsNicheCards');
