@@ -10,7 +10,7 @@ insert into ppl_pricing (niche, area, price_per_lead) values
   ('battery_retrofit','Gold Coast',90.00),
   ('battery_retrofit','Sunshine Coast',90.00),
   ('battery_retrofit','Toowoomba',90.00),
-  ('battery_retrofit','Townsville',90.00),
+
   ('battery_retrofit','Cairns',90.00),
 
   -- New South Wales
