@@ -60,10 +60,18 @@
 <body>
 <div class="wrap">
   <div class="topbar">
-    <h1>VA Panel <span class="pill">Virtual Assistant</span></h1>
+    <h1>VA Panel <span class="pill" id="modePill">Virtual Assistant</span></h1>
     <div style="display:flex;gap:8px">
       <a class="btn" href="dashboard.html">Dashboard</a>
       <button class="btn" id="logoutBtn" type="button">Log out</button>
+    </div>
+  </div>
+
+  <!-- Admin preview: VA selector -->
+  <div id="adminBar" class="hidden" style="margin-bottom:16px">
+    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <label style="font-size:12px;color:var(--ink3);font-weight:600">Preview as VA:</label>
+      <select id="vaSelect" class="btn" style="min-width:200px"></select>
     </div>
   </div>
 
@@ -182,6 +190,9 @@
     $('availStatus').textContent = ok ? 'Saved ✓' : ('Error: ' + (data.error || 'could not save'));
   }
 
+  let _isAdmin = false;
+  let _selectedVaId = null;
+
   async function init() {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { session } } = await sb.auth.getSession();
@@ -192,14 +203,56 @@
     $('navAvail').addEventListener('click', showAvail);
     $('saveAvailBtn').addEventListener('click', saveAvailability);
     $('clearAvailBtn').addEventListener('click', () => { _availSet.clear(); renderAvailGrid(); $('availStatus').textContent = 'Unsaved changes'; });
-    loadClients();
+
+    const { data: me } = await sb.from('profiles').select('is_admin, is_va').eq('id', session.user.id).maybeSingle();
+    if (me && me.is_admin) {
+      _isAdmin = true;
+      $('modePill').textContent = 'Admin Preview';
+      $('modePill').style.background = 'rgba(239,68,68,.14)';
+      $('modePill').style.color = 'var(--red)';
+      $('modePill').style.borderColor = 'rgba(239,68,68,.3)';
+      await loadAdminMode();
+    } else {
+      loadClients();
+    }
+  }
+
+  async function loadAdminMode() {
+    const { ok, data } = await vaApi({ action: 'list_vas' });
+    if (!ok) { $('gate').textContent = 'Could not load VAs.'; return; }
+    const vas = data.vas || [];
+    if (!vas.length) {
+      $('gate').textContent = 'No VAs configured yet.';
+      return;
+    }
+    const sel = $('vaSelect');
+    sel.innerHTML = '<option value="">— Select a VA —</option>' +
+      vas.map(v => `<option value="${esc(v.id)}">${esc(v.full_name || v.email)} (${v.assigned} client${v.assigned !== 1 ? 's' : ''})</option>`).join('');
+    $('adminBar').classList.remove('hidden');
+    $('gate').classList.add('hidden');
+    $('vaNav').classList.remove('hidden');
+    $('navAvail').style.display = 'none';
+    sel.addEventListener('change', () => {
+      _selectedVaId = sel.value || null;
+      if (_selectedVaId) loadClientsForVa(_selectedVaId);
+      else { $('listView').classList.add('hidden'); $('detailView').classList.add('hidden'); }
+    });
+  }
+
+  async function loadClientsForVa(vaId) {
+    $('detailView').classList.add('hidden');
+    $('listView').classList.remove('hidden');
+    $('clientList').innerHTML = '<div class="card empty">Loading…</div>';
+    const { ok, data } = await vaApi({ action: 'admin_list_va_clients', va_user_id: vaId });
+    if (!ok) { $('clientList').innerHTML = `<div class="card empty">${esc(data.error || 'Error')}</div>`; return; }
+    _clients = data.clients || [];
+    showList();
   }
 
   let _clients = [];
   async function loadClients() {
     const { ok, status, data } = await vaApi({ action: 'list_clients' });
     if (!ok) {
-      // Not a VA → send them to the normal dashboard.
       if (status === 403) { location.href = 'dashboard.html'; return; }
       $('gate').textContent = 'Could not load your clients. ' + (data.error || '');
       return;
@@ -241,7 +294,8 @@
     $('detailView').classList.remove('hidden');
     setNav('clients');
     window.scrollTo(0, 0);
-    const { ok, data } = await vaApi({ action: 'get_client', company_id: companyId });
+    const action = _isAdmin ? 'admin_get_client' : 'get_client';
+    const { ok, data } = await vaApi({ action, company_id: companyId });
     if (!ok) { $('detailBody').innerHTML = `<div class="card empty">${esc(data.error || 'Could not load client.')}</div>`; return; }
     renderDetail(companyId, data);
   }

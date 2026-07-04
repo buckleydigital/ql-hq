@@ -885,24 +885,21 @@ async function showApp() {
     return;
   }
 
-  // The "VA Panel" sidebar link is for VAs ONLY. Reveal it for a VA; for every
-  // other user type strip it out of the DOM entirely so it can never be seen.
-  // (va.html itself is also server-side gated to is_va.) Defensive query so a
-  // not-yet-migrated DB (no is_va column) can never break login.
+  // Show the "VA Panel" sidebar link for VAs and admins (admin preview mode).
   const _vaLink = document.getElementById("navVaPanel");
   try {
     const { data: vaRow } = await sb
       .from("profiles")
-      .select("is_va")
+      .select("is_va, is_admin")
       .eq("id", currentUser.id)
       .maybeSingle();
-    if (vaRow && vaRow.is_va === true) {
+    if (vaRow && (vaRow.is_va === true || vaRow.is_admin === true)) {
       if (_vaLink) _vaLink.style.display = "flex";
     } else if (_vaLink) {
       _vaLink.remove();
     }
   } catch (e) {
-    if (_vaLink) _vaLink.remove();   // can't confirm VA status → never show it
+    if (_vaLink) _vaLink.remove();
   }
 
   try {

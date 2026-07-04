@@ -307,6 +307,69 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "admin_get_client") {
+      const companyId = (body as { company_id?: string }).company_id;
+      if (!companyId) return json({ error: "company_id is required" }, 400);
+      const { data: company } = await adminClient
+        .from("companies")
+        .select("id, name, plan, email, phone, domain, created_at")
+        .eq("id", companyId)
+        .maybeSingle();
+      if (!company) return json({ error: "Client not found" }, 404);
+      const { data: members } = await adminClient
+        .from("profiles")
+        .select("id, full_name, phone, role")
+        .eq("company_id", companyId);
+      const emails2 = await emailMap(adminClient, (members || []).map((m: { id: string }) => m.id));
+      const contacts = (members || []).map((m: Record<string, unknown>) => ({
+        full_name: m.full_name, phone: m.phone, role: m.role, email: emails2[m.id as string] || "",
+      }));
+      const { data: leadOrders } = await adminClient
+        .from("ppl_lead_orders")
+        .select("id, niche, area, quantity, delivered_count, price_per_lead, total_amount, status, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false });
+      const { data: orders } = await adminClient
+        .from("ppl_orders")
+        .select("id, total_leads, delivered_leads, status, due_date, notes, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false });
+      const { data: clientNotes } = await adminClient
+        .from("client_notes")
+        .select("id, body, author_name, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false });
+      return json({ company, contacts, lead_orders: leadOrders || [], orders: orders || [], notes: clientNotes || [] });
+    }
+
+    if (action === "admin_list_va_clients") {
+      const vaUserId = (body as { va_user_id?: string }).va_user_id;
+      if (!vaUserId) return json({ error: "va_user_id is required" }, 400);
+      const { data: assigns } = await adminClient
+        .from("va_assignments").select("company_id").eq("va_user_id", vaUserId);
+      const ids = (assigns || []).map((a: { company_id: string }) => a.company_id);
+      if (!ids.length) return json({ clients: [] });
+      const { data: companies } = await adminClient
+        .from("companies").select("id, name, plan, email, phone").in("id", ids).order("name", { ascending: true });
+      const { data: pplOrders } = await adminClient
+        .from("ppl_orders").select("company_id, total_leads, delivered_leads, status").in("company_id", ids);
+      const { data: notes } = await adminClient
+        .from("client_notes").select("company_id").in("company_id", ids);
+      const agg: Record<string, { totalLeads: number; delivered: number; activeOrders: number; notes: number }> = {};
+      for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0 };
+      for (const o of pplOrders || []) {
+        const a = agg[o.company_id as string]; if (!a) continue;
+        a.totalLeads += (o.total_leads as number) || 0;
+        a.delivered += (o.delivered_leads as number) || 0;
+        if (o.status === "active") a.activeOrders += 1;
+      }
+      for (const n of notes || []) { const a = agg[n.company_id as string]; if (a) a.notes += 1; }
+      const clients = (companies || []).map((c: Record<string, unknown>) => ({
+        id: c.id, name: c.name, plan: c.plan, email: c.email, phone: c.phone, ...agg[c.id as string],
+      }));
+      return json({ clients });
+    }
+
     if (action === "list_availability") {
       const { data: vas } = await adminClient.from("profiles").select("id, full_name").eq("is_va", true);
       const ids = (vas || []).map((v: { id: string }) => v.id);
