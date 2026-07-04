@@ -62,13 +62,36 @@ serve(async (req) => {
     // Load company settings + agreed postcodes
     const { data: company } = await supabase
       .from('companies')
-      .select('id, name, settings, ppl_agreed_postcodes')
+      .select('id, name, plan, settings, ppl_agreed_postcodes')
       .eq('id', targetCompanyId)
       .maybeSingle()
 
     if (!company) return new Response('Company not found', { status: 404 })
 
     const delivery = company.settings?.lead_delivery || {}
+
+    // Notify internally when a managed advertising client updates delivery settings
+    if (company.plan === 'managed') {
+      try {
+        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/resend-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({
+            to: 'contact@quoteleads.com.au',
+            subject: `Delivery settings updated — ${company.name}`,
+            html: `<p><strong>${company.name}</strong> (Managed) updated their delivery settings.</p>
+              <ul>
+                <li><strong>Email:</strong> ${delivery.email || '—'}</li>
+                <li><strong>SMS:</strong> ${delivery.sms_number || '—'}</li>
+                <li><strong>Webhook:</strong> ${delivery.webhook_url || '—'}</li>
+              </ul>`,
+          }),
+        })
+      } catch (e) { console.warn('managed notification email failed:', e) }
+    }
 
     // Push to ql-mc
     const res = await fetch(`${QL_MC_API_URL}/delivery-config`, {
