@@ -407,7 +407,7 @@ Deno.serve(async (req) => {
       if (!company_id || !UUID_RE.test(company_id)) {
         return json({ error: "company_id must be a valid UUID" }, 400);
       }
-      const VALID_PLANS = ["free", "managed", "ppl"];
+      const VALID_PLANS = ["free", "managed", "ppl", "ppl_managed"];
       if (plan !== undefined && !VALID_PLANS.includes(plan)) {
         return json({ error: "plan must be 'free', 'managed' or 'ppl'" }, 400);
       }
