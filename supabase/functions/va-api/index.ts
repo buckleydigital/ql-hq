@@ -157,8 +157,14 @@ Deno.serve(async (req) => {
           .select("company_id")
           .in("company_id", ids);
 
-        const agg: Record<string, { totalLeads: number; delivered: number; activeOrders: number; notes: number }> = {};
-        for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0 };
+        // Total leads in the account (for managed clients).
+        const { data: leadRows } = await adminClient
+          .from("leads")
+          .select("company_id")
+          .in("company_id", ids);
+
+        const agg: Record<string, { totalLeads: number; delivered: number; activeOrders: number; notes: number; accountLeads: number }> = {};
+        for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0, accountLeads: 0 };
         for (const o of orders || []) {
           const a = agg[o.company_id as string]; if (!a) continue;
           a.totalLeads += (o.total_leads as number) || 0;
@@ -166,6 +172,7 @@ Deno.serve(async (req) => {
           if (o.status === "active") a.activeOrders += 1;
         }
         for (const n of notes || []) { const a = agg[n.company_id as string]; if (a) a.notes += 1; }
+        for (const l of leadRows || []) { const a = agg[l.company_id as string]; if (a) a.accountLeads += 1; }
 
         const clients = (companies || []).map((c: Record<string, unknown>) => ({
           id: c.id, name: c.name, plan: c.plan, email: c.email, phone: c.phone,
@@ -355,8 +362,10 @@ Deno.serve(async (req) => {
         .from("ppl_orders").select("company_id, total_leads, delivered_leads, status").in("company_id", ids);
       const { data: notes } = await adminClient
         .from("client_notes").select("company_id").in("company_id", ids);
-      const agg: Record<string, { totalLeads: number; delivered: number; activeOrders: number; notes: number }> = {};
-      for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0 };
+      const { data: leadRows } = await adminClient
+        .from("leads").select("company_id").in("company_id", ids);
+      const agg: Record<string, { totalLeads: number; delivered: number; activeOrders: number; notes: number; accountLeads: number }> = {};
+      for (const id of ids) agg[id] = { totalLeads: 0, delivered: 0, activeOrders: 0, notes: 0, accountLeads: 0 };
       for (const o of pplOrders || []) {
         const a = agg[o.company_id as string]; if (!a) continue;
         a.totalLeads += (o.total_leads as number) || 0;
@@ -364,6 +373,7 @@ Deno.serve(async (req) => {
         if (o.status === "active") a.activeOrders += 1;
       }
       for (const n of notes || []) { const a = agg[n.company_id as string]; if (a) a.notes += 1; }
+      for (const l of leadRows || []) { const a = agg[l.company_id as string]; if (a) a.accountLeads += 1; }
       const clients = (companies || []).map((c: Record<string, unknown>) => ({
         id: c.id, name: c.name, plan: c.plan, email: c.email, phone: c.phone, ...agg[c.id as string],
       }));
