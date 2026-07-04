@@ -239,6 +239,7 @@ h1{font-size:18px;font-weight:500}
               <select class="form-input" id="newCompanyPlan">
                 <option value="managed">Managed</option>
                 <option value="ppl">Pay Per Lead (PPL)</option>
+                <option value="ppl_managed">PPL + Managed</option>
               </select>
             </div>
             <div class="form-row">
@@ -2632,9 +2633,10 @@ h1{font-size:18px;font-weight:500}
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<select class="form-input company-plan-select" style="height:32px;width:auto;font-size:12px">' +
-          '<option value="free"'    + (plan === 'free'    ? ' selected' : '') + '>Free</option>' +
-          '<option value="managed"' + (plan === 'managed' ? ' selected' : '') + '>Managed</option>' +
-          '<option value="ppl"'     + (plan === 'ppl'     ? ' selected' : '') + '>PPL</option>' +
+          '<option value="free"'        + (plan === 'free'        ? ' selected' : '') + '>Free</option>' +
+          '<option value="managed"'     + (plan === 'managed'     ? ' selected' : '') + '>Managed</option>' +
+          '<option value="ppl"'         + (plan === 'ppl'         ? ' selected' : '') + '>PPL</option>' +
+          '<option value="ppl_managed"' + (plan === 'ppl_managed' ? ' selected' : '') + '>PPL + Managed</option>' +
         '</select>' +
         '<button class="btn btn-sm btn-reject company-delete-btn" type="button">Delete</button>' +
       '</div>';

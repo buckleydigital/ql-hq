@@ -116,7 +116,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmtMoney = (v) => v != null ? '$' + Number(v).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-';
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'}) : '-';
-  const planBadge = (p) => { const k = p === 'managed' ? 'managed' : p === 'ppl' ? 'ppl' : 'other'; const label = p === 'managed' ? 'Managed' : p === 'ppl' ? 'PPL' : (p || '-'); return `<span class="badge ${k}">${esc(label)}</span>`; };
+  const planBadge = (p) => { const k = p === 'managed' ? 'managed' : (p === 'ppl' || p === 'ppl_managed') ? 'ppl' : 'other'; const label = p === 'managed' ? 'Managed' : p === 'ppl' ? 'PPL' : p === 'ppl_managed' ? 'PPL + Managed' : (p || '-'); return `<span class="badge ${k}">${esc(label)}</span>`; };
 
   async function vaApi(body) {
     const { data: { session } } = await sb.auth.getSession();
