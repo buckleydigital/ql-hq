@@ -365,7 +365,16 @@ function buildSystemPrompt(
   lead: Record<string, unknown>,
   quoteStatus: string | null,
   companyKnowledge?: string,
+  isSuperAdminCompany?: boolean,
 ): string {
+  // Super-admin companies (the agency's own tenant) run entirely on their own
+  // system_prompt — the baked-in trade persona/rules/goal/callback logic below
+  // never applies to them. Every other company is completely unaffected: this
+  // only ever matches the one company tied to a super-admin profile.
+  if (isSuperAdminCompany) {
+    return ((config.system_prompt as string) || "").trim();
+  }
+
   const companyName = (config.company_name as string) || "our company";
   const area = (config.company_area as string) || "your area";
   const service = (config.service_description as string) || "our services";
@@ -886,8 +895,19 @@ Deno.serve(async (req) => {
     }
 
     // 10. Build prompt + call OpenAI (with company knowledge enrichment)
+    // isSuperAdminCompany is true only for the one company tied to a
+    // profiles.is_admin=true user — every other company is unaffected.
+    const { data: superAdminProfile } = await db
+      .from("profiles")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("is_admin", true)
+      .limit(1)
+      .maybeSingle();
+    const isSuperAdminCompany = !!superAdminProfile;
+
     const companyKnowledge = await fetchCompanyKnowledge(db, companyId);
-    const systemPrompt = buildSystemPrompt(smsConfig, lead, quoteStatus, companyKnowledge);
+    const systemPrompt = buildSystemPrompt(smsConfig, lead, quoteStatus, companyKnowledge, isSuperAdminCompany);
     const model = smsConfig.model || "gpt-4o";
 
     const aiRaw = await callOpenAI(openaiKey, model, systemPrompt, conversationMessages);
