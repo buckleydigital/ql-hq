@@ -377,7 +377,25 @@ function buildSystemPrompt(
     const contextLine = leadName || leadCompany
       ? `Lead context: ${[leadName && `name is ${leadName}`, leadCompany && `company is ${leadCompany}`].filter(Boolean).join(", ")}.\n\n`
       : "";
-    return contextLine + ((config.system_prompt as string) || "").trim();
+
+    // Data only (no persona/rules) — the model otherwise has no way to know
+    // the current date/time, which the custom prompt relies on for booking.
+    const nowSA = new Date();
+    const todayStrSA = nowSA.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const timeStrSA = nowSA.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const dateTimeLine = `Today: ${todayStrSA}. Current time: ${timeStrSA}.\n\n`;
+
+    // Lightweight JSON action tag — same mechanism the normal pipeline uses to
+    // detect a confirmed callback and auto-create the appointment. Kept to
+    // just callback/none since onsite + quote drafting don't apply here.
+    const jsonDirective = `\n\nIMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
+---JSON---
+{"score": <0-100>, "score_reason": "<brief reason>", "action": "<callback|none>", "appointment_time": "<ISO8601 datetime or null>", "appointment_note": "<brief note or null>"}
+
+Score: 0-20 cold, 21-40 mild interest, 41-60 engaged, 61-80 ready, 81-100 call booked.
+Action: "callback" only once a specific call time has been confirmed with the lead, with appointment_time set (full ISO8601 with timezone, e.g. "2026-04-02T14:00:00+10:00"). Otherwise "none".`;
+
+    return contextLine + dateTimeLine + ((config.system_prompt as string) || "").trim() + jsonDirective;
   }
 
   const companyName = (config.company_name as string) || "our company";
