@@ -81,6 +81,40 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // ---------------------------------------------------------------------------
+// Mirror an agency (super-admin company) SMS exchange into ql-mc's Sales
+// Conversations. Fire-and-forget: a failure here must never affect the reply
+// to the lead. Only ever called for the super-admin company.
+// ---------------------------------------------------------------------------
+async function mirrorToQlMc(payload: {
+  lead_name: string | null;
+  company: string | null;
+  phone: string | null;
+  twilio_number: string | null;
+  inbound_message: string | null;
+  inbound_sid: string | null;
+  outbound_message: string | null;
+}): Promise<void> {
+  const url = Deno.env.get("QL_MC_API_URL");
+  const secret = Deno.env.get("QL_MC_API_SECRET");
+  if (!url || !secret) {
+    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set — skipping sales conversation mirror");
+    return;
+  }
+  try {
+    const res = await fetch(`${url}/sync-sales-conversation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-secret": secret },
+      body: JSON.stringify({ action: "mirror_conversation", source: "Agency SMS", ...payload }),
+    });
+    if (!res.ok) {
+      console.error(`sync-sales-conversation returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+  } catch (err) {
+    console.error("mirrorToQlMc failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Fetch relevant company knowledge for prompt enrichment (RAG-lite)
 // ---------------------------------------------------------------------------
 async function fetchCompanyKnowledge(
@@ -1215,6 +1249,24 @@ Respond ONLY with the JSON object, no markdown fences.`;
       score: actions.score,
       action: actions.action,
     });
+
+    // Mirror this exchange into ql-mc Sales Conversations — super-admin company
+    // only, fire-and-forget so it can never affect the reply to the lead.
+    if (isSuperAdminCompany) {
+      const mirrorPromise = mirrorToQlMc({
+        lead_name: (lead.first_name as string) || (lead.name as string) || null,
+        company: (lead.company as string) || null,
+        phone: fromNumber,          // the lead's number
+        twilio_number: toNumber,    // the agency Twilio number they texted
+        inbound_message: inboundBody,
+        inbound_sid: params.MessageSid || null,
+        outbound_message: actions.reply,
+      });
+      const rt = (globalThis as Record<string, unknown>).EdgeRuntime as
+        | { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+      if (rt?.waitUntil) rt.waitUntil(mirrorPromise);
+      else await mirrorPromise;
+    }
 
     // Return empty TwiML (we send via API, not TwiML reply)
     return twimlResponse("");
