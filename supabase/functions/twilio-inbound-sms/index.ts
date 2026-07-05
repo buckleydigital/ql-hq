@@ -372,7 +372,12 @@ function buildSystemPrompt(
   // never applies to them. Every other company is completely unaffected: this
   // only ever matches the one company tied to a super-admin profile.
   if (isSuperAdminCompany) {
-    return ((config.system_prompt as string) || "").trim();
+    const leadName = (lead.first_name as string) || (lead.name as string) || null;
+    const leadCompany = (lead.company as string) || null;
+    const contextLine = leadName || leadCompany
+      ? `Lead context: ${[leadName && `name is ${leadName}`, leadCompany && `company is ${leadCompany}`].filter(Boolean).join(", ")}.\n\n`
+      : "";
+    return contextLine + ((config.system_prompt as string) || "").trim();
   }
 
   const companyName = (config.company_name as string) || "our company";
