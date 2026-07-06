@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       purchase_timeline,
       matched_buyer,
       consent_text,
-      company,
+      company: companyName,
       ...rest
     } = body as Record<string, unknown>;
 
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       email: resolvedEmail,
       phone: resolvedPhone,
       company:
-        typeof company === "string" && company.trim() ? company.trim() : null,
+        typeof companyName === "string" && companyName.trim() ? companyName.trim() : null,
       postcode:
         typeof postcode === "string" && postcode.trim()
           ? postcode.trim()
