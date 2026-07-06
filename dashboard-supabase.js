@@ -6266,7 +6266,7 @@ let _blLocType       = 'radius';
 let _blStatewide     = false;       // true when an entire state is selected
 let _blCovMode       = 'radius';    // remembers radius/postcodes when not state-wide
 let _blPPL           = null;
-let _blQty           = 10;
+let _blQty           = 25;
 let _blDiscount      = 0;
 let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
@@ -6310,7 +6310,7 @@ async function loadBuyLeads() {
   _blDiscountTiers = tiers || [];
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blStatewide = false; _blCovMode = 'radius';
-  _blQty = _blDiscountTiers[0]?.min_quantity ?? 10;
+  _blQty = _blDiscountTiers[0]?.min_quantity ?? 25;
   _blDiscount = 0;
 
   // City visible from the start; niche hidden until city chosen
@@ -6609,7 +6609,7 @@ function wireCustomQtyInput() {
 function buyLeadsOnCustomQtyChange() {
   const input = document.getElementById('buyLeadsCustomQty');
   const raw = parseInt(input?.value || '0');
-  if (isNaN(raw) || raw < 10) return; // wait until valid
+  if (isNaN(raw) || raw < 25) return; // wait until valid
   _blQty = raw;
   const tier = blGetTierForQty(_blQty);
   _blDiscount = tier ? tier.discount_percent : 0;

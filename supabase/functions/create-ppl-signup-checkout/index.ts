@@ -113,6 +113,9 @@ serve(async (req) => {
     if (!first_name || !last_name || !email || !phone || !company || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields')
     }
+    if (Number(quantity) < 25) {
+      throw new Error('Minimum order is 25 leads')
+    }
 
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
     const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
