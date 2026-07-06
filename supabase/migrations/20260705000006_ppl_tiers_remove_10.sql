@@ -10,8 +10,8 @@ delete from public.volume_discount_tiers;
 insert into public.volume_discount_tiers
   (min_quantity, discount_percent, label, is_popular, active, sort_order)
 values
-  (25,  5,  '25 leads',  true,  true, 1),
-  (50,  10, '50 leads',  false, true, 2),
-  (100, 15, '100 leads', false, true, 3),
-  (200, 20, '200 leads', false, true, 4),
-  (300, 25, '300 leads', false, true, 5);
+  (25,  0,  '25 leads',  true,  true, 1),
+  (50,  5,  '50 leads',  false, true, 2),
+  (100, 5,  '100 leads', false, true, 3),
+  (200, 10, '200 leads', false, true, 4),
+  (300, 15, '300 leads', false, true, 5);
