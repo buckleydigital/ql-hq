@@ -474,6 +474,45 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Custom Payment Link panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Custom Payment Link</h2>
+          <p>Generate a one-off Stripe checkout link for a client at a custom price. Their normal dashboard pricing is unaffected.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:720px">
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Client company</label>
+            <select id="customLinkCompany" class="form-input"><option value="">Select a company…</option></select></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label>
+            <select id="customLinkNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label>
+            <select id="customLinkSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup><optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup><optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup></select></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area / City</label>
+            <input id="customLinkArea" class="form-input" type="text" placeholder="e.g. Brisbane"></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Quantity</label>
+            <input id="customLinkQty" class="form-input" type="number" min="1" step="1" placeholder="e.g. 50"></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Price per lead ($, ex GST)</label>
+            <input id="customLinkPrice" class="form-input" type="number" min="0.01" step="0.01" placeholder="e.g. 65.00"></div>
+          <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Volume discount % <span style="font-weight:400">(optional)</span></label>
+            <input id="customLinkDiscount" class="form-input" type="number" min="0" max="100" step="1" placeholder="0"></div>
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+          <button class="btn2" id="customLinkGenerateBtn" type="button" onclick="generateCustomLink()">Generate Link</button>
+          <span id="customLinkStatus" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div id="customLinkResult" style="display:none;margin-top:14px;padding:12px;border:1px solid rgba(22,163,74,.3);border-radius:10px;background:rgba(22,163,74,.06)">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Checkout link (send to client):</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="customLinkUrl" class="form-input" type="text" readonly style="flex:1;font-family:monospace;font-size:12px">
+            <button class="btn2 btn-sm" type="button" onclick="copyCustomLink()">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- PPL Campaign Registry panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -2254,6 +2293,7 @@ h1{font-size:18px;font-weight:500}
     var selects = [
       { el: document.getElementById('pplCompanySelect'), placeholder: 'Select a company…' },
       { el: document.getElementById('pplCompanyFilter'), placeholder: 'All companies' },
+      { el: document.getElementById('customLinkCompany'), placeholder: 'Select a company…' },
     ];
     selects.forEach(function (s) {
       if (!s.el) return;
@@ -2265,6 +2305,58 @@ h1{font-size:18px;font-weight:500}
         s.el.appendChild(opt);
       });
     });
+  }
+
+  window.generateCustomLink = async function () {
+    var btn    = document.getElementById('customLinkGenerateBtn');
+    var status = document.getElementById('customLinkStatus');
+    var result = document.getElementById('customLinkResult');
+    var payload = {
+      company_id:       document.getElementById('customLinkCompany').value,
+      niche:            document.getElementById('customLinkNiche').value,
+      sub_niche:        document.getElementById('customLinkSubNiche').value || null,
+      area_city:        document.getElementById('customLinkArea').value.trim(),
+      quantity:         parseInt(document.getElementById('customLinkQty').value, 10),
+      price_per_lead:   parseFloat(document.getElementById('customLinkPrice').value),
+      discount_percent: parseInt(document.getElementById('customLinkDiscount').value, 10) || 0,
+      location_type:    'radius',
+    };
+    if (!payload.company_id) { status.textContent = 'Pick a company.'; return; }
+    if (!payload.area_city)  { status.textContent = 'Enter an area/city.'; return; }
+    if (!payload.quantity || payload.quantity < 1)   { status.textContent = 'Enter a valid quantity.'; return; }
+    if (!payload.price_per_lead || payload.price_per_lead <= 0) { status.textContent = 'Enter a valid price per lead.'; return; }
+
+    btn.disabled = true; status.textContent = 'Generating…'; result.style.display = 'none';
+    try {
+      var token = await getAccessToken();
+      if (!token) throw new Error('Not authenticated');
+      var res = await fetch(SUPABASE_URL + '/functions/v1/create-custom-ppl-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(payload),
+      });
+      var data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+      document.getElementById('customLinkUrl').value = data.url;
+      result.style.display = '';
+      status.textContent = 'Link created.';
+    } catch (e) {
+      status.textContent = 'Failed: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  window.copyCustomLink = function () {
+    var input = document.getElementById('customLinkUrl');
+    if (!input || !input.value) return;
+    navigator.clipboard.writeText(input.value)
+      .then(function () { document.getElementById('customLinkStatus').textContent = 'Copied.'; })
+      .catch(function () { input.select(); document.execCommand('copy'); });
   }
 
   async function loadCompanies() {

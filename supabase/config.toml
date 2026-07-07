@@ -88,3 +88,8 @@ verify_jwt = false
 
 [functions.get-magic-link]
 verify_jwt = false
+
+[functions.create-custom-ppl-checkout]
+verify_jwt = false
+# Super-admin-only. Verifies the caller's JWT + profiles.is_admin internally,
+# then creates a Stripe checkout link at an admin-set custom price.
