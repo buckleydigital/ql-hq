@@ -112,6 +112,7 @@ serve(async (req) => {
         price_per_lead: price,
         total_amount: price * qty * (1 - discountPct / 100),
         status: 'pending',
+        custom_link: true,
       })
       .select('id')
       .single()
@@ -153,7 +154,7 @@ serve(async (req) => {
 
     await supabase
       .from('ppl_lead_orders')
-      .update({ stripe_session_id: session.id })
+      .update({ stripe_session_id: session.id, checkout_url: session.url })
       .eq('id', order!.id)
 
     return json({ url: session.url, order_id: order!.id })

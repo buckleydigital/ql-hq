@@ -393,6 +393,24 @@ Deno.serve(async (req) => {
       return json({ companies: companies || [] });
     }
 
+    // ── action: list_custom_links ─────────────────────────────────────────────
+    // Recent admin-generated custom PPL payment links, newest first.
+    if (action === "list_custom_links") {
+      const { data: links, error: linksErr } = await adminClient
+        .from("ppl_lead_orders")
+        .select("id, company_id, niche, sub_niche, area_city, quantity, price_per_lead, total_amount, status, checkout_url, created_at")
+        .eq("custom_link", true)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (linksErr) {
+        console.error("list_custom_links error:", linksErr.message);
+        return json({ error: "Failed to load custom links" }, 500);
+      }
+
+      return json({ links: links || [] });
+    }
+
     // ── action: update_company ────────────────────────────────────────────────
     // Updates plan (and optionally name/email) for a company.
     if (action === "update_company") {
