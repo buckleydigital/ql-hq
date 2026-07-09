@@ -27,6 +27,37 @@ function toE164AU(p: string): string {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// Mirror an agency (super-admin company) SMS into ql-mc Sales Conversations.
+// Fire-and-forget — only ever called for the super-admin company.
+async function mirrorToQlMc(payload: {
+  lead_name: string | null;
+  company: string | null;
+  phone: string | null;
+  twilio_number: string | null;
+  inbound_message: string | null;
+  inbound_sid: string | null;
+  outbound_message: string | null;
+}): Promise<void> {
+  const url = Deno.env.get("QL_MC_API_URL");
+  const secret = Deno.env.get("QL_MC_API_SECRET");
+  if (!url || !secret) {
+    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set — skipping sales conversation mirror");
+    return;
+  }
+  try {
+    const res = await fetch(`${url}/sync-sales-conversation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-secret": secret },
+      body: JSON.stringify({ action: "mirror_conversation", source: "Agency SMS", ...payload }),
+    });
+    if (!res.ok) {
+      console.error(`sync-sales-conversation returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+  } catch (err) {
+    console.error("mirrorToQlMc failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -205,6 +236,8 @@ Deno.serve(async (req) => {
       leadId,
       resolvedFirstName,
       resolvedPhone,
+      resolvedName,
+      typeof companyName === "string" ? companyName : null,
     );
     const runtime = (globalThis as Record<string, unknown>).EdgeRuntime as
       | { waitUntil?: (p: Promise<unknown>) => void }
@@ -228,6 +261,8 @@ async function maybeSendWelcomeSms(
   leadId: string,
   firstName: string,
   phone: string | null,
+  fullName: string | null,
+  companyName: string | null,
 ): Promise<void> {
   if (!phone) return;
 
@@ -305,6 +340,31 @@ async function maybeSendWelcomeSms(
         errText,
       );
       return;
+    }
+
+    // Mirror the first outbound (welcome) message into ql-mc Sales
+    // Conversations — super-admin company only. Fire-and-forget.
+    try {
+      const { data: superAdmin } = await db
+        .from("profiles")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("is_admin", true)
+        .limit(1)
+        .maybeSingle();
+      if (superAdmin) {
+        await mirrorToQlMc({
+          lead_name: fullName || firstName || null,
+          company: companyName,
+          phone: toE164AU(phone),
+          twilio_number: (smsConfig.twilio_number as string) || null,
+          inbound_message: null,
+          inbound_sid: null,
+          outbound_message: messageBody,
+        });
+      }
+    } catch (e) {
+      console.error("welcome-SMS mirror failed:", e instanceof Error ? e.message : e);
     }
 
     // Reuse the lead's open SMS conversation if one exists (e.g. they texted
