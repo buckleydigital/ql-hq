@@ -1729,7 +1729,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                   <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
                 </div>
 
-                <!-- Step 3: Sub-Niche (conditional - HVAC / Roofing / Renovation only) -->
+                <!-- Step 3: Sub-Niche (conditional - HVAC only) -->
                 <div class="field" id="buyLeadsSubNicheField" style="display:none">
                   <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
                   <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
@@ -2283,7 +2283,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
     <div class="mb">
       <form id="pplOrderForm" class="stack">
         <div class="form2">
-          <div class="field"><label for="pplOrderNiche">Niche</label><select id="pplOrderNiche" required><option value="">Select niche…</option><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+          <div class="field"><label for="pplOrderNiche">Niche</label><select id="pplOrderNiche" required><option value="">Select niche…</option><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
           <div class="field"><label for="pplOrderCity">City</label><input id="pplOrderCity" type="text" required placeholder="e.g. Brisbane"></div>
           <div class="field"><label for="pplOrderQty">Quantity</label><input id="pplOrderQty" type="number" min="1" required placeholder="e.g. 20"></div>
           <div class="field"><label for="pplOrderPPL">Price Per Lead ($)</label><input id="pplOrderPPL" type="number" min="0" step="0.01" required placeholder="e.g. 75.00"></div>

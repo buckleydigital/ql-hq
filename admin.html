@@ -232,7 +232,7 @@ h1{font-size:18px;font-weight:500}
           <div class="form-grid" style="margin-bottom:4px">
             <div class="form-row">
               <label class="form-label" for="newCompanyName">Company Name <span style="color:var(--accent);font-weight:400">required</span></label>
-              <input class="form-input" id="newCompanyName" type="text" placeholder="Acme Roofing Co." required>
+              <input class="form-input" id="newCompanyName" type="text" placeholder="Acme Solar Co." required>
             </div>
             <div class="form-row">
               <label class="form-label" for="newCompanyPlan">Plan</label>
@@ -260,7 +260,7 @@ h1{font-size:18px;font-weight:500}
             </div>
             <div class="form-row">
               <label class="form-label" for="newCompanyNiche">Niche <span style="font-weight:400">(optional - used to personalise the SMS agent)</span></label>
-              <input class="form-input" id="newCompanyNiche" type="text" placeholder="e.g. solar, roofing, pest control">
+              <input class="form-input" id="newCompanyNiche" type="text" placeholder="e.g. solar, hvac">
             </div>
           </div>
 
@@ -298,7 +298,7 @@ h1{font-size:18px;font-weight:500}
             </div>
             <div class="form-row" style="grid-column:1/-1">
               <label class="form-label" for="newPplNotes">Order Notes <span style="font-weight:400">(optional)</span></label>
-              <input class="form-input" id="newPplNotes" type="text" placeholder="e.g. June batch - 20 roofing leads">
+              <input class="form-input" id="newPplNotes" type="text" placeholder="e.g. June batch - 20 solar leads">
             </div>
           </div>
 
@@ -423,17 +423,17 @@ h1{font-size:18px;font-weight:500}
             <option value="">All niches</option>
             <option value="solar">Solar</option>
             <option value="solar_battery">Solar + Battery</option>
-            <option value="roofing">Roofing</option>
+            
             <option value="hvac">HVAC</option>
-            <option value="renovation">Renovation</option>
+            
             <option value="battery_retrofit">Battery Retrofit</option>
           </select>
           <select id="pplPriceSubNicheFilter" class="filter-select" onchange="applyPricingFilter()">
             <option value="">All sub-niches</option>
             <option value="__none__">- Parent niche only -</option>
             <optgroup label="HVAC"><option value="split_ducted">Split &amp; Ducted</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>
-            <optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal</option></optgroup>
-            <optgroup label="Renovation"><option value="kitchen">Kitchen</option><option value="bathroom">Bathroom</option></optgroup>
+            
+            
           </select>
           <select id="pplPriceAreaFilter" class="filter-select" onchange="applyPricingFilter()">
             <option value="">All cities</option>
@@ -487,9 +487,9 @@ h1{font-size:18px;font-weight:500}
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Client company</label>
             <select id="customLinkCompany" class="form-input"><option value="">Select a company…</option></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label>
-            <select id="customLinkNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+            <select id="customLinkNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label>
-            <select id="customLinkSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup><optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup><optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup></select></div>
+            <select id="customLinkSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area / City</label>
             <input id="customLinkArea" class="form-input" type="text" placeholder="e.g. Brisbane"></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Quantity</label>
@@ -534,8 +534,8 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
-            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label><select id="adminCampSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup><optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup><optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label><select id="adminCampSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Campaign ID</label><input id="adminCampId" class="form-input" type="text" placeholder="Campaign ID"></div>
@@ -567,22 +567,13 @@ h1{font-size:18px;font-weight:500}
             <option value="solar">Solar</option>
             <option value="solar_battery">Solar + Battery</option>
             <option value="battery_retrofit">Battery Retrofit</option>
-            <optgroup label="Roofing">
-              <option value="roofing">Roofing (any)</option>
-              <option value="roofing:all_restorations">↳ All Restorations</option>
-              <option value="roofing:all_replacements">↳ All Replacements</option>
-              <option value="roofing:tile_metal">↳ Tile-to-Metal</option>
-            </optgroup>
+            
             <optgroup label="HVAC">
               <option value="hvac">HVAC (any)</option>
               <option value="hvac:split_ducted">↳ Split &amp; Ducted</option>
               <option value="hvac:installations_maintenance">↳ Installations &amp; Maintenance</option>
             </optgroup>
-            <optgroup label="Renovation">
-              <option value="renovation">Renovation (any)</option>
-              <option value="renovation:kitchen">↳ Kitchen</option>
-              <option value="renovation:bathroom">↳ Bathroom</option>
-            </optgroup>
+            
           </select>
           <select id="pplLeadStatusFilter" class="filter-select">
             <option value="">All statuses</option>
@@ -3191,14 +3182,14 @@ h1{font-size:18px;font-weight:500}
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>' +
           '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
-            '<option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option>' +
+            '<option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option>' +
           '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Sub-Niche <span style="font-weight:400">(blank = parent niche default)</span></label>' +
           '<select id="addPriceSubNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
             '<option value="">- None (parent niche) -</option>' +
             '<optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>' +
-            '<optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal Replacements</option></optgroup>' +
-            '<optgroup label="Renovation"><option value="kitchen">Kitchen Renovations</option><option value="bathroom">Bathroom Renovations</option></optgroup>' +
+            '' +
+            '' +
           '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Area <span style="font-weight:400">(blank = default)</span></label>' +
           '<input id="addPriceArea" type="text" placeholder="e.g. Brisbane" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:160px"></div>' +

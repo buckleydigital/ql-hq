@@ -1,5 +1,5 @@
 // Public endpoint - returns PPL price for a given niche + optional sub_niche + optional area.
-// GET ?niche=roofing&sub_niche=tile_metal&area=Brisbane  → { price_per_lead, discount_tiers }
+// GET ?niche=hvac&sub_niche=split_ducted&area=Brisbane  → { price_per_lead, discount_tiers }
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
