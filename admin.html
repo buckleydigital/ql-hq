@@ -2374,15 +2374,15 @@ h1{font-size:18px;font-weight:500}
         var paid = l.status && l.status !== 'pending';
         var badge = '<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600;background:' +
           (paid ? '#22c55e22;color:#16a34a' : '#f59e0b22;color:#b45309') + '">' + escapeHtml(l.status || 'pending') + '</span>';
-        var detail = escapeHtml([l.niche, l.sub_niche].filter(Boolean).join(' › ')) + ' · ' + escapeHtml(l.area_city || '—');
-        var when = l.created_at ? new Date(l.created_at).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' }) : '—';
+        var detail = escapeHtml([l.niche, l.sub_niche].filter(Boolean).join(' › ')) + ' · ' + escapeHtml(l.area_city || '-');
+        var when = l.created_at ? new Date(l.created_at).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' }) : '-';
         var copyBtn = l.checkout_url
           ? '<button class="btn2 btn-sm" type="button" onclick="copyLinkUrl(this)" data-url="' + escapeHtml(l.checkout_url) + '">Copy</button>'
-          : '—';
+          : '-';
         return '<tr>' +
-          '<td style="padding:8px 10px">' + escapeHtml(nameById[l.company_id] || l.company_id || '—') + '</td>' +
+          '<td style="padding:8px 10px">' + escapeHtml(nameById[l.company_id] || l.company_id || '-') + '</td>' +
           '<td style="padding:8px 10px;font-size:12px;color:var(--muted)">' + detail + '</td>' +
-          '<td style="padding:8px 10px">' + (l.quantity || '—') + '</td>' +
+          '<td style="padding:8px 10px">' + (l.quantity || '-') + '</td>' +
           '<td style="padding:8px 10px">$' + Number(l.price_per_lead || 0).toFixed(2) + '</td>' +
           '<td style="padding:8px 10px">$' + Number(l.total_amount || 0).toFixed(2) + '</td>' +
           '<td style="padding:8px 10px">' + badge + '</td>' +

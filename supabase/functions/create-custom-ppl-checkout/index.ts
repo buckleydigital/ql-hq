@@ -1,11 +1,11 @@
-// create-custom-ppl-checkout — SUPER-ADMIN ONLY.
+// create-custom-ppl-checkout - SUPER-ADMIN ONLY.
 //
 // Generates a one-off Stripe Checkout link for a PPL order at an admin-set
 // price (used to give a specific client a custom/lower rate than the DB price).
 // Mirrors create-ppl-checkout exactly EXCEPT the price is supplied by the
 // authenticated super-admin instead of being resolved from ppl_pricing. The
 // resulting session carries the same metadata (type=ppl, order_id, …), so the
-// existing stripe-webhook provisions and syncs it identically — no other
+// existing stripe-webhook provisions and syncs it identically - no other
 // change needed downstream.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'

@@ -81,12 +81,12 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             to: 'contact@quoteleads.com.au',
-            subject: `Delivery settings updated — ${company.name}`,
+            subject: `Delivery settings updated - ${company.name}`,
             html: `<p><strong>${company.name}</strong> (Managed) updated their delivery settings.</p>
               <ul>
-                <li><strong>Email:</strong> ${delivery.email || '—'}</li>
-                <li><strong>SMS:</strong> ${delivery.sms_number || '—'}</li>
-                <li><strong>Webhook:</strong> ${delivery.webhook_url || '—'}</li>
+                <li><strong>Email:</strong> ${delivery.email || '-'}</li>
+                <li><strong>SMS:</strong> ${delivery.sms_number || '-'}</li>
+                <li><strong>Webhook:</strong> ${delivery.webhook_url || '-'}</li>
               </ul>`,
           }),
         })

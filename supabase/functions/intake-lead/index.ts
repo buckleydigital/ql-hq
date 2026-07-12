@@ -28,7 +28,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Mirror an agency (super-admin company) SMS into ql-mc Sales Conversations.
-// Fire-and-forget — only ever called for the super-admin company.
+// Fire-and-forget - only ever called for the super-admin company.
 async function mirrorToQlMc(payload: {
   lead_name: string | null;
   company: string | null;
@@ -41,7 +41,7 @@ async function mirrorToQlMc(payload: {
   const url = Deno.env.get("QL_MC_API_URL");
   const secret = Deno.env.get("QL_MC_API_SECRET");
   if (!url || !secret) {
-    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set — skipping sales conversation mirror");
+    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set - skipping sales conversation mirror");
     return;
   }
   try {
@@ -343,7 +343,7 @@ async function maybeSendWelcomeSms(
     }
 
     // Mirror the first outbound (welcome) message into ql-mc Sales
-    // Conversations — super-admin company only. Fire-and-forget.
+    // Conversations - super-admin company only. Fire-and-forget.
     try {
       const { data: superAdmin } = await db
         .from("profiles")

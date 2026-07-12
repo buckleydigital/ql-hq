@@ -226,7 +226,7 @@
       return;
     }
     const sel = $('vaSelect');
-    sel.innerHTML = '<option value="">— Select a VA —</option>' +
+    sel.innerHTML = '<option value="">Select a VA</option>' +
       vas.map(v => `<option value="${esc(v.id)}">${esc(v.full_name || v.email)} (${v.assigned} client${v.assigned !== 1 ? 's' : ''})</option>`).join('');
     $('adminBar').classList.remove('hidden');
     $('gate').classList.add('hidden');

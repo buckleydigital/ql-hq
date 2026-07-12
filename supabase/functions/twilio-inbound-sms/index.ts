@@ -97,7 +97,7 @@ async function mirrorToQlMc(payload: {
   const url = Deno.env.get("QL_MC_API_URL");
   const secret = Deno.env.get("QL_MC_API_SECRET");
   if (!url || !secret) {
-    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set — skipping sales conversation mirror");
+    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set - skipping sales conversation mirror");
     return;
   }
   try {
@@ -402,7 +402,7 @@ function buildSystemPrompt(
   isSuperAdminCompany?: boolean,
 ): string {
   // Super-admin companies (the agency's own tenant) run entirely on their own
-  // system_prompt — the baked-in trade persona/rules/goal/callback logic below
+  // system_prompt - the baked-in trade persona/rules/goal/callback logic below
   // never applies to them. Every other company is completely unaffected: this
   // only ever matches the one company tied to a super-admin profile.
   if (isSuperAdminCompany) {
@@ -412,14 +412,14 @@ function buildSystemPrompt(
       ? `Lead context: ${[leadName && `name is ${leadName}`, leadCompany && `company is ${leadCompany}`].filter(Boolean).join(", ")}.\n\n`
       : "";
 
-    // Data only (no persona/rules) — the model otherwise has no way to know
+    // Data only (no persona/rules) - the model otherwise has no way to know
     // the current date/time, which the custom prompt relies on for booking.
     const nowSA = new Date();
     const todayStrSA = nowSA.toLocaleDateString("en-AU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     const timeStrSA = nowSA.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
     const dateTimeLine = `Today: ${todayStrSA}. Current time: ${timeStrSA}.\n\n`;
 
-    // Lightweight JSON action tag — same mechanism the normal pipeline uses to
+    // Lightweight JSON action tag - same mechanism the normal pipeline uses to
     // detect a confirmed callback and auto-create the appointment. Kept to
     // just callback/none since onsite + quote drafting don't apply here.
     const jsonDirective = `\n\nIMPORTANT: After your reply text, output a JSON block on a new line starting with "---JSON---":
@@ -481,7 +481,7 @@ Action: "callback" only once a specific call time has been confirmed with the le
     goalSection = `Your goal: answer any questions the lead has about ${service} and let them know the team will be in touch.`;
   }
 
-  // Callback scheduling rules — only used when on-site is also enabled
+  // Callback scheduling rules - only used when on-site is also enabled
   // (so the AI needs to coordinate specific times). When callback-only,
   // the goal already tells the AI to just say "the team will be in touch".
   let callbackRules = "";
@@ -953,7 +953,7 @@ Deno.serve(async (req) => {
 
     // 10. Build prompt + call OpenAI (with company knowledge enrichment)
     // isSuperAdminCompany is true only for the one company tied to a
-    // profiles.is_admin=true user — every other company is unaffected.
+    // profiles.is_admin=true user - every other company is unaffected.
     const { data: superAdminProfile } = await db
       .from("profiles")
       .select("id")
@@ -1250,7 +1250,7 @@ Respond ONLY with the JSON object, no markdown fences.`;
       action: actions.action,
     });
 
-    // Mirror this exchange into ql-mc Sales Conversations — super-admin company
+    // Mirror this exchange into ql-mc Sales Conversations - super-admin company
     // only, fire-and-forget so it can never affect the reply to the lead.
     if (isSuperAdminCompany) {
       const mirrorPromise = mirrorToQlMc({
