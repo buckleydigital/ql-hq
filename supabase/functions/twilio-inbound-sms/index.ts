@@ -114,6 +114,59 @@ async function mirrorToQlMc(payload: {
   }
 }
 
+// True only for the one company tied to a profiles.is_admin=true user (the
+// agency/super-admin tenant). Every other company is a no-op.
+async function companyIsSuperAdmin(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<boolean> {
+  try {
+    const { data } = await db
+      .from("profiles")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("is_admin", true)
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+// Mirror an inbound-only message (lead texted in, but AI is off or out-of-hours
+// so there's no reply) into ql-mc Sales Conversations - super-admin company only.
+async function maybeMirrorInboundOnly(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  fromNumber: string,
+  toNumber: string,
+  inboundBody: string,
+  sid: string | null,
+): Promise<void> {
+  try {
+    if (!(await companyIsSuperAdmin(db, companyId))) return;
+    const { data: ld } = await db
+      .from("leads")
+      .select("first_name, name, company")
+      .eq("company_id", companyId)
+      .eq("phone", fromNumber)
+      .limit(1)
+      .maybeSingle();
+    await mirrorToQlMc({
+      lead_name: (ld?.first_name as string) || (ld?.name as string) || null,
+      company: (ld?.company as string) || null,
+      phone: fromNumber,
+      twilio_number: toNumber,
+      inbound_message: inboundBody,
+      inbound_sid: sid,
+      outbound_message: null,
+    });
+  } catch (e) {
+    console.error("maybeMirrorInboundOnly failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Fetch relevant company knowledge for prompt enrichment (RAG-lite)
 // ---------------------------------------------------------------------------
@@ -768,12 +821,14 @@ Deno.serve(async (req) => {
     if (!smsConfig.auto_reply) {
       // AI is off globally - just store the message, don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
       return twimlResponse("");
     }
 
     if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
       // Outside configured hours - store but don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
       return twimlResponse("");
     }
 
