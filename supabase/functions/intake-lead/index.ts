@@ -58,6 +58,88 @@ async function mirrorToQlMc(payload: {
   }
 }
 
+// Deliver an event to a company's active webhook_endpoints (Settings > Webhooks
+// in ql-hq), signed with HMAC-SHA256 - same contract the public API uses. Fully
+// self-contained: every failure is caught here, so it can never break the
+// caller. Awaits all deliveries so waitUntil keeps them alive past the response.
+async function fireWebhooks(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  try {
+    const { data: endpoints } = await db
+      .from("webhook_endpoints")
+      .select("id, url, secret, events")
+      .eq("company_id", companyId)
+      .eq("active", true);
+
+    if (!endpoints || endpoints.length === 0) return;
+
+    const jobs: Promise<unknown>[] = [];
+    for (const ep of endpoints) {
+      const events = Array.isArray(ep.events) ? ep.events : [];
+      if (!events.includes(event)) continue;
+      if (!ep.secret) {
+        console.warn("fireWebhooks: skipping endpoint with no secret", ep.id);
+        continue;
+      }
+
+      const bodyObj = { event, timestamp: new Date().toISOString(), data: payload };
+      const body = JSON.stringify(bodyObj);
+
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(ep.secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+      const signature = Array.from(new Uint8Array(sig))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      jobs.push((async () => {
+        let success = false;
+        let responseStatus = 0;
+        let responseBody = "";
+        try {
+          const res = await fetch(ep.url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Webhook-Signature": signature,
+              "X-Webhook-Event": event,
+            },
+            body,
+          });
+          responseStatus = res.status;
+          responseBody = (await res.text()).slice(0, 1000);
+          success = res.ok;
+        } catch (err) {
+          responseBody = `${(err as Error).name}: ${(err as Error).message}`;
+        }
+        await db.from("webhook_deliveries").insert({
+          webhook_id: ep.id,
+          company_id: companyId,
+          event,
+          payload: bodyObj,
+          response_status: responseStatus,
+          response_body: responseBody,
+          success,
+        });
+      })());
+    }
+
+    await Promise.allSettled(jobs);
+  } catch (err) {
+    console.error("fireWebhooks error:", err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -196,7 +278,7 @@ Deno.serve(async (req) => {
     let { data: lead, error: leadErr } = await db
       .from("leads")
       .insert(leadInsert)
-      .select("id")
+      .select("*")
       .single();
 
     if (leadErr) {
@@ -208,7 +290,7 @@ Deno.serve(async (req) => {
         const retry = await db
           .from("leads")
           .insert(leadInsert)
-          .select("id")
+          .select("*")
           .single();
         lead = retry.data;
         if (retry.error) {
@@ -227,6 +309,13 @@ Deno.serve(async (req) => {
 
     const leadId = lead.id as string;
 
+    // Deliver to the customer's signed webhook endpoints (Settings > Webhooks in
+    // ql-hq) for anyone subscribed to lead.created. Fire-and-forget: fully
+    // isolated in its own try/catch inside the helper, so a webhook failure can
+    // never affect the lead insert or the response. No-op when the company has
+    // no active endpoint subscribed to this event.
+    const webhookPromise = fireWebhooks(db, company_id, "lead.created", lead);
+
     // Keep the welcome SMS alive past the response: waitUntil lets the edge
     // runtime finish the send after we return; without it the isolate can be
     // torn down mid-flight, so fall back to awaiting inline.
@@ -244,8 +333,10 @@ Deno.serve(async (req) => {
       | undefined;
     if (runtime?.waitUntil) {
       runtime.waitUntil(welcomePromise);
+      runtime.waitUntil(webhookPromise);
     } else {
       await welcomePromise;
+      await webhookPromise;
     }
 
     return json({ success: true, lead_id: leadId });
