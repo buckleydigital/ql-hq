@@ -81,26 +81,27 @@ async function fireWebhooks(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
-      if (!ep.secret) {
-        console.warn("fireWebhooks: skipping endpoint with no secret", ep.id);
-        continue;
-      }
 
       const bodyObj = { event, timestamp: new Date().toISOString(), data: payload };
       const body = JSON.stringify(bodyObj);
 
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(ep.secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
-      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-      const signature = Array.from(new Uint8Array(sig))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      // Sign only when a secret is configured; a secret-less endpoint still
+      // receives the lead, just without the X-Webhook-Signature header.
+      let signature: string | null = null;
+      if (ep.secret) {
+        const encoder = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(ep.secret),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"],
+        );
+        const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+        signature = Array.from(new Uint8Array(sig))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      }
 
       jobs.push((async () => {
         let success = false;
@@ -111,8 +112,8 @@ async function fireWebhooks(
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Webhook-Signature": signature,
               "X-Webhook-Event": event,
+              ...(signature ? { "X-Webhook-Signature": signature } : {}),
             },
             body,
           });

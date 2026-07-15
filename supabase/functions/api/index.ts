@@ -661,19 +661,23 @@ async function fireWebhooks(
       };
       const body = JSON.stringify(bodyObj);
 
-      // HMAC-SHA256 signature
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(ep.secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
-      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-      const signature = Array.from(new Uint8Array(sig))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      // HMAC-SHA256 signature - only when a secret is configured. A secret-less
+      // endpoint still receives the event, just without the signature header.
+      let signature: string | null = null;
+      if (ep.secret) {
+        const encoder = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(ep.secret),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"],
+        );
+        const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+        signature = Array.from(new Uint8Array(sig))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      }
 
       // Fire-and-forget delivery with logging
       (async () => {
@@ -686,8 +690,8 @@ async function fireWebhooks(
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Webhook-Signature": signature,
               "X-Webhook-Event": event,
+              ...(signature ? { "X-Webhook-Signature": signature } : {}),
             },
             body,
           });

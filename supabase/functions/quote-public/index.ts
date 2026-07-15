@@ -37,16 +37,20 @@ async function fireWebhooks(
     for (const ep of endpoints) {
       const events = Array.isArray(ep.events) ? ep.events : [];
       if (!events.includes(event)) continue;
-      if (!ep.secret) { console.warn("fireWebhooks: skipping endpoint with no secret", ep.id); continue; }
       const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-      const signature = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      // Sign only when a secret is configured; a secret-less endpoint still
+      // receives the event, just without the X-Webhook-Signature header.
+      let signature: string | null = null;
+      if (ep.secret) {
+        const encoder = new TextEncoder();
+        const key = await crypto.subtle.importKey("raw", encoder.encode(ep.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+        const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+        signature = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
       (async () => {
         let success = false, responseStatus = 0, responseBody = "";
         try {
-          const res = await fetch(ep.url, { method: "POST", headers: { "Content-Type": "application/json", "X-Webhook-Signature": signature, "X-Webhook-Event": event }, body });
+          const res = await fetch(ep.url, { method: "POST", headers: { "Content-Type": "application/json", "X-Webhook-Event": event, ...(signature ? { "X-Webhook-Signature": signature } : {}) }, body });
           responseStatus = res.status; responseBody = (await res.text()).slice(0, 1000); success = res.ok;
         } catch (err) { responseBody = `${(err as Error).name}: ${(err as Error).message}`; }
         await db.from("webhook_deliveries").insert({ webhook_id: ep.id, company_id: companyId, event, payload: JSON.parse(body), response_status: responseStatus, response_body: responseBody, success });
