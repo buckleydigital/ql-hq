@@ -421,7 +421,7 @@ h1{font-size:18px;font-weight:500}
         <div class="filter-bar">
           <select id="pplPriceNicheFilter" class="filter-select" onchange="applyPricingFilter()">
             <option value="">All niches</option>
-            <option value="solar">Solar</option>
+            <option value="solar">All Solar</option>
             <option value="solar_battery">Solar + Battery</option>
             
             <option value="hvac">HVAC</option>
@@ -487,7 +487,7 @@ h1{font-size:18px;font-weight:500}
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Client company</label>
             <select id="customLinkCompany" class="form-input"><option value="">Select a company…</option></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label>
-            <select id="customLinkNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+            <select id="customLinkNiche" class="form-input"><option value="solar">All Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label>
             <select id="customLinkSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup></select></div>
           <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area / City</label>
@@ -534,7 +534,7 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <div id="addCampaignFormAdmin" style="display:none;max-width:560px;margin-bottom:20px;padding:16px;background:var(--surface-2,var(--bg-lift,#f7f9fc));border-radius:10px;border:1px solid var(--border)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
+            <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Niche</label><select id="adminCampNiche" class="form-input"><option value="solar">All Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Sub-Niche <span style="font-weight:400">(optional)</span></label><select id="adminCampSubNiche" class="form-input"><option value="">- None -</option><optgroup label="HVAC"><option value="split_ducted">Installations (Split &amp; Ducted)</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup></select></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Area</label><input id="adminCampArea" class="form-input" type="text" placeholder="e.g. brisbane"></div>
             <div><label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Platform</label><select id="adminCampPlatform" class="form-input"><option value="meta">Meta</option><option value="google">Google</option></select></div>
@@ -564,7 +564,7 @@ h1{font-size:18px;font-weight:500}
           </select>
           <select id="pplLeadNicheFilter" class="filter-select">
             <option value="">All niches</option>
-            <option value="solar">Solar</option>
+            <option value="solar">All Solar</option>
             <option value="solar_battery">Solar + Battery</option>
             <option value="battery_retrofit">Battery Retrofit</option>
             
@@ -937,6 +937,7 @@ h1{font-size:18px;font-weight:500}
   }
 
   function nicheLabel(niche) {
+    if (niche === 'solar') return 'All Solar';
     if (niche === 'solar_battery') return 'Solar + Battery';
     return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
   }
@@ -3182,7 +3183,7 @@ h1{font-size:18px;font-weight:500}
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>' +
           '<select id="addPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
-            '<option value="solar">Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option>' +
+            '<option value="solar">All Solar</option><option value="solar_battery">Solar + Battery</option><option value="hvac">HVAC</option><option value="battery_retrofit">Battery Retrofit</option>' +
           '</select></div>' +
           '<div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Sub-Niche <span style="font-weight:400">(blank = parent niche default)</span></label>' +
           '<select id="addPriceSubNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">' +
