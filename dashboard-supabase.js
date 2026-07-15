@@ -3285,18 +3285,23 @@ async function loadSettings() {
     renderSettingsCustomFields();
     loadLeadRoutingUI(company?.settings || {});
 
-    // Load service areas with lock state + pending request check
-    const { data: pendingReq } = currentCompanyId
-      ? await sb.from("ppl_area_change_requests")
-          .select("id")
-          .eq("company_id", currentCompanyId)
-          .eq("status", "pending")
-          .maybeSingle()
-      : { data: null };
+    // Load service areas with lock state + latest request (any status). Taking
+    // the most recent row (not maybeSingle on pending) avoids an error if a
+    // company ever has more than one pending request, and lets us surface the
+    // outcome of a rejected/approved request to the customer.
+    let latestAreaReq = null;
+    if (currentCompanyId) {
+      const { data: reqRows } = await sb.from("ppl_area_change_requests")
+        .select("id, status, admin_notes, created_at, resolved_at")
+        .eq("company_id", currentCompanyId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      latestAreaReq = reqRows?.[0] || null;
+    }
     loadServiceAreasUI(
       company?.ppl_agreed_postcodes || [],
       company?.ppl_area_locked !== false, // default locked
-      !!pendingReq
+      latestAreaReq
     );
 
     await loadPplOrdersUI();
@@ -3519,20 +3524,31 @@ function handleRemoveLogo() {
 }
 
 // ─── PPL Service Areas ────────────────────────────────────────────────────────
-function loadServiceAreasUI(postcodes, locked, hasPendingRequest) {
+function loadServiceAreasUI(postcodes, locked, requestInfo) {
   const container = document.getElementById("serviceAreaTagsContainer");
   if (!container) return;
   container.innerHTML = "";
   const isLocked = locked !== false;
   postcodes.forEach((pc) => _renderServiceAreaTag(container, pc, !isLocked));
 
+  // requestInfo may be a request object {status, admin_notes,...}, or a legacy
+  // boolean (true = a request is pending).
+  const latestReq = (requestInfo && typeof requestInfo === "object") ? requestInfo : null;
+  const hasPendingRequest = latestReq ? latestReq.status === "pending" : requestInfo === true;
+  const wasRejected = latestReq ? latestReq.status === "rejected" : false;
+
   const note     = document.getElementById("serviceAreaAutoNote");
   const badge    = document.getElementById("serviceAreaLockBadge");
   const lockedEl = document.getElementById("serviceAreaLockedNote");
   const pendEl   = document.getElementById("serviceAreaPendingNote");
+  const rejEl    = document.getElementById("serviceAreaRejectedNote");
+  const rejReason= document.getElementById("serviceAreaRejectedReason");
   const editEl   = document.getElementById("serviceAreaEditSection");
   const reqBtn   = document.getElementById("requestServiceAreaChangeBtn");
   const reqForm  = document.getElementById("serviceAreaRequestForm");
+
+  if (rejEl) rejEl.style.display = "none";
+  if (rejReason) rejReason.textContent = wasRejected && latestReq.admin_notes ? " Reason: " + latestReq.admin_notes : "";
 
   if (note) note.style.display = (!isLocked && postcodes.length > 0) ? "" : "none";
   if (reqForm) reqForm.style.display = "none";
@@ -3563,8 +3579,9 @@ function loadServiceAreasUI(postcodes, locked, hasPendingRequest) {
     if (editEl)   editEl.style.display   = "none";
     if (reqBtn)   reqBtn.style.display   = "none";
   } else {
-    if (lockedEl) lockedEl.style.display = "";
+    if (lockedEl) lockedEl.style.display = wasRejected ? "none" : "";
     if (pendEl)   pendEl.style.display   = "none";
+    if (rejEl)    rejEl.style.display    = wasRejected ? "" : "none";
     if (editEl)   editEl.style.display   = "none";
     if (reqBtn)   reqBtn.style.display   = "";
   }
@@ -5849,6 +5866,7 @@ async function loadWebhooks() {
       </div>
       <div style="font-size:12px;display:flex;gap:8px;align-items:center">
         <span style="color:${wh.active ? "var(--green)" : "var(--text-2)"}">${wh.active ? "Active" : "Inactive"}</span>
+        <button class="btn" style="font-size:11px;padding:4px 10px" onclick="testWebhook('${wh.id}', this)">Test</button>
         <button class="btn" style="font-size:11px;padding:4px 10px" onclick="toggleWebhook('${wh.id}', ${!wh.active})">${wh.active ? "Disable" : "Enable"}</button>
         <button class="btn" style="font-size:11px;padding:4px 10px" onclick="deleteWebhook('${wh.id}')">Delete</button>
       </div>
@@ -5901,6 +5919,32 @@ async function handleSaveWebhook(e) {
 
   document.getElementById("webhookFormPanel").style.display = "none";
   loadWebhooks();
+}
+
+async function testWebhook(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Testing…"; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { toast("Not authenticated.", true); return; }
+    const res = await fetch(`${sb.supabaseUrl}/functions/v1/test-webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ webhook_id: id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast("Test failed: " + (data.error || "could not send the event"), true); return; }
+    if (data.ok) {
+      toast(`Test delivered - endpoint responded HTTP ${data.response_status}${data.signed ? " (signed)" : " (unsigned)"}.`);
+    } else {
+      toast(`Endpoint responded HTTP ${data.response_status || "error"}. See the deliveries log below.`, true);
+    }
+    loadWebhookDeliveries();
+  } catch (_e) {
+    toast("Test failed - could not send the event.", true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Test"; }
+  }
 }
 
 async function toggleWebhook(id, active) {

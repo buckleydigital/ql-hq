@@ -1351,6 +1351,8 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             </div>
             <!-- locked: pending request -->
             <div id="serviceAreaPendingNote" class="notice" style="display:none;font-size:12px">Your change request is pending admin review. You'll be able to edit once it's approved.</div>
+            <!-- locked: last request was rejected -->
+            <div id="serviceAreaRejectedNote" class="notice" style="display:none;font-size:12px;border-color:rgba(185,28,28,.4);background:rgba(185,28,28,.06);color:#b91c1c">Your last change request was declined.<span id="serviceAreaRejectedReason"></span> You can submit a new request below.</div>
             <!-- unlocked: edit UI -->
             <div id="serviceAreaEditSection" style="display:none">
               <div class="notice" style="margin-bottom:12px;font-size:12px;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06);color:#92400e">Your service area has been temporarily unlocked. Make your changes and save - <strong>saving will re-lock it.</strong></div>
