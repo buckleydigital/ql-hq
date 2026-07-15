@@ -17,7 +17,7 @@ const corsHeaders = {
 async function resolvePrice(niche: string, subNiche: string | null, area: string) {
   const { data: rows } = await supabase
     .from('ppl_pricing')
-    .select('price_per_lead, sub_niche, area')
+    .select('price_per_lead, sub_niche, area, max_order_qty')
     .eq('niche', niche)
 
   if (!rows?.length) return null
@@ -66,6 +66,12 @@ serve(async (req) => {
     if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
 
     const validatedPrice = pricing.price_per_lead
+
+    // Enforce per-order volume cap for this niche/area (null = unlimited, hard ceiling 500)
+    const orderCap = Math.min(pricing.max_order_qty ?? 500, 500)
+    if (Number(quantity) > orderCap) {
+      throw new Error(`Maximum order for this area is ${orderCap} leads`)
+    }
 
     // Derive discount server-side - never trust a client-supplied value
     const { data: tierRows } = await supabase

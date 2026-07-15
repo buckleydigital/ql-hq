@@ -6271,7 +6271,18 @@ let _blDiscount      = 0;
 let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
 let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
+let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
+const BL_HARD_MAX    = 500; // absolute ceiling per order regardless of cap
 const _pplOrdersCache = new Map();
+
+// Effective per-order cap for the current selection (sub-niche cap wins, then
+// niche cap; null cap means unlimited, so fall back to the hard ceiling).
+function blActiveMax() {
+  let cap = null;
+  if (_blNiche && _blSubNiche && _blMax[_blNiche + ':' + _blSubNiche] != null) cap = _blMax[_blNiche + ':' + _blSubNiche];
+  else if (_blNiche && _blMax[_blNiche] != null) cap = _blMax[_blNiche];
+  return cap == null ? BL_HARD_MAX : Math.min(cap, BL_HARD_MAX);
+}
 
 // Sub-niche definitions per parent niche
 const NICHE_SUB_NICHES = {
@@ -6297,7 +6308,7 @@ async function loadBuyLeads() {
     sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
   ]);
 
-  _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {};
+  _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {}; _blMax = {};
   _blDiscountTiers = tiers || [];
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blStatewide = false; _blCovMode = 'radius';
@@ -6419,6 +6430,7 @@ async function blFetchSubNichePrice(niche, subNicheId) {
       renderBuyLeadsSubNiches(niche);
     } else if (d.price_per_lead != null) {
       _blCitySubPrices[cacheKey] = d.price_per_lead;
+      _blMax[cacheKey] = d.max_order_qty ?? null;
       renderBuyLeadsSubNiches(niche);
       // If this sub-niche is currently selected, update PPL
       if (_blNiche === niche && _blSubNiche === subNicheId) {
@@ -6436,14 +6448,22 @@ function renderBuyLeadsPacks() {
     el.innerHTML = `<p style="font-size:13px;color:var(--muted)">No packs available.</p>`;
     return;
   }
+  const cap = blActiveMax();
   el.innerHTML = _blDiscountTiers.map(t => {
     const isSelected = t.min_quantity === _blQty;
+    const overCap = t.min_quantity > cap;
     const badge = t.discount_percent > 0
       ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700;background:${isSelected ? 'rgba(255,255,255,0.25)' : '#22c55e22'};color:${isSelected ? '#fff' : '#16a34a'}">${t.discount_percent}% off</span>`
       : '';
     const popular = t.is_popular
       ? `<div style="font-size:10px;font-weight:600;color:${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--accent,#4797FF)'};margin-top:2px">Most popular</div>`
       : '';
+    if (overCap) {
+      return `<button type="button" disabled title="Not available in this area right now"
+        style="padding:12px 18px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--muted);font-size:13px;font-weight:600;cursor:not-allowed;opacity:0.5;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
+        ${t.label}
+      </button>`;
+    }
     return `<button type="button" id="packCard-${t.min_quantity}"
       onclick="buyLeadsSelectPack(${t.min_quantity}, ${t.discount_percent})"
       style="padding:12px 18px;border-radius:10px;border:1px solid ${isSelected ? '#4797FF' : 'var(--border)'};background:${isSelected ? '#4797FF' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
@@ -6451,6 +6471,15 @@ function renderBuyLeadsPacks() {
       ${popular}
     </button>`;
   }).join('');
+  const note = document.getElementById('buyLeadsCapNote');
+  if (note) {
+    if (cap < BL_HARD_MAX) {
+      note.textContent = `Up to ${cap} leads per order available for this lead type in this area.`;
+      note.style.display = '';
+    } else {
+      note.style.display = 'none';
+    }
+  }
 }
 
 function buyLeadsSelectNiche(niche) {
@@ -6539,7 +6568,7 @@ async function buyLeadsOnCityChange() {
   }
 
   // Show niche field with loading placeholders
-  _blCityPrices = {}; _blSoldOut = {};
+  _blCityPrices = {}; _blSoldOut = {}; _blMax = {};
   renderBuyLeadsNiches();
   document.getElementById('buyLeadsNicheField').style.display = '';
 
@@ -6548,7 +6577,7 @@ async function buyLeadsOnCityChange() {
     BL_NICHES.map(niche =>
       fetch(`${SUPABASE_URL}/functions/v1/get-ppl-pricing?niche=${encodeURIComponent(niche)}&area=${encodeURIComponent(city)}`)
         .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => ({ niche, price: d.price_per_lead, soldOut: d.sold_out === true, tiers: d.discount_tiers }))
+        .then(d => ({ niche, price: d.price_per_lead, soldOut: d.sold_out === true, maxQty: d.max_order_qty ?? null, tiers: d.discount_tiers }))
     )
   );
 
@@ -6559,6 +6588,7 @@ async function buyLeadsOnCityChange() {
       _blSoldOut[r.value.niche] = true;
     } else if (r.value.price != null) {
       _blCityPrices[r.value.niche] = r.value.price;
+      _blMax[r.value.niche] = r.value.maxQty;
     }
   });
 
@@ -6592,6 +6622,7 @@ function wireCustomQtyInput() {
   const input = document.getElementById('buyLeadsCustomQty');
   if (!input) return;
   const fresh = input.cloneNode(true);
+  fresh.max = blActiveMax();
   input.parentNode.replaceChild(fresh, input);
   fresh.value = _blQty;
   fresh.addEventListener('input', buyLeadsOnCustomQtyChange);
@@ -6599,8 +6630,10 @@ function wireCustomQtyInput() {
 
 function buyLeadsOnCustomQtyChange() {
   const input = document.getElementById('buyLeadsCustomQty');
-  const raw = parseInt(input?.value || '0');
+  let raw = parseInt(input?.value || '0');
   if (isNaN(raw) || raw < 25) return; // wait until valid
+  const cap = blActiveMax();
+  if (raw > cap) { raw = cap; if (input) input.value = cap; toast(`Up to ${cap} leads per order for this area.`, true); }
   _blQty = raw;
   const tier = blGetTierForQty(_blQty);
   _blDiscount = tier ? tier.discount_percent : 0;
@@ -6708,6 +6741,8 @@ async function startPplCheckout() {
   if (_blSoldOut[_blNiche] || (_blSubNiche && _blSoldOut[_blNiche + ':' + _blSubNiche])) {
     toast('That trade is sold out in this area. Please choose another.', true); return;
   }
+  const cap = blActiveMax();
+  if (_blQty > cap) { toast(`Up to ${cap} leads per order for this area. Please lower the quantity.`, true); return; }
   if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
 
   const btn = document.getElementById('buyLeadsCheckoutBtn');
