@@ -4879,11 +4879,20 @@ function setupRealtimeSubscription() {
     .subscribe();
 }
 
+let _convSending = false;
 async function handleSendMessage(e) {
   e.preventDefault();
+  if (_convSending) return; // guard: block double-send while a send is in flight
   const input   = document.getElementById("convMessageInput");
+  const btn     = document.querySelector('#convSendForm button[type="submit"]');
   const content = input?.value?.trim();
   if (!content || !currentConvId) return;
+
+  // Immediately lock the UI so a slow send can't be double-submitted.
+  _convSending = true;
+  const btnHtml = btn ? btn.innerHTML : null;
+  if (btn)   { btn.disabled = true; btn.innerHTML = '<span class="send-dots"><i></i><i></i><i></i></span>'; }
+  if (input) { input.disabled = true; }
 
   try {
     await edgeFn("send-sms", {
@@ -4897,6 +4906,10 @@ async function handleSendMessage(e) {
   } catch (err) {
     console.error("handleSendMessage error:", err);
     toast(err.message, true);
+  } finally {
+    _convSending = false;
+    if (btn)   { btn.disabled = false; btn.innerHTML = btnHtml; }
+    if (input) { input.disabled = false; input.focus(); }
   }
 }
 

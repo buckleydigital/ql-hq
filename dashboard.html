@@ -237,6 +237,12 @@ textarea{min-height:100px;resize:vertical}
 .conv-compose{padding:14px 18px;border-top:1px solid var(--border)}
 .conv-input-row{display:flex;gap:8px}
 .conv-input-row input{flex:1}
+.conv-input-row button[disabled]{opacity:.65;cursor:not-allowed}
+.send-dots{display:inline-flex;align-items:center;gap:3px;height:1em;vertical-align:middle}
+.send-dots i{width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;animation:send-dot-bounce 1s infinite ease-in-out both}
+.send-dots i:nth-child(1){animation-delay:-.32s}
+.send-dots i:nth-child(2){animation-delay:-.16s}
+@keyframes send-dot-bounce{0%,80%,100%{transform:scale(.5);opacity:.4}40%{transform:scale(1);opacity:1}}
 .conv-compose-meta{margin-top:5px;font-size:11px}
 .conv-back-btn{display:none;align-items:center;justify-content:center;width:32px;height:32px;min-height:32px;padding:0;border:none;background:none;cursor:pointer;color:var(--text);flex-shrink:0}
 
