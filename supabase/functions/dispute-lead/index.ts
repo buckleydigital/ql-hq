@@ -189,7 +189,21 @@ Deno.serve(async (req) => {
       .eq("id", companyId)
       .single();
 
-    const agreedPostcodes: string[] = company?.ppl_agreed_postcodes ?? [];
+    // Judge "outside agreed criteria" against the service area that was in
+    // effect WHEN THIS LEAD WAS DELIVERED (lead.created_at), not the company's
+    // current area - so changing service areas later can't retroactively make an
+    // old, in-area lead disputable. Falls back to the current area if the
+    // point-in-time lookup is unavailable.
+    let agreedPostcodes: string[] = company?.ppl_agreed_postcodes ?? [];
+    try {
+      const { data: histPostcodes, error: histErr } = await db.rpc(
+        "ppl_agreed_postcodes_at",
+        { p_company_id: companyId, p_at: lead.created_at },
+      );
+      if (!histErr && Array.isArray(histPostcodes)) {
+        agreedPostcodes = histPostcodes as string[];
+      }
+    } catch (_e) { /* keep current-area fallback */ }
 
     // ── Auto-check ────────────────────────────────────────────────────────────
     let autoCheckResult: Record<string, unknown> = {};
@@ -250,6 +264,7 @@ Deno.serve(async (req) => {
         checked:            !noConfig,
         lead_postcode:      leadPostcode,
         agreed_postcodes:   agreedPostcodes,
+        area_effective_at:  lead.created_at, // area judged as of lead delivery
         postcode_outside:   isOutside,
         no_config:          noConfig,
         note: noConfig
