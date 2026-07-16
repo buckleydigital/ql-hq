@@ -277,10 +277,10 @@ Deno.serve(async (req) => {
     //   • VA     → billing_list (assigned only), create_invoice, list_invoices,
     //              get_bank_details (READ-ONLY). Never set_bank_details, never
     //              billing_update_company, never delete_invoice.
-    const VA_BILLING_ACTIONS = new Set(["billing_list", "list_invoices", "create_invoice", "get_bank_details"]);
+    const VA_BILLING_ACTIONS = new Set(["billing_list", "list_invoices", "create_invoice", "get_bank_details", "mark_intro_done"]);
     const isBillingAction = [
       "billing_list", "billing_update_company", "list_invoices", "create_invoice",
-      "update_invoice", "delete_invoice", "get_bank_details", "set_bank_details",
+      "update_invoice", "delete_invoice", "get_bank_details", "set_bank_details", "mark_intro_done",
     ].includes(action || "");
 
     if (isBillingAction) {
@@ -335,6 +335,19 @@ Deno.serve(async (req) => {
           invoices: invByCo[c.id as string] || [],
         }));
         return json({ clients });
+      }
+
+      // ── Mark the "intro email" task done (VA or admin, assigned only) ────
+      if (action === "mark_intro_done") {
+        const cid = (body as { company_id?: string }).company_id;
+        if (!cid) return json({ error: "company_id is required" }, 400);
+        if (vaAllowed && !vaAllowed.has(cid)) return json({ error: "Forbidden" }, 403);
+        const done = (body as { done?: boolean }).done !== false; // default true
+        const { error } = await adminClient.from("companies")
+          .update({ va_intro_done: done, va_intro_done_at: done ? new Date().toISOString() : null })
+          .eq("id", cid);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, va_intro_done: done });
       }
 
       // ── Update a company's billing / onboarding fields (admin only) ──────
@@ -423,6 +436,122 @@ Deno.serve(async (req) => {
         const upd: Record<string, unknown> = { id: 1, updated_at: new Date().toISOString() };
         for (const k of allowed) if (k in s) upd[k] = s[k];
         const { error } = await adminClient.from("business_settings").upsert(upd, { onConflict: "id" });
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+    }
+
+    // ═══════════════════ DFY CONTENT: profile / previews / templates ═══════
+    // Shared by /admin and /va. Company-scoped actions require the VA to own the
+    // assignment; email templates are global (any VA or admin).
+    const DFY_COMPANY_ACTIONS = new Set([
+      "get_dfy", "save_dfy", "list_preview_links", "add_preview_link", "delete_preview_link",
+    ]);
+    const TEMPLATE_ACTIONS = new Set(["list_email_templates", "save_email_template", "delete_email_template"]);
+    const isDfyAction = DFY_COMPANY_ACTIONS.has(action || "") || TEMPLATE_ACTIONS.has(action || "");
+
+    if (isDfyAction) {
+      if (!isAdmin && !isVa) return json({ error: "Forbidden" }, 403);
+
+      let vaAllowedDfy: Set<string> | null = null;
+      if (!isAdmin) {
+        const { data: assigns } = await adminClient
+          .from("va_assignments").select("company_id").eq("va_user_id", caller.id);
+        vaAllowedDfy = new Set((assigns || []).map((a: { company_id: string }) => a.company_id));
+      }
+      const ensureCompany = (cid?: string): string | null => {
+        if (!cid) return null;
+        if (vaAllowedDfy && !vaAllowedDfy.has(cid)) return null;
+        return cid;
+      };
+
+      // ── DFY profile (service area + onboarding + campaign prefs) ─────────
+      if (action === "get_dfy") {
+        const cid = ensureCompany((body as { company_id?: string }).company_id);
+        if (!cid) return json({ error: "Forbidden or missing company_id" }, 403);
+        const { data } = await adminClient
+          .from("companies").select("id, name, plan, dfy_profile").eq("id", cid).maybeSingle();
+        if (!data) return json({ error: "Client not found" }, 404);
+        return json({ profile: data.dfy_profile || {}, company: { id: data.id, name: data.name, plan: data.plan } });
+      }
+      if (action === "save_dfy") {
+        const cid = ensureCompany((body as { company_id?: string }).company_id);
+        if (!cid) return json({ error: "Forbidden or missing company_id" }, 403);
+        const profile = (body as { profile?: unknown }).profile;
+        if (typeof profile !== "object" || profile === null || Array.isArray(profile)) {
+          return json({ error: "profile must be an object" }, 400);
+        }
+        const { error } = await adminClient.from("companies").update({ dfy_profile: profile }).eq("id", cid);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
+      // ── Preview links / screenshots ──────────────────────────────────────
+      if (action === "list_preview_links") {
+        const cid = ensureCompany((body as { company_id?: string }).company_id);
+        if (!cid) return json({ error: "Forbidden or missing company_id" }, 403);
+        const { data } = await adminClient
+          .from("preview_links").select("*").eq("company_id", cid).order("created_at", { ascending: false });
+        return json({ links: data || [] });
+      }
+      if (action === "add_preview_link") {
+        const cid = ensureCompany((body as { company_id?: string }).company_id);
+        if (!cid) return json({ error: "Forbidden or missing company_id" }, 403);
+        const url = ((body as { url?: string }).url || "").trim();
+        if (!url) return json({ error: "url is required" }, 400);
+        if (!/^https?:\/\//i.test(url)) return json({ error: "url must start with http(s)://" }, 400);
+        const kind = (body as { kind?: string }).kind === "image" ? "image" : "link";
+        const label = ((body as { label?: string }).label || "").trim().slice(0, 300) || null;
+        const { data, error } = await adminClient
+          .from("preview_links")
+          .insert({ company_id: cid, kind, url: url.slice(0, 2000), label, created_by: caller.id })
+          .select("*").single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ link: data });
+      }
+      if (action === "delete_preview_link") {
+        const id = (body as { id?: string }).id;
+        if (!id) return json({ error: "id is required" }, 400);
+        // VA may only delete a link on a company they're assigned to.
+        if (vaAllowedDfy) {
+          const { data: row } = await adminClient.from("preview_links").select("company_id").eq("id", id).maybeSingle();
+          if (!row || !vaAllowedDfy.has(row.company_id as string)) return json({ error: "Forbidden" }, 403);
+        }
+        const { error } = await adminClient.from("preview_links").delete().eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
+      // ── Email templates (global) ─────────────────────────────────────────
+      if (action === "list_email_templates") {
+        const { data } = await adminClient
+          .from("email_templates").select("*").order("name", { ascending: true });
+        return json({ templates: data || [] });
+      }
+      if (action === "save_email_template") {
+        const t = (body as { template?: Record<string, unknown> }).template || {};
+        const name = String(t.name || "").trim();
+        if (!name) return json({ error: "name is required" }, 400);
+        const row: Record<string, unknown> = {
+          name: name.slice(0, 200),
+          subject: t.subject != null ? String(t.subject).slice(0, 500) : null,
+          body: t.body != null ? String(t.body).slice(0, 20000) : null,
+          updated_at: new Date().toISOString(),
+        };
+        if (t.id) {
+          const { data, error } = await adminClient.from("email_templates").update(row).eq("id", t.id).select("*").single();
+          if (error) return json({ error: error.message }, 500);
+          return json({ template: data });
+        }
+        row.created_by = caller.id;
+        const { data, error } = await adminClient.from("email_templates").insert(row).select("*").single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ template: data });
+      }
+      if (action === "delete_email_template") {
+        const id = (body as { id?: string }).id;
+        if (!id) return json({ error: "id is required" }, 400);
+        const { error } = await adminClient.from("email_templates").delete().eq("id", id);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
       }

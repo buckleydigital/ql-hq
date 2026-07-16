@@ -182,6 +182,8 @@ h1{font-size:18px;font-weight:500}
 .bb-new{background:rgba(139,92,246,.16);color:#6d28d9;border-color:rgba(139,92,246,.4)}
 .bill-invs{margin-top:10px;font-size:12px}
 .bill-inv-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--border)}
+.dfy-ta{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px;color:var(--text);resize:vertical}
+.dfy-ta:focus{outline:none;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -376,6 +378,35 @@ h1{font-size:18px;font-weight:500}
         <div id="billingLoadingState" class="notice">Loading billing…</div>
         <div id="billingList" class="hidden"></div>
         <div id="billingEmptyState" class="notice hidden">No companies.</div>
+      </div>
+    </div>
+
+    <!-- Email Templates panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Email Templates</h2>
+          <p id="tplCountLabel">Loading…</p>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn2 btn-sm" id="newTplBtn" type="button">+ New template</button>
+          <button class="btn btn-sm" id="refreshTplBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="tplEditor" class="hidden" style="margin-bottom:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+          <input type="hidden" id="tplId">
+          <label class="bank-lbl" style="margin-bottom:8px">Template name<input id="tplName" class="bank-in" type="text" placeholder="e.g. Account manager intro"></label>
+          <label class="bank-lbl" style="margin-bottom:8px">Subject<input id="tplSubject" class="bank-in" type="text"></label>
+          <label class="bank-lbl" style="margin-bottom:8px">Body<textarea id="tplBody" class="dfy-ta" rows="8" placeholder="Hi {{first_name}}, …"></textarea></label>
+          <div style="display:flex;gap:8px">
+            <button class="btn2 btn-sm" id="saveTplBtn" type="button">Save template</button>
+            <button class="btn btn-sm" id="cancelTplBtn" type="button">Cancel</button>
+          </div>
+        </div>
+        <div id="tplLoadingState" class="notice">Loading templates…</div>
+        <div id="tplList" class="hidden"></div>
+        <div id="tplEmptyState" class="notice hidden">No templates yet.</div>
       </div>
     </div>
 
@@ -2594,6 +2625,9 @@ h1{font-size:18px;font-weight:500}
     // 6b2. Load invoicing & billing panel
     await loadBillingPanel();
 
+    // 6b3. Load email templates panel
+    await loadTemplates();
+
     // 6c. Load Twilio numbers panel
     await loadTwilioNumbers();
 
@@ -3047,7 +3081,11 @@ h1{font-size:18px;font-weight:500}
           '</select>' +
         '</label>' +
       '</div>' +
-      '<div class="bill-invs" data-invs></div>';
+      '<div class="bill-invs" data-invs></div>' +
+      '<div style="margin-top:10px">' +
+        '<button class="btn btn-sm" data-dfy-toggle type="button">DFY details & preview links ▾</button>' +
+        '<div class="hidden" data-dfy></div>' +
+      '</div>';
 
     // Auto-save each field on change.
     wrap.querySelectorAll('[data-f]').forEach(function (el) {
@@ -3060,7 +3098,122 @@ h1{font-size:18px;font-weight:500}
     });
 
     renderBillingInvoices(wrap.querySelector('[data-invs]'), c);
+
+    var dfyToggle = wrap.querySelector('[data-dfy-toggle]');
+    var dfyHost = wrap.querySelector('[data-dfy]');
+    dfyToggle.addEventListener('click', function () {
+      var hidden = dfyHost.classList.toggle('hidden');
+      dfyToggle.innerHTML = 'DFY details & preview links ' + (hidden ? '▾' : '▴');
+      if (!hidden && !dfyHost.dataset.loaded) { dfyHost.dataset.loaded = '1'; loadDfyEditor(dfyHost, c); }
+    });
     return wrap;
+  }
+
+  // ── DFY profile + preview links (per client, /admin side; mirrors /va) ──────
+  async function loadDfyEditor(host, c) {
+    host.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">Loading…</div>';
+    try {
+      var res = await callVaEdge({ action: 'get_dfy', company_id: c.id });
+      c._dfy = res.profile || {};
+      renderDfyEditor(host, c);
+      var pl = await callVaEdge({ action: 'list_preview_links', company_id: c.id });
+      c._links = pl.links || [];
+      renderPreviewLinks(host.querySelector('[data-prev]'), c);
+    } catch (err) {
+      host.innerHTML = '<div class="notice">Could not load: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderDfyEditor(host, c) {
+    var p = c._dfy || {};
+    host.innerHTML =
+      '<div style="margin-top:10px;padding-top:12px;border-top:1px solid var(--border)">' +
+        '<label class="bill-fld" style="margin-bottom:8px">Service area' +
+          '<textarea class="dfy-ta" data-dfy-f="service_area" rows="2" placeholder="Suburbs / postcodes / radius they want leads from">' + escapeHtml(p.service_area || '') + '</textarea>' +
+        '</label>' +
+        '<label class="bill-fld" style="margin-bottom:8px">Onboarding details <span style="font-weight:400">(notes for the VA about this client)</span>' +
+          '<textarea class="dfy-ta" data-dfy-f="onboarding" rows="4" placeholder="Anything the VA should know about this client…">' + escapeHtml(p.onboarding || '') + '</textarea>' +
+        '</label>' +
+        '<label class="bill-fld" style="margin-bottom:8px">Campaign preferences' +
+          '<textarea class="dfy-ta" data-dfy-f="campaign_prefs" rows="3" placeholder="Budget, platforms, target audience, ad angle, do&#39;s and don&#39;ts…">' + escapeHtml(p.campaign_prefs || '') + '</textarea>' +
+        '</label>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">' +
+          '<button class="btn2 btn-sm" data-dfy-save type="button">Save DFY details</button>' +
+          '<span style="font-size:11px;color:var(--muted)" data-dfy-status></span>' +
+        '</div>' +
+        '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Preview links to send</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+          '<select data-prev-kind style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px"><option value="link">Link</option><option value="image">Screenshot</option></select>' +
+          '<input data-prev-url type="text" placeholder="https://…" style="flex:2;min-width:180px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px">' +
+          '<input data-prev-label type="text" placeholder="Label (optional)" style="flex:1;min-width:120px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px">' +
+          '<button class="btn btn-sm" data-prev-add type="button">Add</button>' +
+        '</div>' +
+        '<div data-prev></div>' +
+      '</div>';
+
+    host.querySelector('[data-dfy-save]').addEventListener('click', function () { saveDfy(host, c, this); });
+    host.querySelector('[data-prev-add]').addEventListener('click', function () { addPreviewLink(host, c, this); });
+  }
+
+  async function saveDfy(host, c, btn) {
+    var profile = {};
+    host.querySelectorAll('[data-dfy-f]').forEach(function (el) { profile[el.getAttribute('data-dfy-f')] = el.value; });
+    btn.disabled = true;
+    var status = host.querySelector('[data-dfy-status]');
+    try {
+      await callVaEdge({ action: 'save_dfy', company_id: c.id, profile: profile });
+      c._dfy = profile;
+      if (status) status.textContent = 'Saved ✓';
+    } catch (err) {
+      if (status) status.textContent = 'Error: ' + err.message;
+    } finally { btn.disabled = false; }
+  }
+
+  function renderPreviewLinks(host, c) {
+    var links = c._links || [];
+    if (!links.length) { host.innerHTML = '<div style="color:var(--muted);font-size:12px">No preview links yet.</div>'; return; }
+    host.innerHTML = links.map(function (l) {
+      var thumb = l.kind === 'image'
+        ? '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(l.url) + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border)"></a>'
+        : '<span style="font-size:16px">🔗</span>';
+      return '<div class="bill-inv-row">' + thumb +
+        '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(l.label || l.url) + '</a>' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn btn-sm btn-reject" data-prev-del="' + l.id + '" type="button">Remove</button>' +
+      '</div>';
+    }).join('');
+    host.querySelectorAll('[data-prev-del]').forEach(function (btn) {
+      btn.addEventListener('click', function () { deletePreviewLink(host, c, btn.getAttribute('data-prev-del'), btn); });
+    });
+  }
+
+  async function addPreviewLink(host, c, btn) {
+    var kind = host.querySelector('[data-prev-kind]').value;
+    var urlEl = host.querySelector('[data-prev-url]');
+    var labelEl = host.querySelector('[data-prev-label]');
+    var url = urlEl.value.trim();
+    if (!url) { toast('Enter a URL.', true); return; }
+    btn.disabled = true;
+    try {
+      var res = await callVaEdge({ action: 'add_preview_link', company_id: c.id, kind: kind, url: url, label: labelEl.value.trim() });
+      c._links = [res.link].concat(c._links || []);
+      urlEl.value = ''; labelEl.value = '';
+      renderPreviewLinks(host.querySelector('[data-prev]'), c);
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+    } finally { btn.disabled = false; }
+  }
+
+  async function deletePreviewLink(host, c, id, btn) {
+    btn.disabled = true;
+    try {
+      await callVaEdge({ action: 'delete_preview_link', id: id });
+      c._links = (c._links || []).filter(function (x) { return x.id !== id; });
+      renderPreviewLinks(host, c);
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+      btn.disabled = false;
+    }
   }
 
   function renderBillingInvoices(host, c) {
@@ -3191,6 +3344,112 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('billingSearchInput').addEventListener('input', function () {
     renderBillingList(this.value);
   });
+
+  // ── Email Templates ─────────────────────────────────────────────────────────
+  var _templates = [];
+
+  async function loadTemplates() {
+    var loadingEl = document.getElementById('tplLoadingState');
+    if (!loadingEl) return;
+    try {
+      var res = await callVaEdge({ action: 'list_email_templates' });
+      _templates = res.templates || [];
+      var label = document.getElementById('tplCountLabel');
+      if (label) label.textContent = _templates.length + ' template' + (_templates.length === 1 ? '' : 's');
+      loadingEl.classList.add('hidden');
+      renderTemplates();
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load templates: ' + err.message;
+    }
+  }
+
+  function renderTemplates() {
+    var listEl = document.getElementById('tplList');
+    var emptyEl = document.getElementById('tplEmptyState');
+    if (!_templates.length) { listEl.classList.add('hidden'); emptyEl.classList.remove('hidden'); return; }
+    emptyEl.classList.add('hidden'); listEl.classList.remove('hidden');
+    listEl.innerHTML = '';
+    _templates.forEach(function (t) {
+      var row = document.createElement('div');
+      row.className = 'bill-row';
+      row.innerHTML =
+        '<div class="bill-top">' +
+          '<div style="min-width:0">' +
+            '<div style="font-weight:600">' + escapeHtml(t.name) + '</div>' +
+            (t.subject ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escapeHtml(t.subject) + '</div>' : '') +
+            '<div style="font-size:12px;color:var(--muted);margin-top:6px;white-space:pre-wrap;max-height:70px;overflow:hidden">' + escapeHtml(t.body || '') + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0">' +
+            '<button class="btn btn-sm" data-tpl-copy type="button">Copy</button>' +
+            '<button class="btn btn-sm" data-tpl-edit type="button">Edit</button>' +
+            '<button class="btn btn-sm btn-reject" data-tpl-del type="button">Delete</button>' +
+          '</div>' +
+        '</div>';
+      row.querySelector('[data-tpl-copy]').addEventListener('click', function () {
+        var text = (t.subject ? 'Subject: ' + t.subject + '\n\n' : '') + (t.body || '');
+        navigator.clipboard.writeText(text).then(function () { toast('Template copied.'); }, function () { toast('Copy failed.', true); });
+      });
+      row.querySelector('[data-tpl-edit]').addEventListener('click', function () { openTplEditor(t); });
+      row.querySelector('[data-tpl-del]').addEventListener('click', function () {
+        if (!confirm('Delete template "' + t.name + '"?')) return;
+        deleteTemplate(t);
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  function openTplEditor(t) {
+    document.getElementById('tplEditor').classList.remove('hidden');
+    document.getElementById('tplId').value = t ? t.id : '';
+    document.getElementById('tplName').value = t ? (t.name || '') : '';
+    document.getElementById('tplSubject').value = t ? (t.subject || '') : '';
+    document.getElementById('tplBody').value = t ? (t.body || '') : '';
+    document.getElementById('tplName').focus();
+  }
+
+  async function saveTemplate() {
+    var btn = document.getElementById('saveTplBtn');
+    var tpl = {
+      id: document.getElementById('tplId').value || undefined,
+      name: document.getElementById('tplName').value.trim(),
+      subject: document.getElementById('tplSubject').value.trim(),
+      body: document.getElementById('tplBody').value,
+    };
+    if (!tpl.name) { toast('Template name is required.', true); return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      var res = await callVaEdge({ action: 'save_email_template', template: tpl });
+      var saved = res.template;
+      var idx = _templates.findIndex(function (x) { return x.id === saved.id; });
+      if (idx >= 0) _templates[idx] = saved; else _templates.push(saved);
+      _templates.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      document.getElementById('tplEditor').classList.add('hidden');
+      document.getElementById('tplCountLabel').textContent = _templates.length + ' template' + (_templates.length === 1 ? '' : 's');
+      renderTemplates();
+      toast('Template saved.');
+    } catch (err) {
+      toast('Save failed: ' + err.message, true);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save template';
+    }
+  }
+
+  async function deleteTemplate(t) {
+    try {
+      await callVaEdge({ action: 'delete_email_template', id: t.id });
+      _templates = _templates.filter(function (x) { return x.id !== t.id; });
+      document.getElementById('tplCountLabel').textContent = _templates.length + ' template' + (_templates.length === 1 ? '' : 's');
+      renderTemplates();
+      toast('Template deleted.');
+    } catch (err) {
+      toast('Delete failed: ' + err.message, true);
+    }
+  }
+
+  document.getElementById('newTplBtn').addEventListener('click', function () { openTplEditor(null); });
+  document.getElementById('cancelTplBtn').addEventListener('click', function () { document.getElementById('tplEditor').classList.add('hidden'); });
+  document.getElementById('saveTplBtn').addEventListener('click', saveTemplate);
+  document.getElementById('refreshTplBtn').addEventListener('click', loadTemplates);
 
   // ── Twilio Numbers ────────────────────────────────────────────────────────
   var allTwilioNumbers = [];
