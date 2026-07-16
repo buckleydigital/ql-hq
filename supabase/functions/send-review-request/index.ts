@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       .from("review_requests")
       .select(`
         id, company_id, lead_id, message_body,
-        leads!inner(phone, first_name)
+        leads!inner(phone, first_name, sms_opted_out)
       `)
       .eq("status", "pending")
       .lte("scheduled_at", now)
@@ -102,6 +102,14 @@ Deno.serve(async (req) => {
 
         const phone = request.leads?.phone;
         if (!phone) {
+          await db.from("review_requests")
+            .update({ status: "skipped" })
+            .eq("id", request.id);
+          continue;
+        }
+
+        // Never message a lead who has opted out of SMS (replied STOP).
+        if ((request.leads as { sms_opted_out?: boolean })?.sms_opted_out) {
           await db.from("review_requests")
             .update({ status: "skipped" })
             .eq("id", request.id);
