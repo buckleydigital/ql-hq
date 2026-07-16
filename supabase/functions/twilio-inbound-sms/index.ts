@@ -1111,7 +1111,7 @@ Deno.serve(async (req) => {
         : `AI booked an on-site visit with ${leadName}`;
       const notifMessage = `Scheduled for ${startTime.toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}`;
 
-      await db.from("notifications").insert({
+      const { error: notifErr } = await db.from("notifications").insert({
         company_id: companyId,
         lead_id: lead.id,
         type: appointmentType === "callback" ? "callback_booked" : "onsite_booked",
@@ -1122,7 +1122,8 @@ Deno.serve(async (req) => {
           start_time: startTime.toISOString(),
           source: "ai_sms",
         },
-      }).catch((err: unknown) => console.error("Failed to create notification:", err));
+      });
+      if (notifErr) console.error("Failed to create notification:", notifErr);
 
       // Send email notification via Resend - must be awaited so Deno Deploy
       // doesn't recycle the isolate before the email is actually sent.
