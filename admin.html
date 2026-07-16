@@ -167,6 +167,21 @@ h1{font-size:18px;font-weight:500}
 .avail-mini .ah{border:none;font-size:9px;color:var(--muted);text-align:right;padding-right:5px;width:auto;height:auto}
 .avail-mini .cell{background:var(--surface-2)}
 .avail-mini .cell.on{background:var(--accent)}
+.bank-lbl{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:600}
+.bank-in{height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px;color:var(--text)}
+.bill-row{border:1px solid var(--border);border-radius:13px;background:var(--surface-2);padding:12px 14px;margin-bottom:8px}
+.bill-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.bill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}
+.bill-fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:600}
+.bill-fld select,.bill-fld input{height:32px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px;color:var(--text)}
+.bill-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--border)}
+.bb-due{background:rgba(245,158,11,.14);color:#b45309;border-color:rgba(245,158,11,.4)}
+.bb-paid{background:rgba(16,185,129,.14);color:#047857;border-color:rgba(16,185,129,.4)}
+.bb-unpaid{background:rgba(239,68,68,.14);color:#b91c1c;border-color:rgba(239,68,68,.4)}
+.bb-sent{background:rgba(71,151,255,.14);color:#1d4ed8;border-color:rgba(71,151,255,.4)}
+.bb-new{background:rgba(139,92,246,.16);color:#6d28d9;border-color:rgba(139,92,246,.4)}
+.bill-invs{margin-top:10px;font-size:12px}
+.bill-inv-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--border)}
 </style>
 </head>
 <body>
@@ -323,6 +338,44 @@ h1{font-size:18px;font-weight:500}
         <div id="companyLoadingState" class="notice">Loading companies…</div>
         <div id="companyList" class="hidden"></div>
         <div id="companyEmptyState" class="notice hidden">No companies match.</div>
+      </div>
+    </div>
+
+    <!-- Invoicing & Billing panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Invoicing &amp; Billing</h2>
+          <p id="billingCountLabel">Loading…</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="billingSearchInput" type="search" placeholder="Search…" autocomplete="off" style="height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px">
+          <button class="btn2 btn-sm" id="editBankBtn" type="button">Bank details</button>
+          <button class="btn btn-sm" id="refreshBillingBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <!-- Bank / business settings editor (used as PDF + invoice payment defaults) -->
+        <div id="bankEditor" class="hidden" style="margin-bottom:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+          <div style="font-weight:600;margin-bottom:10px">Business & bank details <span style="font-weight:400;color:var(--muted);font-size:12px">— used on every invoice PDF. VAs can view these but cannot edit them.</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+            <label class="bank-lbl">Business name<input id="bankBusinessName" class="bank-in" type="text"></label>
+            <label class="bank-lbl">ABN<input id="bankAbn" class="bank-in" type="text"></label>
+            <label class="bank-lbl">Bank name<input id="bankBankName" class="bank-in" type="text"></label>
+            <label class="bank-lbl">Account name<input id="bankAccountName" class="bank-in" type="text"></label>
+            <label class="bank-lbl">BSB<input id="bankBsb" class="bank-in" type="text"></label>
+            <label class="bank-lbl">Account number<input id="bankAccountNumber" class="bank-in" type="text"></label>
+            <label class="bank-lbl" style="grid-column:1/-1">Payment details / PayID (fallback line)<input id="bankPaymentDetails" class="bank-in" type="text" placeholder="e.g. PayID: pay@quoteleads.com.au"></label>
+            <label class="bank-lbl" style="grid-column:1/-1">Logo URL (optional)<input id="bankLogoUrl" class="bank-in" type="text"></label>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn2 btn-sm" id="saveBankBtn" type="button">Save bank details</button>
+            <button class="btn btn-sm" id="closeBankBtn" type="button">Close</button>
+          </div>
+        </div>
+        <div id="billingLoadingState" class="notice">Loading billing…</div>
+        <div id="billingList" class="hidden"></div>
+        <div id="billingEmptyState" class="notice hidden">No companies.</div>
       </div>
     </div>
 
@@ -2538,6 +2591,9 @@ h1{font-size:18px;font-weight:500}
     // 6b. Load companies panel
     await loadCompaniesPanel();
 
+    // 6b2. Load invoicing & billing panel
+    await loadBillingPanel();
+
     // 6c. Load Twilio numbers panel
     await loadTwilioNumbers();
 
@@ -2882,6 +2938,258 @@ h1{font-size:18px;font-weight:500}
 
   document.getElementById('companySearchInput').addEventListener('input', function () {
     applyCompanyFilter(this.value);
+  });
+
+  // ── Invoicing & Billing ─────────────────────────────────────────────────────
+  // All billing state lives on companies + the invoices / business_settings
+  // tables and is reached through the va-api edge function (admin-gated).
+  var _billingClients = [];
+
+  function fmtDateShort(d) {
+    if (!d) return '—';
+    var dt = new Date(d + (String(d).length === 10 ? 'T00:00:00' : ''));
+    if (isNaN(dt)) return '—';
+    return dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function isNewClient(created) {
+    if (!created) return false;
+    return (Date.now() - new Date(created).getTime()) < 48 * 3600 * 1000;
+  }
+  function isPplPlan(p) { return p === 'ppl' || p === 'ppl_managed'; }
+
+  async function loadBillingPanel() {
+    var loadingEl = document.getElementById('billingLoadingState');
+    if (!loadingEl) return;
+    try {
+      var res = await callVaEdge({ action: 'billing_list' });
+      _billingClients = res.clients || [];
+      var label = document.getElementById('billingCountLabel');
+      if (label) label.textContent = _billingClients.length + ' compan' + (_billingClients.length === 1 ? 'y' : 'ies');
+      loadingEl.classList.add('hidden');
+      renderBillingList('');
+    } catch (err) {
+      loadingEl.textContent = 'Failed to load billing: ' + err.message;
+    }
+  }
+
+  function invBadge(status) {
+    var map = { due: 'bb-due', paid: 'bb-paid', unpaid: 'bb-unpaid', sent: 'bb-sent' };
+    var cls = map[status] || '';
+    return '<span class="bill-badge ' + cls + '">' + escapeHtml(status) + '</span>';
+  }
+
+  function renderBillingList(q) {
+    var listEl = document.getElementById('billingList');
+    var emptyEl = document.getElementById('billingEmptyState');
+    var query = (q || '').trim().toLowerCase();
+    var rows = query
+      ? _billingClients.filter(function (c) { return (c.name || '').toLowerCase().includes(query) || (c.email || '').toLowerCase().includes(query); })
+      : _billingClients;
+    listEl.innerHTML = '';
+    if (!rows.length) { listEl.classList.add('hidden'); emptyEl.classList.remove('hidden'); return; }
+    emptyEl.classList.add('hidden'); listEl.classList.remove('hidden');
+    rows.forEach(function (c) { listEl.appendChild(renderBillingRow(c)); });
+  }
+
+  var PLAN_LABEL = { free: 'Free', managed: 'Managed', ppl: 'PPL', ppl_managed: 'PPL + Managed' };
+
+  function renderBillingRow(c) {
+    var wrap = document.createElement('div');
+    wrap.className = 'bill-row';
+    var ppl = isPplPlan(c.plan);
+    var del = c.delivery || { delivered: 0, total: 0 };
+    var pm = c.payment_method || '';
+    var invStatus = c.invoice_status || 'none';
+
+    var badges = '';
+    if (isNewClient(c.created_at)) badges += '<span class="bill-badge bb-new">New</span> ';
+    if (invStatus && invStatus !== 'none') badges += invBadge(invStatus) + ' ';
+
+    var deliveryLine = ppl
+      ? '<span style="color:var(--muted)">Leads: <b style="color:var(--text)">' + (del.delivered || 0) + '/' + (del.total || 0) + '</b> delivered</span>'
+      : '';
+
+    wrap.innerHTML =
+      '<div class="bill-top">' +
+        '<div>' +
+          '<div style="font-weight:600;font-size:15px">' + escapeHtml(c.name || '(no name)') + ' ' + badges + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escapeHtml(PLAN_LABEL[c.plan] || c.plan || '—') + (c.email ? ' · ' + escapeHtml(c.email) : '') + '</div>' +
+          '<div style="margin-top:4px">' + deliveryLine + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="bill-grid">' +
+        '<label class="bill-fld">Payment method' +
+          '<select data-f="payment_method">' +
+            '<option value=""' + (pm === '' ? ' selected' : '') + '>— not set —</option>' +
+            '<option value="invoice"' + (pm === 'invoice' ? ' selected' : '') + '>Invoice</option>' +
+            '<option value="stripe"' + (pm === 'stripe' ? ' selected' : '') + '>Stripe</option>' +
+          '</select>' +
+        '</label>' +
+        '<label class="bill-fld">Ads live date' +
+          '<input type="date" data-f="ads_live_date" value="' + escapeHtml(c.ads_live_date || '') + '">' +
+        '</label>' +
+        '<label class="bill-fld">Next invoice due' +
+          '<input type="date" data-f="next_invoice_due" value="' + escapeHtml(c.next_invoice_due || '') + '">' +
+        '</label>' +
+        '<label class="bill-fld">Invoice status' +
+          '<select data-f="invoice_status">' +
+            '<option value="none"' + (invStatus === 'none' ? ' selected' : '') + '>None</option>' +
+            '<option value="due"' + (invStatus === 'due' ? ' selected' : '') + '>Due to send</option>' +
+            '<option value="sent"' + (invStatus === 'sent' ? ' selected' : '') + '>Sent</option>' +
+            '<option value="paid"' + (invStatus === 'paid' ? ' selected' : '') + '>Paid</option>' +
+            '<option value="unpaid"' + (invStatus === 'unpaid' ? ' selected' : '') + '>Unpaid / overdue</option>' +
+          '</select>' +
+        '</label>' +
+        '<label class="bill-fld">Intro email done' +
+          '<select data-f="va_intro_done">' +
+            '<option value="false"' + (!c.va_intro_done ? ' selected' : '') + '>No</option>' +
+            '<option value="true"' + (c.va_intro_done ? ' selected' : '') + '>Yes</option>' +
+          '</select>' +
+        '</label>' +
+      '</div>' +
+      '<div class="bill-invs" data-invs></div>';
+
+    // Auto-save each field on change.
+    wrap.querySelectorAll('[data-f]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        var field = el.getAttribute('data-f');
+        var val = el.value;
+        if (field === 'va_intro_done') val = (val === 'true');
+        saveBillingField(c, field, val, el);
+      });
+    });
+
+    renderBillingInvoices(wrap.querySelector('[data-invs]'), c);
+    return wrap;
+  }
+
+  function renderBillingInvoices(host, c) {
+    var invs = c.invoices || [];
+    var head = '<div style="display:flex;align-items:center;gap:8px;margin-top:4px">' +
+      '<b style="font-size:12px">Invoices (' + invs.length + ')</b></div>';
+    var rowsHtml = invs.map(function (inv) {
+      return '<div class="bill-inv-row">' +
+        '<span style="font-family:monospace">' + escapeHtml(inv.invoice_number || inv.id.slice(0, 8)) + '</span>' +
+        '<span>' + (inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—') + '</span>' +
+        invBadge(inv.status || 'draft') +
+        '<span style="color:var(--muted)">' + fmtDateShort(inv.invoice_date || inv.created_at) + '</span>' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn btn-sm" data-inv-mark="sent" data-id="' + inv.id + '">Sent</button>' +
+        '<button class="btn btn-sm" data-inv-mark="paid" data-id="' + inv.id + '">Paid</button>' +
+        '<button class="btn btn-sm" data-inv-mark="unpaid" data-id="' + inv.id + '">Unpaid</button>' +
+        '<button class="btn btn-sm btn-reject" data-inv-del="' + inv.id + '">Delete</button>' +
+      '</div>';
+    }).join('');
+    host.innerHTML = head + (rowsHtml || '<div style="color:var(--muted);font-size:12px;margin-top:4px">No invoices raised yet.</div>');
+
+    host.querySelectorAll('[data-inv-mark]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        markInvoice(c, btn.getAttribute('data-id'), btn.getAttribute('data-inv-mark'), btn);
+      });
+    });
+    host.querySelectorAll('[data-inv-del]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete this invoice permanently?')) return;
+        deleteInvoiceRow(c, btn.getAttribute('data-inv-del'), btn);
+      });
+    });
+  }
+
+  async function saveBillingField(c, field, val, el) {
+    var prev = c[field];
+    el.disabled = true;
+    try {
+      var fields = {}; fields[field] = val;
+      await callVaEdge({ action: 'billing_update_company', company_id: c.id, fields: fields });
+      c[field] = val;
+      if (field === 'va_intro_done') c.va_intro_done_at = val ? new Date().toISOString() : null;
+      toast('Saved.');
+    } catch (err) {
+      toast('Save failed: ' + err.message, true);
+      if (el.type === 'date') el.value = prev || ''; else el.value = (field === 'va_intro_done') ? String(!!prev) : (prev || '');
+    } finally {
+      el.disabled = false;
+    }
+  }
+
+  async function markInvoice(c, id, status, btn) {
+    btn.disabled = true;
+    try {
+      var res = await callVaEdge({ action: 'update_invoice', id: id, patch: { status: status } });
+      var inv = (c.invoices || []).find(function (x) { return x.id === id; });
+      if (inv && res.invoice) inv.status = res.invoice.status;
+      renderBillingInvoices(btn.closest('[data-invs]'), c);
+      toast('Invoice marked ' + status + '.');
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+      btn.disabled = false;
+    }
+  }
+
+  async function deleteInvoiceRow(c, id, btn) {
+    btn.disabled = true;
+    try {
+      await callVaEdge({ action: 'delete_invoice', id: id });
+      c.invoices = (c.invoices || []).filter(function (x) { return x.id !== id; });
+      renderBillingInvoices(btn.closest('[data-invs]'), c);
+      toast('Invoice deleted.');
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+      btn.disabled = false;
+    }
+  }
+
+  // ── Bank / business settings editor ─────────────────────────────────────────
+  var BANK_FIELDS = {
+    business_name: 'bankBusinessName', abn: 'bankAbn', bank_name: 'bankBankName',
+    account_name: 'bankAccountName', bsb: 'bankBsb', account_number: 'bankAccountNumber',
+    payment_details: 'bankPaymentDetails', logo_url: 'bankLogoUrl',
+  };
+  var _bankLoaded = false;
+
+  async function openBankEditor() {
+    var ed = document.getElementById('bankEditor');
+    ed.classList.toggle('hidden');
+    if (ed.classList.contains('hidden') || _bankLoaded) return;
+    try {
+      var res = await callVaEdge({ action: 'get_bank_details' });
+      var s = res.settings || {};
+      Object.keys(BANK_FIELDS).forEach(function (k) {
+        var input = document.getElementById(BANK_FIELDS[k]);
+        if (input) input.value = s[k] || '';
+      });
+      _bankLoaded = true;
+    } catch (err) {
+      toast('Could not load bank details: ' + err.message, true);
+    }
+  }
+
+  async function saveBankDetails() {
+    var btn = document.getElementById('saveBankBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    var settings = {};
+    Object.keys(BANK_FIELDS).forEach(function (k) {
+      var input = document.getElementById(BANK_FIELDS[k]);
+      if (input) settings[k] = input.value.trim();
+    });
+    try {
+      await callVaEdge({ action: 'set_bank_details', settings: settings });
+      toast('Bank details saved.');
+    } catch (err) {
+      toast('Save failed: ' + err.message, true);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save bank details';
+    }
+  }
+
+  document.getElementById('editBankBtn').addEventListener('click', openBankEditor);
+  document.getElementById('closeBankBtn').addEventListener('click', function () {
+    document.getElementById('bankEditor').classList.add('hidden');
+  });
+  document.getElementById('saveBankBtn').addEventListener('click', saveBankDetails);
+  document.getElementById('refreshBillingBtn').addEventListener('click', loadBillingPanel);
+  document.getElementById('billingSearchInput').addEventListener('input', function () {
+    renderBillingList(this.value);
   });
 
   // ── Twilio Numbers ────────────────────────────────────────────────────────

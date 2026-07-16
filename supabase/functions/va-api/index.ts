@@ -68,6 +68,35 @@ async function emailMap(adminClient: ReturnType<typeof createClient>, ids: strin
   return map;
 }
 
+// Whitelist + coerce an invoice payload coming from the client. `isPatch`
+// omits absent keys (so an update only touches what was sent); a full create
+// still only writes recognised columns.
+function sanitizeInvoice(src: Record<string, unknown>, isPatch = false): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const textFields = [
+    "company_id", "invoice_number", "client_name", "client_email", "offer_type",
+    "vertical", "gst_type", "payment_details", "notes", "status", "invoice_date",
+    "due_date", "delivery_period_start", "delivery_period_end",
+  ];
+  const numFields = ["subtotal", "gst_amount", "total"];
+  for (const k of textFields) {
+    if (k in src) out[k] = src[k] === "" ? null : src[k];
+  }
+  for (const k of numFields) {
+    if (k in src) { const n = Number(src[k]); out[k] = Number.isFinite(n) ? n : 0; }
+  }
+  if ("line_items" in src) out.line_items = Array.isArray(src.line_items) ? src.line_items : [];
+  if (!isPatch) {
+    if (out.status == null) out.status = "draft";
+    if (out.line_items == null) out.line_items = [];
+  }
+  // status guard
+  if ("status" in out && out.status != null && !["draft", "sent", "paid", "unpaid"].includes(out.status as string)) {
+    out.status = "draft";
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -238,6 +267,164 @@ Deno.serve(async (req) => {
           .single();
         if (error) return json({ error: error.message }, 500);
         return json({ note });
+      }
+    }
+
+    // ═══════════════════════════ BILLING / INVOICING ═══════════════════════
+    // Shared by /admin (full control) and, later, /va (create + read only).
+    // Access split:
+    //   • Admin  → everything below.
+    //   • VA     → billing_list (assigned only), create_invoice, list_invoices,
+    //              get_bank_details (READ-ONLY). Never set_bank_details, never
+    //              billing_update_company, never delete_invoice.
+    const VA_BILLING_ACTIONS = new Set(["billing_list", "list_invoices", "create_invoice", "get_bank_details"]);
+    const isBillingAction = [
+      "billing_list", "billing_update_company", "list_invoices", "create_invoice",
+      "update_invoice", "delete_invoice", "get_bank_details", "set_bank_details",
+    ].includes(action || "");
+
+    if (isBillingAction) {
+      if (!isAdmin && !(isVa && VA_BILLING_ACTIONS.has(action || ""))) {
+        return json({ error: "Forbidden" }, 403);
+      }
+
+      // For VAs, restrict every company reference to their assignments.
+      let vaAllowed: Set<string> | null = null;
+      if (!isAdmin) {
+        const { data: assigns } = await adminClient
+          .from("va_assignments").select("company_id").eq("va_user_id", caller.id);
+        vaAllowed = new Set((assigns || []).map((a: { company_id: string }) => a.company_id));
+      }
+
+      // ── List all clients with their billing state + delivery + invoices ──
+      if (action === "billing_list") {
+        let q = adminClient
+          .from("companies")
+          .select("id, name, email, phone, plan, created_at, payment_method, ads_live_date, next_invoice_due, invoice_status, va_intro_done, va_intro_done_at");
+        if (vaAllowed) {
+          const ids = [...vaAllowed];
+          if (!ids.length) return json({ clients: [] });
+          q = q.in("id", ids);
+        }
+        const { data: companies, error: cErr } = await q.order("created_at", { ascending: false });
+        if (cErr) return json({ error: cErr.message }, 500);
+        const ids = (companies || []).map((c: { id: string }) => c.id);
+        const safeIds = ids.length ? ids : ["00000000-0000-0000-0000-000000000000"];
+
+        const { data: orders } = await adminClient
+          .from("ppl_orders").select("company_id, total_leads, delivered_leads, status").in("company_id", safeIds);
+        const { data: invs } = await adminClient
+          .from("invoices")
+          .select("id, company_id, invoice_number, status, total, invoice_date, due_date, created_at")
+          .in("company_id", safeIds).order("created_at", { ascending: false });
+
+        const agg: Record<string, { delivered: number; total: number; activeOrders: number }> = {};
+        for (const id of ids) agg[id] = { delivered: 0, total: 0, activeOrders: 0 };
+        for (const o of orders || []) {
+          const a = agg[o.company_id as string]; if (!a) continue;
+          a.total += (o.total_leads as number) || 0;
+          a.delivered += (o.delivered_leads as number) || 0;
+          if (o.status === "active") a.activeOrders += 1;
+        }
+        const invByCo: Record<string, unknown[]> = {};
+        for (const inv of invs || []) (invByCo[inv.company_id as string] ||= []).push(inv);
+
+        const clients = (companies || []).map((c: Record<string, unknown>) => ({
+          ...c,
+          delivery: agg[c.id as string] || { delivered: 0, total: 0, activeOrders: 0 },
+          invoices: invByCo[c.id as string] || [],
+        }));
+        return json({ clients });
+      }
+
+      // ── Update a company's billing / onboarding fields (admin only) ──────
+      if (action === "billing_update_company") {
+        const { company_id, fields } = body as { company_id?: string; fields?: Record<string, unknown> };
+        if (!company_id) return json({ error: "company_id is required" }, 400);
+        const f = fields || {};
+        const upd: Record<string, unknown> = {};
+        const allowed = ["payment_method", "ads_live_date", "next_invoice_due", "invoice_status", "va_intro_done"];
+        for (const k of allowed) if (k in f) upd[k] = f[k] === "" ? null : f[k];
+        if ("payment_method" in upd && upd.payment_method != null && !["invoice", "stripe"].includes(upd.payment_method as string)) {
+          return json({ error: "payment_method must be 'invoice' or 'stripe'" }, 400);
+        }
+        if ("invoice_status" in upd && upd.invoice_status != null && !["none", "due", "sent", "paid", "unpaid"].includes(upd.invoice_status as string)) {
+          return json({ error: "invalid invoice_status" }, 400);
+        }
+        if ("va_intro_done" in upd) upd.va_intro_done_at = upd.va_intro_done ? new Date().toISOString() : null;
+        if (!Object.keys(upd).length) return json({ error: "no updatable fields provided" }, 400);
+        const { error } = await adminClient.from("companies").update(upd).eq("id", company_id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
+      // ── List invoices (optionally for one company) ───────────────────────
+      if (action === "list_invoices") {
+        const companyId = (body as { company_id?: string }).company_id;
+        let q = adminClient.from("invoices").select("*").order("created_at", { ascending: false });
+        if (companyId) {
+          if (vaAllowed && !vaAllowed.has(companyId)) return json({ error: "Forbidden" }, 403);
+          q = q.eq("company_id", companyId);
+        } else if (vaAllowed) {
+          const ids = [...vaAllowed];
+          if (!ids.length) return json({ invoices: [] });
+          q = q.in("company_id", ids);
+        }
+        const { data, error } = await q.limit(500);
+        if (error) return json({ error: error.message }, 500);
+        return json({ invoices: data || [] });
+      }
+
+      // ── Create an invoice ────────────────────────────────────────────────
+      if (action === "create_invoice") {
+        const inv = (body as { invoice?: Record<string, unknown> }).invoice || {};
+        const companyId = inv.company_id as string | undefined;
+        if (vaAllowed && (!companyId || !vaAllowed.has(companyId))) {
+          return json({ error: "Forbidden: client not assigned to you" }, 403);
+        }
+        const row = sanitizeInvoice(inv);
+        row.created_by = caller.id;
+        const { data, error } = await adminClient.from("invoices").insert(row).select("*").single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ invoice: data });
+      }
+
+      // ── Update an invoice (admin only: status, fields) ───────────────────
+      if (action === "update_invoice") {
+        const id = (body as { id?: string }).id;
+        if (!id) return json({ error: "id is required" }, 400);
+        const patch = (body as { patch?: Record<string, unknown> }).patch || {};
+        const row = sanitizeInvoice(patch, true);
+        row.updated_at = new Date().toISOString();
+        if (!Object.keys(row).length) return json({ error: "no fields to update" }, 400);
+        const { data, error } = await adminClient.from("invoices").update(row).eq("id", id).select("*").single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ invoice: data });
+      }
+
+      // ── Delete an invoice (admin only) ───────────────────────────────────
+      if (action === "delete_invoice") {
+        const id = (body as { id?: string }).id;
+        if (!id) return json({ error: "id is required" }, 400);
+        const { error } = await adminClient.from("invoices").delete().eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
+      // ── Bank / business settings ─────────────────────────────────────────
+      if (action === "get_bank_details") {
+        const { data } = await adminClient.from("business_settings").select("*").eq("id", 1).maybeSingle();
+        return json({ settings: data || {}, can_edit: isAdmin });
+      }
+      if (action === "set_bank_details") {
+        // Admin only - VAs never reach here (guarded above).
+        const s = (body as { settings?: Record<string, unknown> }).settings || {};
+        const allowed = ["business_name", "abn", "bank_name", "account_name", "bsb", "account_number", "payment_details", "logo_url"];
+        const upd: Record<string, unknown> = { id: 1, updated_at: new Date().toISOString() };
+        for (const k of allowed) if (k in s) upd[k] = s[k];
+        const { error } = await adminClient.from("business_settings").upsert(upd, { onConflict: "id" });
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
       }
     }
 
