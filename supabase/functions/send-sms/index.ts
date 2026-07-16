@@ -97,12 +97,17 @@ Deno.serve(async (req) => {
 
     const { data: lead } = await db
       .from("leads")
-      .select("id, phone, first_name, last_name, company")
+      .select("id, phone, first_name, last_name, company, sms_opted_out")
       .eq("id", leadId)
       .eq("company_id", companyId)
       .single();
 
     if (!lead?.phone) return json({ error: "Lead has no phone number" }, 400);
+
+    // Never message a lead who has opted out (replied STOP) - legal requirement.
+    if (lead.sms_opted_out) {
+      return json({ error: "This lead has opted out of SMS (replied STOP). Message not sent.", opted_out: true }, 409);
+    }
 
     // Normalise to E.164 so Twilio accepts all AU formats:
     //   0412345678  →  +61412345678

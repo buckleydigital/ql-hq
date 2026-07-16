@@ -167,6 +167,36 @@ async function maybeMirrorInboundOnly(
   }
 }
 
+// Detect a STOP/START keyword and flag the lead's opt-out by phone. Used in the
+// AI-off / out-of-hours branches (where the lead isn't resolved yet) so an
+// opt-out is always recorded even when the AI won't reply. Returns "stopped"
+// when it was a STOP so the caller can send the confirmation.
+async function flagOptOutIfKeyword(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  fromNumber: string,
+  inboundBody: string,
+): Promise<"stopped" | null> {
+  try {
+    const kw = inboundBody.trim().toUpperCase().replace(/[.!,?]/g, "").replace(/\s+/g, " ").trim();
+    const STOP = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT", "OPT OUT"]);
+    const START = new Set(["START", "UNSTOP", "RESUBSCRIBE", "OPTIN", "OPT-IN", "OPT IN"]);
+    const isStop = STOP.has(kw), isStart = START.has(kw);
+    if (!isStop && !isStart) return null;
+    const candidates = [fromNumber, fromNumber.replace(/^\+/, "")];
+    if (fromNumber.startsWith("+61")) candidates.push("0" + fromNumber.slice(3));
+    const { data: ld } = await db.from("leads").select("id").eq("company_id", companyId).in("phone", candidates).limit(1).maybeSingle();
+    if (ld) {
+      if (isStop) await db.from("leads").update({ sms_opted_out: true, sms_opted_out_at: new Date().toISOString() }).eq("id", ld.id);
+      else await db.from("leads").update({ sms_opted_out: false, sms_opted_out_at: null }).eq("id", ld.id);
+    }
+    return isStop ? "stopped" : null;
+  } catch (e) {
+    console.error("flagOptOutIfKeyword failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Fetch relevant company knowledge for prompt enrichment (RAG-lite)
 // ---------------------------------------------------------------------------
@@ -821,15 +851,17 @@ Deno.serve(async (req) => {
     if (!smsConfig.auto_reply) {
       // AI is off globally - just store the message, don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
       await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse("");
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
     }
 
     if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
       // Outside configured hours - store but don't reply
       await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
       await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse("");
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
     }
 
     // 5. Find or create lead by phone number in this company.
@@ -956,6 +988,27 @@ Deno.serve(async (req) => {
       })
       .eq("id", conversation.id);
     if (convUpdErr) console.error("Failed to update conversation:", convUpdErr);
+
+    // ── STOP / START opt-out handling (Australian Spam Act) ─────────────────────
+    // Runs for every company. STOP flags the lead so the AI, manual and bulk
+    // sends can never message them again; START clears it.
+    const optKw = inboundBody.trim().toUpperCase().replace(/[.!,?]/g, "").replace(/\s+/g, " ").trim();
+    const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT", "OPT OUT"]);
+    const START_WORDS = new Set(["START", "UNSTOP", "RESUBSCRIBE", "OPTIN", "OPT-IN", "OPT IN"]);
+    if (STOP_WORDS.has(optKw)) {
+      await db.from("leads").update({ sms_opted_out: true, sms_opted_out_at: new Date().toISOString() }).eq("id", lead.id);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse("You have been unsubscribed and won't receive further messages. Reply START to opt back in.");
+    }
+    if (START_WORDS.has(optKw)) {
+      await db.from("leads").update({ sms_opted_out: false, sms_opted_out_at: null }).eq("id", lead.id);
+      return twimlResponse("You're resubscribed. Reply STOP at any time to opt out.");
+    }
+    // Already opted out and this isn't a START - store the inbound (done above) but never reply.
+    if (lead.sms_opted_out === true) {
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse("");
+    }
 
     // Get conversation history (last 20 messages for context)
     const { data: history } = await db

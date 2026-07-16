@@ -4943,7 +4943,7 @@ async function updateBulkSmsLeadCount() {
   try {
     let query = sb
       .from("leads")
-      .select("id, name, first_name, last_name, phone, pipeline_stage")
+      .select("id, name, first_name, last_name, phone, pipeline_stage, sms_opted_out")
       .eq("company_id", currentCompanyId);
 
     if (stage !== "all") {
@@ -4952,14 +4952,22 @@ async function updateBulkSmsLeadCount() {
 
     const { data } = await query.order("created_at", { ascending: false });
     const all = data || [];
-    bulkSmsLeads = all.filter((l) => l.phone?.trim());
-    const noPhone = all.length - bulkSmsLeads.length;
+    const withPhone = all.filter((l) => l.phone?.trim());
+    // Never bulk-message a lead who has opted out (replied STOP).
+    bulkSmsLeads = withPhone.filter((l) => !l.sms_opted_out);
+    const noPhone = all.length - withPhone.length;
+    const optedOut = withPhone.length - bulkSmsLeads.length;
 
     const countEl = document.getElementById("bulkSmsLeadCount");
     const noPhoneEl = document.getElementById("bulkSmsNoPhone");
     const sendBtn = document.getElementById("bulkSmsSendBtn");
     if (countEl) countEl.textContent = bulkSmsLeads.length;
-    if (noPhoneEl) noPhoneEl.textContent = noPhone > 0 ? `(${noPhone} skipped - no phone number)` : "";
+    if (noPhoneEl) {
+      const skips = [];
+      if (noPhone > 0) skips.push(`${noPhone} no phone number`);
+      if (optedOut > 0) skips.push(`${optedOut} opted out`);
+      noPhoneEl.textContent = skips.length ? `(${skips.join(", ")} skipped)` : "";
+    }
     if (sendBtn) sendBtn.disabled = bulkSmsLeads.length === 0 || !document.getElementById("bulkSmsMessage")?.value?.trim();
 
     // Populate preview lead selector
