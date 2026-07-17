@@ -805,14 +805,45 @@ function fmt(val) {
   }).format(val);
 }
 
+// Australian timezones (IANA). Live/DST-aware; default is AEST (Brisbane).
+const AU_TIMEZONES = [
+  ["Australia/Brisbane",  "AEST — Brisbane (QLD)"],
+  ["Australia/Sydney",    "AEST/AEDT — Sydney (NSW)"],
+  ["Australia/Melbourne", "AEST/AEDT — Melbourne (VIC)"],
+  ["Australia/Hobart",    "AEST/AEDT — Hobart (TAS)"],
+  ["Australia/Adelaide",  "ACST/ACDT — Adelaide (SA)"],
+  ["Australia/Darwin",    "ACST — Darwin (NT)"],
+  ["Australia/Perth",     "AWST — Perth (WA)"],
+];
+let _tz = (typeof localStorage !== "undefined" && localStorage.getItem("ql_tz")) || "Australia/Brisbane";
+
 function fmtDate(d) {
   if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: _tz });
 }
 
 function fmtTime(d) {
   if (!d) return "-";
-  return new Date(d).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(d).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: _tz });
+}
+
+// Date + time together, in the selected Australian timezone.
+function fmtDateTime(d) {
+  if (!d) return "-";
+  return new Date(d).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: _tz });
+}
+
+function setTimezone(tz) {
+  _tz = tz;
+  try { localStorage.setItem("ql_tz", tz); } catch (e) {}
+  try { if (typeof currentConvId !== "undefined" && currentConvId && typeof loadMessages === "function") loadMessages(currentConvId); } catch (e) {}
+}
+
+function initTimezoneSelect() {
+  const sel = document.getElementById("tzSelect");
+  if (!sel) return;
+  sel.innerHTML = AU_TIMEZONES.map(([v, l]) => `<option value="${v}"${v === _tz ? " selected" : ""}>${l}</option>`).join("");
+  sel.onchange = function () { setTimezone(this.value); };
 }
 
 function slugify(str) {
@@ -4580,6 +4611,7 @@ function _updateSmsCreditsUi(balance) {
 // ─── Conversations ────────────────────────────────────────────────────────────
 async function loadConversations() {
   if (!currentCompanyId) return;
+  initTimezoneSelect();
   // Refresh credit count whenever conversations page opens
   try {
     const { data: cr } = await sb.from("sms_credits").select("balance").eq("company_id", currentCompanyId).maybeSingle();
@@ -4816,7 +4848,7 @@ async function loadMessages(convId) {
         ${content}
         <div class="msg-meta">
           ${badgeLabel ? `<span class="msg-badge ${badge}">${badgeLabel}</span>` : ""}
-          <span>${fmtDate(m.created_at)}</span>
+          <span>${fmtDateTime(m.created_at)}</span>
         </div>
       </div>`;
     }).join("");

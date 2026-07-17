@@ -836,6 +836,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
               <button id="openNewConvModal" class="btn2" type="button" style="white-space:nowrap"><span class="icon" data-icon="plus"></span> New</button>
             </div>
             <div class="panel-b" style="padding:0">
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">
+                <span style="font-size:11px;color:var(--muted);white-space:nowrap">Timezone</span>
+                <select id="tzSelect" class="form-input" style="height:30px;font-size:12px;flex:1"></select>
+              </div>
               <div id="conversationList" class="conv-list"></div>
               <div id="convEmptyState" class="empty" style="margin:14px">
                 <span class="icon" data-icon="message" style="width:28px;height:28px"></span>
