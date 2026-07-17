@@ -126,7 +126,7 @@
 
   <!-- EMAIL TEMPLATES -->
   <div id="tplView" class="hidden">
-    <p class="muted" style="margin-top:0">Reusable email templates. Shared with your admin — edits here update everywhere.</p>
+    <p class="muted" style="margin-top:0">Reusable email templates. Shared with your admin - edits here update everywhere.</p>
     <div style="margin-bottom:12px"><button class="btn btn-p" id="vaNewTplBtn" type="button">+ New template</button></div>
     <div id="vaTplEditor" class="card hidden">
       <input type="hidden" id="vaTplId">
@@ -414,7 +414,7 @@
     }
     if (c.plan === 'ppl' && c.payment_method === 'invoice') {
       if ((d.total || 0) > 0 && (d.delivered || 0) >= (d.total || 0)) {
-        tasks.push({ key: 'reorder', ic: '📞', label: `${c.name || 'This client'}'s leads are delivered — follow up to reorder / send the next invoice` });
+        tasks.push({ key: 'reorder', ic: '📞', label: `${c.name || 'This client'}'s leads are delivered - follow up to reorder / send the next invoice` });
       }
     }
     return tasks;
@@ -494,8 +494,8 @@
 
   function billingSummary(cache) {
     if (!cache) return '';
-    const pm = cache.payment_method ? (cache.payment_method === 'invoice' ? 'Invoice' : 'Stripe') : '—';
-    const st = cache.invoice_status && cache.invoice_status !== 'none' ? `<span class="badge ${cache.invoice_status}">${esc(cache.invoice_status)}</span>` : '—';
+    const pm = cache.payment_method ? (cache.payment_method === 'invoice' ? 'Invoice' : 'Stripe') : '-';
+    const st = cache.invoice_status && cache.invoice_status !== 'none' ? `<span class="badge ${cache.invoice_status}">${esc(cache.invoice_status)}</span>` : '-';
     return `
       <div class="sec-title">Billing</div>
       <div class="kv"><span class="k">Payment method</span><span>${pm}</span></div>
@@ -509,6 +509,8 @@
     const c = d.company || {};
     const cache = _clients.find(x => x.id === companyId) || {};
     const p = extra.profile || {};
+    // Preview links / screenshots are a managed (DFY) thing only, not for PPL-only clients.
+    const isManaged = c.plan === 'managed' || c.plan === 'ppl_managed';
 
     // ── Tasks ──
     // The intro-email control is always shown (two-way toggle) so the VA can
@@ -570,6 +572,7 @@
         ${dfyHtml}
       </div>
 
+      ${isManaged ? `
       <div class="card">
         <div class="sec-title" style="margin-top:0">Preview links to send</div>
         <div id="plDrop" class="dropzone">
@@ -583,7 +586,7 @@
           <button class="btn btn-p" id="plAddBtn" type="button">Add</button>
         </div>
         <div id="plList"></div>
-      </div>
+      </div>` : ''}
 
       <div class="card">
         <div class="sec-title" style="margin-top:0">Invoices</div>
@@ -608,8 +611,10 @@
 
     $('addNoteBtn').addEventListener('click', () => addNote(companyId));
     $('saveDfyBtn').addEventListener('click', () => saveDfy(companyId));
-    $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
-    wirePreviewDropzone(companyId);
+    if (isManaged) {
+      $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
+      wirePreviewDropzone(companyId);
+    }
     $('newInvBtn').addEventListener('click', () => openInvModal(companyId, c));
     const introBtn = $('detailBody').querySelector('[data-intro-toggle]');
     if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, !cache.va_intro_done, introBtn));
@@ -690,7 +695,7 @@
     const st = $('plUpStatus');
     let done = 0;
     for (const f of imgs) {
-      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = `${f.name} is over 10 MB — skipped`; continue; }
+      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = `${f.name} is over 10 MB - skipped`; continue; }
       if (st) st.textContent = `Uploading ${f.name}… (${done + 1}/${imgs.length})`;
       try {
         const data = await fileToBase64(f);
@@ -719,7 +724,7 @@
     host.innerHTML = _detailInvoices.map(inv => `
       <div class="task" style="align-items:center">
         <span class="tbody" style="font-family:monospace">${esc(inv.invoice_number || inv.id.slice(0, 8))}</span>
-        <span>${inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—'}</span>
+        <span>${inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '-'}</span>
         <span class="badge ${inv.status || 'draft'}">${esc(inv.status || 'draft')}</span>
         <span class="muted">${fmtDate(inv.invoice_date || inv.created_at)}</span>
         <button class="btn" data-inv-pdf="${esc(inv.id)}" type="button">PDF</button>
@@ -844,8 +849,8 @@
     // Show which bank details will be used (read-only for VAs).
     const b = _bankRO || {};
     const bankLine = (b.bsb || b.account_number)
-      ? `Invoice will use: ${esc(b.account_name || b.business_name || 'QuoteLeads')} · BSB ${esc(b.bsb || '—')} · Acct ${esc(b.account_number || '—')}`
-      : (b.payment_details ? esc(b.payment_details) : 'No bank details on file — ask your admin to set them.');
+      ? `Invoice will use: ${esc(b.account_name || b.business_name || 'QuoteLeads')} · BSB ${esc(b.bsb || '-')} · Acct ${esc(b.account_number || '-')}`
+      : (b.payment_details ? esc(b.payment_details) : 'No bank details on file - ask your admin to set them.');
     $('invBankRO').innerHTML = bankLine;
     $('invModal').classList.remove('hidden');
   }

@@ -361,7 +361,7 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <!-- Bank / business settings editor (used as PDF + invoice payment defaults) -->
         <div id="bankEditor" class="hidden" style="margin-bottom:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
-          <div style="font-weight:600;margin-bottom:10px">Business & bank details <span style="font-weight:400;color:var(--muted);font-size:12px">— used on every invoice PDF. VAs can view these but cannot edit them.</span></div>
+          <div style="font-weight:600;margin-bottom:10px">Business & bank details <span style="font-weight:400;color:var(--muted);font-size:12px">- used on every invoice PDF. VAs can view these but cannot edit them.</span></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
             <label class="bank-lbl">Business name<input id="bankBusinessName" class="bank-in" type="text"></label>
             <label class="bank-lbl">ABN<input id="bankAbn" class="bank-in" type="text"></label>
@@ -2982,9 +2982,9 @@ h1{font-size:18px;font-weight:500}
   var _billingClients = [];
 
   function fmtDateShort(d) {
-    if (!d) return '—';
+    if (!d) return '-';
     var dt = new Date(d + (String(d).length === 10 ? 'T00:00:00' : ''));
-    if (isNaN(dt)) return '—';
+    if (isNaN(dt)) return '-';
     return dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
   }
   function isNewClient(created) {
@@ -3049,14 +3049,14 @@ h1{font-size:18px;font-weight:500}
       '<div class="bill-top">' +
         '<div>' +
           '<div style="font-weight:600;font-size:15px">' + escapeHtml(c.name || '(no name)') + ' ' + badges + '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escapeHtml(PLAN_LABEL[c.plan] || c.plan || '—') + (c.email ? ' · ' + escapeHtml(c.email) : '') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escapeHtml(PLAN_LABEL[c.plan] || c.plan || '-') + (c.email ? ' · ' + escapeHtml(c.email) : '') + '</div>' +
           '<div style="margin-top:4px">' + deliveryLine + '</div>' +
         '</div>' +
       '</div>' +
       '<div class="bill-grid">' +
         '<label class="bill-fld">Payment method' +
           '<select data-f="payment_method">' +
-            '<option value=""' + (pm === '' ? ' selected' : '') + '>— not set —</option>' +
+            '<option value=""' + (pm === '' ? ' selected' : '') + '>- not set -</option>' +
             '<option value="invoice"' + (pm === 'invoice' ? ' selected' : '') + '>Invoice</option>' +
             '<option value="stripe"' + (pm === 'stripe' ? ' selected' : '') + '>Stripe</option>' +
           '</select>' +
@@ -3175,7 +3175,7 @@ h1{font-size:18px;font-weight:500}
     var done = 0;
     for (var i = 0; i < imgs.length; i++) {
       var f = imgs[i];
-      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = f.name + ' is over 10 MB — skipped'; continue; }
+      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = f.name + ' is over 10 MB - skipped'; continue; }
       if (st) st.textContent = 'Uploading ' + f.name + '… (' + (done + 1) + '/' + imgs.length + ')';
       try {
         var data = await fileToBase64(f);
@@ -3266,7 +3266,7 @@ h1{font-size:18px;font-weight:500}
     var rowsHtml = invs.map(function (inv) {
       return '<div class="bill-inv-row">' +
         '<span style="font-family:monospace">' + escapeHtml(inv.invoice_number || inv.id.slice(0, 8)) + '</span>' +
-        '<span>' + (inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—') + '</span>' +
+        '<span>' + (inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '-') + '</span>' +
         invBadge(inv.status || 'draft') +
         '<span style="color:var(--muted)">' + fmtDateShort(inv.invoice_date || inv.created_at) + '</span>' +
         '<span style="flex:1"></span>' +

@@ -807,13 +807,13 @@ function fmt(val) {
 
 // Australian timezones (IANA). Live/DST-aware; default is AEST (Brisbane).
 const AU_TIMEZONES = [
-  ["Australia/Brisbane",  "AEST — Brisbane (QLD)"],
-  ["Australia/Sydney",    "AEST/AEDT — Sydney (NSW)"],
-  ["Australia/Melbourne", "AEST/AEDT — Melbourne (VIC)"],
-  ["Australia/Hobart",    "AEST/AEDT — Hobart (TAS)"],
-  ["Australia/Adelaide",  "ACST/ACDT — Adelaide (SA)"],
-  ["Australia/Darwin",    "ACST — Darwin (NT)"],
-  ["Australia/Perth",     "AWST — Perth (WA)"],
+  ["Australia/Brisbane",  "AEST - Brisbane (QLD)"],
+  ["Australia/Sydney",    "AEST/AEDT - Sydney (NSW)"],
+  ["Australia/Melbourne", "AEST/AEDT - Melbourne (VIC)"],
+  ["Australia/Hobart",    "AEST/AEDT - Hobart (TAS)"],
+  ["Australia/Adelaide",  "ACST/ACDT - Adelaide (SA)"],
+  ["Australia/Darwin",    "ACST - Darwin (NT)"],
+  ["Australia/Perth",     "AWST - Perth (WA)"],
 ];
 let _tz = (typeof localStorage !== "undefined" && localStorage.getItem("ql_tz")) || "Australia/Brisbane";
 
