@@ -184,6 +184,8 @@ h1{font-size:18px;font-weight:500}
 .bill-inv-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--border)}
 .dfy-ta{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:13px;color:var(--text);resize:vertical}
 .dfy-ta:focus{outline:none;border-color:var(--accent)}
+.dfy-drop{border:1.5px dashed var(--border);border-radius:9px;padding:12px;text-align:center;font-size:12px;color:var(--muted);background:var(--surface);transition:border-color .1s,background .1s}
+.dfy-drop.drag{border-color:var(--accent);background:rgba(71,151,255,.08)}
 </style>
 </head>
 <body>
@@ -3142,9 +3144,10 @@ h1{font-size:18px;font-weight:500}
           '<span style="font-size:11px;color:var(--muted)" data-dfy-status></span>' +
         '</div>' +
         '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Preview links to send</div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
-          '<select data-prev-kind style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px"><option value="link">Link</option><option value="image">Screenshot</option></select>' +
-          '<input data-prev-url type="text" placeholder="https://…" style="flex:2;min-width:180px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px">' +
+        '<div class="dfy-drop" data-drop>📎 Drag &amp; drop screenshots here, or <label style="color:var(--accent);cursor:pointer;text-decoration:underline">browse<input data-drop-file type="file" accept="image/*" multiple style="display:none"></label> <span class="muted" data-drop-status style="font-size:11px"></span></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' +
+          '<select data-prev-kind style="height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px"><option value="link">Link</option><option value="image">Image URL</option></select>' +
+          '<input data-prev-url type="text" placeholder="…or paste a link/image URL" style="flex:2;min-width:180px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px">' +
           '<input data-prev-label type="text" placeholder="Label (optional)" style="flex:1;min-width:120px;height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font:inherit;font-size:12px">' +
           '<button class="btn btn-sm" data-prev-add type="button">Add</button>' +
         '</div>' +
@@ -3153,6 +3156,46 @@ h1{font-size:18px;font-weight:500}
 
     host.querySelector('[data-dfy-save]').addEventListener('click', function () { saveDfy(host, c, this); });
     host.querySelector('[data-prev-add]').addEventListener('click', function () { addPreviewLink(host, c, this); });
+    wireDfyDropzone(host, c);
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result)); };
+      r.onerror = function () { reject(new Error('Could not read file')); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function uploadPreviewImagesAdmin(host, c, files) {
+    var imgs = [].slice.call(files).filter(function (f) { return /^image\//.test(f.type); });
+    if (!imgs.length) return;
+    var st = host.querySelector('[data-drop-status]');
+    var done = 0;
+    for (var i = 0; i < imgs.length; i++) {
+      var f = imgs[i];
+      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = f.name + ' is over 10 MB — skipped'; continue; }
+      if (st) st.textContent = 'Uploading ' + f.name + '… (' + (done + 1) + '/' + imgs.length + ')';
+      try {
+        var data = await fileToBase64(f);
+        var res = await callVaEdge({ action: 'add_preview_image', company_id: c.id, data: data, filename: f.name, content_type: f.type });
+        c._links = [res.link].concat(c._links || []);
+        renderPreviewLinks(host.querySelector('[data-prev]'), c);
+        done++;
+      } catch (err) { if (st) st.textContent = 'Error: ' + err.message; }
+    }
+    if (st && done) st.textContent = 'Uploaded ' + done + ' screenshot' + (done === 1 ? '' : 's') + ' ✓';
+  }
+
+  function wireDfyDropzone(host, c) {
+    var dz = host.querySelector('[data-drop]');
+    var fileEl = host.querySelector('[data-drop-file]');
+    if (!dz) return;
+    fileEl.addEventListener('change', function () { if (fileEl.files.length) uploadPreviewImagesAdmin(host, c, fileEl.files); fileEl.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('drag'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); if (ev !== 'dragleave' || e.target === dz) dz.classList.remove('drag'); }); });
+    dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) uploadPreviewImagesAdmin(host, c, e.dataTransfer.files); });
   }
 
   async function saveDfy(host, c, btn) {

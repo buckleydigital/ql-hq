@@ -445,7 +445,7 @@ Deno.serve(async (req) => {
     // Shared by /admin and /va. Company-scoped actions require the VA to own the
     // assignment; email templates are global (any VA or admin).
     const DFY_COMPANY_ACTIONS = new Set([
-      "get_dfy", "save_dfy", "list_preview_links", "add_preview_link", "delete_preview_link",
+      "get_dfy", "save_dfy", "list_preview_links", "add_preview_link", "add_preview_image", "delete_preview_link",
     ]);
     const TEMPLATE_ACTIONS = new Set(["list_email_templates", "save_email_template", "delete_email_template"]);
     const isDfyAction = DFY_COMPANY_ACTIONS.has(action || "") || TEMPLATE_ACTIONS.has(action || "");
@@ -509,6 +509,42 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         return json({ link: data });
       }
+      // ── Upload a screenshot from the user's computer to Storage ──────────
+      if (action === "add_preview_image") {
+        const cid = ensureCompany((body as { company_id?: string }).company_id);
+        if (!cid) return json({ error: "Forbidden or missing company_id" }, 403);
+        const b = body as { data?: string; filename?: string; content_type?: string; label?: string };
+        if (!b.data) return json({ error: "data (base64) is required" }, 400);
+        const contentType = b.content_type || "image/png";
+        if (!/^image\/(png|jpe?g|gif|webp)$/i.test(contentType)) {
+          return json({ error: "Only PNG, JPG, GIF or WEBP images are allowed" }, 400);
+        }
+        // Decode base64 (accepts a bare base64 string or a data: URL).
+        let bytes: Uint8Array;
+        try {
+          const raw = b.data.includes(",") ? b.data.slice(b.data.indexOf(",") + 1) : b.data;
+          const bin = atob(raw);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } catch {
+          return json({ error: "Invalid image data" }, 400);
+        }
+        if (bytes.length > 10 * 1024 * 1024) return json({ error: "Image exceeds 10 MB limit" }, 400);
+        const ext = (contentType.split("/")[1] || "png").replace("jpeg", "jpg");
+        const path = `${cid}/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await adminClient.storage
+          .from("preview-images").upload(path, bytes, { contentType, upsert: false });
+        if (upErr) return json({ error: upErr.message }, 500);
+        const { data: pub } = adminClient.storage.from("preview-images").getPublicUrl(path);
+        const label = ((b.filename || "").trim().slice(0, 300)) || null;
+        const { data, error } = await adminClient
+          .from("preview_links")
+          .insert({ company_id: cid, kind: "image", url: pub.publicUrl, label, created_by: caller.id })
+          .select("*").single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ link: data });
+      }
+
       if (action === "delete_preview_link") {
         const id = (body as { id?: string }).id;
         if (!id) return json({ error: "id is required" }, 400);

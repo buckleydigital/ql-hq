@@ -80,6 +80,9 @@
   .li-row input{width:100%}
   .dfyf{display:block;font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:10px}
   .dfyf textarea{margin-top:4px}
+  .dropzone{border:1.5px dashed var(--bd);border-radius:10px;padding:16px;text-align:center;color:var(--ink2);background:var(--bg2);transition:border-color .1s,background .1s}
+  .dropzone.drag{border-color:var(--accent);background:rgba(71,151,255,.08)}
+  .dz-browse{color:var(--accent);cursor:pointer;text-decoration:underline}
   @media(max-width:600px){.inv-grid{grid-template-columns:1fr}.li-row{grid-template-columns:1fr 1fr}}
 </style>
 </head>
@@ -382,6 +385,7 @@
       c.next_invoice_due = b.next_invoice_due;
       c.invoice_status = b.invoice_status;
       c.va_intro_done = b.va_intro_done;
+      c.va_intro_done_at = b.va_intro_done_at;
       c.created_at = b.created_at;
       c.delivery = b.delivery;
       c.invoices = b.invoices;
@@ -507,15 +511,22 @@
     const p = extra.profile || {};
 
     // ── Tasks ──
-    const tasks = _billingReady ? computeTasks(cache) : [];
-    const tasksHtml = tasks.length ? tasks.map(t => `
+    // The intro-email control is always shown (two-way toggle) so the VA can
+    // mark it sent or undo it; it writes companies.va_intro_done, which /admin
+    // reads back in the "Intro email done" column.
+    const introRow = `
+      <div class="task${cache.va_intro_done ? ' done' : ''}">
+        <span class="ic">${cache.va_intro_done ? '✅' : '✉️'}</span>
+        <div class="tbody">${cache.va_intro_done ? 'Intro email sent to ' : 'Introduce yourself to '}${esc(c.name || 'this client')} as their account manager via email${cache.va_intro_done && cache.va_intro_done_at ? ' · ' + fmtDate(cache.va_intro_done_at) : ''}</div>
+        <button class="btn ${cache.va_intro_done ? '' : 'btn-p'}" data-intro-toggle type="button">${cache.va_intro_done ? 'Undo' : 'Mark sent'}</button>
+      </div>`;
+    const otherTasks = (_billingReady ? computeTasks(cache) : []).filter(t => t.key !== 'intro');
+    const tasksHtml = otherTasks.map(t => `
       <div class="task" data-task="${t.key}">
         <span class="ic">${t.ic}</span>
         <div class="tbody">${esc(t.label)}</div>
-        ${t.key === 'intro' ? '<button class="btn btn-p" data-intro-done type="button">Mark done</button>' : ''}
         ${t.key === 'invoice' || t.key === 'reorder' ? '<button class="btn btn-p" data-new-inv type="button">New invoice</button>' : ''}
-      </div>`).join('') : '<div class="muted">No outstanding tasks. 🎉</div>';
-    const introDoneNote = cache.va_intro_done ? '<div class="task done"><span class="ic">✅</span><div class="tbody">Intro email sent</div></div>' : '';
+      </div>`).join('');
 
     // ── DFY profile (editable) ──
     const dfyHtml = `
@@ -551,7 +562,7 @@
 
       <div class="card">
         <div class="sec-title" style="margin-top:0">Tasks</div>
-        ${introDoneNote}${tasksHtml}
+        ${introRow}${tasksHtml}
       </div>
 
       <div class="card">
@@ -561,9 +572,13 @@
 
       <div class="card">
         <div class="sec-title" style="margin-top:0">Preview links to send</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-          <select id="plKind"><option value="link">Link</option><option value="image">Screenshot</option></select>
-          <input id="plUrl" type="text" placeholder="https://…" style="flex:2;min-width:160px">
+        <div id="plDrop" class="dropzone">
+          <div>📎 Drag &amp; drop screenshots here, or <label class="dz-browse">browse<input id="plFile" type="file" accept="image/*" multiple hidden></label></div>
+          <div class="muted" style="font-size:11px;margin-top:4px" id="plUpStatus">PNG / JPG / GIF / WEBP, up to 10 MB each</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">
+          <select id="plKind"><option value="link">Link</option><option value="image">Image URL</option></select>
+          <input id="plUrl" type="text" placeholder="…or paste a link/image URL" style="flex:2;min-width:160px">
           <input id="plLabel" type="text" placeholder="Label (optional)" style="flex:1;min-width:110px">
           <button class="btn btn-p" id="plAddBtn" type="button">Add</button>
         </div>
@@ -594,9 +609,10 @@
     $('addNoteBtn').addEventListener('click', () => addNote(companyId));
     $('saveDfyBtn').addEventListener('click', () => saveDfy(companyId));
     $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
+    wirePreviewDropzone(companyId);
     $('newInvBtn').addEventListener('click', () => openInvModal(companyId, c));
-    const introBtn = $('detailBody').querySelector('[data-intro-done]');
-    if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, introBtn));
+    const introBtn = $('detailBody').querySelector('[data-intro-toggle]');
+    if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, !cache.va_intro_done, introBtn));
     $('detailBody').querySelectorAll('[data-new-inv]').forEach(b => b.addEventListener('click', () => openInvModal(companyId, c)));
 
     _detailLinks = extra.links;
@@ -615,13 +631,14 @@
     $('dfyStatus').textContent = ok ? 'Saved ✓' : ('Error: ' + (data.error || 'failed'));
   }
 
-  // ── Intro task ──
-  async function markIntroDone(companyId, btn) {
-    btn.disabled = true; btn.textContent = 'Saving…';
-    const { ok, data } = await vaApi({ action: 'mark_intro_done', company_id: companyId, done: true });
-    if (!ok) { btn.disabled = false; btn.textContent = 'Mark done'; alert(data.error || 'Failed'); return; }
-    const c = _clients.find(x => x.id === companyId); if (c) c.va_intro_done = true;
-    openClient(companyId); // re-render tasks
+  // ── Intro task (two-way; writes companies.va_intro_done, seen in /admin) ──
+  async function markIntroDone(companyId, done, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    const { ok, data } = await vaApi({ action: 'mark_intro_done', company_id: companyId, done });
+    if (!ok) { if (btn) { btn.disabled = false; btn.textContent = done ? 'Mark sent' : 'Undo'; } alert(data.error || 'Failed'); return; }
+    const c = _clients.find(x => x.id === companyId);
+    if (c) { c.va_intro_done = done; c.va_intro_done_at = done ? new Date().toISOString() : null; }
+    openClient(companyId); // re-render tasks + badge
   }
 
   // ── Preview links ──
@@ -656,6 +673,41 @@
     if (!ok) { alert(data.error || 'Failed'); return; }
     _detailLinks = _detailLinks.filter(x => x.id !== id);
     renderPreviewLinksVa(companyId);
+  }
+
+  // Drag-and-drop / file-picker screenshot upload → Supabase Storage via va-api.
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+  }
+  async function uploadPreviewImages(companyId, files) {
+    const imgs = [...files].filter(f => /^image\//.test(f.type));
+    if (!imgs.length) return;
+    const st = $('plUpStatus');
+    let done = 0;
+    for (const f of imgs) {
+      if (f.size > 10 * 1024 * 1024) { if (st) st.textContent = `${f.name} is over 10 MB — skipped`; continue; }
+      if (st) st.textContent = `Uploading ${f.name}… (${done + 1}/${imgs.length})`;
+      try {
+        const data = await fileToBase64(f);
+        const res = await vaApi({ action: 'add_preview_image', company_id: companyId, data, filename: f.name, content_type: f.type });
+        if (res.ok && res.data.link) { _detailLinks = [res.data.link].concat(_detailLinks); renderPreviewLinksVa(companyId); done++; }
+        else if (st) st.textContent = 'Error: ' + (res.data.error || 'upload failed');
+      } catch (e) { if (st) st.textContent = 'Error: ' + e.message; }
+    }
+    if (st && done) st.textContent = `Uploaded ${done} screenshot${done === 1 ? '' : 's'} ✓`;
+  }
+  function wirePreviewDropzone(companyId) {
+    const dz = $('plDrop'), fileEl = $('plFile');
+    if (!dz) return;
+    fileEl.addEventListener('change', () => { if (fileEl.files.length) uploadPreviewImages(companyId, fileEl.files); fileEl.value = ''; });
+    ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); if (ev !== 'dragleave' || e.target === dz) dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', e => { if (e.dataTransfer?.files?.length) uploadPreviewImages(companyId, e.dataTransfer.files); });
   }
 
   // ── Invoice list ──
