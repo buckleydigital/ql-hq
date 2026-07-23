@@ -221,7 +221,36 @@ Deno.serve(async (req: Request) => {
         delivered_count = newCount
       }
 
-      return json({ ok: true, delivered_leads, delivered_count })
+      // ── flag the exact lead as scrubbed (blocks any future dispute) ─────────
+      // Matched by phone + name + company, all exact (phone E.164-normalised,
+      // name trimmed case-insensitive). Most recent un-flagged match wins.
+      let lead_flagged: string | null = null
+      const leadIdent = (body as { lead?: { name?: string | null; phone?: string | null } }).lead
+      if (leadIdent?.phone && leadIdent?.name) {
+        const wantPhone = normalisePhone(leadIdent.phone)
+        const wantName  = leadIdent.name.trim().toLowerCase()
+        const { data: hqLeads } = await supabase
+          .from('leads')
+          .select('id, name, phone, ppl_scrubbed')
+          .eq('company_id', companyId)
+          .eq('is_ppl', true)
+          .eq('ppl_scrubbed', false)
+          .order('created_at', { ascending: false })
+          .limit(200)
+        const hqMatch = (hqLeads || []).find((l: { name?: string | null; phone?: string | null }) =>
+          normalisePhone((l.phone as string) || '') === wantPhone &&
+          ((l.name as string) || '').trim().toLowerCase() === wantName,
+        )
+        if (hqMatch) {
+          await supabase
+            .from('leads')
+            .update({ ppl_scrubbed: true, updated_at: new Date().toISOString() })
+            .eq('id', (hqMatch as { id: string }).id)
+          lead_flagged = (hqMatch as { id: string }).id
+        }
+      }
+
+      return json({ ok: true, delivered_leads, delivered_count, lead_flagged })
     }
 
     // ── default action: sync delivery config + postcodes ─────────────────────
