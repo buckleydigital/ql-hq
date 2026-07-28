@@ -42,6 +42,9 @@ serve(async (req) => {
     case 'sms_credits':
       await handleSmsCreditsTopUp(session, m)
       break
+    case 'managed':
+      await handleManagedSignupPayment(session, m)
+      break
   }
 
   return new Response(JSON.stringify({ received: true }), {
@@ -488,6 +491,80 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
   }
 }
 
+// ── Managed / DFY system signup (Branded Lead Gen System, bought from /get-started) ──
+async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
+  console.log('Managed/DFY signup for:', m.email)
+  try {
+    const firstName = m.first_name || (m.name ? m.name.trim().split(/\s+/)[0] : '') || 'there'
+    const lastName  = m.last_name  || (m.name ? m.name.trim().split(/\s+/).slice(1).join(' ') : '')
+
+    // createUser triggers handle_new_user() which auto-creates a company + profile
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: m.email,
+      email_confirm: true,
+      user_metadata: { full_name: `${firstName} ${lastName}`.trim() },
+    })
+    if (authError) throw new Error(`Auth: ${authError.message}`)
+    const userId = authData.user.id
+
+    const { data: profileData, error: profileFetchError } = await supabase
+      .from('profiles').select('company_id').eq('id', userId).single()
+    if (profileFetchError) throw new Error(`Profile fetch: ${profileFetchError.message}`)
+    const companyId = profileData.company_id
+
+    const { error: companyError } = await supabase
+      .from('companies')
+      .update({
+        name:               m.company || `${firstName}'s Company`,
+        email:              m.email,
+        phone:              m.phone || null,
+        plan:               'managed',
+        status:             'active',
+        stripe_customer_id: session.customer as string,
+        niche:              m.niche || null,
+      })
+      .eq('id', companyId)
+    if (companyError) throw new Error(`Company: ${companyError.message}`)
+
+    await supabase.from('profiles').upsert({
+      id:         userId,
+      company_id: companyId,
+      full_name:  `${firstName} ${lastName}`.trim(),
+      phone:      m.phone || null,
+      role:       'owner',
+      is_active:  true,
+    })
+
+    // Welcome the buyer with a dashboard magic link.
+    let magicLink = 'https://quoteleadshq.com/dashboard'
+    try { magicLink = await createMagicLink(m.email) } catch (e) { console.error('managed magic link:', e) }
+    await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink)
+      .catch(e => console.error('managed welcome email:', e))
+
+    // Notify ops that a DFY system was purchased.
+    await sendInternalEmail(
+      `🚀 New DFY system purchase - ${m.company || m.email}`,
+      `<p><strong>${m.company || '(no company)'}</strong> just bought the Branded Lead Gen System ($2,500 activation).</p>
+       <table style="border-collapse:collapse;font-size:14px">
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${m.email}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${m.phone || '-'}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${m.monthly_lead_goal || '-'}</td></tr>
+       </table>
+       <p style="margin-top:14px">Account provisioned as <strong>managed</strong> and active. Time to build their system.</p>`
+    )
+    console.log('Managed/DFY provisioned:', companyId)
+  } catch (err) {
+    console.error('handleManagedSignupPayment error:', err)
+    await sendInternalEmail(
+      `⚠️ DFY purchase provisioning failed - ${m.email}`,
+      `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
+    )
+  }
+}
+
 // ── SMS credits top-up (existing dashboard company) ────────────────────────
 async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('SMS credits top-up for company:', m.company_id, 'credits:', m.credits)
@@ -550,6 +627,50 @@ async function sendPplWelcomeEmail(
             </div>
             <p style="font-size:12px;color:#999;margin:24px 0 0;line-height:1.6">
               Questions? Reply to this email or reach us on WhatsApp.<br>
+              This login link expires in 24 hours.
+            </p>
+          </div>
+        </div>
+      </body></html>`,
+    }),
+  })
+  if (!emailRes.ok) {
+    const errBody = await emailRes.text()
+    throw new Error(`Resend error ${emailRes.status}: ${errBody}`)
+  }
+}
+
+async function sendManagedWelcomeEmail(to: string, firstName: string, company: string, magicLink: string) {
+  const emailRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'QuoteLeads <onboarding@quoteleads.com.au>',
+      to,
+      subject: `You're in, ${firstName}. Let's build your system.`,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px">
+        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
+          <div style="background:#0a0b0f;padding:28px 36px">
+            <img src="https://quoteleads.com.au/quoteleads-logo-white.png" alt="QuoteLeads" style="height:30px">
+          </div>
+          <div style="padding:36px">
+            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">You're in, ${firstName}.</h1>
+            <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
+              Thanks for coming on board${company ? ` with ${company}` : ''}. Your Branded Lead Gen System is locked in and we're getting the build underway. You'll receive your previews within 24-48 hours, and you'll shortly hear from your account manager to walk you through everything.
+            </p>
+            <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
+              Access My Dashboard →
+            </a>
+            <div style="background:#f8f9fb;border-radius:8px;padding:18px;margin-bottom:24px">
+              <p style="font-size:13px;font-weight:600;color:#0a0b0f;margin:0 0 10px">What happens next:</p>
+              <ul style="font-size:13px;color:#555;line-height:1.9;margin:0;padding-left:18px">
+                <li>You'll receive your landing page &amp; campaign previews within 24-48 hours</li>
+                <li>Your account manager will be in touch shortly to kick off the build</li>
+                <li>AI follow-up and CRM pipeline get switched on</li>
+              </ul>
+            </div>
+            <p style="font-size:12px;color:#999;margin:24px 0 0;line-height:1.6">
+              Questions? Just reply to this email.<br>
               This login link expires in 24 hours.
             </p>
           </div>

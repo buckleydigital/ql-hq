@@ -23,6 +23,8 @@ serve(async (req) => {
         metadata[key] = str.slice(0, 500)
       }
     }
+    // Route to the managed/DFY handler in stripe-webhook (provision + notify).
+    metadata.type = 'managed'
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
