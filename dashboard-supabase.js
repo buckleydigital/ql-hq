@@ -6387,6 +6387,15 @@ const NICHE_SUB_NICHES = {
     { id: 'split_ducted',              label: 'Installations (Split & Ducted)' },
     { id: 'installations_maintenance', label: 'Installations & Maintenance'    },
   ],
+  roofing: [
+    { id: 'all_restorations', label: 'All Restorations'           },
+    { id: 'all_replacements', label: 'All Replacements'           },
+    { id: 'tile_metal',       label: 'Tile-to-Metal Replacements' },
+  ],
+  renovation: [
+    { id: 'kitchen',  label: 'Kitchen Renovations'  },
+    { id: 'bathroom', label: 'Bathroom Renovations' },
+  ],
 };
 
 function subNicheLabel(subNiche) {
@@ -6437,7 +6446,7 @@ async function loadBuyLeads() {
   document.getElementById('buyLeadsPostcodes')?.addEventListener('input', buyLeadsUpdateSummary);
 }
 
-const BL_NICHES = ['solar', 'solar-battery', 'hvac', 'battery-retrofit'];
+const BL_NICHES = ['solar', 'solar-battery', 'roofing', 'hvac', 'renovation', 'battery-retrofit'];
 
 function renderBuyLeadsNiches() {
   const el = document.getElementById('buyLeadsNicheCards');
