@@ -37,6 +37,33 @@ serve(async (req) => {
       allow_promotion_codes: true,
     })
 
+    // Notify ops that someone started a DFY checkout (before payment completes,
+    // so we capture the interest even if they abandon Stripe). Fire-and-forget.
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+    if (RESEND_API_KEY) {
+      const name = [metadata.first_name, metadata.last_name].filter(Boolean).join(' ') || metadata.name || '(no name)'
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'QuoteLeads System <system@quoteleads.com.au>',
+          to: 'contact@quoteleads.com.au',
+          subject: `🟡 DFY checkout started - ${metadata.company || metadata.email || name}`,
+          html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#333;line-height:1.7">
+            <p><strong>${name}</strong> started a Branded Lead Gen System ($2,500) checkout. Not paid yet.</p>
+            <table style="border-collapse:collapse;font-size:14px">
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${metadata.company || '-'}</td></tr>
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${metadata.email || '-'}</td></tr>
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${metadata.phone || '-'}</td></tr>
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${metadata.trade || metadata.niche || '-'}</td></tr>
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${metadata.monthly_lead_goal || '-'}</td></tr>
+            </table>
+            <p style="color:#999;margin-top:12px">You'll get a second email if/when the payment completes.</p>
+          </div>`,
+        }),
+      }).catch((e) => console.error('checkout-started email error:', e))
+    }
+
     return new Response(
       JSON.stringify({ url: session.url }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
