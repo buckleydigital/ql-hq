@@ -2,7 +2,16 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Stripe from 'https://esm.sh/stripe@14'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
-const PRICE_ID = Deno.env.get('STRIPE_PRICE_MANAGED')!
+
+// Installation fee for the Branded Lead Gen System, in cents (AUD), ex GST.
+// Must stay in step with the advertised price on quoteleads.com.au - the site
+// quotes "$2,500 + GST" on /pricing, /get-started and the home page.
+//
+// This used to read a Stripe price ID from STRIPE_PRICE_MANAGED, which still
+// pointed at a $999 price long after the site moved to $2,500, so checkout
+// silently charged the old amount. Keeping the figure here means it lives
+// alongside the copy it has to match and shows up in review.
+const INSTALL_FEE_CENTS = 250_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,7 +38,17 @@ serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      line_items: [{ price: PRICE_ID, quantity: 1 }],
+      line_items: [{
+        price_data: {
+          currency: 'aud',
+          unit_amount: INSTALL_FEE_CENTS,
+          product_data: {
+            name: 'QuoteLeads Installation Fee',
+            description: 'Complete AI lead generation system - custom Meta & Google campaigns, landing page, AI SMS agent, CRM pipeline, 30 days optimisation. Ad spend separate.',
+          },
+        },
+        quantity: 1,
+      }],
       customer_email: formData.email,
       metadata,
       success_url: 'https://quoteleads.com.au/payment-success?session_id={CHECKOUT_SESSION_ID}',
