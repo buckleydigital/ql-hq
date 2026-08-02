@@ -6,12 +6,26 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
-const ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!
-const AUTH_TOKEN  = Deno.env.get('TWILIO_AUTH_TOKEN')!
-const ADDRESS_SID = Deno.env.get('TWILIO_ADDRESS_SID')!
-const BUNDLE_SID  = Deno.env.get('TWILIO_BUNDLE_SID')!
-const SMS_WEBHOOK = 'https://wjadekgptkstfdootuol.supabase.co/functions/v1/twilio-inbound-sms'
-const CREDS       = btoa(`${ACCOUNT_SID}:${AUTH_TOKEN}`)
+// Historical fallback if platform_settings hasn't been seeded and no env
+// override is set. Change the number in /admin (Twilio Numbers → PPL Shared
+// Number), not here - this is only a last-resort default.
+const DEFAULT_SHARED_NUMBER = '+61485016260'
+
+// Pay-per-lead (PPL) companies all share a single Twilio number instead of
+// each getting a dedicated one purchased from Twilio's inventory. The number
+// is admin-configurable (platform_settings.shared_ppl_twilio_number) so it
+// can be changed without a code deploy if it ever needs to be swapped out.
+// Conversation ownership for inbound replies is resolved per-message by
+// twilio-inbound-sms, matching the lead's phone number against each
+// company's own leads - never by which company "owns" the number.
+async function getSharedTwilioNumber(): Promise<string> {
+  const { data } = await supabase
+    .from('platform_settings')
+    .select('shared_ppl_twilio_number')
+    .eq('id', 1)
+    .maybeSingle()
+  return data?.shared_ppl_twilio_number || Deno.env.get('SHARED_TWILIO_NUMBER') || DEFAULT_SHARED_NUMBER
+}
 
 serve(async (req) => {
   const { company_id } = await req.json()
@@ -32,64 +46,35 @@ serve(async (req) => {
   }
 
   try {
-    // Search AU mobile first, fall back to local
-    let phoneNumber: string | null = null
-    for (const type of ['Mobile', 'Local']) {
-      const res = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/AvailablePhoneNumbers/AU/${type}.json?SmsEnabled=true&Limit=1`,
-        { headers: { Authorization: `Basic ${CREDS}` } }
-      )
-      const data = await res.json()
-      phoneNumber = data.available_phone_numbers?.[0]?.phone_number || null
-      if (phoneNumber) break
-    }
+    const phoneNumber = await getSharedTwilioNumber()
 
-    if (!phoneNumber) throw new Error('No AU numbers available')
-
-    // Purchase with regulatory compliance params
-    const buyRes = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/IncomingPhoneNumbers.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${CREDS}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          PhoneNumber: phoneNumber,
-          SmsUrl: SMS_WEBHOOK,
-          SmsMethod: 'POST',
-          AddressSid: ADDRESS_SID,
-          BundleSid: BUNDLE_SID,
-        }).toString(),
-      }
-    )
-    const bought = await buyRes.json()
-    if (!bought.phone_number) throw new Error(`Purchase failed: ${JSON.stringify(bought)}`)
-
-    // Save to twilio_numbers
-    await supabase.from('twilio_numbers').insert({
+    // Assign the shared number - nothing to buy from Twilio, it's already
+    // purchased and wired to the inbound webhook. Deliberately no
+    // twilio_sid stored: admin's "delete number" action releases a number on
+    // Twilio when it has a sid, and this number must never be released while
+    // other companies are still assigned to it.
+    const { error: insertErr } = await supabase.from('twilio_numbers').insert({
       company_id,
-      phone_number: bought.phone_number,
-      friendly_name: 'QuoteLeads SMS',
-      twilio_sid: bought.sid,
+      phone_number: phoneNumber,
+      friendly_name: 'QuoteLeads SMS (shared PPL number)',
     })
+    if (insertErr) throw new Error(`twilio_numbers insert: ${insertErr.message}`)
 
     // Enable AI agent
     await supabase
       .from('sms_agent_config')
       .update({
-        twilio_number: bought.phone_number,
+        twilio_number: phoneNumber,
         is_active: true,
         auto_reply: true,
         auto_send_welcome: true,
       })
       .eq('company_id', company_id)
 
-    console.log('Provisioned:', bought.phone_number, 'for company:', company_id)
+    console.log('Provisioned shared number:', phoneNumber, 'for company:', company_id)
 
     return new Response(
-      JSON.stringify({ success: true, phone_number: bought.phone_number }),
+      JSON.stringify({ success: true, phone_number: phoneNumber }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
   } catch (err) {
