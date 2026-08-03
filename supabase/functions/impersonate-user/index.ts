@@ -696,15 +696,19 @@ Deno.serve(async (req) => {
     }
 
     // ── action: assign_shared_ppl_number_to_all ───────────────────────────────
-    // Bulk-backfill: assigns the current shared PPL number to every PPL /
-    // PPL+Managed company that doesn't already have a twilio_numbers row for
-    // it. Skips companies that already have it (idempotent - safe to re-run),
-    // and never touches is_active/auto_reply on an existing sms_agent_config
-    // row, so it can't silently switch AI on for someone who turned it off.
-    // Exists because reassigning a row in the Twilio Numbers pool below MOVES
-    // a company off the number rather than adding one - not what you want
-    // when the goal is "everyone should have this number".
+    // Bulk-backfill: assigns the current shared PPL number to companies that
+    // don't already have a twilio_numbers row for it. scope: "ppl" (default)
+    // targets PPL / PPL+Managed companies only; "all" targets every company
+    // regardless of plan. Skips companies that already have it (idempotent -
+    // safe to re-run), and never touches is_active/auto_reply on an existing
+    // sms_agent_config row, so it can't silently switch AI on for someone who
+    // turned it off. Exists because reassigning a row in the Twilio Numbers
+    // pool below MOVES a company off the number rather than adding one - not
+    // what you want when the goal is "everyone should have this number".
     if (action === "assign_shared_ppl_number_to_all") {
+      const { scope } = body as { scope?: string };
+      const targetScope = scope === "all" ? "all" : "ppl";
+
       const { data: settings } = await adminClient
         .from("platform_settings")
         .select("shared_ppl_twilio_number")
@@ -715,25 +719,26 @@ Deno.serve(async (req) => {
         return json({ error: "No shared PPL number configured yet - set one above first" }, 400);
       }
 
-      const { data: pplCompanies, error: companiesErr } = await adminClient
-        .from("companies")
-        .select("id, name")
-        .in("plan", ["ppl", "ppl_managed"]);
+      let companiesQuery = adminClient.from("companies").select("id, name");
+      if (targetScope === "ppl") {
+        companiesQuery = companiesQuery.in("plan", ["ppl", "ppl_managed"]);
+      }
+      const { data: targetCompanies, error: companiesErr } = await companiesQuery;
       if (companiesErr) {
         return json({ error: "Failed to load companies: " + companiesErr.message }, 500);
       }
-      if (!pplCompanies?.length) {
-        return json({ success: true, assigned: [], already_assigned: 0, total: 0 });
+      if (!targetCompanies?.length) {
+        return json({ success: true, assigned: [], already_assigned: 0, total: 0, scope: targetScope });
       }
 
       const { data: existingRows } = await adminClient
         .from("twilio_numbers")
         .select("company_id")
         .eq("phone_number", phoneNumber)
-        .in("company_id", pplCompanies.map((c) => c.id as string));
+        .in("company_id", targetCompanies.map((c) => c.id as string));
       const alreadyAssigned = new Set((existingRows || []).map((r) => r.company_id as string));
 
-      const toAssign = pplCompanies.filter((c) => !alreadyAssigned.has(c.id as string));
+      const toAssign = targetCompanies.filter((c) => !alreadyAssigned.has(c.id as string));
       const assigned: string[] = [];
       const failed: string[] = [];
 
@@ -754,10 +759,11 @@ Deno.serve(async (req) => {
 
       return json({
         success: true,
+        scope: targetScope,
         assigned,
         failed,
         already_assigned: alreadyAssigned.size,
-        total: pplCompanies.length,
+        total: targetCompanies.length,
       });
     }
 
