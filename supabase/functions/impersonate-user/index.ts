@@ -1174,8 +1174,16 @@ Deno.serve(async (req) => {
 
       const { error: deleteErr } = await adminClient.auth.admin.deleteUser(user_id);
       if (deleteErr) {
-        console.error("delete_user error:", deleteErr.message);
-        return json({ error: "Failed to delete user: " + deleteErr.message }, 500);
+        // GoTrue can surface a DB-level failure (e.g. a foreign-key violation
+        // from a table referencing this user without ON DELETE CASCADE/SET
+        // NULL) as an AuthError with an empty/unhelpful .message - log the
+        // full object server-side and fall back to something readable rather
+        // than shipping "Failed to delete user: {}" to the admin.
+        console.error("delete_user error:", JSON.stringify(deleteErr));
+        const detail = deleteErr.message?.trim()
+          ? deleteErr.message
+          : "the server rejected the deletion (likely a related record still references this user - check the logs)";
+        return json({ error: `Failed to delete user: ${detail}` }, 500);
       }
 
       return json({ success: true });
