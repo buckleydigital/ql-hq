@@ -426,6 +426,11 @@ h1{font-size:18px;font-weight:500}
           <button class="btn2 btn-sm" id="savePplSharedNumberBtn" type="button">Save</button>
         </div>
         <p style="margin-top:8px;font-size:12px;color:var(--muted)">Only affects companies provisioned after this changes. The number itself still needs to be configured in the Twilio console with this webhook.</p>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <button class="btn2 btn-sm" id="assignPplNumberAllBtn" type="button">Assign to all PPL companies</button>
+          <p style="margin-top:8px;font-size:12px;color:var(--muted)">Backfills every PPL / PPL+Managed company that doesn't already have this number - skips ones that do, never touches AI on/off for anyone. Use this instead of reassigning a row below, which moves a company off the number rather than adding one.</p>
+          <p id="assignPplNumberAllResult" class="hidden" style="margin-top:8px;font-size:12px"></p>
+        </div>
       </div>
     </div>
 
@@ -3546,6 +3551,27 @@ h1{font-size:18px;font-weight:500}
       toast('Failed: ' + err.message, true);
     }
     btn.disabled = false; btn.textContent = 'Save';
+  });
+
+  document.getElementById('assignPplNumberAllBtn').addEventListener('click', async function () {
+    var btn = this;
+    var resultEl = document.getElementById('assignPplNumberAllResult');
+    if (!confirm('Assign the shared PPL number to every PPL company that doesn\'t already have it?')) return;
+    btn.disabled = true; btn.textContent = 'Assigning…';
+    resultEl.classList.add('hidden');
+    try {
+      var result = await callEdge({ action: 'assign_shared_ppl_number_to_all' });
+      var msg = 'Assigned to ' + result.assigned.length + ' of ' + result.total + ' PPL companies' +
+        (result.already_assigned ? ' (' + result.already_assigned + ' already had it)' : '') + '.';
+      if (result.failed && result.failed.length) msg += ' Failed: ' + result.failed.join(', ') + '.';
+      resultEl.textContent = msg;
+      resultEl.classList.remove('hidden');
+      toast(msg);
+      loadTwilioNumbers();
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+    }
+    btn.disabled = false; btn.textContent = 'Assign to all PPL companies';
   });
 
   // ── Twilio Numbers ────────────────────────────────────────────────────────
