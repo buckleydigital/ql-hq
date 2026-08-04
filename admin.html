@@ -1478,7 +1478,7 @@ h1{font-size:18px;font-weight:500}
         if (dueD) dueD.setDate(dueD.getDate() + 14);
         html += '<div class="ud-order" id="ud-order-' + o.id + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">' +
-            '<span class="ud-order-summary" style="font-size:12px;font-weight:600">' + o.delivered_leads + ' / ' + o.total_leads + ' leads</span>' +
+            '<span style="font-size:12px;font-weight:600"><span class="ud-order-summary">' + o.delivered_leads + ' / ' + o.total_leads + '</span> leads</span>' +
             '<div style="display:flex;gap:6px;align-items:center">' +
               '<span class="badge-status ' + pplStatusClass(o.status) + ' ud-order-status-badge">' + escapeHtml(o.status) + '</span>' +
               '<button onclick="toggleOrderEdit(\'' + o.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);cursor:pointer;color:var(--muted)">Edit</button>' +
@@ -1597,9 +1597,11 @@ h1{font-size:18px;font-weight:500}
       // Update the summary text and progress bar in-place
       var pct = total > 0 ? Math.min(100, Math.round(delivered / total * 100)) : 0;
       var summary = row.querySelector('.ud-order-summary');
-      if (summary) summary.textContent = delivered + ' / ' + total + ' leads';
+      if (summary) summary.textContent = delivered + ' / ' + total;
       var bar = row.querySelector('.ud-order-bar');
       if (bar) bar.style.width = pct + '%';
+      var remainingEl = row.querySelector('.ud-order-remaining');
+      if (remainingEl) remainingEl.textContent = Math.max(0, total - delivered) + ' remaining';
       var statusBadge = row.querySelector('.ud-order-status-badge');
       var newStatus = delivered >= total ? 'completed' : 'active';
       if (statusBadge) { statusBadge.textContent = newStatus; statusBadge.className = 'badge-status ' + pplStatusClass(newStatus) + ' ud-order-status-badge'; }
@@ -2346,27 +2348,82 @@ h1{font-size:18px;font-weight:500}
 
     var row = document.createElement('div');
     row.className = 'dispute-row';
+    row.id = 'pplorder-row-' + o.id;
     row.innerHTML =
       '<div class="dispute-header">' +
         '<div style="flex:1;min-width:0">' +
           '<div class="dispute-lead">' + companyName + '</div>' +
           '<div class="dispute-meta">Purchased ' + purchased + ' &bull; Due ' + due + '</div>' +
-          '<div class="dispute-badges" style="margin-bottom:8px">' +
-            '<span class="badge-status ' + pplStatusClass(o.status) + '">' + escapeHtml(statusLabel) + '</span>' +
+          '<div class="dispute-badges" style="margin-bottom:8px;display:flex;align-items:center;gap:6px">' +
+            '<span class="badge-status ' + pplStatusClass(o.status) + ' pplorder-status-badge">' + escapeHtml(statusLabel) + '</span>' +
+            '<button onclick="togglePplOrderEdit(\'' + o.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);cursor:pointer;color:var(--muted)">Edit</button>' +
           '</div>' +
           '<div style="font-size:16px;font-weight:600">' +
-            o.delivered_leads + ' / ' + o.total_leads +
+            '<span class="pplorder-summary">' + o.delivered_leads + ' / ' + o.total_leads + '</span>' +
             ' <span style="font-size:12px;font-weight:400;color:var(--muted)">leads delivered</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + remaining + ' remaining</div>' +
+          '<div class="pplorder-remaining" style="font-size:11px;color:var(--muted);margin-bottom:6px">' + remaining + ' remaining</div>' +
           '<div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;max-width:320px">' +
-            '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
+            '<div class="pplorder-bar" style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px"></div>' +
           '</div>' +
-          (o.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">' + escapeHtml(o.notes) + '</div>' : '') +
+          (o.notes ? '<div class="pplorder-notes" style="font-size:11px;color:var(--muted);margin-top:6px">' + escapeHtml(o.notes) + '</div>' : '') +
+          '<div class="pplorder-edit" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;max-width:320px">' +
+            '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+              '<label style="font-size:10px;color:var(--muted);flex:1">Delivered<input type="number" min="0" value="' + o.delivered_leads + '" data-field="delivered_leads" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+              '<label style="font-size:10px;color:var(--muted);flex:1">Total<input type="number" min="1" value="' + o.total_leads + '" data-field="total_leads" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+            '</div>' +
+            '<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:6px">Notes<input type="text" value="' + escapeHtml(o.notes || '') + '" data-field="notes" style="display:block;width:100%;margin-top:2px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg2);color:var(--text)"></label>' +
+            '<button onclick="savePplOrderEdit(\'' + o.id + '\', this)" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>' +
+            '<button onclick="togglePplOrderEdit(\'' + o.id + '\')" style="font-size:11px;padding:4px 10px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;margin-left:6px;color:var(--muted)">Cancel</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
     return row;
   }
+
+  function togglePplOrderEdit(orderId) {
+    var row = document.getElementById('pplorder-row-' + orderId);
+    if (!row) return;
+    var editDiv = row.querySelector('.pplorder-edit');
+    editDiv.style.display = editDiv.style.display === 'none' ? '' : 'none';
+  }
+  window.togglePplOrderEdit = togglePplOrderEdit;
+
+  async function savePplOrderEdit(orderId, btn) {
+    var row = document.getElementById('pplorder-row-' + orderId);
+    if (!row) return;
+    var deliveredInput = row.querySelector('[data-field="delivered_leads"]');
+    var totalInput     = row.querySelector('[data-field="total_leads"]');
+    var notesInput     = row.querySelector('[data-field="notes"]');
+    var delivered = parseInt(deliveredInput.value);
+    var total     = parseInt(totalInput.value);
+    var notes     = notesInput.value.trim() || null;
+    if (isNaN(delivered) || isNaN(total) || total < 1) { toast('Invalid values', true); return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      await callEdge({ action: 'update_ppl_order', order_id: orderId, delivered_leads: delivered, total_leads: total, notes: notes });
+      var order = allPplOrders.find(function (o) { return o.id === orderId; });
+      if (order) { order.delivered_leads = delivered; order.total_leads = total; order.notes = notes; }
+      var pct = total > 0 ? Math.min(100, Math.round(delivered / total * 100)) : 0;
+      var summary = row.querySelector('.pplorder-summary');
+      if (summary) summary.textContent = delivered + ' / ' + total;
+      var bar = row.querySelector('.pplorder-bar');
+      if (bar) bar.style.width = pct + '%';
+      var remainingEl = row.querySelector('.pplorder-remaining');
+      if (remainingEl) remainingEl.textContent = Math.max(0, total - delivered) + ' remaining';
+      var statusBadge = row.querySelector('.pplorder-status-badge');
+      var newStatus = delivered >= total ? 'completed' : 'active';
+      var newStatusLabel = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' }[newStatus] || newStatus;
+      if (statusBadge) { statusBadge.textContent = newStatusLabel; statusBadge.className = 'badge-status ' + pplStatusClass(newStatus) + ' pplorder-status-badge'; }
+      if (order) order.status = newStatus;
+      toast('Order updated.');
+      togglePplOrderEdit(orderId);
+    } catch (err) {
+      toast('Failed: ' + err.message, true);
+    }
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+  window.savePplOrderEdit = savePplOrderEdit;
 
   function applyPplFilter() {
     var company = document.getElementById('pplCompanyFilter').value;
