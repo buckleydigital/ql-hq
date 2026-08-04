@@ -568,6 +568,27 @@ h1{font-size:18px;font-weight:500}
         </div>
       </div>
       <div class="panel-b">
+        <div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:10px;border:1px solid var(--accent,#4797FF)">
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px">Bulk Update Niche Pricing</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Set one price across every area (city + default rows) for a niche in one go, instead of editing each row one by one.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Niche</label>
+            <select id="bulkPriceNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">
+              <option value="solar">All Solar</option><option value="solar_battery">Solar + Battery</option><option value="roofing">Roofing</option><option value="hvac">HVAC</option><option value="renovation">Renovation</option><option value="battery_retrofit">Battery Retrofit</option>
+            </select></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Sub-Niche <span style="font-weight:400">(optional narrower target)</span></label>
+            <select id="bulkPriceSubNiche" style="height:34px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px">
+              <option value="">All rows in this niche (every sub-niche + areas)</option>
+              <option value="__none__">- Parent niche rows only -</option>
+              <optgroup label="HVAC"><option value="split_ducted">Split &amp; Ducted</option><option value="installations_maintenance">Installations &amp; Maintenance</option></optgroup>
+              <optgroup label="Roofing"><option value="all_restorations">All Restorations</option><option value="all_replacements">All Replacements</option><option value="tile_metal">Tile-to-Metal</option></optgroup>
+              <optgroup label="Renovation"><option value="kitchen">Kitchen</option><option value="bathroom">Bathroom</option></optgroup>
+            </select></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Price / Lead (AUD)</label>
+            <input id="bulkPriceValue" type="number" step="0.01" min="1" placeholder="e.g. 85.00" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font:inherit;font-size:12px;width:120px"></div>
+            <button class="btn2 btn-sm" onclick="bulkSetNichePrice()" style="margin-bottom:0">Apply to All Matching Rows</button>
+          </div>
+        </div>
         <div id="pplPricingTable"><div class="notice">Loading…</div></div>
       </div>
     </div>
@@ -3983,7 +4004,7 @@ h1{font-size:18px;font-weight:500}
           '<td style="padding:8px 10px">' + subNicheLabel + '</td>' +
           '<td style="padding:8px 10px">' + areaLabel + '</td>' +
           '<td style="padding:8px 10px"><input type="number" step="0.01" min="1" value="' + p.price_per_lead + '" data-field="price_per_lead" data-id="' + p.id + '" style="width:100px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px"></td>' +
-          '<td style="padding:8px 10px;text-align:center"><input type="number" step="1" min="1" max="500" value="' + (p.max_order_qty == null ? '' : p.max_order_qty) + '" placeholder="500" title="Blank = unlimited (up to 500 per order)" data-field="max_order_qty" data-id="' + p.id + '" style="width:76px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px;text-align:center"></td>' +
+          '<td style="padding:8px 10px;text-align:center"><input type="number" step="1" min="1" max="100" value="' + (p.max_order_qty == null ? '' : p.max_order_qty) + '" placeholder="100" title="Blank = unlimited (up to 100 per order)" data-field="max_order_qty" data-id="' + p.id + '" style="width:76px;padding:4px 8px;border:1px solid var(--border,#d8e0ec);border-radius:6px;background:var(--surface,#fff);font-size:13px;text-align:center"></td>' +
           '<td style="padding:8px 10px;text-align:center"><input type="checkbox" data-field="sold_out" data-id="' + p.id + '"' + (p.sold_out ? ' checked' : '') + ' style="width:17px;height:17px;cursor:pointer"></td>' +
           '<td style="padding:8px 10px;display:flex;gap:6px">' +
             '<button class="btn2 btn-sm" onclick="savePricingRow(\'' + p.id + '\')">Save</button>' +
@@ -4007,6 +4028,30 @@ h1{font-size:18px;font-weight:500}
     document.getElementById('addPriceArea').value     = '';
     document.getElementById('addPriceValue').value    = '';
     await loadPplPricing();  // reload all rows, then reapply filter
+  };
+
+  window.bulkSetNichePrice = async function () {
+    var niche    = document.getElementById('bulkPriceNiche').value;
+    var subNiche = document.getElementById('bulkPriceSubNiche').value;
+    var price    = parseFloat(document.getElementById('bulkPriceValue').value);
+    if (isNaN(price) || price <= 0) { toast('Enter a valid price.', true); return; }
+
+    var scopeLabel = nicheLabel(niche);
+    if (subNiche === '__none__') scopeLabel += ' (parent niche rows only)';
+    else if (subNiche) scopeLabel += ' / ' + nicheLabel(subNiche);
+    else scopeLabel += ' (every area + sub-niche)';
+
+    if (!confirm('Set every matching pricing row for ' + scopeLabel + ' to $' + price.toFixed(2) + ' / lead? This cannot be undone.')) return;
+
+    var query = sb.from('ppl_pricing').update({ price_per_lead: price }).eq('niche', niche);
+    if (subNiche === '__none__') query = query.is('sub_niche', null);
+    else if (subNiche) query = query.eq('sub_niche', subNiche);
+
+    var { data, error } = await query.select('id');
+    if (error) { toast(error.message, true); return; }
+    toast('Updated ' + (data ? data.length : 0) + ' pricing row(s) to $' + price.toFixed(2) + '.');
+    document.getElementById('bulkPriceValue').value = '';
+    await loadPplPricing();
   };
 
   window.deletePricingRow = async function (id) {
@@ -4191,7 +4236,7 @@ h1{font-size:18px;font-weight:500}
     if (maxRaw !== '') {
       max_order_qty = parseInt(maxRaw, 10);
       if (isNaN(max_order_qty) || max_order_qty < 1) { toast('Max / order must be a whole number (or blank for unlimited).', true); return; }
-      if (max_order_qty > 500) max_order_qty = 500;
+      if (max_order_qty > 100) max_order_qty = 100;
     }
     var { error } = await sb.from('ppl_pricing').update({ price_per_lead, sold_out, max_order_qty }).eq('id', id);
     if (error) { toast(error.message, true); return; }
