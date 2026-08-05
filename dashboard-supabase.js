@@ -6369,11 +6369,11 @@ let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
 let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
 let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
-const BL_HARD_MAX    = 100; // absolute ceiling per order regardless of cap (100 leads in 90 days is our max PPL delivery capacity)
+const BL_HARD_MAX    = 100; // maximum leads per order
 const _pplOrdersCache = new Map();
 
 // Effective per-order cap for the current selection (sub-niche cap wins, then
-// niche cap; null cap means unlimited, so fall back to the hard ceiling).
+// niche limit; null means unlimited, so fall back to the maximum).
 function blActiveMax() {
   let cap = null;
   if (_blNiche && _blSubNiche && _blMax[_blNiche + ':' + _blSubNiche] != null) cap = _blMax[_blNiche + ':' + _blSubNiche];

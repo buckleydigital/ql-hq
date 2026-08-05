@@ -67,7 +67,7 @@ serve(async (req) => {
 
     const validatedPrice = pricing.price_per_lead
 
-    // Enforce per-order volume cap for this niche/area (null = unlimited, hard ceiling 100 - our max PPL delivery capacity)
+    // Enforce per-order volume limit for this niche/area (null = unlimited, ceiling 100)
     const orderCap = Math.min(pricing.max_order_qty ?? 100, 100)
     if (Number(quantity) > orderCap) {
       throw new Error(`Maximum order for this area is ${orderCap} leads`)
