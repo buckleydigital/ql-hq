@@ -13,7 +13,7 @@
 <script>window.onTurnstileLoad=function(){window._turnstileReady=true;if(window._initTurnstile)window._initTurnstile();};</script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad" async defer></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--sidebar-w:260px;--accent:#1f6fff;--bg:#f3f5f9;--surface:#fff;--surface-2:#f7f9fc;--border:#d8e0ec;--text:#121826;--muted:#667284;--side:#f8fafc;--side-hover:#eef3fb;--side-active:#121826;--side-active-text:#fff;--radius:18px;--shadow:0 12px 30px rgba(17,24,39,.08)}
 [data-theme=dark]{--bg:#050505;--surface:#101010;--surface-2:#161616;--border:#252525;--text:#f5f5f5;--muted:#9a9a9a;--side:#000;--side-hover:#131313;--side-active:#f5f5f5;--side-active-text:#050505;--shadow:0 16px 38px rgba(0,0,0,.45)}
@@ -181,18 +181,66 @@ textarea{min-height:100px;resize:vertical}
 .form-note{font-size:12px;color:var(--muted);line-height:1.5}
 .field-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:2px}
 
-/* ── Auth ─────────────────────────────────────── */
-.auth{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top left,rgba(31,111,255,.14),transparent 24%),radial-gradient(circle at bottom right,rgba(17,24,39,.16),transparent 28%),var(--bg)}
-.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
-.auth-side{padding:30px;background:linear-gradient(180deg,var(--text),#283245);color:#f8fbff;display:flex;flex-direction:column;justify-content:space-between;gap:20px}
-[data-theme=dark] .auth-side{background:linear-gradient(180deg,#0d0d0d,#1a1a1a)}
-.auth-side p,.auth-side li{color:rgba(248,251,255,.76);font-size:13px}
-.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:10px}
-.auth-main{padding:30px}
-.switch{display:flex;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:5px;margin-bottom:16px}
-.switch button{flex:1;min-height:36px;border-radius:10px;font-weight:700;font-size:13px;color:var(--muted)}
-.switch button.active{background:var(--surface);color:var(--text)}
-.auth-form{display:flex;flex-direction:column;gap:14px}
+/* ── Auth (matched to the quoteleads.com.au marketing site) ── */
+.auth{min-height:100vh;display:grid;place-items:center;padding:20px;position:relative;overflow:hidden;
+  background:#04040A;color:#F2F2F2;
+  font-family:'Inter',"Poppins",system-ui,sans-serif}
+.auth::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(115% 62% at 50% -6%,rgba(71,151,255,.16),rgba(71,151,255,.05) 38%,transparent 64%),
+             radial-gradient(70% 48% at 50% 104%,rgba(71,151,255,.08),transparent 72%)}
+.auth::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.4;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
+  background-size:200px}
+.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden;position:relative;z-index:1;
+  background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.015)) !important;
+  border:1px solid rgba(255,255,255,.07) !important;border-radius:24px;
+  box-shadow:0 30px 90px rgba(0,0,0,.55),0 0 60px rgba(71,151,255,.06) !important}
+.auth-side{padding:44px 40px;background:transparent;color:#F2F2F2;border-right:1px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;justify-content:space-between;gap:24px}
+[data-theme=dark] .auth-side{background:transparent}
+.auth-side .ah h1{font-size:clamp(1.5rem,2.4vw,2rem);font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#fff}
+.auth-side .ah h1::before{content:'Secure Access';display:block;font-size:.62rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:#4797FF;margin-bottom:16px}
+.auth-side p,.auth-side li{color:#71717A;font-size:.86rem;line-height:1.7}
+.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:12px;
+  padding-top:22px;border-top:1px solid rgba(255,255,255,.07)}
+.auth-side li{display:flex;gap:10px;align-items:flex-start;color:#CACAD0}
+.auth-side li::before{content:'';flex-shrink:0;width:5px;height:5px;border-radius:50%;background:#4797FF;margin-top:.55em}
+.auth-main{padding:44px 40px}
+.auth-main .ah h1{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;color:#fff}
+.auth-form{display:flex;flex-direction:column;gap:16px}
+.auth-form .field label{display:block;font-size:.74rem;font-weight:600;letter-spacing:.03em;
+  text-transform:uppercase;color:#CACAD0;margin-bottom:9px}
+.auth-form input{width:100%;min-height:48px;border-radius:12px;padding:12px 14px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);color:#F2F2F2;
+  font-size:.92rem;outline:none;transition:border-color .2s,background .2s,box-shadow .2s}
+.auth-form input::placeholder{color:#3F3F46}
+.auth-form input:focus{border-color:rgba(71,151,255,.55);background:rgba(255,255,255,.06);
+  box-shadow:0 0 0 3px rgba(71,151,255,.12)}
+.auth-form input:-webkit-autofill{-webkit-text-fill-color:#F2F2F2;-webkit-box-shadow:0 0 0 40px #0C0C18 inset}
+.auth-form .btn2{width:100%;min-height:50px;margin-top:4px;border-radius:100px;
+  background:linear-gradient(180deg,#6FADFF 0%,#4797FF 46%,#2F82F0 100%) !important;
+  color:#fff !important;border:1px solid rgba(255,255,255,.16) !important;
+  font-size:.95rem;font-weight:600;letter-spacing:.01em;cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -10px 20px rgba(0,0,0,.14),
+             0 8px 22px rgba(71,151,255,.34),0 0 0 6px rgba(71,151,255,.10),0 0 34px rgba(71,151,255,.20);
+  transition:transform .22s,box-shadow .3s,filter .22s}
+.auth-form .btn2:hover{transform:translateY(-2px);filter:saturate(1.06) brightness(1.05);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -10px 20px rgba(0,0,0,.14),
+             0 14px 34px rgba(71,151,255,.44),0 0 0 7px rgba(71,151,255,.14),0 0 52px rgba(71,151,255,.30)}
+.auth-form .btn2:active{transform:translateY(0)}
+.auth-form button[id$="Link"],.auth-form #backToLogin{color:#4797FF !important;font-weight:500}
+/* the auth panel is dark in both themes, so always use the white logo */
+.auth-side .brand-logo{height:30px;width:auto}
+.auth-side .brand-logo.logo-light{display:none !important}
+.auth-side .brand-logo.logo-dark{display:block !important}
+[data-theme=dark] .auth-side .brand-logo.logo-light{display:none !important}
+[data-theme=dark] .auth-side .brand-logo.logo-dark{display:block !important}
+.auth-side .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
+@media(max-width:900px){
+  .auth-side{border-right:none;border-bottom:1px solid rgba(255,255,255,.07);padding:34px 26px}
+  .auth-main{padding:34px 26px}
+}
 
 /* ── Toasts ─────────────────────────────────────── */
 .toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
