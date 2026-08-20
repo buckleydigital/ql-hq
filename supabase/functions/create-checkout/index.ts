@@ -19,7 +19,7 @@ const INSTALL_FEE_CENTS = 250_000
 // this map falls back to the standard install fee above.
 const PLAN_PRICES: Record<string, number> = {
   standard: INSTALL_FEE_CENTS,
-  // /branded-lead-system funnel, $1,250 promotional build. Must stay in step
+  // /branded-solar-lead-system funnel, $1,250 promotional build. Must stay in step
   // with the price quoted on that page and in /promotional-terms.
   promo1250: 125_000,
 }
