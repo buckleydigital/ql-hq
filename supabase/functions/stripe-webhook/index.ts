@@ -544,7 +544,7 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     // Notify ops that a DFY system was purchased.
     await sendInternalEmail(
       `🚀 New DFY system purchase - ${m.company || m.email}`,
-      `<p><strong>${m.company || '(no company)'}</strong> just bought the Branded Lead Gen System ($2,500 activation).</p>
+      `<p><strong>${m.company || '(no company)'}</strong> just bought the Branded Lead Gen System${m.amount_charged ? ` ($${m.amount_charged} activation)` : ''}.</p>
        <table style="border-collapse:collapse;font-size:14px">
          <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
