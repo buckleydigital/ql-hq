@@ -1034,7 +1034,12 @@ async function showApp() {
     }
 
 
-    navigateTo(currentPageId || "dashboard");
+    // Deep link support, e.g. the welcome email drops new managed clients
+    // straight onto onboarding rather than the generic dashboard.
+    const deepLink = urlParams.get("page");
+    const validPage = deepLink && document.getElementById(`page-${deepLink}`) ? deepLink : null;
+    if (validPage) history.replaceState({}, "", window.location.pathname);
+    navigateTo(validPage || currentPageId || "dashboard");
 
     // Show "Add to Home Screen" prompt once per new user/device
     if (currentUser?.id) maybeShowInstallPrompt(currentUser.id, profile?.a2hs_dismissed === true);
@@ -1053,6 +1058,7 @@ const PAGE_META = {
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
   notifications:      ["Notifications",    "AI activity and goal completions."],
+  onboarding:         ["Onboarding",        "Connect your Meta assets so we can build your campaigns."],
   conversations:      ["Conversations",     "SMS threads with leads."],
   "bulk-sms":         ["Broadcast",          "Database reactivation - send personalized SMS to multiple leads."],
   "general-settings": ["Account",           "Manage your company and personal profile."],

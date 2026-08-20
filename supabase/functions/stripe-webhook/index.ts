@@ -75,11 +75,17 @@ async function hasTwilioNumber(companyId: string): Promise<boolean> {
   return !!data
 }
 
-async function createMagicLink(email: string): Promise<string> {
+async function createMagicLink(email: string, page?: string): Promise<string> {
+  // `page` deep links into a dashboard section, e.g. 'onboarding' so a new
+  // managed client lands on the Meta access steps rather than a blank Status
+  // page with nothing to do yet.
+  const redirectTo = page
+    ? `https://quoteleadshq.com/dashboard?page=${encodeURIComponent(page)}`
+    : 'https://quoteleadshq.com/dashboard'
   const { data, error } = await supabase.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: { redirectTo: 'https://quoteleadshq.com/dashboard', expiresIn: 86400 },
+    options: { redirectTo, expiresIn: 86400 },
   })
   if (error) throw new Error(`Magic link: ${error.message}`)
   return data.properties.action_link
@@ -536,8 +542,8 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     })
 
     // Welcome the buyer with a dashboard magic link.
-    let magicLink = 'https://quoteleadshq.com/dashboard'
-    try { magicLink = await createMagicLink(m.email) } catch (e) { console.error('managed magic link:', e) }
+    let magicLink = 'https://quoteleadshq.com/dashboard?page=onboarding'
+    try { magicLink = await createMagicLink(m.email, 'onboarding') } catch (e) { console.error('managed magic link:', e) }
     await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink)
       .catch(e => console.error('managed welcome email:', e))
 

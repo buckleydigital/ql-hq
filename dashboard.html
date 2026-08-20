@@ -495,6 +495,32 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .empty .icon{width:36px;height:36px;color:var(--muted);opacity:.5}
 .empty h3{font-size:15px;font-weight:500}
 .empty p{max-width:340px;text-align:center;line-height:1.6}
+
+/* ONBOARDING */
+.ob-steps{list-style:none;counter-reset:ob;margin:0;padding:0}
+.ob-steps li{counter-increment:ob;position:relative;padding:0 0 22px 42px;border-left:1px solid var(--border);margin-left:12px}
+.ob-steps li:last-child{border-left-color:transparent;padding-bottom:0}
+.ob-steps li::before{content:counter(ob);position:absolute;left:-13px;top:0;width:26px;height:26px;border-radius:50%;
+  background:var(--accent,#1f6fff);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.ob-steps h3{font-size:14px;font-weight:600;margin:2px 0 6px}
+.ob-steps p{font-size:13px;color:var(--muted);line-height:1.7;margin:0}
+.ob-id{display:flex;align-items:center;gap:10px;margin-top:12px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;flex-wrap:wrap}
+.ob-id code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;letter-spacing:.04em;font-weight:600}
+.ob-table{width:100%;border-collapse:collapse;margin-top:12px;min-width:320px}
+.ob-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500;
+  padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+.ob-table td{font-size:13px;padding:10px 12px;border-bottom:1px solid var(--border)}
+.ob-table tr:last-child td{border-bottom:none}
+.ob-on,.ob-off{font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;border:1px solid var(--border)}
+.ob-on{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3);color:#0a7a55}
+.ob-off{background:rgba(107,114,128,.12);border-color:rgba(107,114,128,.3);color:#4b5563}
+[data-theme=dark] .ob-on{color:#34d399}
+[data-theme=dark] .ob-off{color:#9ca3af}
+.ob-next{display:flex;flex-direction:column;gap:12px}
+.ob-next div{font-size:13px;color:var(--muted);line-height:1.7;padding-left:20px;position:relative}
+.ob-next div::before{content:'';position:absolute;left:2px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--accent,#1f6fff)}
+.ob-next b{color:var(--text)}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="./dashboard-supabase.js?v=20260627a"></script>
@@ -623,6 +649,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         <button class="nav-item" data-page="reviews" type="button">
           <span class="icon" data-icon="star"></span>
           <span class="nav-text">Reviews</span>
+        </button>
+        <button class="nav-item" data-page="onboarding" type="button">
+          <span class="icon" data-icon="check"></span>
+          <span class="nav-text">Onboarding</span>
         </button>
         <button class="nav-item" data-page="integrations" type="button">
           <span class="icon" data-icon="external-link"></span>
@@ -1483,6 +1513,100 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       </div>
 
       <!-- ── Integrations Page ──────────────────────────────────────────────── -->
+
+      <!-- Onboarding: Meta access -->
+      <div id="page-onboarding" class="page hidden">
+        <div class="stack">
+
+          <section class="panel" id="obIntro">
+            <div class="panel-h"><div>
+              <h2>Connect your Meta assets</h2>
+              <p style="font-size:13px;color:var(--muted)">Takes about five minutes. Your campaign build starts as soon as access is granted.</p>
+            </div></div>
+            <div class="panel-b">
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px">
+                <p style="font-size:13px;font-weight:600;margin-bottom:6px">Why we set it up this way</p>
+                <p style="font-size:13px;color:var(--muted);line-height:1.7">By connecting your Page and Ad Account under your own Meta Business portfolio, you own every asset from day one. There is no messy transfer process if you ever change agencies.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-h"><div><h2>The steps</h2></div></div>
+            <div class="panel-b">
+              <ol class="ob-steps">
+                <li>
+                  <h3>Open Meta Business Settings</h3>
+                  <p>Go to <a href="https://business.facebook.com/settings" target="_blank" rel="noopener">business.facebook.com/settings</a> and log in with your Facebook account. If you see "Select business" with no options, click <b>Create Business</b> to set up your Business Portfolio first.</p>
+                </li>
+                <li>
+                  <h3>Navigate to Partners</h3>
+                  <p>In the left sidebar click <b>Settings</b> (gear icon), then under <b>Users</b> select <b>Partners</b>.</p>
+                </li>
+                <li>
+                  <h3>Add QuoteLeads as a Partner</h3>
+                  <p>Click <b>Add</b> (top right), then select <b>Give a partner access to your assets</b>.</p>
+                </li>
+                <li>
+                  <h3>Enter our Business ID</h3>
+                  <p>Paste this into the dialog field, then click <b>Next</b>.</p>
+                  <div class="ob-id">
+                    <code id="obBizId">1065750507426304</code>
+                    <button type="button" class="btn" id="obCopyBtn">Copy</button>
+                  </div>
+                </li>
+                <li>
+                  <h3>Assign your Facebook Page</h3>
+                  <p>Select your Page from the dropdown, then set permissions as below.</p>
+                  <div class="table-wrap"><table class="ob-table">
+                    <thead><tr><th>Permission</th><th>Status</th></tr></thead>
+                    <tbody>
+                      <tr><td>Content</td><td><span class="ob-on">On</span></td></tr>
+                      <tr><td>Community activity</td><td><span class="ob-on">On</span></td></tr>
+                      <tr><td>Messages and calls</td><td><span class="ob-off">Off</span></td></tr>
+                      <tr><td>Ads</td><td><span class="ob-on">On</span></td></tr>
+                      <tr><td>Insights</td><td><span class="ob-on">On</span></td></tr>
+                      <tr><td>Revenue</td><td><span class="ob-on">On</span></td></tr>
+                      <tr><td>Leads</td><td><span class="ob-on">On</span></td></tr>
+                    </tbody>
+                  </table></div>
+                </li>
+                <li>
+                  <h3>Assign your Ad Account</h3>
+                  <p>Select your Ad Account from the dropdown, then enable <b>Manage ad accounts</b> (full control). Leave the rest off.</p>
+                  <div class="table-wrap"><table class="ob-table">
+                    <thead><tr><th>Permission</th><th>Status</th></tr></thead>
+                    <tbody>
+                      <tr><td>Manage campaigns (ads)</td><td><span class="ob-off">Off</span></td></tr>
+                      <tr><td>View performance</td><td><span class="ob-off">Off</span></td></tr>
+                      <tr><td>Manage Creative Hub mockups</td><td><span class="ob-off">Off</span></td></tr>
+                      <tr><td>Manage ad accounts</td><td><span class="ob-on">On</span></td></tr>
+                    </tbody>
+                  </table></div>
+                </li>
+                <li>
+                  <h3>Save, and you are done</h3>
+                  <p>Click <b>Save</b>. You will see the "Assets assigned" confirmation screen. That is everything we need.</p>
+                </li>
+              </ol>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-h"><div><h2>What happens next</h2></div></div>
+            <div class="panel-b">
+              <div class="ob-next">
+                <div><b>Access confirmed.</b> Your campaign build starts automatically once access is granted.</div>
+                <div><b>Campaigns built.</b> We configure everything and get it ready to launch.</div>
+                <div><b>Preview before launch.</b> You will receive campaign previews for review before anything goes live.</div>
+                <div><b>You stay in control.</b> Review or revoke access any time via Settings, Users, Partners.</div>
+              </div>
+              <p style="font-size:13px;color:var(--muted);margin-top:16px">Questions? <a href="mailto:contact@quoteleads.com.au">contact@quoteleads.com.au</a></p>
+            </div>
+          </section>
+
+        </div>
+      </div>
       <div id="page-integrations" class="page hidden">
         <div class="stack">
 
@@ -2216,5 +2340,19 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
   </div>
 </div>
 
+
+<script>
+(function(){
+  var btn=document.getElementById('obCopyBtn');
+  if(!btn)return;
+  btn.addEventListener('click',function(){
+    var id=document.getElementById('obBizId').textContent.trim();
+    var done=function(){ var t=btn.textContent; btn.textContent='Copied'; setTimeout(function(){btn.textContent=t;},1600); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(id).then(done).catch(done); }
+    else { var ta=document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select();
+           try{document.execCommand('copy');}catch(e){} document.body.removeChild(ta); done(); }
+  });
+})();
+</script>
 </body>
 </html>
