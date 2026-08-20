@@ -13,6 +13,17 @@ const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-0
 // alongside the copy it has to match and shows up in review.
 const INSTALL_FEE_CENTS = 250_000
 
+// Promotional pricing, keyed by a plan name the page sends. The amount is never
+// taken from the request body - the client sends a key, the server owns the
+// figure - so a tampered payload cannot change what is charged. Anything not in
+// this map falls back to the standard install fee above.
+const PLAN_PRICES: Record<string, number> = {
+  standard: INSTALL_FEE_CENTS,
+  // /branded-lead-system funnel, $1,250 promotional build. Must stay in step
+  // with the price quoted on that page and in /promotional-terms.
+  promo1250: 125_000,
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -35,13 +46,18 @@ serve(async (req) => {
     // Route to the managed/DFY handler in stripe-webhook (provision + notify).
     metadata.type = 'managed'
 
+    const planKey = typeof formData.plan === 'string' ? formData.plan : 'standard'
+    const unitAmount = PLAN_PRICES[planKey] ?? INSTALL_FEE_CENTS
+    metadata.plan = planKey
+    metadata.amount_charged = String(unitAmount / 100)
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       line_items: [{
         price_data: {
           currency: 'aud',
-          unit_amount: INSTALL_FEE_CENTS,
+          unit_amount: unitAmount,
           product_data: {
             name: 'QuoteLeads Installation Fee',
             description: 'Complete AI lead generation system - custom Meta & Google campaigns, landing page, AI SMS agent, CRM pipeline, 30 days optimisation. Ad spend separate.',
@@ -69,7 +85,7 @@ serve(async (req) => {
           to: 'contact@quoteleads.com.au',
           subject: `🟡 DFY checkout started - ${metadata.company || metadata.email || name}`,
           html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#333;line-height:1.7">
-            <p><strong>${name}</strong> started a Branded Lead Gen System ($2,500) checkout. Not paid yet.</p>
+            <p><strong>${name}</strong> started a Branded Lead Gen System (${unitAmount / 100}) checkout. Not paid yet.</p>
             <table style="border-collapse:collapse;font-size:14px">
               <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${metadata.company || '-'}</td></tr>
               <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${metadata.email || '-'}</td></tr>
