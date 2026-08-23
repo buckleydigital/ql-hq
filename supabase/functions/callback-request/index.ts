@@ -21,6 +21,17 @@ const esc = (v: unknown) =>
   String(v ?? '-').replace(/[<>&"]/g, (c) =>
     ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string))
 
+// The funnel sends the platform's niche slugs; render them the way the rest of
+// the system labels them so this email reads like every other notice.
+const NICHE_LABELS: Record<string, string> = {
+  solar:            'All Solar',
+  solar_battery:    'Solar + Battery',
+  battery_retrofit: 'Battery Retrofit',
+  commercial_solar: 'Commercial Solar',
+}
+
+const nicheLabel = (slug: string) => (slug ? NICHE_LABELS[slug] ?? slug : '-')
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -39,6 +50,7 @@ serve(async (req) => {
     const company = String(body.company ?? '').trim()
     const postcode = String(body.postcode ?? '').trim()
     const source = String(body.source ?? 'unknown').trim()
+    const niche = nicheLabel(String(body.niche ?? '').trim())
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -59,6 +71,7 @@ serve(async (req) => {
             <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${esc(email)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${esc(phone)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${esc(postcode)}</td></tr>
+            <tr><td style="padding:3px 14px 3px 0;color:#666">Campaign</td><td>${esc(niche)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Source</td><td>${esc(source)}</td></tr>
           </table>
         </div>`,
