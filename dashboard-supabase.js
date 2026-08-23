@@ -53,6 +53,7 @@ const ICONS = {
   bell:              `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
   "arrow-left":      `<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>`,
   star:              `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
+  "credit-card":     `<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>`,
 };
 
 function renderIcons() {
@@ -1032,6 +1033,13 @@ async function showApp() {
       toast('Order cancelled - no charge was made.');
       history.replaceState({}, '', window.location.pathname);
     }
+    if (urlParams.get('management_started') === 'true') {
+      toast('Management is on. We will keep running your campaigns from here.');
+      // Stripe redirects the moment checkout completes, which can beat the
+      // webhook that writes the status. Re-read the panel shortly after so it
+      // does not sit on "Not managed" for the first visit.
+      setTimeout(() => { if (currentPageId === 'billing') loadBilling(); }, 4000);
+    }
 
 
     // Deep link support, e.g. the welcome email drops new managed clients
@@ -1067,6 +1075,7 @@ const PAGE_META = {
   "team-members":     ["Team",              "Invite and manage your team."],
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
+  "billing":          ["Billing",           "Your management plan and payment details."],
 };
 
 function isAdmin() {
@@ -1120,6 +1129,7 @@ function navigateTo(page) {
     "team-members":     loadTeamMembers,
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
+    "billing":          loadBilling,
   };
   loaders[page]?.();
 }
@@ -4088,6 +4098,134 @@ async function buySmsCredits(pack) {
   }
 }
 window.buySmsCredits = buySmsCredits;
+
+// ─── Billing / management subscription ───────────────────────────────────────
+// The build includes the first 30 days of management. management_included_from
+// is set when the client's ads go live, so "day 30" is measured from real
+// delivery rather than from the date they paid.
+const MGMT_INCLUDED_DAYS = 30;
+
+function mgmtIncludedDaysLeft(includedFrom) {
+  if (!includedFrom) return null;
+  const start = new Date(includedFrom);
+  if (isNaN(start)) return null;
+  const end = new Date(start);
+  end.setDate(end.getDate() + MGMT_INCLUDED_DAYS);
+  return Math.ceil((end - new Date()) / 86400000);
+}
+
+function fmtDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  return isNaN(d) ? "" : d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+async function loadBilling() {
+  const pill    = document.getElementById("mgmtPill");
+  const body    = document.getElementById("mgmtBody");
+  const primary = document.getElementById("mgmtPrimaryBtn");
+  const portal  = document.getElementById("mgmtPortalBtn");
+  if (!pill || !body) return;
+
+  if (!currentCompanyId) {
+    body.textContent = "Could not load your billing status.";
+    pill.textContent = "Unavailable";
+    return;
+  }
+
+  const { data: company, error } = await sb
+    .from("companies")
+    .select("management_status, management_period_end, management_cancel_at_end, management_included_from, stripe_customer_id")
+    .eq("id", currentCompanyId)
+    .maybeSingle();
+
+  if (error || !company) {
+    body.textContent = "Could not load your billing status.";
+    pill.textContent = "Unavailable";
+    return;
+  }
+
+  const status   = company.management_status || null;
+  const endsOn   = fmtDate(company.management_period_end);
+  const daysLeft = mgmtIncludedDaysLeft(company.management_included_from);
+
+  pill.className = "pill";
+  primary.style.display = "none";
+  portal.style.display  = company.stripe_customer_id ? "" : "none";
+
+  if (status === "active" && company.management_cancel_at_end) {
+    pill.textContent = "Ending " + (endsOn || "soon");
+    pill.classList.add("mgmt-warn");
+    body.innerHTML = `We are still managing your campaigns until <b>${endsOn || "the end of your current period"}</b>. After that they keep running on your accounts, but nobody is optimising them. You can restart management any time.`;
+  } else if (status === "active" || status === "trialing") {
+    pill.textContent = "Active";
+    pill.classList.add("mgmt-on");
+    body.innerHTML = `Management is active. Your next payment of <b>$600 + GST</b> is due <b>${endsOn || "on your billing date"}</b>.`;
+  } else if (status === "past_due") {
+    pill.textContent = "Payment failed";
+    pill.classList.add("mgmt-warn");
+    body.innerHTML = `Your last management payment did not go through, so your card needs updating. We are still running your campaigns while Stripe retries.`;
+  } else if (daysLeft !== null && daysLeft > 0) {
+    pill.textContent = daysLeft + (daysLeft === 1 ? " day included" : " days included");
+    pill.classList.add("mgmt-on");
+    body.innerHTML = `Your included 30 days of management run until <b>${fmtDate(new Date(new Date(company.management_included_from).getTime() + MGMT_INCLUDED_DAYS * 86400000))}</b>. Nothing to pay until then. Turn on ongoing management whenever you are ready and it starts when the included period ends.`;
+    primary.style.display = "";
+  } else if (status === "canceled") {
+    pill.textContent = "Not managed";
+    pill.classList.add("mgmt-off");
+    body.innerHTML = `Management is off. Your campaigns, funnel and data are still yours and still running, but nobody is optimising them. Turn management back on any time.`;
+    primary.style.display = "";
+  } else {
+    pill.textContent = "Not managed";
+    pill.classList.add("mgmt-off");
+    body.innerHTML = daysLeft !== null
+      ? `Your included 30 days of management have finished. Your campaigns keep running on your own accounts, but nobody is optimising them unless management is on.`
+      : `Your included 30 days of management start when your ads go live. You can turn on ongoing management here whenever you want us to keep running your campaigns.`;
+    primary.style.display = "";
+  }
+}
+
+async function startManagement(event) {
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = "Redirecting…"; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-management-subscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    // Already subscribed - send them to the portal rather than a second charge.
+    if (res.status === 409) { await openBillingPortal(); return; }
+    if (!res.ok || !data.url) throw new Error(data.error || "No checkout URL");
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || "Could not start management.", true);
+    if (btn) { btn.disabled = false; btn.textContent = "Turn on management, $600/mo"; }
+  }
+}
+
+async function openBillingPortal(event) {
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/billing-portal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}`, "apikey": SUPABASE_ANON_KEY },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || "Could not open billing portal");
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || "Could not open billing portal.", true);
+    if (btn) { btn.disabled = false; btn.textContent = "Manage billing"; }
+  }
+}
+
+window.startManagement  = startManagement;
+window.openBillingPortal = openBillingPortal;
 
 // Helper functions for form population
 function setInputValue(id, value) {

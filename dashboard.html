@@ -497,6 +497,17 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .empty p{max-width:340px;text-align:center;line-height:1.6}
 
 /* ONBOARDING */
+/* Billing / management */
+.mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+.mgmt-item{display:flex;gap:10px;align-items:flex-start}
+.mgmt-item b{font-size:13px;font-weight:600;display:block;margin-bottom:3px}
+.mgmt-item p{font-size:12.5px;color:var(--muted);line-height:1.65;margin:0}
+.mgmt-tick{flex-shrink:0;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;
+  display:inline-flex;align-items:center;justify-content:center;font-size:10px;margin-top:1px}
+.pill.mgmt-on{border-color:rgba(34,197,94,.35);color:#15803d}
+.pill.mgmt-warn{border-color:rgba(234,179,8,.4);color:#a16207}
+.pill.mgmt-off{border-color:rgba(197,53,53,.28);color:#c53535}
+@media(max-width:700px){.mgmt-grid{grid-template-columns:1fr}}
 .ob-steps{list-style:none;counter-reset:ob;margin:0;padding:0}
 .ob-steps li{counter-increment:ob;position:relative;padding:0 0 22px 42px;border-left:1px solid var(--border);margin-left:12px}
 .ob-steps li:last-child{border-left-color:transparent;padding-bottom:0}
@@ -653,6 +664,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         <button class="nav-item" data-page="onboarding" type="button">
           <span class="icon" data-icon="check"></span>
           <span class="nav-text">Onboarding</span>
+        </button>
+        <button class="nav-item" data-page="billing" type="button">
+          <span class="icon" data-icon="credit-card"></span>
+          <span class="nav-text">Billing</span>
         </button>
         <button class="nav-item" data-page="integrations" type="button">
           <span class="icon" data-icon="external-link"></span>
@@ -1602,6 +1617,36 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                 <div><b>You stay in control.</b> Review or revoke access any time via Settings, Users, Partners.</div>
               </div>
               <p style="font-size:13px;color:var(--muted);margin-top:16px">Questions? <a href="mailto:contact@quoteleads.com.au">contact@quoteleads.com.au</a></p>
+            </div>
+          </section>
+
+        </div>
+      </div>
+      <div id="page-billing" class="page hidden">
+        <div class="stack">
+
+          <section class="panel">
+            <div class="panel-h"><div>
+              <h2>Campaign management</h2>
+              <p style="font-size:13px;color:var(--muted)">Your first 30 days of management are included with the build. After that it is month to month.</p>
+            </div>
+            <span class="pill" id="mgmtPill">Loading…</span>
+            </div>
+            <div class="panel-b">
+              <div id="mgmtBody" style="font-size:13px;color:var(--muted);line-height:1.7">Loading your billing status…</div>
+
+              <div class="mgmt-grid" id="mgmtWhat">
+                <div class="mgmt-item"><span class="mgmt-tick">&#10003;</span><div><b>Creative and copy</b><p>New ad variations written, produced and tested against what is already converting.</p></div></div>
+                <div class="mgmt-item"><span class="mgmt-tick">&#10003;</span><div><b>Targeting and optimisation</b><p>Audiences, placements and budget pacing adjusted on your campaigns each week.</p></div></div>
+                <div class="mgmt-item"><span class="mgmt-tick">&#10003;</span><div><b>Funnel and survey tuning</b><p>Landing page and qualification questions refined as real lead quality data comes in.</p></div></div>
+                <div class="mgmt-item"><span class="mgmt-tick">&#10003;</span><div><b>Reporting you can read</b><p>Spend, cost per lead and lead-to-appointment tracked in here, not in a monthly PDF.</p></div></div>
+              </div>
+
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+                <button class="btn2" id="mgmtPrimaryBtn" type="button" onclick="startManagement(event)" style="display:none">Turn on management, $600/mo</button>
+                <button class="btn" id="mgmtPortalBtn" type="button" onclick="openBillingPortal(event)" style="display:none">Manage billing</button>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin-top:14px">$600/mo plus GST, month to month, cancel any time from here. Your ad spend is separate and paid direct to Meta from your own account, never through us.</p>
             </div>
           </section>
 

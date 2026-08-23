@@ -13,15 +13,14 @@ const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-0
 // alongside the copy it has to match and shows up in review.
 const INSTALL_FEE_CENTS = 250_000
 
-// Promotional pricing, keyed by a plan name the page sends. The amount is never
-// taken from the request body - the client sends a key, the server owns the
-// figure - so a tampered payload cannot change what is charged. Anything not in
-// this map falls back to the standard install fee above.
+// Pricing keyed by a plan name the page sends. The amount is never taken from
+// the request body - the client sends a key, the server owns the figure - so a
+// tampered payload cannot change what is charged. Anything not in this map falls
+// back to the standard install fee above. The August promotional key
+// (promo1250) was removed when the promotion ended: leaving it in place would
+// have let a crafted request keep buying at the discount.
 const PLAN_PRICES: Record<string, number> = {
   standard: INSTALL_FEE_CENTS,
-  // /branded-solar-lead-system funnel, $1,250 promotional build. Must stay in step
-  // with the price quoted on that page and in /promotional-terms.
-  promo1250: 125_000,
 }
 
 const corsHeaders = {

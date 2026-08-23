@@ -25,6 +25,18 @@ serve(async (req) => {
     return new Response('Unauthorized', { status: 401 })
   }
 
+  // Subscription lifecycle for the $600/mo management plan. These arrive
+  // outside checkout - renewals, card failures, cancellations from the billing
+  // portal - so they are handled before the checkout branch below.
+  if (
+    event.type === 'customer.subscription.created' ||
+    event.type === 'customer.subscription.updated' ||
+    event.type === 'customer.subscription.deleted'
+  ) {
+    await handleManagementSubscriptionChange(event.data.object as Stripe.Subscription, event.type)
+    return new Response('OK', { status: 200 })
+  }
+
   if (event.type !== 'checkout.session.completed') {
     return new Response('OK', { status: 200 })
   }
@@ -45,6 +57,8 @@ serve(async (req) => {
     case 'managed':
       await handleManagedSignupPayment(session, m)
       break
+    // 'management' needs no work here: the subscription events above carry the
+    // billing state, and they fire for the initial checkout too.
   }
 
   return new Response(JSON.stringify({ received: true }), {
@@ -567,6 +581,87 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     await sendInternalEmail(
       `⚠️ DFY purchase provisioning failed - ${m.email}`,
       `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
+    )
+  }
+}
+
+// ── Management subscription ($600/mo) ──────────────────────────────────────
+// Fires on create, on every renewal that changes status, on card failure, and
+// on cancellation from the billing portal. Stripe holds the truth; we mirror
+// just enough onto the company to render the dashboard without calling the
+// Stripe API on page load.
+async function handleManagementSubscriptionChange(
+  sub: Stripe.Subscription,
+  eventType: string
+) {
+  // Only ours. Other subscriptions on the same Stripe account are ignored.
+  if (sub.metadata?.type !== 'management') return
+
+  const companyId = sub.metadata?.company_id
+  if (!companyId) {
+    console.error('management subscription with no company_id:', sub.id)
+    return
+  }
+
+  try {
+    // A deleted subscription is over regardless of the status Stripe last set.
+    const status = eventType === 'customer.subscription.deleted' ? 'canceled' : sub.status
+
+    const { data: prior } = await supabase
+      .from('companies')
+      .select('name, email, management_status')
+      .eq('id', companyId)
+      .maybeSingle()
+
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        management_status:          status,
+        management_subscription_id: sub.id,
+        management_period_end:      sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null,
+        management_cancel_at_end:   Boolean(sub.cancel_at_period_end),
+      })
+      .eq('id', companyId)
+    if (error) throw new Error(`Company update: ${error.message}`)
+
+    // Tell ops when the money starts, stops, or fails - not on every renewal.
+    const was = prior?.management_status ?? null
+    const who = prior?.name || prior?.email || companyId
+    const endsOn = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000).toLocaleDateString('en-AU')
+      : 'unknown'
+
+    if (status === 'active' && was !== 'active') {
+      await sendInternalEmail(
+        `💰 Management subscription started - ${who}`,
+        `<p><strong>${who}</strong> just switched on ongoing management at $600/mo.</p>
+         <p>Next billing date: ${endsOn}</p>`
+      )
+    } else if (status === 'past_due' && was !== 'past_due') {
+      await sendInternalEmail(
+        `⚠️ Management payment failed - ${who}`,
+        `<p><strong>${who}</strong>'s $600/mo management payment failed. Stripe will retry, but their card likely needs updating.</p>`
+      )
+    } else if (status === 'canceled' && was !== 'canceled') {
+      await sendInternalEmail(
+        `🔻 Management cancelled - ${who}`,
+        `<p><strong>${who}</strong> cancelled ongoing management. Their campaigns should stop being managed after ${endsOn}.</p>`
+      )
+    } else if (sub.cancel_at_period_end && status === 'active') {
+      await sendInternalEmail(
+        `🔻 Management set to cancel - ${who}`,
+        `<p><strong>${who}</strong> has set management to end on ${endsOn}. Still active until then.</p>`
+      )
+    }
+
+    console.log('Management subscription', status, 'for company', companyId)
+  } catch (err) {
+    console.error('handleManagementSubscriptionChange error:', err)
+    await sendInternalEmail(
+      `⚠️ Management subscription sync failed - company ${companyId}`,
+      `<p><strong>Subscription:</strong> ${sub.id}</p><p><strong>Event:</strong> ${eventType}</p><pre>${String(err)}</pre>`
     )
   }
 }
