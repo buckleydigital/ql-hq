@@ -813,7 +813,7 @@
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn" data-tpl-copy="${esc(t.id)}" type="button">Copy</button>
             <button class="btn" data-tpl-edit="${esc(t.id)}" type="button">Edit</button>
-            <button class="btn" data-tpl-del="${esc(t.id)}" type="button">Delete</button>
+            ${t.slug ? '<span class="muted" style="font-size:11px;align-self:center" title="Wired to a dashboard button - editable, not deletable">In use</span>' : `<button class="btn" data-tpl-del="${esc(t.id)}" type="button">Delete</button>`}
           </div>
         </div>
       </div>`).join('');

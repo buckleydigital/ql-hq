@@ -744,6 +744,14 @@ Deno.serve(async (req) => {
       if (action === "delete_email_template") {
         const id = (body as { id?: string }).id;
         if (!id) return json({ error: "id is required" }, 400);
+        // A slugged template is wired to a button (onboarding_intro backs Send
+        // intro email). Deleting it breaks that flow with nothing to fall back
+        // on, so it can be edited but not removed.
+        const { data: existing } = await adminClient
+          .from("email_templates").select("slug").eq("id", id).maybeSingle();
+        if (existing?.slug) {
+          return json({ error: "This template is in use by the dashboard and cannot be deleted. Edit it instead." }, 400);
+        }
         const { error } = await adminClient.from("email_templates").delete().eq("id", id);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
