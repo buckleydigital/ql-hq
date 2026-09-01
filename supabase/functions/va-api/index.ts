@@ -97,6 +97,74 @@ function sanitizeInvoice(src: Record<string, unknown>, isPatch = false): Record<
   return out;
 }
 
+// ── Email plumbing ──────────────────────────────────────────────────────────
+// The VA writes a plain script; this renders it as the plain email a person
+// would have typed rather than a marketing template.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+
+function escHtml(v: unknown): string {
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function textToHtml(text: string): string {
+  const paras = String(text).split(/\n{2,}/).map((p) =>
+    `<p style="margin:0 0 16px">${escHtml(p).replace(/\n/g, "<br>")}</p>`
+  ).join("");
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#ffffff">
+<div style="max-width:600px;margin:0 auto;padding:24px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#1a1a20">
+${paras}
+</div></body></html>`;
+}
+
+async function sendEmail(opts: {
+  to: string; subject: string; text: string; fromName?: string; replyTo?: string | null;
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, error: "Email is not configured" };
+  const fromName = opts.fromName || "QuoteLeads";
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: `${fromName} <system@quoteleads.com.au>`,
+      to: opts.to,
+      subject: opts.subject,
+      html: textToHtml(opts.text),
+      text: opts.text,
+      ...(opts.replyTo && EMAIL_RE.test(opts.replyTo) ? { reply_to: opts.replyTo } : {}),
+    }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("resend error:", res.status, JSON.stringify(payload));
+    return { ok: false, error: "The email provider rejected the message" };
+  }
+  return { ok: true, id: (payload as { id?: string }).id };
+}
+
+// Jeff Jones → Jeff. A placeholder with no value takes its surrounding
+// punctuation with it, and a line that was nothing but placeholders is dropped
+// rather than left as a blank gap in the middle of the email.
+function mergeTemplate(text: string, vals: Record<string, string>): string {
+  const PH = /\{(first_name|company_name|va_name|va_email|contact_name)\}/g;
+  return String(text || "")
+    .split("\n")
+    .map((line) => {
+      const hadPlaceholder = PH.test(line);
+      PH.lastIndex = 0;
+      const merged = line
+        .replace(PH, (_m, k) => vals[k] || "")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/[ \t]+([,.;:!?])/g, "$1")
+        .replace(/\s+-\s*$/, "");
+      return hadPlaceholder && !merged.trim() ? null : merged;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n")
+    .trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -441,6 +509,95 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══════════════════ ONBOARDING / INTRO EMAIL ══════════════════════════
+    // A VA may only email a client assigned to them; an admin may email any.
+    // The send is what sets companies.va_intro_done, so the tick on the task
+    // list means Resend accepted the message, not that someone remembered to
+    // click it.
+    const INTRO_ACTIONS = new Set(["get_intro_draft", "send_intro_email"]);
+    if (INTRO_ACTIONS.has(action || "")) {
+      if (!isAdmin && !isVa) return json({ error: "Forbidden" }, 403);
+      const companyId = (body as { company_id?: string }).company_id;
+      if (!companyId) return json({ error: "company_id is required" }, 400);
+
+      if (!isAdmin) {
+        const { data: assigns } = await adminClient
+          .from("va_assignments").select("company_id").eq("va_user_id", caller.id);
+        const allowed = new Set((assigns || []).map((a: { company_id: string }) => a.company_id));
+        if (!allowed.has(companyId)) return json({ error: "Forbidden" }, 403);
+      }
+
+      const { data: company } = await adminClient
+        .from("companies")
+        .select("id, name, email, va_intro_done")
+        .eq("id", companyId)
+        .maybeSingle();
+      if (!company) return json({ error: "Company not found" }, 404);
+
+      // The company email is the billing address; the owner's login is who
+      // actually reads it, so prefer that and fall back.
+      const { data: owner } = await adminClient
+        .from("profiles")
+        .select("id, full_name")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const ownerEmails = owner?.id ? await emailMap(adminClient, [owner.id as string]) : {};
+      const to = String((owner?.id ? ownerEmails[owner.id as string] : "") || company.email || "").trim();
+      const contactName = String(owner?.full_name || "").trim();
+
+      const vaName = String(me?.full_name || "").trim();
+      const { data: myProfile } = await adminClient
+        .from("profiles").select("va_reply_to_email").eq("id", caller.id).maybeSingle();
+      const replyTo = String(myProfile?.va_reply_to_email || caller.email || "").trim();
+
+      const vals: Record<string, string> = {
+        first_name:   contactName ? contactName.split(/\s+/)[0] : "",
+        contact_name: contactName,
+        company_name: String(company.name || "").trim(),
+        va_name:      vaName,
+        va_email:     replyTo,
+      };
+
+      if (action === "get_intro_draft") {
+        const { data: tpl } = await adminClient
+          .from("email_templates").select("subject, body").eq("slug", "onboarding_intro").maybeSingle();
+        if (!tpl) return json({ error: "No onboarding_intro template found" }, 404);
+        return json({
+          to, reply_to: replyTo, already_sent: company.va_intro_done === true,
+          subject: mergeTemplate(tpl.subject || "", vals),
+          body: mergeTemplate(tpl.body || "", vals),
+        });
+      }
+
+      // send_intro_email
+      const subject = String((body as { subject?: string }).subject ?? "").trim();
+      const text    = String((body as { body?: string }).body ?? "").trim();
+      if (!to || !EMAIL_RE.test(to)) return json({ error: "This client has no valid email address" }, 400);
+      if (!subject) return json({ error: "Subject is required" }, 400);
+      if (!text) return json({ error: "Body is required" }, 400);
+      if (subject.length > 300 || text.length > 20000) return json({ error: "Email is too long" }, 400);
+      if (company.va_intro_done) return json({ error: "The intro email has already been sent" }, 409);
+
+      const sent = await sendEmail({
+        to, subject, text,
+        fromName: vaName ? `${vaName} at QuoteLeads` : "QuoteLeads",
+        replyTo,
+      });
+      if (!sent.ok) return json({ error: sent.error || "Send failed" }, 502);
+
+      // Only now is it marked done - a failed send leaves the task open.
+      await adminClient.from("companies")
+        .update({ va_intro_done: true, va_intro_done_at: new Date().toISOString() })
+        .eq("id", companyId);
+      await adminClient.from("client_email_log").insert({
+        company_id: companyId, kind: "onboarding_intro", to_email: to, reply_to: replyTo || null,
+        subject, body: text, sent_by: caller.id, sent_by_name: vaName || null, provider_id: sent.id || null,
+      });
+      return json({ ok: true, to, reply_to: replyTo || null });
+    }
+
     // ═══════════════════ DFY CONTENT: profile / previews / templates ═══════
     // Shared by /admin and /va. Company-scoped actions require the VA to own the
     // assignment; email templates are global (any VA or admin).
@@ -610,14 +767,15 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list_vas") {
-      const { data: vas } = await adminClient.from("profiles").select("id, full_name").eq("is_va", true);
+      const { data: vas } = await adminClient.from("profiles").select("id, full_name, va_reply_to_email").eq("is_va", true);
       const ids = (vas || []).map((v: { id: string }) => v.id);
       const emails = await emailMap(adminClient, ids);
       const { data: assigns } = await adminClient.from("va_assignments").select("va_user_id, company_id").in("va_user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
       const counts: Record<string, number> = {};
       for (const a of assigns || []) counts[a.va_user_id as string] = (counts[a.va_user_id as string] || 0) + 1;
       const list = (vas || []).map((v: Record<string, unknown>) => ({
-        id: v.id, full_name: v.full_name, email: emails[v.id as string] || "", assigned: counts[v.id as string] || 0,
+        id: v.id, full_name: v.full_name, email: emails[v.id as string] || "",
+        va_reply_to_email: v.va_reply_to_email || null, assigned: counts[v.id as string] || 0,
       }));
       return json({ vas: list });
     }
@@ -651,9 +809,60 @@ Deno.serve(async (req) => {
       const { va_user_id, company_id } = body as { va_user_id?: string; company_id?: string };
       if (!va_user_id || !company_id) return json({ error: "va_user_id and company_id are required" }, 400);
       // Only allow assigning companies to an actual VA.
-      const { data: target } = await adminClient.from("profiles").select("is_va").eq("id", va_user_id).maybeSingle();
+      const { data: target } = await adminClient.from("profiles").select("is_va, full_name").eq("id", va_user_id).maybeSingle();
       if (!target?.is_va) return json({ error: "Target user is not a VA" }, 400);
+      const targetEmail = (await emailMap(adminClient, [va_user_id]))[va_user_id] || "";
+      // Was this already theirs? Re-running the assignment should not re-notify.
+      const { data: existing } = await adminClient.from("va_assignments")
+        .select("id").eq("va_user_id", va_user_id).eq("company_id", company_id).maybeSingle();
       const { error } = await adminClient.from("va_assignments").upsert({ va_user_id, company_id }, { onConflict: "va_user_id,company_id" });
+      if (error) return json({ error: error.message }, 500);
+
+      // Tell the VA they have a new client. Best effort: the assignment itself
+      // has already succeeded, and a bounced notification must not undo it.
+      let notified = false;
+      if (!existing && targetEmail) {
+        const { data: company } = await adminClient
+          .from("companies").select("name, plan, niche, service_area").eq("id", company_id).maybeSingle();
+        const vaFirst = String(target.full_name || "").trim().split(/\s+/)[0] || "there";
+        const lines = [
+          `Hi ${vaFirst},`,
+          "",
+          `${company?.name || "A new client"} has been assigned to you.`,
+          "",
+          "Two things to do, in this order:",
+          "",
+          "  1. Log in to your dashboard and check the scope is right - plan, niche and service area. If anything looks wrong, flag it before you contact them.",
+          "  2. Send them the onboarding email from the client's page. The draft is ready, edit it if you want, and it goes out with your address on the reply.",
+          "",
+          "Details on file:",
+          `  Plan: ${company?.plan || "-"}`,
+          `  Niche: ${company?.niche || "-"}`,
+          `  Service area: ${company?.service_area || "-"}`,
+          "",
+          "https://quoteleadshq.com/va",
+          "",
+          "QuoteLeads",
+        ].join("\n");
+        const res = await sendEmail({
+          to: targetEmail,
+          subject: `New client assigned - ${company?.name || "action needed"}`,
+          text: lines,
+          fromName: "QuoteLeads",
+        });
+        notified = res.ok;
+        if (!res.ok) console.warn("VA assignment notification failed:", res.error);
+      }
+      return json({ ok: true, notified });
+    }
+
+    if (action === "set_va_reply_to") {
+      const { va_user_id } = body as { va_user_id?: string };
+      const replyTo = String((body as { reply_to_email?: string }).reply_to_email ?? "").trim().toLowerCase();
+      if (!va_user_id) return json({ error: "va_user_id is required" }, 400);
+      if (replyTo && !EMAIL_RE.test(replyTo)) return json({ error: "Enter a valid reply-to email" }, 400);
+      const { error } = await adminClient.from("profiles")
+        .update({ va_reply_to_email: replyTo || null }).eq("id", va_user_id);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
     }

@@ -2879,6 +2879,12 @@ h1{font-size:18px;font-weight:500}
           '<div style="font-size:13px"><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong>&nbsp; <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
           '<button class="btn btn-danger btn-sm va-remove-btn" type="button">Remove VA</button>' +
         '</div>' +
+        '<div class="form-label" style="margin-bottom:8px">Reply-To on their client emails <span style="color:var(--muted);font-weight:400">— blank uses ' + escapeHtml(v.email || 'their login') + '</span></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
+          '<input class="form-input va-replyto" type="email" style="flex:1;min-width:220px;max-width:360px" placeholder="' + escapeHtml(v.email || '') + '" value="' + escapeHtml(v.va_reply_to_email || '') + '">' +
+          '<button class="btn2 btn-sm va-replyto-btn" type="button">Save</button>' +
+          '<span class="va-replyto-note" style="font-size:11.5px;color:var(--muted)"></span>' +
+        '</div>' +
         '<div class="form-label" style="margin-bottom:8px">Assigned clients</div>' +
         '<div class="va-assigns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">Loading…</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
@@ -2896,7 +2902,24 @@ h1{font-size:18px;font-weight:500}
         var sel = row.querySelector('.va-assign-picker');
         if (sel.value) assignClient(vaId, sel.value, row);
       });
+      row.querySelector('.va-replyto-btn').addEventListener('click', function () {
+        saveVaReplyTo(vaId, row);
+      });
     });
+  }
+
+  async function saveVaReplyTo(vaId, row) {
+    var input = row.querySelector('.va-replyto');
+    var note = row.querySelector('.va-replyto-note');
+    var btn = row.querySelector('.va-replyto-btn');
+    btn.disabled = true; note.textContent = '';
+    try {
+      await callVaEdge({ action: 'set_va_reply_to', va_user_id: vaId, reply_to_email: input.value.trim() });
+      note.textContent = 'Saved';
+    } catch (err) {
+      note.textContent = err.message || 'Could not save';
+    }
+    btn.disabled = false;
   }
 
   async function loadVaAssignments(vaId, container) {
@@ -2920,6 +2943,7 @@ h1{font-size:18px;font-weight:500}
   }
 
   async function assignClient(vaId, companyId, row) {
+    // The edge function emails the VA on a new assignment (not on a repeat).
     try { await callVaEdge({ action: 'assign', va_user_id: vaId, company_id: companyId });
       await loadVaAssignments(vaId, row.querySelector('.va-assigns'));
       row.querySelector('.va-assign-picker').value = '';

@@ -154,6 +154,28 @@
 </div>
 
 <!-- INVOICE MODAL -->
+<div id="introModal" class="inv-overlay hidden">
+  <div class="inv-modal" style="max-width:680px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="margin:0;font-size:17px">Send onboarding email</h2>
+      <button class="btn" id="introCloseBtn" type="button">✕</button>
+    </div>
+    <div class="muted" id="introSub" style="margin-bottom:12px"></div>
+    <div class="inv-grid">
+      <label class="inv-lbl">To<input id="introTo" type="text" disabled></label>
+      <label class="inv-lbl">Reply-To<input id="introReplyTo" type="text" disabled></label>
+    </div>
+    <label class="inv-lbl" style="display:block;margin-top:10px">Subject<input id="introSubject" type="text"></label>
+    <div class="sec-title">Message</div>
+    <textarea id="introBody" style="min-height:320px;line-height:1.6"></textarea>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-p" id="introSendBtn" type="button">Send email</button>
+      <button class="btn" id="introCancelBtn" type="button">Cancel</button>
+      <span class="muted" id="introStatus"></span>
+    </div>
+  </div>
+</div>
+
 <div id="invModal" class="inv-overlay hidden">
   <div class="inv-modal">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -303,6 +325,9 @@
     $('vaCancelTplBtn').addEventListener('click', function () { $('vaTplEditor').classList.add('hidden'); });
     $('vaSaveTplBtn').addEventListener('click', saveVaTemplate);
     $('invCloseBtn').addEventListener('click', closeInvModal);
+    $('introCloseBtn').addEventListener('click', closeIntroModal);
+    $('introCancelBtn').addEventListener('click', closeIntroModal);
+    $('introSendBtn').addEventListener('click', sendIntroEmail);
     $('invAddLineBtn').addEventListener('click', function () { addLineItem(); });
     $('invGstType').addEventListener('change', recalcInvTotals);
     $('invSaveBtn').addEventListener('click', function () { submitInvoice(false); });
@@ -513,14 +538,18 @@
     const isManaged = c.plan === 'managed' || c.plan === 'ppl_managed';
 
     // ── Tasks ──
-    // The intro-email control is always shown (two-way toggle) so the VA can
-    // mark it sent or undo it; it writes companies.va_intro_done, which /admin
-    // reads back in the "Intro email done" column.
+    // The intro email is sent from here now: Send opens the merged draft, and
+    // companies.va_intro_done is set by whatever got a 2xx from Resend rather
+    // than by remembering to tick a box. Mark sent stays for the case where it
+    // genuinely went out some other way, and Undo still reopens the task.
     const introRow = `
       <div class="task${cache.va_intro_done ? ' done' : ''}">
         <span class="ic">${cache.va_intro_done ? '✅' : '✉️'}</span>
         <div class="tbody">${cache.va_intro_done ? 'Intro email sent to ' : 'Introduce yourself to '}${esc(c.name || 'this client')} as their account manager via email${cache.va_intro_done && cache.va_intro_done_at ? ' · ' + fmtDate(cache.va_intro_done_at) : ''}</div>
-        <button class="btn ${cache.va_intro_done ? '' : 'btn-p'}" data-intro-toggle type="button">${cache.va_intro_done ? 'Undo' : 'Mark sent'}</button>
+        ${cache.va_intro_done
+          ? '<button class="btn" data-intro-toggle type="button">Undo</button>'
+          : '<button class="btn btn-p" data-intro-send type="button">Send intro email</button>' +
+            '<button class="btn" data-intro-toggle type="button" title="Only if you sent it outside the dashboard">Mark sent</button>'}
       </div>`;
     const otherTasks = (_billingReady ? computeTasks(cache) : []).filter(t => t.key !== 'intro');
     const tasksHtml = otherTasks.map(t => `
@@ -618,6 +647,8 @@
     $('newInvBtn').addEventListener('click', () => openInvModal(companyId, c));
     const introBtn = $('detailBody').querySelector('[data-intro-toggle]');
     if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, !cache.va_intro_done, introBtn));
+    const introSendBtn = $('detailBody').querySelector('[data-intro-send]');
+    if (introSendBtn) introSendBtn.addEventListener('click', () => openIntroModal(companyId, c, introSendBtn));
     $('detailBody').querySelectorAll('[data-new-inv]').forEach(b => b.addEventListener('click', () => openInvModal(companyId, c)));
 
     _detailLinks = extra.links;
@@ -823,6 +854,50 @@
     if (!ok) { alert(data.error || 'Failed'); return; }
     _vaTemplates = _vaTemplates.filter(x => x.id !== id);
     renderVaTemplates();
+  }
+
+
+  // ═══════════════════════ ONBOARDING / INTRO EMAIL ══════════════════════════
+  // The server merges the template against the client and hands back a draft.
+  // The VA can edit it for this one client; the template itself is untouched.
+  let _introCompanyId = null;
+  async function openIntroModal(companyId, company, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    const { ok, data } = await vaApi({ action: 'get_intro_draft', company_id: companyId });
+    if (btn) { btn.disabled = false; btn.textContent = 'Send intro email'; }
+    if (!ok) { alert(data.error || 'Could not load the draft'); return; }
+    if (!data.to) { alert('This client has no email address on file.'); return; }
+    _introCompanyId = companyId;
+    $('introSub').textContent = (company && company.name) ? company.name : '';
+    $('introTo').value = data.to;
+    $('introReplyTo').value = data.reply_to || 'your login email';
+    $('introSubject').value = data.subject || '';
+    $('introBody').value = data.body || '';
+    $('introStatus').textContent = '';
+    $('introSendBtn').disabled = false;
+    $('introSendBtn').textContent = 'Send email';
+    $('introModal').classList.remove('hidden');
+  }
+  function closeIntroModal() { $('introModal').classList.add('hidden'); _introCompanyId = null; }
+  async function sendIntroEmail() {
+    const subject = $('introSubject').value.trim();
+    const body = $('introBody').value.trim();
+    if (!subject || !body) { alert('Subject and message are required.'); return; }
+    const btn = $('introSendBtn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { ok, data } = await vaApi({ action: 'send_intro_email', company_id: _introCompanyId, subject, body });
+    if (!ok) {
+      btn.disabled = false; btn.textContent = 'Send email';
+      $('introStatus').textContent = data.error || 'Could not send';
+      return;
+    }
+    // The server has already marked it done; mirror it so the task list is
+    // right the moment the modal closes.
+    const cached = _clients.find(x => x.id === _introCompanyId);
+    if (cached) { cached.va_intro_done = true; cached.va_intro_done_at = new Date().toISOString(); }
+    const companyId = _introCompanyId;
+    closeIntroModal();
+    openClient(companyId);
   }
 
   // ═══════════════════════════ INVOICE MODAL ═════════════════════════════════
