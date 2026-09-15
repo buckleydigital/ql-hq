@@ -485,11 +485,16 @@
     }
   }
 
+  // When an admin is previewing as a team member, every fulfilment call carries
+  // that member's id so the board matches the client list beside it. The server
+  // only ever narrows with it, so this is presentation, not permission.
+  const previewAs = () => (_isAdmin && _selectedVaId ? { as_team_user_id: _selectedVaId } : {});
+
   async function loadFulfilment(companyId) {
     // Fetched together so the checklist and the copy it produced never render a
     // step apart from each other.
     const [{ ok, data }, copyRes] = await Promise.all([
-      teamApi({ action: 'list_fulfilment', company_id: companyId }),
+      teamApi({ action: 'list_fulfilment', company_id: companyId, ...previewAs() }),
       aiApi({ action: 'get_ad_copy', company_id: companyId }),
     ]);
     _adCopy = (copyRes.ok && copyRes.data.ad_copy) || null;
@@ -512,7 +517,7 @@
       if (!notes || !notes.trim()) { if (selectEl) selectEl.value = (_fulfil.steps.find(s => s.step_key === stepKey) || {}).status || 'pending'; return; }
     }
     if (selectEl) selectEl.disabled = true;
-    const { ok, data } = await teamApi({ action: 'set_fulfilment_step', company_id: companyId, step_key: stepKey, status, notes });
+    const { ok, data } = await teamApi({ action: 'set_fulfilment_step', company_id: companyId, step_key: stepKey, status, notes, ...previewAs() });
     if (!ok) {
       alert(data.error || 'Could not update that step.');
       if (selectEl) { selectEl.disabled = false; selectEl.value = (_fulfil.steps.find(s => s.step_key === stepKey) || {}).status || 'pending'; }
@@ -699,7 +704,7 @@
     const el = $('fulfilBoard');
     if (!_fulfilBoard) {
       el.innerHTML = '<div class="card empty">Loading…</div>';
-      const { ok, data } = await teamApi({ action: 'fulfilment_overview' });
+      const { ok, data } = await teamApi({ action: 'fulfilment_overview', ...previewAs() });
       if (!ok) { el.innerHTML = '<div class="card empty">' + esc(data.error || 'Could not load fulfilment.') + '</div>'; return; }
       _fulfilBoard = data;
     }

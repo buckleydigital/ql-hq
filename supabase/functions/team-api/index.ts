@@ -804,7 +804,26 @@ Deno.serve(async (req) => {
     ]);
     if (FULFILMENT_ACTIONS.has(action || "")) {
       if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
-      const fScope = await resolveScope();
+
+      // The /admin preview picks a team member and shows the panel as they see
+      // it. Without this the fulfilment board ignored that choice: the caller is
+      // still the admin, so resolveScope returned unrestricted and the board
+      // showed every client while the client list next to it showed five. A
+      // preview that quietly widens what it is previewing is worse than no
+      // preview - so an admin or ops manager may narrow to one member's
+      // assignments, and the narrowing is applied HERE rather than trusted from
+      // the browser.
+      //
+      // It can only ever narrow. A plain member passing this gets their own
+      // scope regardless of whose id they send, so it cannot be used to read
+      // another member's clients.
+      let fScope = await resolveScope();
+      const asUser = String((body as { as_team_user_id?: string }).as_team_user_id ?? "").trim();
+      if (asUser && (isAdmin || isOps)) {
+        const { data: theirs } = await adminClient
+          .from("team_assignments").select("company_id").eq("team_user_id", asUser);
+        fScope = new Set((theirs || []).map((a: { company_id: string }) => a.company_id));
+      }
 
       // Guard every company reference the same way, once.
       const mayTouch = (cid: string | undefined): cid is string =>
