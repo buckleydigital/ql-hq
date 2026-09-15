@@ -125,6 +125,7 @@
   <div class="vanav hidden" id="vaNav">
     <button id="navClients" class="active" type="button">My Clients</button>
     <button id="navFulfil" type="button">Fulfilment</button>
+    <button id="navSignups" type="button" class="hidden">Signups <span id="signupBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
     <button id="navAvail" type="button">My Availability</button>
     <button id="navTpl" type="button">Email Templates</button>
   </div>
@@ -160,6 +161,15 @@
     <div id="vaTplList"></div>
   </div>
 
+  <!-- SIGNUP REVIEW QUEUE -->
+  <div id="signupView" class="hidden">
+    <p class="muted" id="signupSub" style="margin-top:0">
+      Signups whose email and phone did not match anyone in the ql-mc sales pipeline.
+      No account exists for these yet.
+    </p>
+    <div id="signupList"></div>
+  </div>
+
   <!-- FULFILMENT BOARD -->
   <div id="fulfilView" class="hidden">
     <p class="muted" id="fulfilSub" style="margin-top:0">Where every client is up to, worst first.</p>
@@ -174,6 +184,33 @@
       <button class="btn btn-p" id="saveAvailBtn" type="button">Save availability</button>
       <button class="btn" id="clearAvailBtn" type="button">Clear all</button>
       <span class="muted" id="availStatus"></span>
+    </div>
+  </div>
+</div>
+
+<!-- PREVIEW EMAIL MODAL -->
+<!-- Deliberately the same shape as the intro modal: the team reviews a merged
+     draft and presses send. Confirm-then-send, never automatic. -->
+<div id="prevModal" class="inv-overlay hidden">
+  <div class="inv-modal" style="max-width:680px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="margin:0;font-size:17px">Send campaign previews</h2>
+      <button class="btn" id="prevCloseBtn" type="button">✕</button>
+    </div>
+    <div class="muted" id="prevSub" style="margin-bottom:12px"></div>
+    <div class="inv-grid">
+      <label class="inv-lbl">To<input id="prevTo" type="text" disabled></label>
+      <label class="inv-lbl">Reply-To<input id="prevReplyTo" type="text" disabled></label>
+    </div>
+    <label class="inv-lbl" style="display:block;margin-top:10px">Subject<input id="prevSubject" type="text"></label>
+    <div class="sec-title">Attached previews</div>
+    <div id="prevLinks" class="muted" style="font-size:12px"></div>
+    <div class="sec-title">Message</div>
+    <textarea id="prevBody" style="min-height:300px;line-height:1.6"></textarea>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-p" id="prevSendBtn" type="button">Send previews</button>
+      <button class="btn" id="prevCancelBtn" type="button">Cancel</button>
+      <span class="muted" id="prevStatus"></span>
     </div>
   </div>
 </div>
@@ -266,6 +303,20 @@
     return { ok: res.ok, status: res.status, data };
   }
 
+  // fulfilment-ai is its own function because ad copy and creative rendering call
+  // third parties and can take tens of seconds; team-api stays fast round trips.
+  async function aiApi(body) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { location.href = 'index.html'; throw new Error('no session'); }
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fulfilment-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  }
+
   // ─── Fulfilment ───────────────────────────────────────────────────────────
   // The checklist is the panel's answer to "what do we still owe this client",
   // and every change to it is attributed and logged server-side. The page never
@@ -295,6 +346,31 @@
     return diff > 0 ? d + 'd ago' : 'in ' + d + 'd';
   };
 
+  // Which automations the panel can actually trigger. spam_gate, account and
+  // welcome_email are done by the pipeline itself when a signup comes in, so
+  // they get a label rather than a button - there is nothing useful to press.
+  const RUNNABLE = {
+    ad_copy:       { label: 'Generate', busy: 'Writing…' },
+    creatives:     { label: 'Generate', busy: 'Rendering…' },
+    preview_email: { label: 'Send…',    busy: 'Opening…' },
+    intro_email:   { label: 'Send…',    busy: 'Opening…' },
+  };
+  const AUTOMATIC_ONLY = { spam_gate: 'automatic', account: 'automatic', welcome_email: 'automatic' };
+
+  function automationBtn(st, status) {
+    const a = st.automation;
+    if (!a) return '';
+    if (AUTOMATIC_ONLY[a]) {
+      return `<span class="chip" title="Runs by itself when a signup comes through">${AUTOMATIC_ONLY[a]}</span>`;
+    }
+    const r = RUNNABLE[a];
+    if (!r) return '';
+    // Still offered on a completed step: regenerating copy or resending previews
+    // after a change is normal, so this is "run again", not a one-shot.
+    const again = status === 'done' || status === 'skipped';
+    return `<button class="btn btn-xs" data-run="${esc(a)}" data-run-step="${esc(st.step_key)}" style="font-size:10px;padding:4px 9px">${again ? 'Again' : r.label}</button>`;
+  }
+
   function stepRowHtml(st) {
     const status = st.status || 'pending';
     const settled = status === 'done' || status === 'skipped';
@@ -317,6 +393,7 @@
           <div class="slabel">${esc(st.label || st.step_key)}</div>
           ${meta.length ? `<div class="smeta">${meta.join(' · ')}</div>` : ''}
         </div>
+        ${automationBtn(st, status)}
         <select data-step="${esc(st.step_key)}" title="Change status">
           ${STEP_STATUSES.map(([v, l]) => `<option value="${v}"${v === status ? ' selected' : ''}>${l}</option>`).join('')}
         </select>
@@ -349,6 +426,7 @@
         ${onboarding.map(stepRowHtml).join('') || '<div class="muted">No steps defined.</div>'}
         ${live.length ? '<div class="sec-title">Once live</div>' + live.map(stepRowHtml).join('') : ''}
       </div>
+      ${adCopyHtml()}
       <div class="sec-title">Activity</div>
       <div class="card">
         ${log.length
@@ -358,6 +436,26 @@
               <span>${esc(describeLog(l))}</span>
             </div>`).join('')
           : '<div class="muted">Nothing logged yet.</div>'}
+      </div>`;
+  }
+
+  // The generated copy, shown where it was generated. Read-only here on purpose:
+  // it is regenerated rather than hand-edited, and the version that goes to the
+  // client is the one in the preview email, which IS editable.
+  let _adCopy = null;
+  function adCopyHtml() {
+    const c = _adCopy;
+    if (!c || !Array.isArray(c.headlines) || !c.headlines.length) return '';
+    const list = (arr) => (arr || []).map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--bd)">${esc(x)}</div>`).join('');
+    return `
+      <div class="sec-title">Ad copy${c.generated_at ? ` <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· generated ${esc(relTime(c.generated_at))}${c.generated_by ? ' by ' + esc(c.generated_by) : ''}</span>` : ''}</div>
+      <div class="card">
+        ${c.angle ? `<div class="kv"><span class="k">Angle</span><span>${esc(c.angle)}</span></div>` : ''}
+        ${c.call_to_action ? `<div class="kv"><span class="k">CTA</span><span>${esc(c.call_to_action)}</span></div>` : ''}
+        <div class="sec-title" style="margin-top:12px">Headlines</div>${list(c.headlines)}
+        <div class="sec-title">Primary text</div>${list(c.primary_texts)}
+        <div class="sec-title">Descriptions</div>${list(c.descriptions)}
+        ${c.notes_for_team ? `<div class="sec-title">Notes for the team</div><div class="muted" style="font-size:12.5px">${esc(c.notes_for_team)}</div>` : ''}
       </div>`;
   }
 
@@ -388,7 +486,13 @@
   }
 
   async function loadFulfilment(companyId) {
-    const { ok, data } = await teamApi({ action: 'list_fulfilment', company_id: companyId });
+    // Fetched together so the checklist and the copy it produced never render a
+    // step apart from each other.
+    const [{ ok, data }, copyRes] = await Promise.all([
+      teamApi({ action: 'list_fulfilment', company_id: companyId }),
+      aiApi({ action: 'get_ad_copy', company_id: companyId }),
+    ]);
+    _adCopy = (copyRes.ok && copyRes.data.ad_copy) || null;
     _fulfil = ok ? data : { steps: [], summary: null, log: [] };
     // The server returns next_step_due on the summary; spread it onto the step
     // it belongs to so each row can show its own deadline.
@@ -434,6 +538,156 @@
     host.querySelectorAll('select[data-step]').forEach(sel => {
       sel.addEventListener('change', () => setStepStatus(companyId, sel.dataset.step, sel.value, sel));
     });
+    host.querySelectorAll('[data-run]').forEach(btn => {
+      btn.addEventListener('click', () => runAutomation(companyId, btn.dataset.run, btn));
+    });
+  }
+
+  // Running an automation never ticks the step from here: the server does that
+  // from whatever actually succeeded, so the checklist reflects what happened
+  // rather than what we asked for.
+  async function runAutomation(companyId, automation, btn) {
+    const r = RUNNABLE[automation];
+    if (!r) return;
+
+    if (automation === 'intro_email')   { openIntroModal(companyId); return; }
+    if (automation === 'preview_email') { openPreviewModal(companyId); return; }
+
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = r.busy;
+    try {
+      const act = automation === 'ad_copy' ? 'generate_ad_copy' : 'generate_creatives';
+      const { ok, data } = await aiApi({ action: act, company_id: companyId });
+      if (!ok) { alert(data.error || 'That did not work.'); return; }
+      // Re-read rather than patching: the step, the summary and the ad copy all
+      // moved server-side.
+      await loadFulfilment(companyId);
+      _fulfilBoard = null;
+      const host = $('fulfilHost');
+      if (host) { host.innerHTML = fulfilSectionHtml(); wireFulfilment(companyId); }
+      if (act === 'generate_creatives' && data.created) {
+        alert(`${data.created} creative${data.created === 1 ? '' : 's'} added to the previews below.`);
+        // The new images are preview_links, so refresh that section too.
+        if (typeof renderPreviewLinksVa === 'function') renderPreviewLinksVa(companyId);
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+
+  // ─── Signup review queue ──────────────────────────────────────────────────
+  // The held end of the spam gate. These submissions never became accounts, so
+  // the decision here is "is this a real client we spoke to" - and approving
+  // creates the account and emails them, which is why only an ops manager or an
+  // admin sees this at all.
+  let _signups = null;
+
+  async function showSignups() {
+    hideAllViews();
+    $('signupView').classList.remove('hidden');
+    setNav('signups');
+    window.scrollTo(0, 0);
+    const el = $('signupList');
+    el.innerHTML = '<div class="card empty">Loading…</div>';
+    const { ok, data } = await teamApi({ action: 'list_submissions' });
+    if (!ok) { el.innerHTML = `<div class="card empty">${esc(data.error || 'Could not load signups.')}</div>`; return; }
+    _signups = data;
+    renderSignups();
+  }
+
+  function renderSignups() {
+    const el = $('signupList');
+    const rows = (_signups && _signups.submissions) || [];
+    const counts = (_signups && _signups.counts) || {};
+    updateSignupBadge(counts.held || 0);
+    $('signupSub').innerHTML =
+      `<b style="color:var(--amb)">${counts.held || 0}</b> waiting on review · ` +
+      `${counts.matched || 0} cleared automatically · ${counts.approved || 0} approved · ${counts.rejected || 0} rejected` +
+      (counts.pending ? ` · <b style="color:var(--red)">${counts.pending} unchecked</b>` : '');
+
+    if (!rows.length) { el.innerHTML = '<div class="card empty">No signups yet.</div>'; return; }
+
+    // Held first - that is the actual queue. The rest is history, and is
+    // collapsed behind it rather than competing for attention.
+    const held = rows.filter(r => r.gate_status === 'held' || r.gate_status === 'pending');
+    const rest = rows.filter(r => r.gate_status !== 'held' && r.gate_status !== 'pending');
+    el.innerHTML =
+      (held.length
+        ? `<div class="sec-title" style="margin-top:0">Waiting on you (${held.length})</div>` + held.map(signupCard).join('')
+        : '<div class="card empty">Nothing waiting on review.</div>') +
+      (rest.length ? `<div class="sec-title">Already decided</div>` + rest.map(signupCard).join('') : '');
+
+    el.querySelectorAll('[data-approve]').forEach(b =>
+      b.addEventListener('click', () => decideSignup(b.dataset.approve, 'approve', b)));
+    el.querySelectorAll('[data-reject]').forEach(b =>
+      b.addEventListener('click', () => decideSignup(b.dataset.reject, 'reject', b)));
+  }
+
+  function signupCard(r) {
+    const name = [r.first_name, r.last_name].filter(Boolean).join(' ');
+    const detail = r.gate_detail || {};
+    const badge = {
+      held:     '<span class="badge due">Held</span>',
+      pending:  '<span class="badge unpaid">Not checked</span>',
+      matched:  '<span class="badge paid">Cleared</span>',
+      approved: '<span class="badge paid">Approved</span>',
+      rejected: '<span class="badge unpaid">Rejected</span>',
+    }[r.gate_status] || `<span class="badge other">${esc(r.gate_status)}</span>`;
+    const actionable = r.gate_status === 'held' || r.gate_status === 'pending';
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:200px">
+          <div class="client-name">${esc(r.company || name || r.email)}</div>
+          <div class="smeta">${esc(name)}${name && r.email ? ' · ' : ''}${esc(r.email || '')}${r.phone ? ' · ' + esc(r.phone) : ''}</div>
+          <div class="smeta">${esc(r.industry || '')}${r.industry && r.service_location ? ' · ' : ''}${esc(r.service_location || '')}</div>
+        </div>
+        <div style="text-align:right">${badge}<div class="smeta">${esc(relTime(r.created_at))}</div></div>
+      </div>
+      <div class="kv" style="margin-top:8px"><span class="k">Gate</span><span>${esc(detail.reason || '—')}</span></div>
+      ${r.reviewed_by_name ? `<div class="kv"><span class="k">Reviewed by</span><span>${esc(r.reviewed_by_name)} · ${esc(relTime(r.reviewed_at))}</span></div>` : ''}
+      ${r.review_notes ? `<div class="kv"><span class="k">Notes</span><span>${esc(r.review_notes)}</span></div>` : ''}
+      ${r.company_id ? `<div class="kv"><span class="k">Account</span><span style="color:var(--grn)">Created${r.welcome_email_sent_at ? ', welcome email sent' : ', welcome email NOT sent'}</span></div>` : ''}
+      ${r.last_error ? `<div class="kv"><span class="k">Error</span><span style="color:var(--red)">${esc(r.last_error)}</span></div>` : ''}
+      ${actionable ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-p" data-approve="${esc(r.id)}" type="button">Approve &amp; create account</button>
+        <button class="btn" data-reject="${esc(r.id)}" type="button">Reject</button>
+      </div>` : ''}
+    </div>`;
+  }
+
+  async function decideSignup(id, which, btn) {
+    let notes = '';
+    if (which === 'reject') {
+      notes = prompt('Why are you rejecting this signup?') || '';
+      if (!notes.trim()) return;   // the server requires a reason too
+    } else if (!confirm('Approve this signup? This creates their QuoteLeadsHQ account and emails them straight away.')) {
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = which === 'approve' ? 'Creating…' : 'Rejecting…';
+    const { ok, data } = await teamApi({
+      action: which === 'approve' ? 'approve_submission' : 'reject_submission',
+      id, notes,
+    });
+    btn.disabled = false; btn.textContent = label;
+    if (!ok) { alert(data.error || 'That did not work.'); return; }
+    // Approving created a client, so the client list and the board are both stale.
+    _fulfilBoard = null;
+    if (which === 'approve') await loadClientsQuiet();
+    await showSignups();
+  }
+
+  function updateSignupBadge(n) {
+    const b = $('signupBadge');
+    if (!b) return;
+    b.textContent = n;
+    b.classList.toggle('hidden', !n);
+  }
+
+  // Refresh the client list without bouncing the user out of the view they are in.
+  async function loadClientsQuiet() {
+    const { ok, data } = await teamApi({ action: 'list_clients' });
+    if (ok) _clients = data.clients || [];
   }
 
   // ─── The board: every client, worst first ─────────────────────────────────
@@ -492,6 +746,7 @@
   function setNav(which) {
     $('navClients').classList.toggle('active', which === 'clients');
     $('navFulfil').classList.toggle('active', which === 'fulfil');
+    $('navSignups').classList.toggle('active', which === 'signups');
     $('navAvail').classList.toggle('active', which === 'avail');
     $('navTpl').classList.toggle('active', which === 'tpl');
   }
@@ -502,6 +757,7 @@
     $('availView').classList.add('hidden');
     $('tplView').classList.add('hidden');
     $('fulfilView').classList.add('hidden');
+    $('signupView').classList.add('hidden');
   }
 
   function avGridHtml(selected, readOnly) {
@@ -562,6 +818,7 @@
     $('backBtn').addEventListener('click', showList);
     $('navClients').addEventListener('click', showList);
     $('navFulfil').addEventListener('click', showFulfilBoard);
+    $('navSignups').addEventListener('click', showSignups);
     $('navAvail').addEventListener('click', showAvail);
     $('navTpl').addEventListener('click', showTemplates);
     $('saveAvailBtn').addEventListener('click', saveAvailability);
@@ -572,6 +829,9 @@
     $('introCloseBtn').addEventListener('click', closeIntroModal);
     $('introCancelBtn').addEventListener('click', closeIntroModal);
     $('introSendBtn').addEventListener('click', sendIntroEmail);
+    $('prevCloseBtn').addEventListener('click', closePreviewModal);
+    $('prevCancelBtn').addEventListener('click', closePreviewModal);
+    $('prevSendBtn').addEventListener('click', sendPreviewEmail);
     $('invAddLineBtn').addEventListener('click', function () { addLineItem(); });
     $('invGstType').addEventListener('change', recalcInvTotals);
     $('invSaveBtn').addEventListener('click', function () { submitInvoice(false); });
@@ -651,6 +911,12 @@
     media_buyer: 'Media Buyer', tech_lead: 'Tech Lead', admin: 'Admin',
   };
   function applyRoleChrome() {
+    // An admin previewing the panel still runs fulfilment, so they get the
+    // Signups tab too - it is only the role pill that is theirs, not the nav.
+    if (_isAdmin || (_me && _me.unrestricted)) {
+      $('navSignups').classList.remove('hidden');
+      prefetchSignupCount();
+    }
     if (_isAdmin) return;                       // admin preview sets its own pill
     const pill = $('modePill');
     pill.textContent = ROLE_LABEL[_me.team_role] || 'Internal Team';
@@ -660,6 +926,15 @@
       pill.style.borderColor = 'rgba(139,92,246,.4)';
     }
     $('navClients').textContent = _me.unrestricted ? 'All Clients' : 'My Clients';
+    // Approving a signup creates an account, so the tab is only shown to the
+    // people the server will actually let do it. Hiding it is courtesy; the
+    // gate that matters is in team-api.
+  }
+
+  // So the badge shows a queue before anyone thinks to click the tab.
+  async function prefetchSignupCount() {
+    const { ok, data } = await teamApi({ action: 'list_submissions', status: 'held' });
+    if (ok) updateSignupBadge((data.submissions || []).length);
   }
 
   // Merge billing / onboarding state (payment method, dates, invoice status,
@@ -1136,6 +1411,49 @@
   // The server merges the template against the client and hands back a draft.
   // The VA can edit it for this one client; the template itself is untouched.
   let _introCompanyId = null;
+  let _prevCompanyId = null;
+  async function openPreviewModal(companyId) {
+    const { ok, data } = await teamApi({ action: 'get_preview_draft', company_id: companyId });
+    if (!ok) { alert(data.error || 'Could not load the draft'); return; }
+    if (!data.has_previews) {
+      alert('Attach at least one preview link or image first, or generate the creatives.');
+      return;
+    }
+    if (!data.to) { alert('This client has no email address on file.'); return; }
+    _prevCompanyId = companyId;
+    $('prevSub').textContent = (data.company && data.company.name) || '';
+    $('prevTo').value = data.to;
+    $('prevReplyTo').value = data.reply_to || 'your login email';
+    $('prevSubject').value = data.subject || '';
+    $('prevBody').value = data.body || '';
+    // Listed so it is obvious what the client will receive before it goes.
+    $('prevLinks').innerHTML = (data.links || []).length
+      ? (data.links || []).map(l => `<div>${l.kind === 'image' ? '🖼' : '🔗'} ${esc(l.label || l.url)}</div>`).join('')
+      : '<div>None attached.</div>';
+    $('prevStatus').textContent = '';
+    $('prevSendBtn').disabled = false;
+    $('prevSendBtn').textContent = 'Send previews';
+    $('prevModal').classList.remove('hidden');
+  }
+  function closePreviewModal() { $('prevModal').classList.add('hidden'); _prevCompanyId = null; }
+  async function sendPreviewEmail() {
+    const subject = $('prevSubject').value.trim();
+    const body = $('prevBody').value.trim();
+    if (!subject || !body) { alert('Subject and message are required.'); return; }
+    const btn = $('prevSendBtn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { ok, data } = await teamApi({ action: 'send_preview_email', company_id: _prevCompanyId, subject, body });
+    if (!ok) {
+      btn.disabled = false; btn.textContent = 'Send previews';
+      $('prevStatus').textContent = data.error || 'Could not send';
+      return;
+    }
+    const companyId = _prevCompanyId;
+    closePreviewModal();
+    _fulfilBoard = null;
+    openClient(companyId);
+  }
+
   async function openIntroModal(companyId, company, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     const { ok, data } = await teamApi({ action: 'get_intro_draft', company_id: companyId });

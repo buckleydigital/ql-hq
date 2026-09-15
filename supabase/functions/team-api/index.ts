@@ -528,6 +528,273 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ════════════════════════════ PREVIEW EMAIL ════════════════════════════
+    // Step 6. The team attaches links and images (existing preview_links
+    // actions), then presses send. Confirm-then-send, never automatic: this is
+    // the email that asks the client to approve what goes live, and it should go
+    // when a person has looked at it, not the moment an image finishes rendering.
+    //
+    // get_preview_draft returns the merged draft so it can be edited before
+    // sending, the same shape as the intro email, so the two behave alike.
+    const PREVIEW_EMAIL_ACTIONS = new Set(["get_preview_draft", "send_preview_email"]);
+    if (PREVIEW_EMAIL_ACTIONS.has(action || "")) {
+      if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
+      const pScope = await resolveScope();
+      const cid = (body as { company_id?: string }).company_id;
+      if (!cid || (pScope && !pScope.has(cid))) {
+        return json({ error: "Forbidden: client not assigned to you" }, 403);
+      }
+
+      const { data: co } = await adminClient
+        .from("companies").select("id, name, email, generated_ad_copy").eq("id", cid).maybeSingle();
+      if (!co) return json({ error: "Client not found" }, 404);
+
+      const { data: links } = await adminClient
+        .from("preview_links").select("id, kind, url, label, created_at")
+        .eq("company_id", cid).order("created_at", { ascending: true });
+
+      // The contact to address it to: the company email, else the first person
+      // on the account.
+      let to = String(co.email || "").trim().toLowerCase();
+      let firstName = "";
+      const { data: members } = await adminClient
+        .from("profiles").select("id, full_name").eq("company_id", cid).limit(5);
+      if (members?.length) {
+        firstName = String(members[0].full_name || "").trim().split(/\s+/)[0] || "";
+        if (!to) {
+          const emails = await emailMap(adminClient, members.map((m: { id: string }) => m.id));
+          to = String(emails[members[0].id as string] || "").toLowerCase();
+        }
+      }
+
+      const senderName = actorName;
+      const replyTo = (me?.team_reply_to_email as string) || caller.email || null;
+
+      const buildDraft = () => {
+        const chosen = (links || []);
+        const linkLines = chosen
+          .filter((l: Record<string, unknown>) => l.kind === "link")
+          .map((l: Record<string, unknown>) => `  ${l.label ? l.label + ": " : ""}${l.url}`);
+        const imageLines = chosen
+          .filter((l: Record<string, unknown>) => l.kind === "image")
+          .map((l: Record<string, unknown>) => `  ${l.label ? l.label + ": " : ""}${l.url}`);
+        const copy = (co.generated_ad_copy || {}) as Record<string, unknown>;
+        const headlines = Array.isArray(copy.headlines) ? (copy.headlines as string[]).slice(0, 3) : [];
+
+        const lines = [
+          `Hi ${firstName || "there"},`,
+          "",
+          `Your campaign is built and ready for you to look over before anything goes live.`,
+          "",
+        ];
+        if (headlines.length) {
+          lines.push("The headlines we are planning to test:", "");
+          headlines.forEach((h) => lines.push(`  - ${h}`));
+          lines.push("");
+        }
+        if (imageLines.length) {
+          lines.push("Creatives:", "", ...imageLines, "");
+        }
+        if (linkLines.length) {
+          lines.push("Preview links:", "", ...linkLines, "");
+        }
+        lines.push(
+          "Have a read and tell me what you would like changed. Nothing runs and no budget is spent until you are happy with it.",
+          "",
+          "If it all looks right, just reply \"approved\" and we will launch.",
+          "",
+          senderName,
+          "QuoteLeads",
+        );
+        return {
+          subject: `Your campaign previews - ${co.name || "ready for approval"}`,
+          body: lines.join("\n"),
+        };
+      };
+
+      if (action === "get_preview_draft") {
+        const draft = buildDraft();
+        return json({
+          to, reply_to: replyTo, ...draft,
+          links: links || [],
+          // So the panel can stop the team sending an empty preview email.
+          has_previews: (links || []).length > 0,
+          company: { id: co.id, name: co.name },
+        });
+      }
+
+      // ── send_preview_email ──
+      if (!to || !EMAIL_RE.test(to)) {
+        return json({ error: "This client has no valid email address on file" }, 400);
+      }
+      if (!(links || []).length) {
+        return json({ error: "Attach at least one preview link or image before sending" }, 400);
+      }
+
+      const subject = String((body as { subject?: string }).subject ?? "").trim() || buildDraft().subject;
+      const text    = String((body as { body?: string }).body ?? "").trim() || buildDraft().body;
+      if (subject.length > 300) return json({ error: "That subject is too long" }, 400);
+
+      const sent = await sendEmail({ to, subject, text, fromName: "QuoteLeads", replyTo });
+      if (!sent.ok) return json({ error: sent.error || "The email could not be sent" }, 502);
+
+      await adminClient.from("client_email_log").insert({
+        company_id: cid, kind: "campaign_previews", to_email: to, reply_to: replyTo,
+        subject, body: text, sent_by: caller.id, sent_by_name: actorName,
+        provider_id: sent.id ?? null,
+      });
+
+      // The step is ticked by whatever got a 2xx from Resend, not by remembering
+      // to tick it - the same principle the intro email already follows.
+      const res = await setStep(cid, "previews_sent", "done",
+        `Sent to ${to} with ${(links || []).length} preview(s)`);
+      if (!res.ok) console.warn("previews_sent step not recorded:", res.error);
+
+      await logAction({
+        company_id: cid, action: "preview_email.sent",
+        detail: { to, subject: subject.slice(0, 200), preview_count: (links || []).length },
+      });
+
+      return json({ ok: true, to });
+    }
+
+    // ══════════════════════ ONBOARDING REVIEW QUEUE ════════════════════════
+    // The held end of the spam gate. A submission whose email and phone appear
+    // nowhere in the ql-mc pipeline never became an account; this is where a
+    // human decides.
+    //
+    // Approving CREATES AN ACCOUNT and emails a real person, so it is limited to
+    // an ops manager or an admin - the same line drawn everywhere else: an ops
+    // manager runs fulfilment, a CSM or media buyer does not mint accounts.
+    const SUBMISSION_ACTIONS = new Set([
+      "list_submissions", "get_submission", "approve_submission", "reject_submission",
+    ]);
+    if (SUBMISSION_ACTIONS.has(action || "")) {
+      if (!isAdmin && !isOps) {
+        return json({ error: "Forbidden: ops manager or admin access required" }, 403);
+      }
+
+      if (action === "list_submissions") {
+        // Held first: that is the queue. Everything else is history.
+        const status = (body as { status?: string }).status;
+        let q = adminClient
+          .from("onboarding_submissions")
+          .select("id, email, first_name, last_name, company, phone, industry, service_location, " +
+                  "gate_status, gate_checked_at, gate_detail, company_id, account_created_at, " +
+                  "welcome_email_sent_at, reviewed_by_name, reviewed_at, review_notes, last_error, created_at")
+          .order("created_at", { ascending: false })
+          .limit(200);
+        if (status && ["pending", "matched", "held", "approved", "rejected"].includes(status)) {
+          q = q.eq("gate_status", status);
+        }
+        const { data, error } = await q;
+        if (error) return json({ error: error.message }, 500);
+        const rows = data || [];
+        return json({
+          submissions: rows,
+          counts: {
+            held:     rows.filter((r: Record<string, unknown>) => r.gate_status === "held").length,
+            pending:  rows.filter((r: Record<string, unknown>) => r.gate_status === "pending").length,
+            approved: rows.filter((r: Record<string, unknown>) => r.gate_status === "approved").length,
+            rejected: rows.filter((r: Record<string, unknown>) => r.gate_status === "rejected").length,
+            matched:  rows.filter((r: Record<string, unknown>) => r.gate_status === "matched").length,
+          },
+        });
+      }
+
+      const subId = (body as { id?: string }).id;
+      if (!subId) return json({ error: "id is required" }, 400);
+
+      if (action === "get_submission") {
+        const { data, error } = await adminClient
+          .from("onboarding_submissions").select("*").eq("id", subId).maybeSingle();
+        if (error) return json({ error: error.message }, 500);
+        if (!data) return json({ error: "Submission not found" }, 404);
+        return json({ submission: data });
+      }
+
+      if (action === "reject_submission") {
+        const notes = String((body as { notes?: string }).notes ?? "").trim();
+        // Rejecting is a judgement someone has to own, so it needs a reason.
+        if (!notes) return json({ error: "Say why you are rejecting it" }, 400);
+        const { error } = await adminClient.from("onboarding_submissions").update({
+          gate_status: "rejected",
+          reviewed_by: caller.id,
+          reviewed_by_name: actorName,
+          reviewed_at: new Date().toISOString(),
+          review_notes: notes.slice(0, 2000),
+        }).eq("id", subId);
+        if (error) return json({ error: error.message }, 500);
+        // No company_id yet, so this log line is not attached to a client. It is
+        // still worth keeping: someone decided not to onboard a signup.
+        await logAction({
+          company_id: null, action: "onboarding.rejected",
+          detail: { submission_id: subId, notes: notes.slice(0, 500) },
+        });
+        return json({ ok: true });
+      }
+
+      if (action === "approve_submission") {
+        const notes = String((body as { notes?: string }).notes ?? "").trim();
+        const { data: sub } = await adminClient
+          .from("onboarding_submissions").select("*").eq("id", subId).maybeSingle();
+        if (!sub) return json({ error: "Submission not found" }, 404);
+        if (sub.company_id) {
+          return json({ error: "That submission already has an account", company_id: sub.company_id }, 409);
+        }
+
+        await adminClient.from("onboarding_submissions").update({
+          gate_status: "approved",
+          reviewed_by: caller.id,
+          reviewed_by_name: actorName,
+          reviewed_at: new Date().toISOString(),
+          review_notes: notes ? notes.slice(0, 2000) : null,
+        }).eq("id", subId);
+
+        // Provisioning lives in growth-onboarding, and is called rather than
+        // reimplemented here: two implementations of "create the account and
+        // send the welcome email" is exactly how the manual path and the
+        // automatic path drift into behaving differently.
+        const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/growth-onboarding`;
+        let provisioned: Record<string, unknown> = {};
+        try {
+          const res = await fetch(fnUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              // Tells growth-onboarding this is an approved submission being
+              // released, not a fresh form post: skip capture and the gate, just
+              // provision. The header is only honoured for a service-role call.
+              "x-provision-submission": subId,
+            },
+            body: JSON.stringify({ submission_id: subId }),
+          });
+          provisioned = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            await adminClient.from("onboarding_submissions").update({
+              last_error: String(provisioned?.error || `HTTP ${res.status}`).slice(0, 1000),
+              error_at: new Date().toISOString(),
+            }).eq("id", subId);
+            return json({ error: `Approved, but the account could not be created: ${provisioned?.error || res.status}` }, 502);
+          }
+        } catch (e) {
+          const msg = (e as Error).message;
+          await adminClient.from("onboarding_submissions").update({
+            last_error: msg.slice(0, 1000), error_at: new Date().toISOString(),
+          }).eq("id", subId);
+          return json({ error: `Approved, but provisioning failed: ${msg}` }, 502);
+        }
+
+        await logAction({
+          company_id: (provisioned?.company_id as string) ?? null,
+          action: "onboarding.approved",
+          detail: { submission_id: subId, notes: notes.slice(0, 500) || null },
+        });
+        return json({ ok: true, ...provisioned });
+      }
+    }
+
     // ═════════════════════════════ FULFILMENT ══════════════════════════════
     // What we owe each client, how far through it we are, who did it and when.
     // Open to the whole Internal Team: a member for their assigned clients, an
