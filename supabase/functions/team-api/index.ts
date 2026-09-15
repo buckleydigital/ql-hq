@@ -219,10 +219,43 @@ Deno.serve(async (req) => {
     // profile must not promote them, hence the isTeam guard rather than a bare
     // comparison.
     const isOps = isTeam && me?.team_role === "ops_manager";
-    // An ops manager and an admin both see every client. Everything below asks
-    // this rather than re-deriving it.
-    const unrestricted = isAdmin || isOps;
+    // Who sees every client. Was "isAdmin || isOps"; it is now a capability, so
+    // a media buyer can be given the whole book without being made an ops
+    // manager, and an ops manager can be narrowed without renaming their job.
+    // Resolved after perms below, so declared with let and assigned there.
+    let unrestricted = isAdmin;
     const actorName = (me?.full_name as string) || (isAdmin ? "Admin" : isOps ? "Ops Manager" : "Internal Team");
+
+    // ── Capabilities ────────────────────────────────────────────────────────
+    // What this caller may do, read from team_role_permissions rather than
+    // inferred from the role's name. Before this, "ops_manager" was hardcoded to
+    // mean unrestricted and fulfilment was open to the whole team, so changing
+    // either meant redeploying this function - the wrong place for a permissions
+    // decision.
+    //
+    // An admin is not a team role and is never limited by the table. A team
+    // member whose role has no row gets nothing beyond their own clients, which
+    // is the safe direction: a missing row must not read as a wildcard.
+    const CAPS = [
+      "all_clients", "fulfilment_view", "fulfilment_edit", "automations_run",
+      "intro_email_send", "preview_email_send", "invoices_manage",
+      "signups_review", "assignments_manage",
+    ] as const;
+    type Cap = typeof CAPS[number];
+
+    let perms: Record<Cap, boolean>;
+    if (isAdmin) {
+      perms = Object.fromEntries(CAPS.map((c) => [c, true])) as Record<Cap, boolean>;
+    } else {
+      const { data: row } = await adminClient
+        .from("team_role_permissions").select("*")
+        .eq("role", (me?.team_role as string) || "csm").maybeSingle();
+      perms = Object.fromEntries(CAPS.map((c) => [c, row?.[c] === true])) as Record<Cap, boolean>;
+      // edit without view is not a coherent state; do not let a bad row grant it.
+      if (!perms.fulfilment_view) perms.fulfilment_edit = false;
+    }
+    const can = (c: Cap) => perms[c] === true;
+    unrestricted = isAdmin || (isTeam && can("all_clients"));
 
     const rawBody = await req.json().catch(() => ({}));
     const body = rawBody as Record<string, unknown>;
@@ -458,8 +491,12 @@ Deno.serve(async (req) => {
           me: {
             team_role: isAdmin && !isTeam ? "admin" : ((me?.team_role as string) || "csm"),
             is_ops: isOps,
+            is_admin: isAdmin,
             unrestricted,
             full_name: me?.full_name || null,
+            // So the panel hides what this caller cannot use. The gate that
+            // matters is server-side; this stops the UI offering a 403.
+            can: perms,
           },
         });
       }
@@ -539,6 +576,9 @@ Deno.serve(async (req) => {
     const PREVIEW_EMAIL_ACTIONS = new Set(["get_preview_draft", "send_preview_email"]);
     if (PREVIEW_EMAIL_ACTIONS.has(action || "")) {
       if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
+      if (!can("preview_email_send")) {
+        return json({ error: "Your role cannot send preview emails" }, 403);
+      }
       const pScope = await resolveScope();
       const cid = (body as { company_id?: string }).company_id;
       if (!cid || (pScope && !pScope.has(cid))) {
@@ -670,8 +710,10 @@ Deno.serve(async (req) => {
       "list_submissions", "get_submission", "approve_submission", "reject_submission",
     ]);
     if (SUBMISSION_ACTIONS.has(action || "")) {
-      if (!isAdmin && !isOps) {
-        return json({ error: "Forbidden: ops manager or admin access required" }, 403);
+      // Approving creates an account and emails a real person, so it is its own
+      // capability rather than a side effect of being an ops manager.
+      if (!can("signups_review")) {
+        return json({ error: "Your role cannot review signups" }, 403);
       }
 
       if (action === "list_submissions") {
@@ -804,6 +846,14 @@ Deno.serve(async (req) => {
     ]);
     if (FULFILMENT_ACTIONS.has(action || "")) {
       if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
+      // A CSM has no business in the fulfilment checklist, so the section is
+      // behind a capability instead of being open to everyone on the team.
+      if (!can("fulfilment_view")) {
+        return json({ error: "Your role does not have access to fulfilment" }, 403);
+      }
+      if (action === "set_fulfilment_step" && !can("fulfilment_edit")) {
+        return json({ error: "Your role can view fulfilment but not change it" }, 403);
+      }
 
       // The /admin preview picks a team member and shows the panel as they see
       // it. Without this the fulfilment board ignored that choice: the caller is
@@ -982,10 +1032,15 @@ Deno.serve(async (req) => {
         "billing_list", "list_invoices", "create_invoice", "update_invoice",
         "get_bank_details", "mark_intro_email_sent", "billing_update_company",
       ]);
+      // Reading billing state is part of seeing a client at all; creating or
+      // changing an invoice is the capability. mark_intro_email_sent rides with
+      // the intro email rather than with invoicing.
+      const READ_ONLY_BILLING = new Set(["billing_list", "list_invoices", "get_bank_details"]);
       const mayBill = isAdmin
-        || (isOps && OPS_BILLING_ACTIONS.has(action || ""))
-        || (isTeam && TEAM_BILLING_ACTIONS.has(action || ""));
-      if (!mayBill) return json({ error: "Forbidden" }, 403);
+        || (isTeam && READ_ONLY_BILLING.has(action || ""))
+        || (isTeam && action === "mark_intro_email_sent" && can("intro_email_send"))
+        || (isTeam && can("invoices_manage") && OPS_BILLING_ACTIONS.has(action || ""));
+      if (!mayBill) return json({ error: "Your role cannot do that with invoices" }, 403);
 
       // Restrict every company reference to what this caller may touch.
       // null = every client (admin or ops manager).
@@ -1164,6 +1219,9 @@ Deno.serve(async (req) => {
     const INTRO_ACTIONS = new Set(["get_intro_draft", "send_intro_email"]);
     if (INTRO_ACTIONS.has(action || "")) {
       if (!isAdmin && !isTeam) return json({ error: "Forbidden" }, 403);
+      if (!can("intro_email_send")) {
+        return json({ error: "Your role cannot send the intro email" }, 403);
+      }
       const companyId = (body as { company_id?: string }).company_id;
       if (!companyId) return json({ error: "company_id is required" }, 400);
 
@@ -1434,11 +1492,11 @@ Deno.serve(async (req) => {
     // point of the tier is to direct the work without being able to widen who
     // can do it or mint an account - otherwise "ops manager" is just "admin"
     // with a friendlier label, and the distinction stops being worth having.
-    const OPS_ADMIN_ACTIONS = new Set([
-      "list_team", "list_companies", "list_assignments", "assign", "unassign",
-      "admin_get_client", "list_team_clients", "list_availability",
+    const ROSTER_ACTIONS = new Set([
+      "list_team", "list_companies", "list_assignments", "get_role_permissions",
+      "assign", "unassign", "admin_get_client", "list_team_clients", "list_availability",
     ]);
-    if (!isAdmin && !(isOps && OPS_ADMIN_ACTIONS.has(action || ""))) {
+    if (!isAdmin && !(isTeam && can("assignments_manage") && ROSTER_ACTIONS.has(action || ""))) {
       return json({ error: "Forbidden: admin access required" }, 403);
     }
 
@@ -1508,6 +1566,38 @@ Deno.serve(async (req) => {
         company_id: null,
         action: onTeam ? "team.member_added" : "team.member_removed",
         detail: { user_id, team_role: upd.team_role ?? null },
+      });
+      return json({ ok: true });
+    }
+
+    // ── The permissions matrix, edited in /admin ─────────────────────────
+    if (action === "get_role_permissions") {
+      const { data, error } = await adminClient
+        .from("team_role_permissions").select("*").order("role");
+      if (error) return json({ error: error.message }, 500);
+      return json({ roles: data || [], capabilities: CAPS });
+    }
+
+    if (action === "set_role_permissions") {
+      // Admin only: an ops manager can direct the work but must not be able to
+      // grant themselves or anyone else more of it.
+      if (!isAdmin) return json({ error: "Only an admin can change permissions" }, 403);
+      const b = body as { role?: string; permissions?: Record<string, unknown> };
+      if (!b.role || !["csm", "ops_manager", "media_buyer", "tech_lead"].includes(b.role)) {
+        return json({ error: "Unknown role" }, 400);
+      }
+      const upd: Record<string, unknown> = {
+        role: b.role, updated_at: new Date().toISOString(), updated_by: caller.id,
+      };
+      for (const c of CAPS) {
+        if (b.permissions && c in b.permissions) upd[c] = b.permissions[c] === true;
+      }
+      const { error } = await adminClient
+        .from("team_role_permissions").upsert(upd, { onConflict: "role" });
+      if (error) return json({ error: error.message }, 500);
+      await logAction({
+        company_id: null, action: "permissions.changed",
+        detail: { role: b.role, permissions: b.permissions ?? {} },
       });
       return json({ ok: true });
     }

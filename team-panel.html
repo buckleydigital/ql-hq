@@ -365,6 +365,9 @@
     }
     const r = RUNNABLE[a];
     if (!r) return '';
+    if ((a === 'ad_copy' || a === 'creatives') && !iCan('automations_run')) return '';
+    if (a === 'preview_email' && !iCan('preview_email_send')) return '';
+    if (a === 'intro_email' && !iCan('intro_email_send')) return '';
     // Still offered on a completed step: regenerating copy or resending previews
     // after a change is normal, so this is "run again", not a one-shot.
     const again = status === 'done' || status === 'skipped';
@@ -394,7 +397,7 @@
           ${meta.length ? `<div class="smeta">${meta.join(' · ')}</div>` : ''}
         </div>
         ${automationBtn(st, status)}
-        <select data-step="${esc(st.step_key)}" title="Change status">
+        <select data-step="${esc(st.step_key)}" title="Change status"${iCan('fulfilment_edit') ? '' : ' disabled'}>
           ${STEP_STATUSES.map(([v, l]) => `<option value="${v}"${v === status ? ' selected' : ''}>${l}</option>`).join('')}
         </select>
       </div>`;
@@ -915,13 +918,18 @@
     csm: 'CSM', ops_manager: 'Ops Manager',
     media_buyer: 'Media Buyer', tech_lead: 'Tech Lead', admin: 'Admin',
   };
+  // What this caller may do, as told by the server. The server is what enforces
+  // it; this only stops the panel offering a button that would come back 403.
+  const iCan = (c) => !!(((_me || {}).can) || {})[c];
+
+  function applyCapabilities() {
+    $('navFulfil').classList.toggle('hidden', !iCan('fulfilment_view'));
+    $('navSignups').classList.toggle('hidden', !iCan('signups_review'));
+    if (iCan('signups_review')) prefetchSignupCount();
+  }
+
   function applyRoleChrome() {
-    // An admin previewing the panel still runs fulfilment, so they get the
-    // Signups tab too - it is only the role pill that is theirs, not the nav.
-    if (_isAdmin || (_me && _me.unrestricted)) {
-      $('navSignups').classList.remove('hidden');
-      prefetchSignupCount();
-    }
+    applyCapabilities();
     if (_isAdmin) return;                       // admin preview sets its own pill
     const pill = $('modePill');
     pill.textContent = ROLE_LABEL[_me.team_role] || 'Internal Team';
@@ -931,9 +939,6 @@
       pill.style.borderColor = 'rgba(139,92,246,.4)';
     }
     $('navClients').textContent = _me.unrestricted ? 'All Clients' : 'My Clients';
-    // Approving a signup creates an account, so the tab is only shown to the
-    // people the server will actually let do it. Hiding it is courtesy; the
-    // gate that matters is in team-api.
   }
 
   // So the badge shows a queue before anyone thinks to click the tab.
