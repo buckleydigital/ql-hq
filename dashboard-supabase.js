@@ -918,21 +918,23 @@ async function showApp() {
     return;
   }
 
-  // Show the "VA Panel" sidebar link for VAs and admins (admin preview mode).
-  const _vaLink = document.getElementById("navVaPanel");
+  // Show the "Team Panel" sidebar link for the Internal Team and for admins
+  // (admin preview mode). A client never has is_team set, so the link is
+  // removed from their DOM rather than just hidden.
+  const _teamLink = document.getElementById("navTeamPanel");
   try {
-    const { data: vaRow } = await sb
+    const { data: teamRow } = await sb
       .from("profiles")
-      .select("is_va, is_admin")
+      .select("is_team, is_admin")
       .eq("id", currentUser.id)
       .maybeSingle();
-    if (vaRow && (vaRow.is_va === true || vaRow.is_admin === true)) {
-      if (_vaLink) _vaLink.style.display = "flex";
-    } else if (_vaLink) {
-      _vaLink.remove();
+    if (teamRow && (teamRow.is_team === true || teamRow.is_admin === true)) {
+      if (_teamLink) _teamLink.style.display = "flex";
+    } else if (_teamLink) {
+      _teamLink.remove();
     }
   } catch (e) {
-    if (_vaLink) _vaLink.remove();
+    if (_teamLink) _teamLink.remove();
   }
 
   try {

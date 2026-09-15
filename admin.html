@@ -361,7 +361,7 @@ h1{font-size:18px;font-weight:500}
       <div class="panel-b">
         <!-- Bank / business settings editor (used as PDF + invoice payment defaults) -->
         <div id="bankEditor" class="hidden" style="margin-bottom:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
-          <div style="font-weight:600;margin-bottom:10px">Business & bank details <span style="font-weight:400;color:var(--muted);font-size:12px">- used on every invoice PDF. VAs can view these but cannot edit them.</span></div>
+          <div style="font-weight:600;margin-bottom:10px">Business & bank details <span style="font-weight:400;color:var(--muted);font-size:12px">- used on every invoice PDF. The Internal Team can view these but cannot edit them.</span></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
             <label class="bank-lbl">Business name<input id="bankBusinessName" class="bank-in" type="text"></label>
             <label class="bank-lbl">ABN<input id="bankAbn" class="bank-in" type="text"></label>
@@ -486,34 +486,43 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
-    <!-- Virtual Assistants panel -->
+    <!-- Internal Team panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
         <div>
-          <h2>Virtual Assistants</h2>
+          <h2>Internal Team</h2>
           <p id="vaCountLabel">Loading…</p>
         </div>
       </div>
       <div class="panel-b">
         <div class="form-row" style="margin-bottom:16px">
-          <label class="form-label" for="vaUserPicker">Make a user a VA</label>
+          <label class="form-label" for="vaUserPicker">Add someone to the Internal Team</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <select class="form-input" id="vaUserPicker" style="max-width:360px"><option value="">Loading users…</option></select>
-            <button class="btn2 btn-sm" id="vaMakeBtn" type="button">Make VA</button>
+            <select class="form-input" id="vaRolePicker" style="max-width:180px">
+              <option value="csm">CSM</option>
+              <option value="ops_manager">Ops Manager</option>
+              <option value="media_buyer">Media Buyer</option>
+              <option value="tech_lead">Tech Lead</option>
+            </select>
+            <button class="btn2 btn-sm" id="vaMakeBtn" type="button">Add to team</button>
           </div>
-          <p style="font-size:12px;color:var(--muted);margin:6px 0 0">A VA only sees the client companies you assign below - never anyone else's, and they can't edit client accounts.</p>
+          <p style="font-size:12px;color:var(--muted);margin:6px 0 0">
+            A CSM, media buyer or tech lead only sees the client companies you assign below - never anyone else's, and they can't edit client accounts.
+            An <strong>Ops Manager</strong> sees <strong>every</strong> client and can reassign them, but still cannot add or remove team members. Only you can do that.
+          </p>
         </div>
-        <div id="vaLoadingState" class="notice">Loading VAs…</div>
+        <div id="vaLoadingState" class="notice">Loading team…</div>
         <div id="vaList" class="hidden"></div>
       </div>
     </div>
 
-    <!-- VA Availability panel -->
+    <!-- Team availability panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
         <div>
-          <h2>VA Availability</h2>
-          <p>When each VA is available to take calls (times in AEST).</p>
+          <h2>Team Availability</h2>
+          <p>When each team member is available to take calls (times in AEST).</p>
         </div>
       </div>
       <div class="panel-b">
@@ -2770,21 +2779,21 @@ h1{font-size:18px;font-weight:500}
     // 12. Load PPL area change requests panel
     await loadPplAreaRequests();
 
-    // 13. Load Virtual Assistants panel
+    // 13. Load Internal Team panel
     await loadVaPanel();
 
-    // 14. Load VA Availability panel
+    // 14. Load team availability panel
     await loadVaAvailability();
 
   } // end boot()
 
-  // ── Virtual Assistants ────────────────────────────────────────────────────
-  // All VA operations go through the dedicated `va-api` edge function (service
+  // ── Internal Team ─────────────────────────────────────────────────────────
+  // All team operations go through the dedicated `team-api` edge function (service
   // role, is_admin-gated). No existing data or RLS is touched.
   async function callVaEdge(body) {
     var token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
-    var res = await fetch(SUPABASE_URL + '/functions/v1/va-api', {
+    var res = await fetch(SUPABASE_URL + '/functions/v1/team-api', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify(body),
@@ -2804,27 +2813,27 @@ h1{font-size:18px;font-weight:500}
     try {
       var usersRes = await callVaEdge({ action: 'list_users' });
       var compRes  = await callVaEdge({ action: 'list_companies' });
-      var vasRes   = await callVaEdge({ action: 'list_vas' });
+      var vasRes   = await callVaEdge({ action: 'list_team' });
       _vaCompanies = compRes.companies || [];
 
-      // Populate the "make a user a VA" picker with non-VA users.
+      // Populate the "add to the team" picker with users not already on it.
       var picker = document.getElementById('vaUserPicker');
-      var nonVa = (usersRes.users || []).filter(function (u) { return !u.is_va; });
+      var nonVa = (usersRes.users || []).filter(function (u) { return !u.is_team; });
       picker.innerHTML = '<option value="">Select a user…</option>' + nonVa.map(function (u) {
         return '<option value="' + escapeHtml(u.id) + '">' + escapeHtml((u.full_name || '(no name)') + ' - ' + (u.email || '')) + '</option>';
       }).join('');
 
       renderVaList(vasRes.vas || []);
       var label = document.getElementById('vaCountLabel');
-      if (label) label.textContent = (vasRes.vas || []).length + ' VA' + ((vasRes.vas || []).length === 1 ? '' : 's');
+      if (label) { var n = (vasRes.team || vasRes.vas || []).length; label.textContent = n + (n === 1 ? ' person' : ' people') + ' on the Internal Team'; }
       loadingEl.classList.add('hidden');
       listEl.classList.remove('hidden');
     } catch (err) {
-      loadingEl.textContent = 'Failed to load VAs: ' + err.message;
+      loadingEl.textContent = 'Failed to load the team: ' + err.message;
     }
   }
 
-  // ── VA Availability (read-only weekly grid per VA) ──────────────────────────
+  // ── Team availability (read-only weekly grid per member) ───────────────────
   var _avDays  = [['mon','M'],['tue','T'],['wed','W'],['thu','T'],['fri','F'],['sat','S'],['sun','S']];
   var _avHours = [8,9,10,11,12,13,14,15,16,17,18,19];
   function _avHourLabel(h) { var ap = h < 12 ? 'a' : 'p'; var hh = h % 12 === 0 ? 12 : h % 12; return hh + ap; }
@@ -2849,7 +2858,7 @@ h1{font-size:18px;font-weight:500}
       var res = await callVaEdge({ action: 'list_availability' });
       var vas = res.availability || [];
       if (!vas.length) {
-        listEl.innerHTML = '<div class="notice">No VAs yet.</div>';
+        listEl.innerHTML = '<div class="notice">Nobody on the Internal Team yet.</div>';
       } else {
         listEl.innerHTML = vas.map(function (v) {
           var slots = Array.isArray(v.slots) ? v.slots : [];
@@ -2867,21 +2876,59 @@ h1{font-size:18px;font-weight:500}
     }
   }
 
+  // Same closed set as profiles.team_role and ql-mc's team_members.role, so one
+  // person carries one job title across both systems.
+  var TEAM_ROLES = [
+    ['csm', 'CSM'],
+    ['ops_manager', 'Ops Manager'],
+    ['media_buyer', 'Media Buyer'],
+    ['tech_lead', 'Tech Lead'],
+  ];
+
+  // Changing someone's job changes what they can see: an ops manager sees every
+  // client. Worth confirming, and worth reloading the panel afterwards so the
+  // "sees all clients" marker matches what the server now thinks.
+  async function setTeamRole(userId, role, selectEl) {
+    var wasOps = selectEl.getAttribute('data-was') || '';
+    if (role === 'ops_manager' && !confirm('Make this person an Ops Manager? They will be able to see and act on EVERY client, not just the ones assigned to them.')) {
+      selectEl.value = wasOps || 'csm';
+      return;
+    }
+    selectEl.disabled = true;
+    try {
+      await callVaEdge({ action: 'set_team_member', user_id: userId, is_team: true, team_role: role });
+      toast('Role updated');
+      await loadVaPanel();
+    } catch (err) {
+      alert('Could not change that role: ' + err.message);
+      selectEl.disabled = false;
+    }
+  }
+
   function renderVaList(vas) {
     var listEl = document.getElementById('vaList');
-    if (!vas.length) { listEl.innerHTML = '<div class="notice">No VAs yet. Pick a user above and click "Make VA".</div>'; return; }
+    if (!vas.length) { listEl.innerHTML = '<div class="notice">Nobody on the Internal Team yet. Pick a user above and click "Add to team".</div>'; return; }
     var compOptions = '<option value="">Assign a client…</option>' + _vaCompanies.map(function (c) {
       return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || '(no name)') + ' (' + escapeHtml(c.plan || '') + ')</option>';
     }).join('');
     listEl.innerHTML = vas.map(function (v) {
       return '<div data-va="' + escapeHtml(v.id) + '" style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
-          '<div style="font-size:13px"><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong>&nbsp; <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span></div>' +
-          '<button class="btn btn-danger btn-sm va-remove-btn" type="button">Remove VA</button>' +
+          '<div style="font-size:13px"><strong>' + escapeHtml(v.full_name || '(no name)') + '</strong>&nbsp; <span style="color:var(--muted)">' + escapeHtml(v.email || '') + '</span>' +
+            (v.team_role === 'ops_manager' ? ' &nbsp;<span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:100px;background:rgba(139,92,246,.16);color:#a78bfa;border:1px solid rgba(139,92,246,.4)">sees all clients</span>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<select class="form-input va-role" style="max-width:170px;font-size:12px;padding:6px 8px">' +
+              TEAM_ROLES.map(function (r) {
+                return '<option value="' + r[0] + '"' + (v.team_role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>';
+              }).join('') +
+            '</select>' +
+            '<button class="btn btn-danger btn-sm va-remove-btn" type="button">Remove</button>' +
+          '</div>' +
         '</div>' +
         '<div class="form-label" style="margin-bottom:8px">Reply-To on their client emails <span style="color:var(--muted);font-weight:400">— blank uses ' + escapeHtml(v.email || 'their login') + '</span></div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
-          '<input class="form-input va-replyto" type="email" style="flex:1;min-width:220px;max-width:360px" placeholder="' + escapeHtml(v.email || '') + '" value="' + escapeHtml(v.va_reply_to_email || '') + '">' +
+          '<input class="form-input va-replyto" type="email" style="flex:1;min-width:220px;max-width:360px" placeholder="' + escapeHtml(v.email || '') + '" value="' + escapeHtml(v.team_reply_to_email || '') + '">' +
           '<button class="btn2 btn-sm va-replyto-btn" type="button">Save</button>' +
           '<span class="va-replyto-note" style="font-size:11.5px;color:var(--muted)"></span>' +
         '</div>' +
@@ -2898,6 +2945,7 @@ h1{font-size:18px;font-weight:500}
       var vaId = row.getAttribute('data-va');
       loadVaAssignments(vaId, row.querySelector('.va-assigns'));
       row.querySelector('.va-remove-btn').addEventListener('click', function () { removeVa(vaId, row); });
+      row.querySelector('.va-role').addEventListener('change', function () { setTeamRole(vaId, this.value, this); });
       row.querySelector('.va-assign-btn').addEventListener('click', function () {
         var sel = row.querySelector('.va-assign-picker');
         if (sel.value) assignClient(vaId, sel.value, row);
@@ -2914,7 +2962,7 @@ h1{font-size:18px;font-weight:500}
     var btn = row.querySelector('.va-replyto-btn');
     btn.disabled = true; note.textContent = '';
     try {
-      await callVaEdge({ action: 'set_va_reply_to', va_user_id: vaId, reply_to_email: input.value.trim() });
+      await callVaEdge({ action: 'set_team_reply_to', team_user_id: vaId, reply_to_email: input.value.trim() });
       note.textContent = 'Saved';
     } catch (err) {
       note.textContent = err.message || 'Could not save';
@@ -2924,7 +2972,7 @@ h1{font-size:18px;font-weight:500}
 
   async function loadVaAssignments(vaId, container) {
     try {
-      var res = await callVaEdge({ action: 'list_assignments', va_user_id: vaId });
+      var res = await callVaEdge({ action: 'list_assignments', team_user_id: vaId });
       var comps = res.companies || [];
       if (!comps.length) { container.innerHTML = '<span style="color:var(--muted);font-size:12px">No clients assigned yet.</span>'; return; }
       container.innerHTML = comps.map(function (c) {
@@ -2944,7 +2992,7 @@ h1{font-size:18px;font-weight:500}
 
   async function assignClient(vaId, companyId, row) {
     // The edge function emails the VA on a new assignment (not on a repeat).
-    try { await callVaEdge({ action: 'assign', va_user_id: vaId, company_id: companyId });
+    try { await callVaEdge({ action: 'assign', team_user_id: vaId, company_id: companyId });
       await loadVaAssignments(vaId, row.querySelector('.va-assigns'));
       row.querySelector('.va-assign-picker').value = '';
       toast('Client assigned');
@@ -2952,16 +3000,16 @@ h1{font-size:18px;font-weight:500}
   }
 
   async function unassignClient(vaId, companyId, container) {
-    try { await callVaEdge({ action: 'unassign', va_user_id: vaId, company_id: companyId });
+    try { await callVaEdge({ action: 'unassign', team_user_id: vaId, company_id: companyId });
       await loadVaAssignments(vaId, container);
       toast('Client unassigned');
     } catch (err) { toast('Unassign failed: ' + err.message, true); }
   }
 
   async function removeVa(vaId, row) {
-    if (!confirm('Remove VA status from this user? Their client assignments will be cleared.')) return;
-    try { await callVaEdge({ action: 'set_va', user_id: vaId, is_va: false });
-      toast('VA removed'); await loadVaPanel();
+    if (!confirm('Remove this person from the Internal Team? Their client assignments will be cleared.')) return;
+    try { await callVaEdge({ action: 'set_team_member', user_id: vaId, is_team: false });
+      toast('Removed from the Internal Team'); await loadVaPanel();
     } catch (err) { toast('Failed: ' + err.message, true); }
   }
 
@@ -2969,8 +3017,8 @@ h1{font-size:18px;font-weight:500}
     if (e.target && e.target.id === 'vaMakeBtn') {
       var sel = document.getElementById('vaUserPicker');
       if (!sel.value) { toast('Pick a user first', true); return; }
-      callVaEdge({ action: 'set_va', user_id: sel.value, is_va: true })
-        .then(function () { toast('VA created'); return loadVaPanel(); })
+      callVaEdge({ action: 'set_team_member', user_id: sel.value, is_team: true, team_role: (document.getElementById('vaRolePicker') || {}).value || 'csm' })
+        .then(function () { toast('Added to the Internal Team'); return loadVaPanel(); })
         .catch(function (err) { toast('Failed: ' + err.message, true); });
     }
   });
@@ -3115,7 +3163,7 @@ h1{font-size:18px;font-weight:500}
 
   // ── Invoicing & Billing ─────────────────────────────────────────────────────
   // All billing state lives on companies + the invoices / business_settings
-  // tables and is reached through the va-api edge function (admin-gated).
+  // tables and is reached through the team-api edge function (admin-gated).
   var _billingClients = [];
 
   function fmtDateShort(d) {
@@ -3214,9 +3262,9 @@ h1{font-size:18px;font-weight:500}
           '</select>' +
         '</label>' +
         '<label class="bill-fld">Intro email done' +
-          '<select data-f="va_intro_done">' +
-            '<option value="false"' + (!c.va_intro_done ? ' selected' : '') + '>No</option>' +
-            '<option value="true"' + (c.va_intro_done ? ' selected' : '') + '>Yes</option>' +
+          '<select data-f="intro_email_sent">' +
+            '<option value="false"' + (!c.intro_email_sent ? ' selected' : '') + '>No</option>' +
+            '<option value="true"' + (c.intro_email_sent ? ' selected' : '') + '>Yes</option>' +
           '</select>' +
         '</label>' +
       '</div>' +
@@ -3231,7 +3279,7 @@ h1{font-size:18px;font-weight:500}
       el.addEventListener('change', function () {
         var field = el.getAttribute('data-f');
         var val = el.value;
-        if (field === 'va_intro_done') val = (val === 'true');
+        if (field === 'intro_email_sent') val = (val === 'true');
         saveBillingField(c, field, val, el);
       });
     });
@@ -3435,11 +3483,11 @@ h1{font-size:18px;font-weight:500}
       var fields = {}; fields[field] = val;
       await callVaEdge({ action: 'billing_update_company', company_id: c.id, fields: fields });
       c[field] = val;
-      if (field === 'va_intro_done') c.va_intro_done_at = val ? new Date().toISOString() : null;
+      if (field === 'intro_email_sent') c.intro_email_sent_at = val ? new Date().toISOString() : null;
       toast('Saved.');
     } catch (err) {
       toast('Save failed: ' + err.message, true);
-      if (el.type === 'date') el.value = prev || ''; else el.value = (field === 'va_intro_done') ? String(!!prev) : (prev || '');
+      if (el.type === 'date') el.value = prev || ''; else el.value = (field === 'intro_email_sent') ? String(!!prev) : (prev || '');
     } finally {
       el.disabled = false;
     }

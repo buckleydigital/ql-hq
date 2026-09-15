@@ -1,81 +1,160 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- Fulfilment tracking + logging, and the Internal Team access tier
+-- Internal Team: rename off "VA", and track + log fulfilment
+--
+-- TWO CHANGES THAT HAVE TO SHIP TOGETHER
+--
+--   1. The people doing this work are the Internal Team - CSMs, ops managers,
+--      media buyers - not "VAs". The old name undersold the job and the new
+--      tables would have inherited it, so the rename goes first and everything
+--      below is built on the new names. Renaming in a later migration would
+--      have meant shipping a vocabulary we already knew was wrong.
+--
+--   2. Fulfilment gets real tracking and a real audit trail.
+--
+-- WHERE THE WORK LIVES (and why this is the right repo for it)
+--   ql-mc is admin + sales reps, reps gated as they are now. Everyone who
+--   actually fulfils - CSM, ops manager, media buyer - works here, in the Team
+--   Panel at /team-panel. So the step state and the log live here, where the
+--   click happens and where the actor identity exists. ql-mc keeps the
+--   management roll-up and is fed a derived summary through its existing
+--   sync-from-hq bridge. One writer, one reader, no ambiguity about which side
+--   is authoritative.
 --
 -- THE GAP THIS CLOSES
---   The fulfilment pipeline lived in ql-mc as two mutable text columns on
---   `clients` (onboarding_sub_stage, active_status). Change one and the old
---   value is gone: no timestamp, no actor, no history. Meanwhile the people
---   doing the work do it here, in the Team Panel, and of the ~25 mutating
---   actions in va-api exactly one left a record (client_email_log).
---
---   So: the step state and the log live HERE, where the click happens and
---   where the actor identity exists. ql-mc keeps the roll-up, fed the derived
---   summary through its existing sync-from-hq bridge. One writer, one reader.
+--   The pipeline lived in ql-mc as two mutable text columns on `clients`
+--   (onboarding_sub_stage, active_status). Change one and the old value was
+--   gone: no timestamp, no actor, no history. Meanwhile of the ~25 mutating
+--   actions in the panel's edge function, exactly one left a record
+--   (client_email_log).
 --
 -- WHY NOT activity_log
---   activity_log already has the right shape, but it carries the policy
---   "Company members can view activity" (20260401000000_initial_schema.sql),
---   so anything written there is readable by the client it is about. Internal
---   fulfilment notes, blocked reasons and actor names are not for the client,
---   so this gets its own set of tables, hard-locked (section 8).
+--   It already has the right shape and is the wrong home: it carries the policy
+--   "Company members can view activity" (20260401000000_initial_schema.sql), so
+--   anything written there is readable by the client it is about. Internal
+--   notes, blocked reasons and actor names are not for the client.
 --
 -- NOTHING HERE IS VISIBLE TO A CLIENT
 --   Three independent locks, so no single mistake later opens it up:
 --     1. RLS enabled and FORCED, with NO permissive policy. Nothing to match.
 --     2. All privileges REVOKED from anon and authenticated, and from PUBLIC.
 --        Supabase grants those roles table privileges on public by default, so
---        revoking is what makes lock 1 impossible to undo by accident: adding
---        a policy later still grants nothing without a GRANT as well.
+--        revoking is what makes lock 1 hard to undo by accident: adding a
+--        policy later still grants nothing without a GRANT as well.
 --     3. No client-facing table gains a fulfilment column. The derived summary
---        lives in its own locked table, NOT on `companies`, because `companies`
---        is readable by its own members - a summary column there would have
---        shown up in the client dashboard's own row.
---   Every read and write goes through the va-api edge function under the
---   service role, which bypasses RLS by design and enforces the is_va /
---   team_role / assignment checks itself. Same model as va_assignments,
---   client_notes and client_email_log; this migration also retro-fits locks 1
---   and 2 onto those (section 8), which until now relied on lock 1 alone.
---
--- NAMING
---   The product now calls these people the Internal Team, not VAs, and the
---   panel lives at /team-panel. The physical column `profiles.is_va` and the
---   table `va_assignments` keep their names on purpose - they are load-bearing
---   in live RLS, edge functions and deployed HTML, and renaming them buys
---   nothing a comment cannot. New objects use the new vocabulary; the mapping
---   is in the comments below so it never has to be guessed at.
+--        lives in its own locked table, NOT on `companies`, because a company
+--        row is readable by its own members - a column there would have shown
+--        the pipeline in the client's dashboard.
+--   Everything goes through the team-api edge function under the service role,
+--   which bypasses RLS by design and enforces the is_team / team_role /
+--   assignment checks itself. Locks 1 and 2 are also retro-fitted onto
+--   team_assignments, client_notes, client_email_log and team_availability,
+--   which until now relied on the absence of a policy alone.
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ─── 1. The Internal Team access tier ───────────────────────────────────────
--- `is_va` = on the internal team at all. `team_role` = how much of it they
--- see. A member sees the clients assigned to them; an ops_manager sees every
--- client and can move another member's steps and reassign their clients.
+-- ─── 0. Rename VA → Internal Team ───────────────────────────────────────────
+-- Every rename is guarded on the old name still being there, so this migration
+-- is safe to re-run and safe on a database that has already been renamed.
+-- Renaming a column carries its constraints, policies and indexes with it, so
+-- the only real work is the code, which moves in the same commit.
+DO $$
+BEGIN
+  -- profiles.is_va → is_team
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='profiles' AND column_name='is_va')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='profiles' AND column_name='is_team') THEN
+    ALTER TABLE public.profiles RENAME COLUMN is_va TO is_team;
+  END IF;
+
+  -- profiles.va_reply_to_email → team_reply_to_email
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='profiles' AND column_name='va_reply_to_email')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='profiles' AND column_name='team_reply_to_email') THEN
+    ALTER TABLE public.profiles RENAME COLUMN va_reply_to_email TO team_reply_to_email;
+  END IF;
+
+  -- va_assignments → team_assignments (+ its user column)
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='va_assignments')
+     AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='team_assignments') THEN
+    ALTER TABLE public.va_assignments RENAME TO team_assignments;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='team_assignments' AND column_name='va_user_id') THEN
+    ALTER TABLE public.team_assignments RENAME COLUMN va_user_id TO team_user_id;
+  END IF;
+
+  -- va_availability → team_availability (+ its user column)
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='va_availability')
+     AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='team_availability') THEN
+    ALTER TABLE public.va_availability RENAME TO team_availability;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='team_availability' AND column_name='va_user_id') THEN
+    ALTER TABLE public.team_availability RENAME COLUMN va_user_id TO team_user_id;
+  END IF;
+
+  -- companies.intro_email_sent → intro_email_sent. The step table below is now the
+  -- real record of this; the column stays because 20260705000014 and the
+  -- billing panel read it, and team-api keeps the two in step.
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='companies' AND column_name='va_intro_done')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='companies' AND column_name='intro_email_sent') THEN
+    ALTER TABLE public.companies RENAME COLUMN va_intro_done TO intro_email_sent;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='companies' AND column_name='va_intro_done_at')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='companies' AND column_name='intro_email_sent_at') THEN
+    ALTER TABLE public.companies RENAME COLUMN va_intro_done_at TO intro_email_sent_at;
+  END IF;
+END $$;
+
+-- Indexes keep working under their old names; renaming them is cosmetic but
+-- stops the next person grepping for "team_assignments" and finding nothing.
+ALTER INDEX IF EXISTS idx_va_assignments_va      RENAME TO idx_team_assignments_user;
+ALTER INDEX IF EXISTS idx_va_assignments_company RENAME TO idx_team_assignments_company;
+
+COMMENT ON TABLE public.team_assignments IS
+  'Which client companies each Internal Team member manages. Was va_assignments.';
+COMMENT ON TABLE public.team_availability IS
+  'Weekly call availability per Internal Team member. Was va_availability.';
+
+-- ─── 1. Who is on the team, and in what job ─────────────────────────────────
+-- `is_team` = on the Internal Team at all. `team_role` = what they do, using
+-- the same closed set ql-mc already uses for its roster
+-- (20260901000004_team_members.sql), so one person has one job title across
+-- both systems rather than two that drift.
 --
--- This is deliberately a tier inside one surface rather than a second account
--- type: the difference between the two is scope and authority, not which data
--- they touch, and ql-mc already spends the name `ops_manager` on a no-login
--- roster row in `team_members`. One flag, one edge function, one portal.
+-- Scope follows from the job rather than being configured separately: an
+-- ops_manager sees every client because that is the job; everyone else sees the
+-- clients assigned to them. That is deliberately a tier inside one surface
+-- rather than a second account type - the difference is scope and authority,
+-- not which data they touch - and it keeps one flag, one edge function, one
+-- portal instead of a parallel set of each.
 --
--- Creating an internal team member stays admin-only (set_team_member) - an
--- ops_manager can direct the work but cannot mint accounts or grant access.
+-- Creating a team member stays admin-only: an ops_manager directs the work
+-- without being able to widen who does it.
 ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS team_role text NOT NULL DEFAULT 'member';
+  ADD COLUMN IF NOT EXISTS team_role text NOT NULL DEFAULT 'csm';
 
 DO $$ BEGIN
   ALTER TABLE public.profiles
     ADD CONSTRAINT profiles_team_role_check
-    CHECK (team_role IN ('member','ops_manager'));
+    CHECK (team_role IN ('csm','ops_manager','media_buyer','tech_lead'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-COMMENT ON COLUMN public.profiles.is_va IS
-  'On the Internal Team (the Team Panel at /team-panel). Named is_va for history; the product calls them the Internal Team.';
+COMMENT ON COLUMN public.profiles.is_team IS
+  'On the Internal Team (the Team Panel at /team-panel). Was is_va.';
 COMMENT ON COLUMN public.profiles.team_role IS
-  'Internal Team tier, only meaningful when is_va. member = assigned clients only; ops_manager = every client, plus reassign and override.';
+  'Internal Team job, only meaningful when is_team. Mirrors ql-mc team_members.role. ops_manager sees every client; everyone else sees their assignments.';
 
--- A client must never be able to promote themselves onto the internal team, or
--- from member to ops_manager. 20260401000027 already pins role, company_id and
--- user_type on self-update; team_role and is_va were added after it and were
--- not covered, so the self-update policy is replaced here with one that pins
--- them too. Only the service role (va-api, admin-checked) may change them.
+-- A client must never be able to put themselves on the team, or promote
+-- themselves to ops_manager. 20260401000027 pins role, company_id and
+-- user_type on self-update; is_team, is_admin and team_role postdate it and
+-- were not covered, so the self-update policy is replaced with one that pins
+-- them too. Only the service role (team-api, admin-checked) may change them.
 DROP POLICY IF EXISTS "Users can update own profile safe fields" ON public.profiles;
 CREATE POLICY "Users can update own profile safe fields"
   ON public.profiles FOR UPDATE
@@ -85,7 +164,7 @@ CREATE POLICY "Users can update own profile safe fields"
     AND role       = (SELECT role       FROM public.profiles WHERE id = auth.uid())
     AND company_id = (SELECT company_id FROM public.profiles WHERE id = auth.uid())
     AND user_type  = (SELECT user_type  FROM public.profiles WHERE id = auth.uid())
-    AND is_va      = (SELECT is_va      FROM public.profiles WHERE id = auth.uid())
+    AND is_team    = (SELECT is_team    FROM public.profiles WHERE id = auth.uid())
     AND is_admin   = (SELECT is_admin   FROM public.profiles WHERE id = auth.uid())
     AND team_role  = (SELECT team_role  FROM public.profiles WHERE id = auth.uid())
   );
@@ -402,15 +481,15 @@ SELECT c.id, 'paid_signed', 'done', c.created_at, 'migrated',
   FROM public.companies c
 ON CONFLICT (company_id, step_key) DO NOTHING;
 
--- 6b. companies.va_intro_done was the one-boolean-per-step version of this
+-- 6b. companies.intro_email_sent was the one-boolean-per-step version of this
 --     table. Real evidence with a real timestamp, so it lands as 'done'. The
 --     column stays: 20260705000014 and the billing panel still read it, and
---     va-api now maintains both together.
+--     team-api now maintains both together.
 INSERT INTO public.company_fulfilment (company_id, step_key, status, completed_at, completed_by_name, notes)
-SELECT c.id, 'intro_email_sent', 'done', coalesce(c.va_intro_done_at, now()), 'migrated',
-       'Carried over from companies.va_intro_done'
+SELECT c.id, 'intro_email_sent', 'done', coalesce(c.intro_email_sent_at, now()), 'migrated',
+       'Carried over from companies.intro_email_sent'
   FROM public.companies c
- WHERE c.va_intro_done IS TRUE
+ WHERE c.intro_email_sent IS TRUE
 ON CONFLICT (company_id, step_key) DO NOTHING;
 
 -- 6c. A known ads-live date is evidence for that step.
@@ -461,7 +540,7 @@ BEGIN
     -- new in this migration
     'fulfilment_step_defs', 'company_fulfilment', 'company_fulfilment_summary', 'fulfilment_log',
     -- the same class of internal-only data, until now relying on RLS alone
-    'va_assignments', 'client_notes', 'client_email_log', 'va_availability'
+    'team_assignments', 'client_notes', 'client_email_log', 'team_availability'
   ] LOOP
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = t) THEN
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
@@ -469,7 +548,7 @@ BEGIN
       EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', t);
       EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon', t);
       EXECUTE format('REVOKE ALL ON TABLE public.%I FROM authenticated', t);
-      -- service_role keeps its grant: va-api is the only way in, and it
+      -- service_role keeps its grant: team-api is the only way in, and it
       -- bypasses RLS by design.
       EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', t);
     END IF;

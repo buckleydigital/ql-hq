@@ -240,14 +240,14 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, user_id: userId, company_id: companyId, existing, email_sent: emailSent })
     }
 
-    // ── action: list_vas ────────────────────────────────────────────────────
+    // ── action: list_team ────────────────────────────────────────────────────
     // So ql-mc can show a VA picker without holding any ql-hq credentials.
-    if (action === 'list_vas') {
+    if (action === 'list_team') {
       const { data: vas } = await supabase
-        .from('profiles').select('id, full_name').eq('is_va', true)
-      const { data: assigns } = await supabase.from('va_assignments').select('va_user_id')
+        .from('profiles').select('id, full_name').eq('is_team', true)
+      const { data: assigns } = await supabase.from('team_assignments').select('team_user_id')
       const counts: Record<string, number> = {}
-      for (const a of assigns || []) counts[a.va_user_id as string] = (counts[a.va_user_id as string] || 0) + 1
+      for (const a of assigns || []) counts[a.team_user_id as string] = (counts[a.team_user_id as string] || 0) + 1
       return json({
         vas: (vas || []).map((v: Record<string, unknown>) => ({
           id: v.id, name: v.full_name || '', assigned: counts[v.id as string] || 0,
@@ -256,26 +256,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── action: assign_va ───────────────────────────────────────────────────
-    // Mirrors va-api's assign, including the "you have a new client" email, so
+    // Mirrors team-api's assign, including the "you have a new client" email, so
     // assigning from ql-mc behaves exactly like assigning from /admin.
     if (action === 'assign_va') {
-      const vaId = String(body.va_user_id ?? '').trim()
+      const teamUserId = String(body.team_user_id ?? '').trim()
       const companyId = String(body.company_id ?? '').trim()
-      if (!vaId || !companyId) return json({ error: 'va_user_id and company_id are required' }, 400)
+      if (!teamUserId || !companyId) return json({ error: 'team_user_id and company_id are required' }, 400)
 
       const { data: target } = await supabase
-        .from('profiles').select('is_va, full_name').eq('id', vaId).maybeSingle()
-      if (!target?.is_va) return json({ error: 'That user is not a VA' }, 400)
+        .from('profiles').select('is_team, full_name').eq('id', teamUserId).maybeSingle()
+      if (!target?.is_team) return json({ error: 'That user is not on the Internal Team' }, 400)
 
-      const { data: already } = await supabase.from('va_assignments')
-        .select('id').eq('va_user_id', vaId).eq('company_id', companyId).maybeSingle()
-      const { error: aErr } = await supabase.from('va_assignments')
-        .upsert({ va_user_id: vaId, company_id: companyId }, { onConflict: 'va_user_id,company_id' })
+      const { data: already } = await supabase.from('team_assignments')
+        .select('id').eq('team_user_id', teamUserId).eq('company_id', companyId).maybeSingle()
+      const { error: aErr } = await supabase.from('team_assignments')
+        .upsert({ team_user_id: teamUserId, company_id: companyId }, { onConflict: 'team_user_id,company_id' })
       if (aErr) return json({ error: aErr.message }, 500)
 
       let notified = false
       if (!already) {
-        const { data: u } = await supabase.auth.admin.getUserById(vaId)
+        const { data: u } = await supabase.auth.admin.getUserById(teamUserId)
         const vaEmail = u?.user?.email || ''
         const { data: company } = await supabase
           .from('companies').select('name, plan, niche, service_area').eq('id', companyId).maybeSingle()
@@ -291,7 +291,7 @@ Deno.serve(async (req: Request) => {
             `  Plan: ${company?.plan || '-'}`,
             `  Niche: ${company?.niche || '-'}`,
             `  Service area: ${company?.service_area || '-'}`,
-            '', 'https://quoteleadshq.com/va', '', 'QuoteLeads',
+            '', 'https://quoteleadshq.com/team-panel', '', 'QuoteLeads',
           ].join('\n')
           const apiKey = Deno.env.get('RESEND_API_KEY')
           if (apiKey) {
