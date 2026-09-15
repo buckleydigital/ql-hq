@@ -94,7 +94,7 @@ BEGIN
     ALTER TABLE public.team_availability RENAME COLUMN va_user_id TO team_user_id;
   END IF;
 
-  -- companies.intro_email_sent → intro_email_sent. The step table below is now the
+  -- companies.va_intro_done → intro_email_sent. The step table below is now the
   -- real record of this; the column stays because 20260705000014 and the
   -- billing panel read it, and team-api keeps the two in step.
   IF EXISTS (SELECT 1 FROM information_schema.columns
