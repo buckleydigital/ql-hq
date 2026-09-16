@@ -163,6 +163,77 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
+    // ── actions: get_sms_agent_config / update_sms_agent_config ─────────────
+    // ql-mc's Sales Conversations panel is where the agency's own AI SMS threads
+    // are read, so it is where the agent's prompt and settings should be edited
+    // too - rather than making someone log into ql-hq as the agency account just
+    // to change Don's wording.
+    //
+    // PINNED TO THE AGENCY'S OWN COMPANY. ql-mc does not send a company_id and
+    // could not use one if it did: every client on the platform has an
+    // sms_agent_config, and an editor reachable from another product must never
+    // be able to rewrite a client's agent. The id is an env var so it can be
+    // moved without a deploy, with the current one as the documented default.
+    const AGENCY_COMPANY_ID =
+      Deno.env.get('QL_AGENCY_COMPANY_ID') ?? '77526810-374f-419f-b470-9f506c4169be'
+
+    if (action === 'get_sms_agent_config') {
+      const { data, error } = await supabase
+        .from('sms_agent_config')
+        .select('id, agent_name, system_prompt, welcome_message, followup_message, ' +
+                'is_active, auto_reply, reply_delay_seconds, max_sms_words, ' +
+                'ai_nurture_enabled, days_until_followup, out_of_hours_only, ' +
+                'out_of_hours_msg, twilio_number, updated_at')
+        .eq('company_id', AGENCY_COMPANY_ID)
+        .maybeSingle()
+      if (error) return json({ error: error.message }, 500)
+      if (!data) return json({ error: 'No agent is configured for the agency account' }, 404)
+      return json({ ok: true, config: data })
+    }
+
+    if (action === 'update_sms_agent_config') {
+      const patch = (body.patch ?? {}) as Record<string, unknown>
+
+      // Whitelisted, and typed on the way in. Everything else on the row -
+      // company_id, twilio_number, the quote/pricing config - is not ql-mc's to
+      // change from here.
+      const TEXT = ['agent_name', 'system_prompt', 'welcome_message', 'followup_message', 'out_of_hours_msg']
+      const BOOL = ['is_active', 'auto_reply', 'ai_nurture_enabled', 'out_of_hours_only']
+      const INT  = ['reply_delay_seconds', 'max_sms_words', 'days_until_followup']
+
+      const upd: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      for (const k of TEXT) {
+        if (k in patch) {
+          const v = String(patch[k] ?? '').trim()
+          // 20k is far past any real prompt and still bounds what one call can
+          // write into the row.
+          upd[k] = v ? v.slice(0, 20000) : null
+        }
+      }
+      for (const k of BOOL) if (k in patch) upd[k] = patch[k] === true
+      for (const k of INT) {
+        if (k in patch) {
+          const n = parseInt(String(patch[k]), 10)
+          if (Number.isFinite(n) && n >= 0 && n <= 100000) upd[k] = n
+        }
+      }
+
+      if (Object.keys(upd).length === 1) {
+        return json({ error: 'No recognised fields to update' }, 400)
+      }
+
+      const { data, error } = await supabase
+        .from('sms_agent_config')
+        .update(upd)
+        .eq('company_id', AGENCY_COMPANY_ID)
+        .select('id, updated_at')
+        .maybeSingle()
+      if (error) return json({ error: error.message }, 500)
+      if (!data) return json({ error: 'No agent is configured for the agency account' }, 404)
+
+      return json({ ok: true, updated: Object.keys(upd).filter((k) => k !== 'updated_at') })
+    }
+
     // ── action: create_client_account ───────────────────────────────────────
     // A lead was converted in ql-mc. Create the ql-hq account so the client can
     // log in, and hand back the company id so ql-mc can offer to assign a VA in
