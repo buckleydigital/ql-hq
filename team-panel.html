@@ -871,8 +871,12 @@
       return;
     }
     const sel = $('vaSelect');
-    sel.innerHTML = '<option value="">Select a team member</option>' +
-      vas.map(v => `<option value="${esc(v.id)}">${esc(v.full_name || v.email)} (${v.assigned} client${v.assigned !== 1 ? 's' : ''})</option>`).join('');
+    // "Everyone" is the admin's own view and the default, so the panel is
+    // usable the moment it opens instead of sitting empty until somebody is
+    // picked - an admin with nobody selected previously had no way to manage
+    // anything at all.
+    sel.innerHTML = '<option value="">Everyone (your admin view)</option>' +
+      vas.map(v => `<option value="${esc(v.id)}">${esc(teamMemberLabel(v))} (${v.assigned} client${v.assigned !== 1 ? 's' : ''})</option>`).join('');
     $('adminBar').classList.remove('hidden');
     $('gate').classList.add('hidden');
     $('vaNav').classList.remove('hidden');
@@ -884,9 +888,25 @@
       // the panel keeps showing the previous member's clients (and, if the board
       // was opened before anyone was picked, every client) under the new name.
       _fulfilBoard = null;
+      _cameFromBoard = false;
       if (_selectedVaId) loadClientsForVa(_selectedVaId);
-      else { $('listView').classList.add('hidden'); $('detailView').classList.add('hidden'); }
+      else loadClients();
     });
+    // Start on the admin's own view rather than on nothing.
+    await loadClients();
+  }
+
+  // A member's display name is whatever someone typed into their profile, and
+  // some of those names end in a job title that is no longer accurate ("Mark -
+  // Admin" is a CSM). The role shown here comes from team_role, which is what
+  // actually governs what they can do, so the list cannot contradict the
+  // permissions behind it.
+  function teamMemberLabel(v) {
+    const base = String(v.full_name || v.email || 'Unnamed')
+      .replace(/\s*[-–—|,]\s*(admin|csm|ops(?:\s*manager)?|media\s*buyer|tech\s*lead|va)\s*$/i, '')
+      .trim();
+    const role = ROLE_LABEL[v.team_role] || 'Internal Team';
+    return (base || 'Unnamed') + ' - ' + role;
   }
 
   async function loadClientsForVa(vaId) {
@@ -896,6 +916,10 @@
     const { ok, data } = await teamApi({ action: 'list_team_clients', team_user_id: vaId });
     if (!ok) { $('clientList').innerHTML = `<div class="card empty">${esc(data.error || 'Error')}</div>`; return; }
     _clients = data.clients || [];
+    // Their capabilities, not the admin's - the point of a preview is to show
+    // what they see, including which controls are not there.
+    _me = data.me || {};
+    applyRoleChrome();
     showList();
     enrichBilling();
   }
@@ -940,13 +964,24 @@
 
   function applyRoleChrome() {
     applyCapabilities();
-    if (_isAdmin) return;                       // admin preview sets its own pill
     const pill = $('modePill');
-    pill.textContent = ROLE_LABEL[_me.team_role] || 'Internal Team';
-    if (_me.is_ops) {
-      pill.style.background = 'rgba(139,92,246,.16)';
-      pill.style.color = '#a78bfa';
-      pill.style.borderColor = 'rgba(139,92,246,.4)';
+    if (_isAdmin) {
+      // Say which of the two things is on screen: the admin's own panel, or
+      // somebody else's as they would see it.
+      const previewing = _selectedVaId && _me.team_role;
+      pill.textContent = previewing
+        ? 'Previewing ' + (ROLE_LABEL[_me.team_role] || 'Internal Team')
+        : 'Admin';
+      pill.style.background = 'rgba(239,68,68,.14)';
+      pill.style.color = 'var(--red)';
+      pill.style.borderColor = 'rgba(239,68,68,.3)';
+    } else {
+      pill.textContent = ROLE_LABEL[_me.team_role] || 'Internal Team';
+      if (_me.is_ops) {
+        pill.style.background = 'rgba(139,92,246,.16)';
+        pill.style.color = '#a78bfa';
+        pill.style.borderColor = 'rgba(139,92,246,.4)';
+      }
     }
     $('navClients').textContent = _me.unrestricted ? 'All Clients' : 'My Clients';
   }
@@ -1012,7 +1047,11 @@
     $('listView').classList.remove('hidden');
     setNav('clients');
     const el = $('clientList');
-    if (!_clients.length) { el.innerHTML = '<div class="card empty">No clients assigned to you yet.</div>'; return; }
+    if (!_clients.length) {
+      el.innerHTML = '<div class="card empty">' +
+        (_me.unrestricted ? 'No clients yet.' : 'No clients assigned to you yet.') + '</div>';
+      return;
+    }
 
     // Task summary banner across all clients.
     let allTasks = [];

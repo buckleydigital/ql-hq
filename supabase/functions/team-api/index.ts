@@ -243,16 +243,25 @@ Deno.serve(async (req) => {
     ] as const;
     type Cap = typeof CAPS[number];
 
+    // Resolving a role's capabilities is its own step because the admin preview
+    // needs to answer it for somebody other than the caller: previewing a CSM
+    // has to show the CSM's buttons, not the admin's, or the preview lies about
+    // what that person can do.
+    const permsForRole = async (role: string | null | undefined): Promise<Record<Cap, boolean>> => {
+      const { data: row } = await adminClient
+        .from("team_role_permissions").select("*")
+        .eq("role", role || "csm").maybeSingle();
+      const p = Object.fromEntries(CAPS.map((c) => [c, row?.[c] === true])) as Record<Cap, boolean>;
+      // edit without view is not a coherent state; do not let a bad row grant it.
+      if (!p.fulfilment_view) p.fulfilment_edit = false;
+      return p;
+    };
+
     let perms: Record<Cap, boolean>;
     if (isAdmin) {
       perms = Object.fromEntries(CAPS.map((c) => [c, true])) as Record<Cap, boolean>;
     } else {
-      const { data: row } = await adminClient
-        .from("team_role_permissions").select("*")
-        .eq("role", (me?.team_role as string) || "csm").maybeSingle();
-      perms = Object.fromEntries(CAPS.map((c) => [c, row?.[c] === true])) as Record<Cap, boolean>;
-      // edit without view is not a coherent state; do not let a bad row grant it.
-      if (!perms.fulfilment_view) perms.fulfilment_edit = false;
+      perms = await permsForRole(me?.team_role as string);
     }
     const can = (c: Cap) => perms[c] === true;
     unrestricted = isAdmin || (isTeam && can("all_clients"));
@@ -1769,7 +1778,26 @@ Deno.serve(async (req) => {
       const clients = (companies || []).map((c: Record<string, unknown>) => ({
         id: c.id, name: c.name, plan: c.plan, email: c.email, phone: c.phone, ...agg[c.id as string],
       }));
-      return json({ clients });
+      // The previewed member's own capabilities travel with their client list,
+      // so the admin preview renders THEIR panel. Without this the page fell
+      // back to the caller's, and an admin previewing a CSM saw controls the CSM
+      // does not have - a preview that cannot be trusted is worse than none.
+      const { data: target } = await adminClient
+        .from("profiles").select("full_name, team_role, is_admin").eq("id", vaUserId).maybeSingle();
+      const targetPerms = target?.is_admin
+        ? Object.fromEntries(CAPS.map((c) => [c, true])) as Record<Cap, boolean>
+        : await permsForRole(target?.team_role as string);
+      return json({
+        clients,
+        me: {
+          team_role: target?.is_admin ? "admin" : ((target?.team_role as string) || "csm"),
+          is_ops: target?.team_role === "ops_manager",
+          is_admin: target?.is_admin === true,
+          unrestricted: target?.is_admin === true || targetPerms.all_clients === true,
+          full_name: target?.full_name || null,
+          can: targetPerms,
+        },
+      });
     }
 
     if (action === "list_availability") {
