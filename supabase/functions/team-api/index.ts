@@ -1050,7 +1050,7 @@ Deno.serve(async (req) => {
       if (action === "billing_list") {
         let q = adminClient
           .from("companies")
-          .select("id, name, email, phone, plan, created_at, payment_method, ads_live_date, next_invoice_due, invoice_status, intro_email_sent, intro_email_sent_at");
+          .select("id, name, email, phone, plan, created_at, payment_method, ads_live_date, next_invoice_due, invoice_status, intro_email_sent, intro_email_sent_at, management_fee_cents");
         if (scopedIds) {
           const ids = [...scopedIds];
           if (!ids.length) return json({ clients: [] });
@@ -1110,7 +1110,7 @@ Deno.serve(async (req) => {
         if (!company_id) return json({ error: "company_id is required" }, 400);
         const f = fields || {};
         const upd: Record<string, unknown> = {};
-        const allowed = ["payment_method", "ads_live_date", "next_invoice_due", "invoice_status", "intro_email_sent"];
+        const allowed = ["payment_method", "ads_live_date", "next_invoice_due", "invoice_status", "intro_email_sent", "management_fee_cents"];
         for (const k of allowed) if (k in f) upd[k] = f[k] === "" ? null : f[k];
         if ("payment_method" in upd && upd.payment_method != null && !["invoice", "stripe"].includes(upd.payment_method as string)) {
           return json({ error: "payment_method must be 'invoice' or 'stripe'" }, 400);
@@ -1119,6 +1119,19 @@ Deno.serve(async (req) => {
           return json({ error: "invalid invoice_status" }, 400);
         }
         if ("intro_email_sent" in upd) upd.intro_email_sent_at = upd.intro_email_sent ? new Date().toISOString() : null;
+        // The per-client management fee, in cents. Empty clears it back to the
+        // standard price rather than storing 0, which would mean free.
+        if ("management_fee_cents" in upd) {
+          if (upd.management_fee_cents == null || upd.management_fee_cents === "") {
+            upd.management_fee_cents = null;
+          } else {
+            const n = Math.round(Number(upd.management_fee_cents));
+            if (!Number.isFinite(n) || n < 0 || n > 5_000_000) {
+              return json({ error: "That management fee looks wrong. Enter an amount between $0 and $50,000." }, 400);
+            }
+            upd.management_fee_cents = n;
+          }
+        }
         if (!Object.keys(upd).length) return json({ error: "no updatable fields provided" }, 400);
         const { error } = await adminClient.from("companies").update(upd).eq("id", company_id);
         if (error) return json({ error: error.message }, 500);

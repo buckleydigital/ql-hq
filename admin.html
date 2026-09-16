@@ -3357,6 +3357,12 @@ h1{font-size:18px;font-weight:500}
       ? '<span style="color:var(--muted)">Leads: <b style="color:var(--text)">' + (del.delivered || 0) + '/' + (del.total || 0) + '</b> delivered</span>'
       : '';
 
+    // Management fee is stored in cents, and NULL means "the standard fee", so
+    // the box is left empty rather than pre-filled with 600 - that way a client
+    // on the standard price follows any future change to it instead of being
+    // pinned to today's number.
+    var feeDollars = (typeof c.management_fee_cents === 'number') ? (c.management_fee_cents / 100) : null;
+
     wrap.innerHTML =
       '<div class="bill-top">' +
         '<div>' +
@@ -3375,6 +3381,10 @@ h1{font-size:18px;font-weight:500}
         '</label>' +
         '<label class="bill-fld">Ads live date' +
           '<input type="date" data-f="ads_live_date" value="' + escapeHtml(c.ads_live_date || '') + '">' +
+        '</label>' +
+        '<label class="bill-fld">Management fee ($/mo)' +
+          '<input type="number" min="0" max="50000" step="1" data-f="management_fee_cents" ' +
+            'placeholder="600 (standard)" value="' + (feeDollars === null ? '' : escapeHtml(String(feeDollars))) + '">' +
         '</label>' +
         '<label class="bill-fld">Next invoice due' +
           '<input type="date" data-f="next_invoice_due" value="' + escapeHtml(c.next_invoice_due || '') + '">' +
@@ -3407,6 +3417,19 @@ h1{font-size:18px;font-weight:500}
         var field = el.getAttribute('data-f');
         var val = el.value;
         if (field === 'intro_email_sent') val = (val === 'true');
+        if (field === 'management_fee_cents') {
+          var t = String(val).trim();
+          if (t === '') { val = null; }
+          else {
+            var dollars = Number(t);
+            if (!isFinite(dollars) || dollars < 0 || dollars > 50000) {
+              toast('Enter a monthly fee between $0 and $50,000, or leave it blank for the standard fee.', true);
+              el.value = (typeof c.management_fee_cents === 'number') ? String(c.management_fee_cents / 100) : '';
+              return;
+            }
+            val = Math.round(dollars * 100);
+          }
+        }
         saveBillingField(c, field, val, el);
       });
     });
@@ -3614,7 +3637,9 @@ h1{font-size:18px;font-weight:500}
       toast('Saved.');
     } catch (err) {
       toast('Save failed: ' + err.message, true);
-      if (el.type === 'date') el.value = prev || ''; else el.value = (field === 'intro_email_sent') ? String(!!prev) : (prev || '');
+      if (field === 'management_fee_cents') el.value = (typeof prev === 'number') ? String(prev / 100) : '';
+      else if (el.type === 'date') el.value = prev || '';
+      else el.value = (field === 'intro_email_sent') ? String(!!prev) : (prev || '');
     } finally {
       el.disabled = false;
     }

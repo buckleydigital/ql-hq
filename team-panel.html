@@ -868,7 +868,7 @@
       return;
     }
     const sel = $('vaSelect');
-    sel.innerHTML = '<option value="">Select a VA</option>' +
+    sel.innerHTML = '<option value="">Select a team member</option>' +
       vas.map(v => `<option value="${esc(v.id)}">${esc(v.full_name || v.email)} (${v.assigned} client${v.assigned !== 1 ? 's' : ''})</option>`).join('');
     $('adminBar').classList.remove('hidden');
     $('gate').classList.add('hidden');
@@ -876,6 +876,11 @@
     $('navAvail').style.display = 'none';
     sel.addEventListener('change', () => {
       _selectedVaId = sel.value || null;
+      // The board is cached per visit, and that cache was built for whoever was
+      // selected before - so it has to go the moment the selection changes, or
+      // the panel keeps showing the previous member's clients (and, if the board
+      // was opened before anyone was picked, every client) under the new name.
+      _fulfilBoard = null;
       if (_selectedVaId) loadClientsForVa(_selectedVaId);
       else { $('listView').classList.add('hidden'); $('detailView').classList.add('hidden'); }
     });

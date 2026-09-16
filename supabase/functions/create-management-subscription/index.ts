@@ -25,8 +25,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// $600/mo ex GST. Must stay in step with the figure quoted on /pricing and on
-// the funnel's price note.
+// The standard fee, $600/mo ex GST. Must stay in step with the figure quoted on
+// /pricing and on the funnel's price note.
+//
+// A client can be on a different number: companies.management_fee_cents. NULL
+// there means "the standard fee", so changing this constant moves every client
+// who has not been given a specific price, which is the behaviour you want when
+// the list price changes.
 const MANAGEMENT_CENTS = 60_000
 
 // Statuses that mean Stripe is already billing this company, so sending them
@@ -50,7 +55,7 @@ serve(async (req) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('id, name, email, stripe_customer_id, management_status, management_subscription_id')
+      .select('id, name, email, stripe_customer_id, management_status, management_subscription_id, management_fee_cents')
       .eq('id', profile.company_id)
       .maybeSingle()
     if (!company) return new Response('Company not found', { status: 404 })
@@ -84,6 +89,29 @@ serve(async (req) => {
         .eq('id', company.id)
     }
 
+    // The agreed price for this client, or the standard one. Validated rather
+    // than trusted: the column is constrained in the database, but a bad value
+    // here would create a real Stripe subscription at the wrong price, so a
+    // non-integer or negative falls back instead of billing something absurd.
+    const raw = company.management_fee_cents
+    const feeCents =
+      typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 5_000_000
+        ? raw
+        : MANAGEMENT_CENTS
+
+    // Stripe will not create a recurring price of $0. A client on free
+    // management should simply not be sent to checkout - say so plainly rather
+    // than letting Stripe return something cryptic.
+    if (feeCents === 0) {
+      return new Response(
+        JSON.stringify({
+          error: 'zero_fee',
+          message: 'Management is set to $0/mo for this account, so there is nothing to subscribe to. Speak to us if that is wrong.',
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -91,7 +119,7 @@ serve(async (req) => {
       line_items: [{
         price_data: {
           currency: 'aud',
-          unit_amount: MANAGEMENT_CENTS,
+          unit_amount: feeCents,
           recurring: { interval: 'month' },
           product_data: {
             name: 'Campaign Management',

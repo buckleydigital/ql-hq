@@ -4108,6 +4108,16 @@ window.buySmsCredits = buySmsCredits;
 // delivery rather than from the date they paid.
 const MGMT_INCLUDED_DAYS = 30;
 
+// Standard management price, used when the account has no per-client fee set.
+const MGMT_STANDARD_FEE_CENTS = 60000;
+// Whole dollars read better on a billing page; only show cents if there are any.
+function fmtMgmtFee(cents) {
+  const d = cents / 100;
+  return "$" + (Number.isInteger(d) ? d.toLocaleString("en-AU") : d.toFixed(2));
+}
+// Set by loadBilling so the button can be restored after a failed checkout.
+let mgmtFeeLabel = fmtMgmtFee(MGMT_STANDARD_FEE_CENTS);
+
 function mgmtIncludedDaysLeft(includedFrom) {
   if (!includedFrom) return null;
   const start = new Date(includedFrom);
@@ -4138,7 +4148,7 @@ async function loadBilling() {
 
   const { data: company, error } = await sb
     .from("companies")
-    .select("management_status, management_period_end, management_cancel_at_end, management_included_from, stripe_customer_id")
+    .select("management_status, management_period_end, management_cancel_at_end, management_included_from, stripe_customer_id, management_fee_cents")
     .eq("id", currentCompanyId)
     .maybeSingle();
 
@@ -4146,6 +4156,25 @@ async function loadBilling() {
     body.textContent = "Could not load your billing status.";
     pill.textContent = "Unavailable";
     return;
+  }
+
+  // The monthly fee can be set per account. NULL means the standard price, so
+  // the fallback here is the list price rather than a number copied onto every
+  // row - one place to change if that price ever moves.
+  const feeCents = (typeof company.management_fee_cents === "number" && company.management_fee_cents >= 0)
+    ? company.management_fee_cents
+    : MGMT_STANDARD_FEE_CENTS;
+  mgmtFeeLabel = fmtMgmtFee(feeCents);
+  const mgmtBtnLabel = feeCents === 0
+    ? "Turn on management"
+    : "Turn on management, " + mgmtFeeLabel + "/mo";
+  if (primary) primary.textContent = mgmtBtnLabel;
+  const feeNote = document.getElementById("mgmtFeeNote");
+  if (feeNote) {
+    feeNote.textContent = (feeCents === 0
+      ? "Management is included on your account at no monthly fee, month to month."
+      : mgmtFeeLabel + "/mo plus GST, month to month, cancel any time from here.")
+      + " Your ad spend is separate and paid direct to Meta from your own account, never through us.";
   }
 
   const status   = company.management_status || null;
@@ -4163,7 +4192,7 @@ async function loadBilling() {
   } else if (status === "active" || status === "trialing") {
     pill.textContent = "Active";
     pill.classList.add("mgmt-on");
-    body.innerHTML = `Management is active. Your next payment of <b>$600 + GST</b> is due <b>${endsOn || "on your billing date"}</b>.`;
+    body.innerHTML = `Management is active. Your next payment of <b>${mgmtFeeLabel} + GST</b> is due <b>${endsOn || "on your billing date"}</b>.`;
   } else if (status === "past_due") {
     pill.textContent = "Payment failed";
     pill.classList.add("mgmt-warn");
@@ -4205,7 +4234,7 @@ async function startManagement(event) {
     window.location.href = data.url;
   } catch (err) {
     toast(err.message || "Could not start management.", true);
-    if (btn) { btn.disabled = false; btn.textContent = "Turn on management, $600/mo"; }
+    if (btn) { btn.disabled = false; btn.textContent = mgmtFeeLabel === "$0" ? "Turn on management" : "Turn on management, " + mgmtFeeLabel + "/mo"; }
   }
 }
 
