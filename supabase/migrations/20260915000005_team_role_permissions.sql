@@ -68,13 +68,18 @@ COMMENT ON COLUMN public.team_role_permissions.fulfilment_view IS
   'Gates the Fulfilment tab, the board and the per-client checklist. A CSM defaults to false.';
 
 -- Defaults chosen from what each role actually does day to day, not from a
--- hierarchy. A CSM owns the client relationship: intros, invoices, previews. A
--- media buyer and a tech lead build the thing: fulfilment and the automations. An
--- ops manager runs the floor: everything, every client.
+-- hierarchy. A CSM owns the client relationship: intros, invoices, previews, and
+-- they can SEE where their own clients are up to in fulfilment without being able
+-- to move a step or run an automation - they field the "where are we at" call,
+-- they do not do the build. A media buyer and a tech lead build the thing:
+-- fulfilment and the automations. An ops manager runs the floor.
+--
+-- fulfilment_view is scoped by all_clients like everything else, so a CSM viewing
+-- fulfilment sees their assigned clients only.
 INSERT INTO public.team_role_permissions
   (role, all_clients, fulfilment_view, fulfilment_edit, automations_run,
    intro_email_send, preview_email_send, invoices_manage, signups_review, assignments_manage) VALUES
-  ('csm',          false, false, false, false, true,  true,  true,  false, false),
+  ('csm',          false, true,  false, false, true,  true,  true,  false, false),
   ('ops_manager',  true,  true,  true,  true,  true,  true,  true,  true,  true ),
   ('media_buyer',  false, true,  true,  true,  false, true,  false, false, false),
   ('tech_lead',    false, true,  true,  true,  false, false, false, false, false)
