@@ -87,13 +87,20 @@ serve(async (req) => {
     const company = String(body.company ?? '').trim()
     const postcode = String(body.postcode ?? '').trim()
     const source = String(body.source ?? 'unknown').trim()
-    const nicheSlug = String(body.niche ?? '').trim()
+    // Two funnels, two vocabularies: the solar funnel sends a platform slug in
+    // `niche`, /get-started sends the trade label the visitor picked in `trade`.
+    // Either is forwarded as-is and ql-mc maps both; it must NOT be defaulted
+    // here, or an HVAC enquiry silently becomes a solar one.
+    const nicheSlug = String(body.niche ?? body.trade ?? '').trim()
     const niche = nicheLabel(nicheSlug)
+    // The volume they said they want. A qualifying answer, so it goes on the
+    // pipeline card as well as into this email.
+    const goal = String(body.goal ?? '').trim()
 
     // The pipeline card first - it is the half a rep actually works from.
     // ql-mc maps the campaign slug onto its own niche vocabulary.
     const onPipeline = await createPipelineLead({
-      name, company, email, phone, postcode, source, campaign: nicheSlug,
+      name, company, email, phone, postcode, source, campaign: nicheSlug, goal,
     })
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -115,7 +122,8 @@ serve(async (req) => {
             <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${esc(email)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${esc(phone)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${esc(postcode)}</td></tr>
-            <tr><td style="padding:3px 14px 3px 0;color:#666">Campaign</td><td>${esc(niche)}</td></tr>
+            <tr><td style="padding:3px 14px 3px 0;color:#666">Trade / campaign</td><td>${esc(niche)}</td></tr>
+            ${goal ? `<tr><td style="padding:3px 14px 3px 0;color:#666">Volume wanted</td><td>${esc(goal)}</td></tr>` : ''}
             <tr><td style="padding:3px 14px 3px 0;color:#666">Source</td><td>${esc(source)}</td></tr>
           </table>
         </div>`,
