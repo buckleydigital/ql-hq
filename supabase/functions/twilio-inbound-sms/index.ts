@@ -845,19 +845,40 @@ Deno.serve(async (req) => {
 
       const owningCompanyIds = [...new Set((ownerLeads || []).map((l) => l.company_id as string))];
 
-      if (owningCompanyIds.length !== 1) {
-        // No existing lead anywhere, or (unusually) more than one company has
-        // a lead with this phone number - can't safely attribute, so don't
-        // deliver or create anything under any of the sharing companies.
-        console.warn(
-          owningCompanyIds.length === 0
-            ? `Inbound SMS to shared number ${toNumber} from ${fromNumber} matched no company's leads - dropping.`
-            : `Inbound SMS to shared number ${toNumber} from ${fromNumber} matched ${owningCompanyIds.length} companies' leads - ambiguous, dropping.`
-        );
+      // No lead anywhere: nothing to attribute this to, and inventing an owner
+      // is the leak. Always drop.
+      if (owningCompanyIds.length === 0) {
+        console.warn(`Inbound SMS to shared number ${toNumber} from ${fromNumber} matched no company's leads - dropping.`);
         return twimlResponse("");
       }
 
-      smsConfig = candidateConfigs.find((c) => c.company_id === owningCompanyIds[0]);
+      let resolvedCompanyId: string | null = owningCompanyIds[0];
+
+      if (owningCompanyIds.length > 1) {
+        // The same homeowner sold to two clients is the pay-per-lead product,
+        // not an error - so this used to drop a genuine reply every time it
+        // happened. Break the tie on evidence rather than dropping: whoever
+        // texted them most recently is who they are answering.
+        const { data: winner, error: resolveErr } = await db.rpc("resolve_shared_number_owner", {
+          p_company_ids: owningCompanyIds,
+          p_phones: phoneCandidates,
+        });
+        resolvedCompanyId = resolveErr ? null : (winner as string | null);
+
+        if (!resolvedCompanyId) {
+          // Nobody has texted them, or a dead heat. Still drop: delivering to
+          // the wrong company is far worse than not delivering at all.
+          console.warn(`Inbound SMS to shared number ${toNumber} from ${fromNumber} matched ${owningCompanyIds.length} companies and could not be resolved - dropping.`);
+          return twimlResponse("");
+        }
+        console.log(`Shared number ${toNumber}: ${fromNumber} resolved to company ${resolvedCompanyId} by most recent outbound.`);
+      }
+
+      smsConfig = candidateConfigs.find((c) => c.company_id === resolvedCompanyId);
+      if (!smsConfig) {
+        console.error(`Resolved company ${resolvedCompanyId} has no active config on ${toNumber} - dropping.`);
+        return twimlResponse("");
+      }
     }
 
     const companyId: string = smsConfig.company_id;
