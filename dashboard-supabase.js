@@ -4793,6 +4793,30 @@ async function loadConversations() {
       .order("last_message_at", { ascending: false })
       .range(from, to);
 
+    // A thread with no lead is not nameless - we know the number that texted
+    // in, it is on the message. Showing "Unknown" threw that away and made a
+    // real enquiry look like a glitch; showing the number means you can read
+    // it, ring it back, and add them as a lead yourself if they are worth it.
+    //
+    // Deliberately NOT auto-created as a lead: an inbound text is not a lead
+    // until a person says it is. Anything else fills the pipeline with wrong
+    // numbers and STOP replies, and tells lead.created webhooks about them.
+    const unnamed = (conversations || []).filter((c) => !c.lead_id).map((c) => c.id);
+    const senderByConv = {};
+    if (unnamed.length) {
+      const { data: firstMsgs } = await sb
+        .from("messages")
+        .select("conversation_id, metadata, created_at")
+        .in("conversation_id", unnamed)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: true });
+      (firstMsgs || []).forEach((m) => {
+        if (senderByConv[m.conversation_id]) return;      // earliest wins
+        const num = m.metadata && m.metadata.from;
+        if (num) senderByConv[m.conversation_id] = num;
+      });
+    }
+
     const list  = document.getElementById("conversationList");
     const empty = document.getElementById("convEmptyState");
     if (!list) return;
@@ -4806,8 +4830,13 @@ async function loadConversations() {
     empty?.classList.add("hidden");
 
     list.innerHTML = conversations.map((c) => {
-      const name = esc(c.leads?.name || "Unknown");
-      const phone = esc(c.leads?.phone || "");
+      // Falls back through: the lead's name, then the number that texted in,
+      // then the lead's stored number. "Unknown" only survives when we truly
+      // have nothing, which should now be a deleted lead or an old row with no
+      // recorded sender.
+      const sender = senderByConv[c.id] || "";
+      const name = esc(c.leads?.name || sender || "Unknown");
+      const phone = esc(c.leads?.phone || sender || "");
       const time = c.last_message_at ? fmtDate(c.last_message_at) : "";
       const lastMsgTime = c.last_message_at ? new Date(c.last_message_at) : null;
       const minsAgo = lastMsgTime ? Math.floor((Date.now() - lastMsgTime) / 60000) : null;
