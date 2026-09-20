@@ -899,25 +899,22 @@ Deno.serve(async (req) => {
       return twimlResponse("");
     }
 
-    // 4. Check AI settings
-    if (!smsConfig.auto_reply) {
-      // AI is off globally - just store the message, don't reply
-      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
-      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
-      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
-    }
-
-    if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
-      // Outside configured hours - store but don't reply
-      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody);
-      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
-      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
-    }
-
-    // 5. Find or create lead by phone number in this company (phoneCandidates
-    // built above, alongside company resolution).
+    // 3b. Resolve the lead BEFORE deciding whether to reply.
+    //
+    // This used to happen at step 5, below both early returns - so on the two
+    // paths that store the message without replying (AI off, out of hours) the
+    // lead was still unknown and storeInboundOnly() was called without an id.
+    // It then wrote lead_id: null, and the reply appeared in the dashboard as a
+    // brand new thread called "Unknown" sitting next to the correctly-named
+    // thread for the same person.
+    //
+    // Nothing was mis-routed - the row always carried the right company_id, so
+    // no company ever saw another's messages - but a lead answering "Yes" was
+    // functionally invisible, which is worse than it sounds when the whole
+    // point of the number is catching replies.
+    //
+    // Lookup only: this deliberately does not CREATE a lead. That stays at step
+    // 5, where the allowNewLead rules for the shared number are enforced.
     // deno-lint-ignore no-explicit-any
     let lead: any = null;
     for (const candidate of phoneCandidates) {
@@ -934,6 +931,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 4. Check AI settings
+    if (!smsConfig.auto_reply) {
+      // AI is off globally - just store the message, don't reply
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead?.id);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
+    }
+
+    if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
+      // Outside configured hours - store but don't reply
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead?.id);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
+    }
+
+    // 5. Create the lead if the lookup at 3b found nothing. The lookup itself
+    // has already run above - repeating it here would be two round trips for
+    // one answer.
     if (!lead && !allowNewLead) {
       // Shared number with no matching lead in the owning company - should be
       // unreachable (owner resolution above already requires a lead match),
