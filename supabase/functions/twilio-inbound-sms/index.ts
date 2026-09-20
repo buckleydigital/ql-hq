@@ -934,8 +934,8 @@ Deno.serve(async (req) => {
     // functionally invisible, which is worse than it sounds when the whole
     // point of the number is catching replies.
     //
-    // Lookup only. Creation, and the shared-number drop rule, are immediately
-    // below at 3c - both still ahead of any decision about replying.
+    // Lookup only: this deliberately does not CREATE a lead. That stays at step
+    // 5, where the allowNewLead rules for the shared number are enforced.
     // deno-lint-ignore no-explicit-any
     let lead: any = null;
     for (const candidate of phoneCandidates) {
@@ -952,21 +952,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3c. Drop, or create the lead, BEFORE deciding whether to reply.
-    //
-    // This sat below the two no-reply branches, which left one case still
-    // producing an "Unknown" thread: a dedicated number whose AI is suppressed
-    // (off, or out-of-hours) receiving a text from someone who is not yet a
-    // lead. The handler stored the message and returned without ever creating
-    // the lead it would have created had the AI been on.
-    //
-    // Now the same decision applies whichever way the AI is set: an unknown
-    // sender on a company's own number is a new lead, and stays one whether or
-    // not a reply goes out.
-    //
-    // The shared-number rule is unchanged and still runs first: no matching
-    // lead means drop, and it now drops before anything is written rather than
-    // after storing an unattributed message.
+    // 4. Check AI settings
+    if (!smsConfig.auto_reply) {
+      // AI is off globally - just store the message, don't reply
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead?.id);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
+    }
+
+    if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
+      // Outside configured hours - store but don't reply
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead?.id);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
+    }
+
+    // 5. Create the lead if the lookup at 3b found nothing. The lookup itself
+    // has already run above - repeating it here would be two round trips for
+    // one answer.
     if (!lead && !allowNewLead) {
       // Shared number with no matching lead in the owning company - should be
       // unreachable (owner resolution above already requires a lead match),
@@ -1012,23 +1017,6 @@ Deno.serve(async (req) => {
       });
 
       fireWebhooks(db, companyId, "lead.created", newLead);
-    }
-
-    // 4. Check AI settings
-    if (!smsConfig.auto_reply) {
-      // AI is off globally - just store the message, don't reply
-      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead.id);
-      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
-      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
-    }
-
-    if (smsConfig.out_of_hours_only && !isOutOfHoursAEST()) {
-      // Outside configured hours - store but don't reply
-      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, lead.id);
-      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
-      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
-      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
     }
 
     // 6. Check per-lead AI toggle
