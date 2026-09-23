@@ -162,14 +162,6 @@ function toE164(raw: unknown): string | null {
   return /^\+[1-9]\d{7,14}$/.test(p) ? p : null;
 }
 
-// TwiML is XML, and a client's name is free text that reaches it. Without this
-// a company called "Bob & Sons" makes the document invalid and the call fails
-// with nothing to explain why.
-function escapeXml(v: unknown): string {
-  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-
 function textToHtml(text: string): string {
   const paras = String(text).split(/\n{2,}/).map((p) =>
     `<p style="margin:0 0 16px">${escHtml(p).replace(/\n/g, "<br>")}</p>`
@@ -505,23 +497,29 @@ Deno.serve(async (req) => {
 
       // ── What the agent's phone hears when they pick up ─────────────────────
       //
-      // Says who is being rung before dialling, because a call that just
-      // connects gives no chance to realise the wrong button was pressed.
+      // Nothing. It dials straight through, so picking up feels like any other
+      // call rather than like operating a system.
       //
-      // answerOnBridge is the attribute that matters: without it Twilio answers
-      // the agent's leg immediately and plays silence while the far end rings,
-      // which starts billing early and leaves the agent unsure anything is
-      // happening. With it, they hear the real ringing tone.
+      // This briefly announced the client first, as a check against having
+      // pressed Call on the wrong one - and that announcement is what broke the
+      // first real call. The voice it named, Polly.Olivia, is one of Polly's
+      // NEURAL voices, which Twilio only accepts written as
+      // "Polly.Olivia-Neural"; the bare name is not a voice it knows, so it
+      // threw out the whole document, Dial included, and the agent heard "an
+      // application error has occurred" the moment they answered.
+      //
+      // It is gone because it was not wanted, not because it was hard to fix.
+      // The whole class of failure goes with it: there is nothing left in this
+      // document but the dial itself.
+      //
+      // answerOnBridge is the attribute that matters here: without it Twilio
+      // answers the agent's leg immediately and plays silence while the far end
+      // rings, which starts billing early and leaves the agent unsure anything
+      // is happening. With it, they hear the real ringing tone - which, with no
+      // announcement, is now the only thing they hear before the client speaks.
       const twiml =
         `<?xml version="1.0" encoding="UTF-8"?>`
         + `<Response>`
-        // Polly.Nicole, not Polly.Olivia. Olivia is one of Polly's NEURAL
-        // voices, and Twilio only accepts those written with the suffix -
-        // "Polly.Olivia-Neural". The bare name is not a voice it knows, so it
-        // rejected the whole document and the agent heard "an application error
-        // has occurred" the moment they picked up. Nicole is a standard
-        // Australian voice and is valid as written.
-        + `<Say voice="Polly.Nicole">Connecting you to ${escapeXml(opts.clientLabel)}.</Say>`
         + `<Dial answerOnBridge="true" callerId="${callerId}" timeout="25">`
         + `<Number>${opts.clientE164}</Number>`
         + `</Dial>`
