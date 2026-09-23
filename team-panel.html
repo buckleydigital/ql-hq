@@ -128,7 +128,8 @@
     <button id="navSignups" type="button" class="hidden">Signups <span id="signupBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
     <button id="navAvail" type="button">My Availability</button>
     <button id="navTpl" type="button">Email Templates</button>
-    <button id="navCallTest" type="button" class="hidden">Call Test</button>
+    <button id="navTexts" type="button" class="hidden">Texts <span id="textsBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
+    <button id="navCallTest" type="button" class="hidden">Call &amp; SMS Test</button>
 
     <!-- The bell sits at the end of the nav and pushes itself right, so it is
          in the same place on every view rather than only on the client list. -->
@@ -193,6 +194,33 @@
   </div>
 
   <!-- AVAILABILITY -->
+  <!-- ALL TEXTS -->
+  <!-- The per-client card answers "what have we said to this client". This
+       answers "who is waiting on me", which is the question someone opens the
+       panel with. Two panes so a reply never means losing your place in the
+       list. -->
+  <div id="textsView" class="hidden">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <div class="card" style="flex:1;min-width:260px;max-width:380px;padding:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line,#e5e5ea)">
+          <strong style="font-size:14px">Conversations</strong>
+          <button class="btn" id="textsRefresh" type="button" style="font-size:11.5px;padding:3px 8px">Refresh</button>
+        </div>
+        <div class="muted" id="textsListStatus" style="padding:12px;font-size:12px">Loading…</div>
+        <div id="textsList" style="max-height:62vh;overflow-y:auto"></div>
+      </div>
+      <div class="card" style="flex:2;min-width:300px">
+        <div class="sec-title" style="margin-top:0" id="textsThreadWho">Pick a conversation</div>
+        <div id="textsThread" style="max-height:52vh;overflow-y:auto;padding:2px"></div>
+        <div class="muted" id="textsThreadStatus" style="font-size:12px"></div>
+        <div id="textsReplyBox" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+          <textarea id="textsReplyInput" rows="2" placeholder="Write a reply…" style="flex:2;min-width:200px"></textarea>
+          <button class="btn btn-p" id="textsReplyBtn" type="button">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ADMIN CALL TEST -->
   <!-- The one place a free-typed number may be dialled. The live path resolves
        every number from the client book on the server, because an endpoint that
@@ -223,6 +251,26 @@
       </div>
       <div class="muted" id="callTestStatus"></div>
     </div>
+    <div class="card">
+      <div class="sec-title" style="margin-top:0">Send a test text</div>
+      <p class="muted" style="margin-top:0;font-size:12.5px">
+        Goes out on the team SMS number, the same send the team's Texts box uses.
+        A reply comes back to the list below. Capped at 30 a day.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+        <input id="smsTestNum" type="tel" placeholder="+61412345678" style="flex:1;min-width:190px;max-width:260px">
+        <textarea id="smsTestBody" rows="2" placeholder="Test message…" style="flex:2;min-width:200px"></textarea>
+        <button class="btn btn-p" id="smsTestBtn" type="button">Send</button>
+      </div>
+      <div class="muted" id="smsTestStatus"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title" style="margin-top:0">Test texts &amp; replies from unknown numbers</div>
+      <div class="muted" id="smsTestLogStatus">Loading…</div>
+      <div id="smsTestLog"></div>
+    </div>
+
     <div class="card">
       <div class="sec-title" style="margin-top:0">Your recent test calls</div>
       <div class="muted" id="callTestLogStatus">Loading…</div>
@@ -812,6 +860,7 @@
     $('navAvail').classList.toggle('active', which === 'avail');
     $('navTpl').classList.toggle('active', which === 'tpl');
     $('navCallTest').classList.toggle('active', which === 'calltest');
+    $('navTexts').classList.toggle('active', which === 'texts');
   }
 
   function hideAllViews() {
@@ -822,6 +871,7 @@
     $('fulfilView').classList.add('hidden');
     $('signupView').classList.add('hidden');
     $('callTestView').classList.add('hidden');
+    $('textsView').classList.add('hidden');
   }
 
   function avGridHtml(selected, readOnly) {
@@ -885,10 +935,17 @@
     });
     $('navClients').addEventListener('click', showList);
     $('navCallTest').addEventListener('click', showCallTest);
+    $('navTexts').addEventListener('click', showTexts);
     $('callTestBtn').addEventListener('click', placeTestCall);
     $('callTestRefresh').addEventListener('click', loadTestCalls);
     $('callTestMineBtn').addEventListener('click', saveMyCallNumber);
     wireSmsBell();
+    $('textsRefresh').addEventListener('click', loadThreads);
+    $('textsReplyBtn').addEventListener('click', sendThreadReply);
+    $('textsReplyInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); }
+    });
+    $('smsTestBtn').addEventListener('click', sendTestSms);
     $('navFulfil').addEventListener('click', showFulfilBoard);
     $('navSignups').addEventListener('click', showSignups);
     $('navAvail').addEventListener('click', showAvail);
@@ -1047,6 +1104,7 @@
     // Follows the previewed member like the rest of the chrome: previewing a
     // role that cannot text should not show a bell they would never have.
     $('smsBellWrap').classList.toggle('hidden', !iCan('sms_send'));
+    $('navTexts').classList.toggle('hidden', !iCan('sms_send'));
     syncSmsBell();
     // Previewing from inside the tab would otherwise leave it on screen with
     // the nav button gone.
@@ -1465,6 +1523,9 @@
     const badge = $('smsBadge');
     badge.textContent = n > 9 ? '9+' : String(n);
     badge.classList.toggle('hidden', n === 0);
+    const navBadge = $('textsBadge');
+    navBadge.textContent = badge.textContent;
+    navBadge.classList.toggle('hidden', n === 0);
     $('smsDropList').innerHTML = (data.items || []).length
       ? data.items.map(it => `
         <button type="button" class="sms-drop-item" data-co="${esc(it.company_id || '')}"
@@ -1512,19 +1573,7 @@
     if (!ok) { if (status) status.textContent = data.error || 'Could not load texts.'; return; }
     const msgs = data.messages || [];
     if (status) status.textContent = msgs.length ? '' : 'No texts with this client yet.';
-    host.innerHTML = msgs.map(m => {
-      const out = m.direction === 'outbound';
-      const failed = m.status === 'failed';
-      return `<div style="margin:8px 0;display:flex;${out ? 'justify-content:flex-end' : ''}">
-        <div style="max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45;
-          background:${out ? 'var(--accent-soft,#e8effc)' : 'var(--bg2,#f2f2f5)'};
-          ${failed ? 'outline:1px solid var(--danger,#c0392b)' : ''}">
-          <div>${esc(m.body)}</div>
-          <div class="muted" style="font-size:10.5px;margin-top:4px">
-            ${out ? esc(m.actor_name || 'Team') : 'Client'} · ${fmtDateTime(m.created_at)}${failed ? ' · failed to send' : ''}
-          </div>
-        </div></div>`;
-    }).join('');
+    host.innerHTML = renderBubbles(msgs);
     host.scrollTop = host.scrollHeight;
     // Opening the thread marked it read server-side, so the badge should catch
     // up now rather than at the next poll.
@@ -1547,6 +1596,127 @@
     loadClientSms(companyId);
   }
 
+  // ─── The Texts tab: every conversation in one place ────────────────────────
+  // A thread is keyed by client where there is one, and by phone number where
+  // there is not, so a text from a number nobody has saved is still somewhere a
+  // person looks rather than nowhere at all.
+  let _openThread = null;   // { company_id } | { phone }
+
+  function showTexts() {
+    hideAllViews();
+    setNav('texts');
+    $('textsView').classList.remove('hidden');
+    loadThreads();
+  }
+
+  async function loadThreads() {
+    const host = $('textsList'), status = $('textsListStatus');
+    const { ok, data } = await teamApi({ action: 'list_sms_threads' });
+    if (!ok) { status.textContent = data.error || 'Could not load conversations.'; return; }
+    const threads = data.threads || [];
+    status.textContent = threads.length ? '' : 'No conversations yet.';
+    host.innerHTML = threads.map(t => `
+      <button type="button" class="thread-row" data-key="${esc(t.key)}"
+        data-co="${esc(t.company_id || '')}" data-phone="${esc(t.phone || '')}"
+        style="display:block;width:100%;text-align:left;padding:11px 14px;border:0;border-bottom:1px solid var(--line,#e5e5ea);background:none;cursor:pointer">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+          <span style="font-weight:600;font-size:13px">${esc(t.who)}</span>
+          ${t.unread ? `<span class="badge due">${t.unread}</span>` : ''}
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.last_body)}</div>
+        <div class="muted" style="font-size:11px;margin-top:3px">${fmtDateTime(t.last_at)}</div>
+      </button>`).join('');
+
+    host.querySelectorAll('[data-key]').forEach(b =>
+      b.addEventListener('click', () => openThread(
+        b.dataset.co ? { company_id: b.dataset.co } : { phone: b.dataset.phone },
+        b.querySelector('span').textContent,
+      )));
+  }
+
+  async function openThread(ref, who) {
+    _openThread = ref;
+    $('textsThreadWho').textContent = who || 'Conversation';
+    $('textsThreadStatus').textContent = 'Loading…';
+    const { ok, data } = await teamApi({ action: 'list_sms_thread', ...ref });
+    if (!ok) { $('textsThreadStatus').textContent = data.error || 'Could not load.'; return; }
+    $('textsThreadStatus').textContent = '';
+    $('textsThread').innerHTML = renderBubbles(data.messages || []);
+    $('textsThread').scrollTop = $('textsThread').scrollHeight;
+    $('textsReplyBox').classList.toggle('hidden', !iCan('sms_send'));
+    // Reading a thread clears its unread, so the list and the bell should catch
+    // up now rather than at the next poll.
+    loadThreads();
+    loadSmsInbox();
+  }
+
+  async function sendThreadReply() {
+    if (!_openThread) return;
+    const input = $('textsReplyInput'), btn = $('textsReplyBtn'), status = $('textsThreadStatus');
+    const text = input.value.trim();
+    if (!text) return;
+    btn.disabled = true; status.textContent = 'Sending…';
+    // A client thread goes through the client path so the message is filed
+    // against them; a bare number uses the reply path, which only reaches
+    // numbers that have already texted us.
+    const { ok, data } = _openThread.company_id
+      ? await teamApi({ action: 'send_client_sms', company_id: _openThread.company_id, target: 'company', body: text })
+      : await teamApi({ action: 'reply_to_number', phone: _openThread.phone, body: text });
+    btn.disabled = false;
+    if (!ok) { status.textContent = data.error || 'Could not send.'; return; }
+    input.value = '';
+    status.textContent = '';
+    openThread(_openThread, $('textsThreadWho').textContent);
+  }
+
+  // Shared by the Texts tab and the per-client card, so the two cannot drift
+  // into rendering the same conversation differently.
+  function renderBubbles(msgs) {
+    return msgs.map(m => {
+      const out = m.direction === 'outbound';
+      const failed = m.status === 'failed';
+      return `<div style="margin:8px 0;display:flex;${out ? 'justify-content:flex-end' : ''}">
+        <div style="max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45;
+          background:${out ? 'var(--accent-soft,#e8effc)' : 'var(--bg2,#f2f2f5)'};
+          ${failed ? 'outline:1px solid var(--danger,#c0392b)' : ''}">
+          <div>${esc(m.body)}</div>
+          <div class="muted" style="font-size:10.5px;margin-top:4px">
+            ${out ? esc(m.actor_name || 'Team') : 'Them'} · ${fmtDateTime(m.created_at)}${failed ? ' · failed to send' + (m.error_code ? ' (' + esc(m.error_code) + ')' : '') : ''}
+          </div>
+        </div></div>`;
+    }).join('');
+  }
+
+  // ─── Admin SMS test ───────────────────────────────────────────────────────
+  async function sendTestSms() {
+    const num = $('smsTestNum').value.trim();
+    const text = $('smsTestBody').value.trim();
+    const btn = $('smsTestBtn'), status = $('smsTestStatus');
+    if (!num || !text) { status.textContent = 'Need a number and a message.'; return; }
+    btn.disabled = true; status.textContent = 'Sending…';
+    const { ok, data } = await teamApi({ action: 'send_test_sms', phone: num, body: text });
+    btn.disabled = false;
+    if (!ok) { status.textContent = data.error || 'Could not send.'; return; }
+    $('smsTestBody').value = '';
+    status.textContent = 'Sent. A reply will appear below.';
+    loadTestSms();
+    setTimeout(loadTestSms, 8000);
+  }
+
+  async function loadTestSms() {
+    const host = $('smsTestLog'), status = $('smsTestLogStatus');
+    if (!host) return;
+    const { ok, data } = await teamApi({ action: 'list_test_sms' });
+    if (!ok) { status.textContent = data.error || 'Could not load.'; return; }
+    const msgs = data.messages || [];
+    status.textContent = msgs.length ? '' : 'No test texts yet.';
+    host.innerHTML = msgs.map(m => {
+      const out = m.direction === 'outbound';
+      return `<div class="kv"><span class="k">${fmtDateTime(m.created_at)} · ${out ? 'to ' + esc(m.to_number) : 'from ' + esc(m.from_number)}</span>
+        <span>${esc(String(m.body).slice(0, 90))} · ${esc(m.status || '')}${m.error_code ? ' (' + esc(m.error_code) + ')' : ''}</span></div>`;
+    }).join('');
+  }
+
   // ─── Admin call test ───────────────────────────────────────────────────────
   // Deliberately thin: the number is the only thing this adds over the live
   // path, and everything else is the same server code, so there is nothing here
@@ -1561,6 +1731,7 @@
     $('callTestMine').value = _realPhone || '';
     $('callTestMineNote').textContent = _realPhone ? '' : 'Set this first — it is the phone that rings.';
     loadTestCalls();
+    loadTestSms();
   }
 
   async function saveMyCallNumber() {
