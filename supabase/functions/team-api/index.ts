@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
     const CAPS = [
       "all_clients", "fulfilment_view", "fulfilment_edit", "automations_run",
       "intro_email_send", "preview_email_send", "invoices_manage",
-      "signups_review", "assignments_manage", "calls_make",
+      "signups_review", "assignments_manage", "calls_make", "sms_send",
     ] as const;
     type Cap = typeof CAPS[number];
 
@@ -635,7 +635,7 @@ Deno.serve(async (req) => {
     };
 
     // ────────────────────── INTERNAL TEAM ACTIONS ──────────────────────────
-    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability", "start_call", "list_calls"]);
+    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability", "start_call", "list_calls", "send_client_sms", "list_client_sms", "sms_inbox", "mark_sms_read"]);
     if (TEAM_ACTIONS.has(action || "")) {
       // An admin who is not on the team can still use these to see the panel
       // the team sees; scope resolution below gives them everything.
@@ -738,6 +738,71 @@ Deno.serve(async (req) => {
             can: perms,
           },
         });
+      }
+
+
+      // ── The notification bell ────────────────────────────────────────────────
+      // Unread inbound texts, scoped exactly like everything else: a member sees
+      // their assigned clients only. Polled, so it is kept cheap - counts and a
+      // short preview list, never whole threads.
+      if (action === "sms_inbox") {
+        const ids = [...allowedIds];
+
+        // A text from a number nobody has saved is shown to whoever can see
+        // every client, because it belongs to no client and would otherwise be
+        // invisible to everyone. Same lesson as the "Unknown" threads: an
+        // unattributed message must land somewhere a person looks.
+        let q = adminClient
+          .from("team_sms_message")
+          .select("id, company_id, from_number, body, created_at, read_at")
+          .eq("direction", "inbound")
+          .is("read_at", null)
+          .order("created_at", { ascending: false })
+          .limit(25);
+        q = unrestricted
+          ? q
+          : (ids.length ? q.in("company_id", ids) : q.eq("company_id", "00000000-0000-0000-0000-000000000000"));
+
+        const { data: unread } = await q;
+        const rows = unread || [];
+
+        // Names for the dropdown. One query for the companies actually present
+        // rather than a join on every unread row.
+        const companyIds = [...new Set(rows.map((r) => r.company_id).filter(Boolean))] as string[];
+        const names: Record<string, string> = {};
+        if (companyIds.length) {
+          const { data: cos } = await adminClient
+            .from("companies").select("id, name").in("id", companyIds);
+          for (const c of cos || []) names[c.id as string] = (c.name as string) || "";
+        }
+
+        return json({
+          count: rows.length,
+          items: rows.map((r) => ({
+            id: r.id,
+            company_id: r.company_id,
+            // Falls back to the sender's number, never "Unknown".
+            who: (r.company_id && names[r.company_id as string]) || r.from_number,
+            preview: String(r.body || "").slice(0, 120),
+            created_at: r.created_at,
+          })),
+        });
+      }
+
+      // Dismissing the bell without opening each thread. Same scope as reading
+      // them, so a member can never clear another member's clients.
+      if (action === "mark_sms_read") {
+        const ids = [...allowedIds];
+        let u = adminClient.from("team_sms_message")
+          .update({ read_at: new Date().toISOString() })
+          .eq("direction", "inbound")
+          .is("read_at", null);
+        u = unrestricted
+          ? u
+          : (ids.length ? u.in("company_id", ids) : u.eq("company_id", "00000000-0000-0000-0000-000000000000"));
+        const { error } = await u;
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
       }
 
       const companyId = (body as { company_id?: string }).company_id;
@@ -886,6 +951,129 @@ Deno.serve(async (req) => {
           clientE164,
           clientLabel,
         });
+      }
+
+      // ════════════════════════════ TEAM ↔ CLIENT SMS ════════════════════════
+      // Plain two-way texting with a client, on the team's own number. No AI
+      // anywhere near it: a person writes every outbound message and a person
+      // reads every reply.
+      if (action === "list_client_sms") {
+        const { data: msgs } = await adminClient
+          .from("team_sms_message")
+          .select("id, direction, from_number, to_number, body, status, error_code, actor_name, read_at, created_at")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: true })
+          .limit(200);
+
+        // Opening the thread is reading it. Scoped to this company, so opening
+        // one client's thread does not clear the badge for every other.
+        await adminClient.from("team_sms_message")
+          .update({ read_at: new Date().toISOString() })
+          .eq("company_id", companyId)
+          .eq("direction", "inbound")
+          .is("read_at", null);
+
+        return json({ messages: msgs || [] });
+      }
+
+      if (action === "send_client_sms") {
+        if (!can("sms_send")) {
+          return json({ error: "Your role cannot send texts" }, 403);
+        }
+        const text = String((body as { body?: string }).body ?? "").trim();
+        if (!text) return json({ error: "Write something to send." }, 400);
+        if (text.length > 1000) return json({ error: "That is too long for a text." }, 400);
+
+        // Same rule as calling: the page names WHICH known contact, and the
+        // server resolves the digits. Nothing here will text a number that is
+        // not already in the client book.
+        const target = String((body as { target?: string }).target ?? "company");
+        const { data: company } = await adminClient
+          .from("companies").select("id, name, phone").eq("id", companyId).maybeSingle();
+        if (!company) return json({ error: "Client not found" }, 404);
+
+        let toRaw: string | null = null;
+        let contactId: string | null = null;
+        if (target === "company") {
+          toRaw = (company.phone as string | null) ?? null;
+        } else {
+          const { data: contact } = await adminClient
+            .from("profiles").select("id, full_name, phone, company_id")
+            .eq("id", target).maybeSingle();
+          if (!contact || contact.company_id !== companyId) {
+            return json({ error: "That contact is not on this client" }, 404);
+          }
+          toRaw = (contact.phone as string | null) ?? null;
+          contactId = contact.id as string;
+        }
+
+        const to = toE164(toRaw);
+        if (!to) {
+          return json({
+            error: toRaw
+              ? `That number cannot be texted: "${toRaw}". Fix it on the client record first.`
+              : "No phone number on file for them.",
+          }, 400);
+        }
+
+        const { data: ps } = await adminClient
+          .from("platform_settings").select("team_sms_number").eq("id", 1).maybeSingle();
+        const fromNumber = toE164(ps?.team_sms_number as string | null);
+        // Never falls back to the AI's number. Texting a client from the number
+        // an AI answers would put their reply into the lead pipeline, and two
+        // client numbers are also in `leads`, so that is not hypothetical.
+        if (!fromNumber) {
+          return json({ error: "No team SMS number is configured." }, 500);
+        }
+
+        const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+        if (!twilioSid || !twilioAuth) {
+          return json({ error: "Texting is not configured on the server." }, 500);
+        }
+
+        const res = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${btoa(`${twilioSid}:${twilioAuth}`)}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ To: to, From: fromNumber, Body: text }).toString(),
+          },
+        );
+        const tw = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const msg = (tw as { message?: string }).message || `Twilio returned ${res.status}`;
+          const code = String((tw as { code?: number }).code ?? res.status);
+          // Recorded as failed rather than not recorded: a message the team
+          // believes they sent, that never went, is the worst outcome here.
+          await adminClient.from("team_sms_message").insert({
+            company_id: companyId, contact_id: contactId, direction: "outbound",
+            from_number: fromNumber, to_number: to, body: text,
+            status: "failed", error_code: code,
+            actor_id: caller.id, actor_name: actorName,
+          });
+          console.error("send_client_sms: twilio rejected:", code, msg);
+          return json({ error: `Twilio could not send it: ${msg}`, twilio_code: code }, 502);
+        }
+
+        const { data: saved } = await adminClient.from("team_sms_message").insert({
+          company_id: companyId, contact_id: contactId, direction: "outbound",
+          from_number: fromNumber, to_number: to, body: text,
+          twilio_sid: (tw as { sid?: string }).sid ?? null,
+          status: (tw as { status?: string }).status || "queued",
+          actor_id: caller.id, actor_name: actorName,
+        }).select("id, direction, body, actor_name, status, created_at").single();
+
+        await logAction({
+          company_id: companyId, action: "sms.sent",
+          detail: { to, chars: text.length },
+        });
+
+        return json({ ok: true, message: saved });
       }
     }
 
@@ -2021,6 +2209,45 @@ Deno.serve(async (req) => {
     // false for them) so they never appeared in the team roster, which left the
     // admin with nowhere to enter their own number while being the one person
     // most likely to be testing. Both groups are listed here for that reason.
+    // ── Which number the team calls and texts from ───────────────────────────
+    // Editable, and shown next to the AI's number, because these were silently
+    // the same value and nobody could see it: outbound calls went out on the AI
+    // SMS number for want of anywhere to look. A setting that matters this much
+    // and lives only in a database column will be wrong again.
+    if (action === "get_call_settings") {
+      const { data } = await adminClient
+        .from("platform_settings")
+        .select("outbound_caller_id, team_sms_number, shared_ppl_twilio_number")
+        .eq("id", 1).maybeSingle();
+      return json({
+        outbound_caller_id: data?.outbound_caller_id || null,
+        team_sms_number: data?.team_sms_number || null,
+        // Read-only here on purpose: it belongs to the AI SMS pipeline and is
+        // shown only so the difference is visible.
+        ai_sms_number: data?.shared_ppl_twilio_number || null,
+      });
+    }
+
+    if (action === "set_call_settings") {
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      for (const key of ["outbound_caller_id", "team_sms_number"] as const) {
+        if (!(key in (body as Record<string, unknown>))) continue;
+        const raw = String((body as Record<string, string>)[key] ?? "").trim();
+        if (!raw) { patch[key] = null; continue; }
+        const e164 = toE164(raw);
+        if (!e164) {
+          return json({
+            error: `"${raw}" is not a number we can use. Include the country code, like +61485074183.`,
+          }, 400);
+        }
+        patch[key] = e164;
+      }
+      const { error } = await adminClient.from("platform_settings").update(patch).eq("id", 1);
+      if (error) return json({ error: error.message }, 500);
+      await logAction({ company_id: null, action: "settings.call_numbers_set", detail: patch });
+      return json({ ok: true, ...patch });
+    }
+
     if (action === "list_call_numbers") {
       const { data: rows } = await adminClient
         .from("profiles")

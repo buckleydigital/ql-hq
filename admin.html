@@ -242,6 +242,31 @@ h1{font-size:18px;font-weight:500}
           A local <code>0</code> number is assumed Australian; anything else must spell out its country.
           Whether someone may place calls at all is the <strong>Make calls</strong> permission below.
         </p>
+        <div style="border:1px solid var(--line,#e5e5ea);border-radius:8px;padding:12px;margin-bottom:16px">
+          <div style="font-weight:600;margin-bottom:2px">Which number clients see</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+            These were silently the same as the AI SMS number once, and outbound calls went out on it.
+            They are separate settings so a wrong one is visible.
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <label style="min-width:150px;font-size:12.5px">Outbound calls from</label>
+            <input class="form-input" id="setCallerId" type="tel" style="flex:1;min-width:180px;max-width:260px" placeholder="+61485074183">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <label style="min-width:150px;font-size:12.5px">Team texts from</label>
+            <input class="form-input" id="setTeamSms" type="tel" style="flex:1;min-width:180px;max-width:260px" placeholder="+61485074183">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+            <label style="min-width:150px;font-size:12.5px;color:var(--muted)">AI SMS number</label>
+            <span id="setAiSms" style="font-size:12.5px;color:var(--muted)">—</span>
+            <span style="font-size:11.5px;color:var(--muted)">(the AI's, not editable here)</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn2 btn-sm" id="setNumbersBtn" type="button">Save numbers</button>
+            <span id="setNumbersNote" style="font-size:11.5px;color:var(--muted)"></span>
+          </div>
+        </div>
+
         <div id="callNumLoading" class="notice">Loading…</div>
         <div id="callNumList" class="hidden"></div>
       </div>
@@ -2804,7 +2829,10 @@ h1{font-size:18px;font-weight:500}
     // 13. Load Internal Team panel
     await loadVaPanel();
 
+    loadCallSettings();
     loadCallNumbers();
+    var _numBtn = document.getElementById('setNumbersBtn');
+    if (_numBtn) _numBtn.addEventListener('click', saveCallSettings);
     loadPermPanel();
     var _permBtn = document.getElementById('permSaveBtn');
     if (_permBtn) _permBtn.addEventListener('click', savePermissions);
@@ -2818,6 +2846,38 @@ h1{font-size:18px;font-weight:500}
   // and validated by the same helper the dialling path uses. The input is
   // rewritten with what was actually stored, which makes it obvious that
   // 0412 345 678 became +61412345678.
+  async function loadCallSettings() {
+    try {
+      var s = await callVaEdge({ action: 'get_call_settings' });
+      document.getElementById('setCallerId').value = s.outbound_caller_id || '';
+      document.getElementById('setTeamSms').value = s.team_sms_number || '';
+      document.getElementById('setAiSms').textContent = s.ai_sms_number || '—';
+    } catch (err) {
+      document.getElementById('setNumbersNote').textContent = err.message || 'Could not load numbers';
+    }
+  }
+
+  async function saveCallSettings() {
+    var btn = document.getElementById('setNumbersBtn');
+    var note = document.getElementById('setNumbersNote');
+    btn.disabled = true; note.style.color = 'var(--muted)'; note.textContent = 'Saving…';
+    try {
+      var res = await callVaEdge({
+        action: 'set_call_settings',
+        outbound_caller_id: document.getElementById('setCallerId').value.trim(),
+        team_sms_number: document.getElementById('setTeamSms').value.trim(),
+      });
+      // Echoed back as stored, so a number that was reformatted is visible.
+      if (res.outbound_caller_id) document.getElementById('setCallerId').value = res.outbound_caller_id;
+      if (res.team_sms_number) document.getElementById('setTeamSms').value = res.team_sms_number;
+      note.textContent = 'Saved';
+    } catch (err) {
+      note.style.color = 'var(--danger,#c0392b)';
+      note.textContent = err.message || 'Could not save';
+    }
+    btn.disabled = false;
+  }
+
   async function loadCallNumbers() {
     var loading = document.getElementById('callNumLoading');
     var wrap = document.getElementById('callNumList');
@@ -2983,7 +3043,8 @@ h1{font-size:18px;font-weight:500}
     ['invoices_manage',    'Manage invoices',      'Create and edit invoices. Everyone can view them'],
     ['signups_review',     'Review signups',       'Approve a held signup, which creates the account'],
     ['assignments_manage', 'Assign clients',       'Move a client between team members'],
-    ['calls_make',         'Make calls',           'Ring a client from the QuoteLeads number. Their own mobile rings first']
+    ['calls_make',         'Make calls',           'Ring a client from the QuoteLeads number. Their own mobile rings first'],
+    ['sms_send',           'Send texts',           'Two-way SMS with a client, and the unread-text bell']
   ];
   var _permRows = null;
 
