@@ -2890,7 +2890,8 @@ h1{font-size:18px;font-weight:500}
     ['preview_email_send', 'Send previews',        'Email campaign previews for approval'],
     ['invoices_manage',    'Manage invoices',      'Create and edit invoices. Everyone can view them'],
     ['signups_review',     'Review signups',       'Approve a held signup, which creates the account'],
-    ['assignments_manage', 'Assign clients',       'Move a client between team members']
+    ['assignments_manage', 'Assign clients',       'Move a client between team members'],
+    ['calls_make',         'Make calls',           'Ring a client from the QuoteLeads number. Their own mobile rings first']
   ];
   var _permRows = null;
 
@@ -3033,6 +3034,12 @@ h1{font-size:18px;font-weight:500}
           '<button class="btn2 btn-sm va-replyto-btn" type="button">Save</button>' +
           '<span class="va-replyto-note" style="font-size:11.5px;color:var(--muted)"></span>' +
         '</div>' +
+        '<div class="form-label" style="margin-bottom:8px">Their mobile for click-to-call <span style="color:var(--muted);font-weight:400">— include the country code, e.g. +61412345678 or +639171234567</span></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
+          '<input class="form-input va-phone" type="tel" style="flex:1;min-width:220px;max-width:360px" placeholder="+61412345678" value="' + escapeHtml(v.phone || '') + '">' +
+          '<button class="btn2 btn-sm va-phone-btn" type="button">Save</button>' +
+          '<span class="va-phone-note" style="font-size:11.5px;color:var(--muted)"></span>' +
+        '</div>' +
         '<div class="form-label" style="margin-bottom:8px">Assigned clients</div>' +
         '<div class="va-assigns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">Loading…</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
@@ -3054,6 +3061,9 @@ h1{font-size:18px;font-weight:500}
       row.querySelector('.va-replyto-btn').addEventListener('click', function () {
         saveVaReplyTo(vaId, row);
       });
+      row.querySelector('.va-phone-btn').addEventListener('click', function () {
+        saveVaPhone(vaId, row);
+      });
     });
   }
 
@@ -3064,6 +3074,26 @@ h1{font-size:18px;font-weight:500}
     btn.disabled = true; note.textContent = '';
     try {
       await callVaEdge({ action: 'set_team_reply_to', team_user_id: vaId, reply_to_email: input.value.trim() });
+      note.textContent = 'Saved';
+    } catch (err) {
+      note.textContent = err.message || 'Could not save';
+    }
+    btn.disabled = false;
+  }
+
+  // Saved through the server so the number is normalised and validated in one
+  // place - the same helper the dialling path uses - rather than trusting
+  // whatever shape it was typed in.
+  async function saveVaPhone(vaId, row) {
+    var input = row.querySelector('.va-phone');
+    var note = row.querySelector('.va-phone-note');
+    var btn = row.querySelector('.va-phone-btn');
+    btn.disabled = true; note.textContent = '';
+    try {
+      var res = await callVaEdge({ action: 'set_team_phone', team_user_id: vaId, phone: input.value.trim() });
+      // Echoed back in the form it was stored in, so it is obvious that
+      // 0412 345 678 became +61412345678.
+      if (res && res.phone) input.value = res.phone;
       note.textContent = 'Saved';
     } catch (err) {
       note.textContent = err.message || 'Could not save';

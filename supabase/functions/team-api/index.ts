@@ -124,6 +124,52 @@ function escHtml(v: unknown): string {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// ── Phone numbers for dialling ──────────────────────────────────────────────
+// Twilio needs E.164 (+countrycode then digits) and rejects anything else, so a
+// number typed by a human has to be normalised before it can be dialled.
+//
+// Deliberately conservative: it converts only the shapes that cannot mean
+// anything else, and otherwise refuses rather than guessing a country. A bare
+// 9171234567 is as consistent with a US number as with a Manila mobile, and a
+// wrong guess dials a stranger from the agency's number. Now that the team
+// reaches the Philippines, "assume Australia" is no longer a safe default -
+// see the digit-count note below for the case that actually bit.
+function toE164(raw: unknown): string | null {
+  let p = String(raw ?? "").replace(/[\s\-().]/g, "");
+  if (!p) return null;
+  if (p.startsWith("+")) {
+    // Already international. Left alone - the person wrote the country.
+  } else if (p.startsWith("0011")) {
+    p = "+" + p.slice(4);   // Australia's own international prefix
+  } else if (p.startsWith("00")) {
+    p = "+" + p.slice(2);   // the prefix most of the world uses
+  } else if (/^0\d{9}$/.test(p)) {
+    // Australian local form, and the digit count is load-bearing. Every
+    // Australian mobile and landline is exactly 9 digits after the trunk 0,
+    // whereas a Philippine mobile written locally is 10 (0917 123 4567). A
+    // looser rule turned the team's own Manila mobile into +619171234567 - a
+    // real, wrong, Australian number. Requiring exactly 9 makes that
+    // impossible.
+    p = "+61" + p.slice(1);
+  } else if (/^1(300|800)\d{6}$/.test(p) || /^13\d{4}$/.test(p)) {
+    p = "+61" + p;          // 1300 / 1800 / 13 business numbers carry no trunk 0
+  } else if (/^61\d{9}$/.test(p)) {
+    p = "+" + p;            // 61... with the plus lost somewhere
+  }
+  if (!p.startsWith("+")) return null;   // anything else must say its country
+  // 8 is the shortest plausible national number with a country code; 15 is the
+  // E.164 maximum.
+  return /^\+[1-9]\d{7,14}$/.test(p) ? p : null;
+}
+
+// TwiML is XML, and a client's name is free text that reaches it. Without this
+// a company called "Bob & Sons" makes the document invalid and the call fails
+// with nothing to explain why.
+function escapeXml(v: unknown): string {
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
 function textToHtml(text: string): string {
   const paras = String(text).split(/\n{2,}/).map((p) =>
     `<p style="margin:0 0 16px">${escHtml(p).replace(/\n/g, "<br>")}</p>`
@@ -206,7 +252,7 @@ Deno.serve(async (req) => {
     // Resolve caller flags via service role (never trust a client-supplied value).
     const { data: me, error: meErr } = await adminClient
       .from("profiles")
-      .select("is_team, is_admin, full_name, team_role")
+      .select("is_team, is_admin, full_name, team_role, phone")
       .eq("id", caller.id)
       .maybeSingle();
     if (meErr) {
@@ -239,7 +285,7 @@ Deno.serve(async (req) => {
     const CAPS = [
       "all_clients", "fulfilment_view", "fulfilment_edit", "automations_run",
       "intro_email_send", "preview_email_send", "invoices_manage",
-      "signups_review", "assignments_manage",
+      "signups_review", "assignments_manage", "calls_make",
     ] as const;
     type Cap = typeof CAPS[number];
 
@@ -411,8 +457,171 @@ Deno.serve(async (req) => {
       }
     };
 
+
+    // ── Placing a bridge call ───────────────────────────────────────────────
+    // Twilio rings the caller's own mobile; when they answer, it dials the far
+    // end and bridges the two, so the person being rung sees the agency's
+    // number rather than a personal one.
+    //
+    // ONE function for both the live path and the admin test path. A test that
+    // is a second copy of this stops being a test the first time the two drift,
+    // so the test differs only in how the destination number is arrived at -
+    // everything about the call itself is shared.
+    const placeBridgeCall = async (opts: {
+      companyId: string | null;
+      clientE164: string;
+      clientLabel: string;
+      isTest?: boolean;
+    }): Promise<Response> => {
+      // The agent's own mobile, from their profile. Required in full
+      // international form: this leg may go to the Philippines, and there is no
+      // safe way to guess a country from a bare local number.
+      const agentE164 = toE164(me?.phone as string | null);
+      if (!agentE164) {
+        return json({
+          error: "Add your own mobile number to your profile before calling. "
+            + "It must include the country code, like +61412345678 or +639171234567.",
+        }, 400);
+      }
+      if (agentE164 === opts.clientE164) {
+        return json({ error: "That would ring you on both ends of the same call." }, 400);
+      }
+
+      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+      const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
+      if (!twilioSid || !twilioAuth) {
+        return json({ error: "Calling is not configured on the server." }, 500);
+      }
+
+      const { data: ps } = await adminClient
+        .from("platform_settings")
+        .select("outbound_caller_id, shared_ppl_twilio_number").eq("id", 1).maybeSingle();
+      // Falls back to the shared number, which is the agency's own, so this
+      // works without anything being seeded.
+      const callerId = toE164(
+        (ps?.outbound_caller_id as string | null) || (ps?.shared_ppl_twilio_number as string | null),
+      );
+      if (!callerId) return json({ error: "No outbound caller ID is configured." }, 500);
+
+      // ── What the agent's phone hears when they pick up ─────────────────────
+      //
+      // Says who is being rung before dialling, because a call that just
+      // connects gives no chance to realise the wrong button was pressed.
+      //
+      // answerOnBridge is the attribute that matters: without it Twilio answers
+      // the agent's leg immediately and plays silence while the far end rings,
+      // which starts billing early and leaves the agent unsure anything is
+      // happening. With it, they hear the real ringing tone.
+      const twiml =
+        `<?xml version="1.0" encoding="UTF-8"?>`
+        + `<Response>`
+        + `<Say voice="Polly.Olivia">Connecting you to ${escapeXml(opts.clientLabel)}.</Say>`
+        + `<Dial answerOnBridge="true" callerId="${callerId}" timeout="25">`
+        + `<Number>${opts.clientE164}</Number>`
+        + `</Dial>`
+        + `</Response>`;
+
+      // Logged before the call is placed, so an attempt that fails at Twilio
+      // still leaves a record. A log written only on success would hide exactly
+      // the calls worth investigating.
+      const { data: logRow } = await adminClient.from("call_log").insert({
+        company_id: opts.companyId,
+        actor_id: caller.id,
+        actor_name: actorName,
+        agent_number: agentE164,
+        client_number: opts.clientE164,
+        // Marked in the label rather than in a column: a test call is a real
+        // call that really cost money, so it belongs in the same log, just
+        // obviously labelled.
+        client_label: opts.isTest ? `[test] ${opts.clientLabel}` : opts.clientLabel,
+        caller_id: callerId,
+        status: "queued",
+      }).select("id").single();
+
+      const params = new URLSearchParams({
+        To: agentE164,
+        From: callerId,
+        Twiml: twiml,
+        // 25s on each leg. Long enough to reach a voicemail greeting, short
+        // enough that a dead number does not tie the agent up.
+        Timeout: "25",
+      });
+      // Twilio tells us how it went, which is the only way the log learns
+      // whether anyone actually answered. Skipped rather than fatal if the
+      // secret is unset: a call the team can make but cannot see the outcome of
+      // still beats no call at all.
+      const statusSecret = Deno.env.get("TWILIO_STATUS_SECRET");
+      const fnBase = Deno.env.get("SUPABASE_URL");
+      if (statusSecret && fnBase && logRow?.id) {
+        const base = fnBase.replace(".supabase.co", ".functions.supabase.co");
+        params.set(
+          "StatusCallback",
+          `${base}/twilio-call-status?token=${encodeURIComponent(statusSecret)}&log=${logRow.id}`,
+        );
+        params.set("StatusCallbackMethod", "POST");
+        for (const ev of ["initiated", "ringing", "answered", "completed"]) {
+          params.append("StatusCallbackEvent", ev);
+        }
+      }
+
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Calls.json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${btoa(`${twilioSid}:${twilioAuth}`)}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        },
+      );
+      const tw = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = (tw as { message?: string }).message || `Twilio returned ${res.status}`;
+        const code = String((tw as { code?: number }).code ?? res.status);
+        if (logRow?.id) {
+          await adminClient.from("call_log")
+            .update({ status: "failed", error_code: code, updated_at: new Date().toISOString() })
+            .eq("id", logRow.id);
+        }
+        console.error("placeBridgeCall: twilio rejected:", code, msg);
+        // Twilio's own wording is passed through. Geo permissions and
+        // unverified numbers are the two failures that will actually happen
+        // here, and both are fixed in the Twilio console by whoever reads this
+        // message - a generic "call failed" would send them to me instead.
+        return json({ error: `Twilio could not place the call: ${msg}`, twilio_code: code }, 502);
+      }
+
+      const sid = (tw as { sid?: string }).sid ?? null;
+      if (logRow?.id) {
+        await adminClient.from("call_log").update({
+          twilio_call_sid: sid,
+          status: (tw as { status?: string }).status || "queued",
+          updated_at: new Date().toISOString(),
+        }).eq("id", logRow.id);
+      }
+
+      await logAction({
+        company_id: opts.companyId,
+        action: opts.isTest ? "call.test_placed" : "call.placed",
+        detail: { to: opts.clientE164, label: opts.clientLabel, agent: agentE164, sid },
+      });
+
+      return json({
+        ok: true,
+        call_id: logRow?.id ?? null,
+        sid,
+        // So the panel can say "answer your phone" with the right number on it,
+        // rather than leaving the agent wondering what is about to ring.
+        ringing: agentE164,
+        calling: opts.clientE164,
+        label: opts.clientLabel,
+      });
+    };
+
     // ────────────────────── INTERNAL TEAM ACTIONS ──────────────────────────
-    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability"]);
+    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability", "start_call", "list_calls"]);
     if (TEAM_ACTIONS.has(action || "")) {
       // An admin who is not on the team can still use these to see the panel
       // the team sees; scope resolution below gives them everything.
@@ -503,6 +712,10 @@ Deno.serve(async (req) => {
             is_admin: isAdmin,
             unrestricted,
             full_name: me?.full_name || null,
+            // The mobile a click-to-call rings first. Sent so the panel can say
+            // whose phone is about to ring, and so the admin test page can tell
+            // the admin when they have not set one.
+            phone: me?.phone || null,
             // So the panel hides what this caller cannot use. The gate that
             // matters is server-side; this stops the UI offering a 403.
             can: perms,
@@ -528,6 +741,10 @@ Deno.serve(async (req) => {
           .eq("company_id", companyId);
         const emails = await emailMap(adminClient, (members || []).map((m: { id: string }) => m.id));
         const contacts = (members || []).map((m: Record<string, unknown>) => ({
+          // id travels with the contact because start_call addresses a contact
+          // by id, never by position in this list - a list that reordered would
+          // otherwise ring the wrong person.
+          id: m.id,
           full_name: m.full_name, phone: m.phone, role: m.role, email: emails[m.id as string] || "",
         }));
 
@@ -571,6 +788,87 @@ Deno.serve(async (req) => {
           detail: { note_id: note.id, chars: noteBody.length },
         });
         return json({ note });
+      }
+
+      // ══════════════════════════ OUTBOUND CALLING ══════════════════════════
+      // Click-to-call. Twilio rings the team member's own mobile, and when they
+      // answer it dials the client and bridges the two, so the client sees the
+      // agency's number rather than a personal one.
+      //
+      // A bridge rather than calling from the browser: the person doing this is
+      // in the Philippines, and a bridge rings a real mobile - nothing to
+      // install, no headset, and no dependence on home internet holding up for
+      // the length of a client call.
+      if (action === "list_calls") {
+        const { data: calls } = await adminClient
+          .from("call_log")
+          .select("id, actor_name, client_number, client_label, status, duration_secs, error_code, created_at")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        return json({ calls: calls || [] });
+      }
+
+      if (action === "start_call") {
+        if (!can("calls_make")) {
+          return json({ error: "Your role cannot place calls" }, 403);
+        }
+
+        // ── The number to ring is resolved here, never accepted from the page ──
+        //
+        // This is the whole security model. An endpoint that dials a number the
+        // browser supplies is a toll-fraud machine: a stolen team login could
+        // bill this Twilio account dry against premium-rate international
+        // numbers, and the bill is the agency's. So the page names WHICH known
+        // contact to ring, and the server looks up the digits.
+        //
+        // Both ends are resolved this way, the agent's mobile included. It comes
+        // from the caller's own profile, so a compromised session cannot make
+        // Twilio ring an arbitrary number even on the first leg.
+        const target = String((body as { target?: string }).target ?? "company");
+
+        const { data: company } = await adminClient
+          .from("companies").select("id, name, phone").eq("id", companyId).maybeSingle();
+        if (!company) return json({ error: "Client not found" }, 404);
+
+        let clientNumber: string | null = null;
+        let clientLabel = String(company.name ?? "this client");
+
+        if (target === "company") {
+          clientNumber = (company.phone as string | null) ?? null;
+        } else {
+          // A contact is addressed by its profile id, which the panel already
+          // has from get_client - not by an index into a list, which would
+          // silently ring the wrong person the moment the list reordered.
+          const { data: contact } = await adminClient
+            .from("profiles")
+            .select("id, full_name, phone, company_id")
+            .eq("id", target)
+            .maybeSingle();
+          // Re-checked against this company rather than trusted: a contact id
+          // is a uuid from the page, so without this a team member could ring
+          // any profile in the database by passing someone else's id.
+          if (!contact || contact.company_id !== companyId) {
+            return json({ error: "That contact is not on this client" }, 404);
+          }
+          clientNumber = (contact.phone as string | null) ?? null;
+          clientLabel = `${contact.full_name || "Contact"} at ${company.name ?? "this client"}`;
+        }
+
+        const clientE164 = toE164(clientNumber);
+        if (!clientE164) {
+          return json({
+            error: clientNumber
+              ? `${clientLabel} has a phone number we cannot dial: "${clientNumber}". Fix it on the client record first.`
+              : `No phone number on file for ${clientLabel}.`,
+          }, 400);
+        }
+
+        return await placeBridgeCall({
+          companyId,
+          clientE164,
+          clientLabel,
+        });
       }
     }
 
@@ -1536,7 +1834,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list_team") {
-      const { data: team } = await adminClient.from("profiles").select("id, full_name, team_reply_to_email, team_role").eq("is_team", true);
+      const { data: team } = await adminClient.from("profiles").select("id, full_name, team_reply_to_email, team_role, phone").eq("is_team", true);
       const ids = (team || []).map((v: { id: string }) => v.id);
       const emails = await emailMap(adminClient, ids);
       const { data: assigns } = await adminClient.from("team_assignments").select("team_user_id, company_id").in("team_user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
@@ -1545,6 +1843,8 @@ Deno.serve(async (req) => {
       const list = (team || []).map((v: Record<string, unknown>) => ({
         id: v.id, full_name: v.full_name, email: emails[v.id as string] || "",
         team_reply_to_email: v.team_reply_to_email || null,
+        // The mobile Twilio rings for the first leg of a click-to-call.
+        phone: v.phone || null,
         team_role: (v.team_role as string) || "member",
         assigned: counts[v.id as string] || 0,
       }));
@@ -1693,6 +1993,104 @@ Deno.serve(async (req) => {
         detail: { to_user_id: team_user_id, to_name: target.full_name || null, notified, already_theirs: !!existing },
       });
       return json({ ok: true, notified });
+    }
+
+    // The mobile Twilio rings for the first leg of a click-to-call. Admin-set
+    // rather than self-set, for the same reason the reply-to is: it decides
+    // where a call placed in the agency's name actually goes.
+    // ── The admin test call ──────────────────────────────────────────────────
+    // A free-typed number, which the live path deliberately refuses. The reason
+    // the live path refuses is toll fraud: a stolen team login that can dial
+    // anything can bill this Twilio account dry against premium-rate numbers.
+    //
+    // That reasoning does not extend to an admin. An admin can already change
+    // permissions, impersonate users and read every client, so a stolen admin
+    // session is a total compromise with or without this - it adds no new
+    // authority. It is still capped below, because a bound on the damage costs
+    // nothing and "admin" is not the same as "unlimited".
+    //
+    // Everything past resolving the number is the live code path, shared, so
+    // this really does test what the team will experience.
+    if (action === "start_test_call") {
+      const raw = String((body as { phone?: string }).phone ?? "").trim();
+      if (!raw) return json({ error: "Enter a number to call." }, 400);
+      const target = toE164(raw);
+      if (!target) {
+        return json({
+          error: `"${raw}" is not a number we can dial. Include the country code, `
+            + "like +61412345678 or +639171234567.",
+        }, 400);
+      }
+
+      // A cap, not a permission. 20 a day is far more than testing needs and far
+      // less than a stolen session could spend before somebody notices.
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count } = await adminClient
+        .from("call_log")
+        .select("id", { count: "exact", head: true })
+        .eq("actor_id", caller.id)
+        .is("company_id", null)
+        .gte("created_at", since);
+      if ((count ?? 0) >= 20) {
+        return json({
+          error: "You have placed 20 test calls in the last 24 hours. "
+            + "That is the cap - it resets on a rolling basis.",
+        }, 429);
+      }
+
+      const label = String((body as { label?: string }).label ?? "").trim().slice(0, 60);
+      return await placeBridgeCall({
+        // No company: a test call is not part of any client's history, and
+        // putting it there would put "[test]" in a record the team reads as
+        // real contact.
+        companyId: null,
+        clientE164: target,
+        clientLabel: label || "a test number",
+        isTest: true,
+      });
+    }
+
+    // The admin's own test calls, so the result of a test is visible without
+    // opening a client.
+    if (action === "list_test_calls") {
+      const { data: calls } = await adminClient
+        .from("call_log")
+        .select("id, actor_name, client_number, client_label, status, duration_secs, error_code, created_at")
+        .is("company_id", null)
+        .eq("actor_id", caller.id)
+        .order("created_at", { ascending: false })
+        .limit(25);
+      return json({ calls: calls || [] });
+    }
+
+    if (action === "set_team_phone") {
+      const { team_user_id } = body as { team_user_id?: string };
+      const raw = String((body as { phone?: string }).phone ?? "").trim();
+      if (!team_user_id) return json({ error: "team_user_id is required" }, 400);
+      if (!raw) {
+        const { error } = await adminClient.from("profiles")
+          .update({ phone: null }).eq("id", team_user_id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, phone: null });
+      }
+      // Stored already normalised, so the dialling path never has to guess and
+      // a number that cannot be dialled is rejected here - while somebody is
+      // looking at it - rather than at 9am when a call fails.
+      const e164 = toE164(raw);
+      if (!e164) {
+        return json({
+          error: `"${raw}" is not a number we can dial. Include the country code, `
+            + "like +61412345678 or +639171234567.",
+        }, 400);
+      }
+      const { error } = await adminClient.from("profiles")
+        .update({ phone: e164 }).eq("id", team_user_id);
+      if (error) return json({ error: error.message }, 500);
+      await logAction({
+        company_id: null, action: "team.phone_set",
+        detail: { user_id: team_user_id, phone: e164 },
+      });
+      return json({ ok: true, phone: e164 });
     }
 
     if (action === "set_team_reply_to") {
