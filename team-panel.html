@@ -1016,7 +1016,21 @@
   function applyCapabilities() {
     $('navFulfil').classList.toggle('hidden', !iCan('fulfilment_view'));
     $('navSignups').classList.toggle('hidden', !iCan('signups_review'));
-    $('navCallTest').classList.toggle('hidden', !_realAdmin);
+    // Hidden while previewing somebody, even though the viewer is still an
+    // admin. This tab is an admin tool and a previewed team member has nothing
+    // like it, so leaving it up made the preview show a panel Mark can never
+    // see - and this codebase has already been bitten by a preview that quietly
+    // widened what it was previewing (the fulfilment board once showed all 26
+    // clients while previewing a member with 5). A preview is only worth having
+    // if it is honest, so it wins over the convenience of keeping the tab.
+    //
+    // _realAdmin rather than _me.is_admin because _me becomes the previewed
+    // member: the admin has to still count as an admin the moment they switch
+    // back to their own view, which is one dropdown away.
+    $('navCallTest').classList.toggle('hidden', !_realAdmin || !!_selectedVaId);
+    // Previewing from inside the tab would otherwise leave it on screen with
+    // the nav button gone.
+    if (_selectedVaId && !$('callTestView').classList.contains('hidden')) showList();
     if (iCan('signups_review')) prefetchSignupCount();
   }
 
