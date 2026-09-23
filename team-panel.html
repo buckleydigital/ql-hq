@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,6 +30,16 @@
   --r:8px; --r2:12px; --r3:16px;
 }
 
+[data-theme="light"]{
+  --bg:#f2f2f5; --bg2:#ebebef;
+  --s1:#ffffff; --s2:#f7f7fa; --s3:#eeeef2; --s4:#e5e5ec;
+  --bd:#dddde8; --bd2:#cacad8; --bd3:#b8b8c8;
+  --ink:#0a0a14; --ink2:#52526a; --ink3:#9494a8; --ink4:#c4c4d4;
+  --acc-dim:rgba(79,143,255,.055); --acc-glow:rgba(79,143,255,.12); --acc-ink:#1a52c0;
+  --red:#e0304a; --red-dim:rgba(224,48,74,.055);
+  --grn:#1db87a; --grn-dim:rgba(29,184,122,.055);
+}
+
 /* ═══ RESET ═══ */
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:13px;
@@ -41,18 +51,96 @@ a:hover{text-decoration:underline}
 ::-webkit-scrollbar{width:2px;height:2px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bd3);border-radius:2px}
-.wrap{max-width:1240px;margin:0 auto;padding:20px 22px 70px}
 .hidden{display:none!important}
 .muted{color:var(--ink3)}
 
-/* ═══ PAGE HEADER ═══ */
-.topbar{display:flex;align-items:flex-start;justify-content:space-between;
-  margin-bottom:18px;flex-wrap:wrap;gap:10px}
-.topbar h1{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:-.4px;
-  color:var(--ink);display:flex;align-items:center;gap:10px}
-.pill{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.06em;
-  text-transform:uppercase;padding:3px 9px;border-radius:20px;
-  background:var(--acc-dim);color:var(--acc);border:1px solid rgba(79,143,255,.15)}
+/* ═══ APP SHELL ═══ */
+html,body{height:100%}
+body{overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ═══ TOPBAR ═══ */
+.topbar{height:46px;background:var(--s1);border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;z-index:20}
+.tb-mark{height:22px;width:auto;flex-shrink:0;display:block;object-fit:contain}
+/* Compound selectors, not bare ones. `.tb-mark-light{display:none}` ties with
+   `.tb-mark{display:block}` on specificity, so whichever came last would win -
+   which is how both marks once rendered side by side in ql-mc's dark mode.
+   `.tb-mark.tb-mark-light` outranks it outright, wherever it sits. */
+.tb-mark.tb-mark-light{display:none}
+[data-theme="light"] .tb-mark.tb-mark-dark{display:none}
+[data-theme="light"] .tb-mark.tb-mark-light{display:block}
+.tb-name{font-family:var(--display);font-size:12.5px;font-weight:700;
+  letter-spacing:-.2px;color:var(--ink);white-space:nowrap}
+.tb-sep{width:1px;height:14px;background:var(--bd2);flex-shrink:0}
+.tb-sp{flex:1}
+.ibtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:var(--r);border:1px solid transparent;background:transparent;
+  color:var(--ink3);font-size:12px;transition:all .12s;text-decoration:none;flex-shrink:0}
+.ibtn:hover{background:var(--s3);border-color:var(--bd2);color:var(--ink);text-decoration:none}
+.tb-badge{position:absolute;top:-3px;right:-3px;background:var(--red);color:#fff;
+  border-radius:8px;font-size:8px;padding:0 4px;font-family:var(--mono);
+  font-weight:700;line-height:1.6}
+
+/* ═══ LAYOUT ═══ */
+.layout{display:flex;flex:1;overflow:hidden}
+.content{flex:1;overflow-y:auto;background:var(--bg)}
+.panelwrap{padding:20px 22px 40px;min-height:100%}
+
+/* ═══ SIDEBAR ═══ */
+.sidebar{width:220px;background:var(--s1);border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+.sb-header{padding:16px 14px 13px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.sb-status{display:flex;align-items:center;gap:6px;background:var(--acc-dim);
+  border:1px solid rgba(79,143,255,.12);border-radius:4px;padding:5px 9px;
+  font-family:var(--mono);font-size:9px;color:var(--acc);letter-spacing:.06em}
+.sb-status-dot{width:4px;height:4px;border-radius:50%;background:var(--acc);
+  animation:blink 2s infinite;box-shadow:0 0 5px var(--acc);flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.sb-nav{flex:1;padding:10px 10px 0}
+.sb-group{margin-bottom:4px}
+.sb-group-label{font-family:var(--mono);font-size:8.5px;font-weight:500;color:var(--ink4);
+  text-transform:uppercase;letter-spacing:.15em;padding:10px 8px 4px;display:block}
+.navbtn{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r);
+  font-size:13.5px;font-weight:500;color:var(--ink2);border:1px solid transparent;
+  background:transparent;width:100%;text-align:left;transition:all .14s;
+  line-height:1.1;margin-bottom:1px}
+.navbtn:hover{background:var(--s3);color:var(--ink)}
+.navbtn.active{background:var(--acc-dim);color:var(--acc-ink);font-weight:600}
+.navbtn.active .ni{color:var(--acc)}
+.ni{width:17px;height:17px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;color:var(--ink3);transition:color .14s}
+.ni svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+.navbtn:hover .ni{color:var(--ink2)}
+.nav-badge{margin-left:auto;background:var(--amb);color:#1c1416;border-radius:10px;
+  font-size:9px;padding:1px 6px;font-family:var(--mono);font-weight:700;line-height:1.5}
+.sb-divider{height:1px;margin:8px 10px;
+  background:linear-gradient(90deg,transparent,var(--bd),transparent)}
+.sb-bottom{padding:10px 10px 14px;border-top:1px solid var(--bd);margin-top:auto;flex-shrink:0}
+.sb-bottom .navbtn{color:var(--ink3);font-size:11.5px}
+.sb-bottom .navbtn:hover{color:var(--red)}
+.sb-bottom .navbtn:hover .ni{color:var(--red)}
+.btn-xs{padding:3px 8px;font-size:10px}
+
+/* A narrow screen has no room for a fixed column beside the work, so the
+   sidebar becomes a scrolling strip above it. */
+@media(max-width:820px){
+  .layout{flex-direction:column;overflow:auto}
+  .sidebar{width:100%;border-right:0;border-bottom:1px solid var(--bd);overflow:visible}
+  .sb-header{display:none}
+  .sb-nav{display:flex;gap:5px;overflow-x:auto;padding:9px 12px}
+  .sb-group{display:flex;gap:5px;margin:0}
+  .sb-group-label,.sb-divider{display:none}
+  .navbtn{width:auto;white-space:nowrap;padding:7px 12px;font-size:12px;
+    border:1px solid var(--bd2);background:var(--s2);margin:0}
+  .sb-bottom{display:flex;gap:8px;align-items:center;padding:0 12px 10px;
+    border-top:0;margin-top:0}
+  .sb-bottom #adminBar{margin:0;flex:1}
+  body{overflow:auto}
+  #app{height:auto;min-height:100vh}
+  .content{overflow:visible}
+}
 
 /* ═══ BUTTONS ═══ */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;
@@ -65,8 +153,8 @@ a:hover{text-decoration:underline}
 .btn-p:hover{background:var(--acc2);border-color:var(--acc2);color:#fff;
   box-shadow:0 4px 18px rgba(79,143,255,.4);transform:translateY(-1px)}
 .btn:disabled{opacity:.35;cursor:default;transform:none;box-shadow:none}
-.btn:focus-visible,.vanav button:focus-visible,#smsBell:focus-visible,
-.navmore>button:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
+.btn:focus-visible,.navbtn:focus-visible,#smsBell:focus-visible,
+.ibtn:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
 
 /* ═══ CARDS ═══ */
 .card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r2);
@@ -83,23 +171,6 @@ a:hover{text-decoration:underline}
 .sec-title:first-child{margin-top:0}
 
 /* ═══ TABS ═══ */
-.vanav{display:flex;gap:5px;flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:30;
-  background:rgba(7,7,8,.9);backdrop-filter:blur(14px);
-  padding:10px 0;margin-bottom:18px;border-bottom:1px solid var(--bd)}
-.vanav button,.navmore>button{display:inline-flex;align-items:center;gap:6px;
-  padding:6px 13px;border-radius:var(--r);border:1px solid var(--bd2);
-  background:var(--s2);color:var(--ink2);font-size:11.5px;font-weight:400;
-  transition:all .12s;line-height:1.4}
-.vanav button:hover,.navmore>button:hover{border-color:var(--acc);color:var(--acc);background:var(--acc-dim)}
-.vanav button.active,.navmore>button.active{background:var(--acc-dim);color:var(--acc);
-  border-color:rgba(79,143,255,.35);font-weight:500}
-.navmore{position:relative}
-.navmore .menu{position:absolute;left:0;top:calc(100% + 6px);min-width:200px;
-  background:var(--s1);border:1px solid var(--bd2);border-radius:var(--r2);padding:5px;
-  z-index:40;box-shadow:0 20px 44px rgba(0,0,0,.6)}
-.navmore .menu button{display:block;width:100%;text-align:left;border:0;background:none;
-  border-radius:var(--r);padding:8px 11px;color:var(--ink2);font-size:11.5px}
-.navmore .menu button:hover{background:var(--s3);color:var(--ink)}
 #smsBell{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--r);
   border:1px solid var(--bd2);background:var(--s2);color:var(--ink2);font-size:13px;
   line-height:1.4;transition:all .12s}
@@ -274,58 +345,114 @@ select{cursor:pointer}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="app">
+
+  <!-- ═══ TOPBAR ═══ -->
   <div class="topbar">
-    <h1>Team Panel <span class="pill" id="modePill">Internal Team</span></h1>
-    <div style="display:flex;gap:8px">
-      <a class="btn" href="dashboard.html">Dashboard</a>
-      <button class="btn" id="logoutBtn" type="button">Log out</button>
-    </div>
-  </div>
+    <!-- Two files rather than one recoloured by CSS: the mark is a PNG, so a
+         filter could only approximate it. Only one is ever shown; the second
+         carries no alt text so the name is not announced twice. -->
+    <img class="tb-mark tb-mark-dark" src="./quoteleads-logo-white-hq.png" alt="QuoteLeads">
+    <img class="tb-mark tb-mark-light" src="./quoteleads-logo-black-hq.png" alt="" aria-hidden="true">
+    <span class="tb-name">Team Panel</span>
+    <div class="tb-sep"></div>
+    <span class="pill" id="modePill">Internal Team</span>
+    <div class="tb-sp"></div>
 
-  <!-- Admin preview: team member selector -->
-  <div id="adminBar" class="hidden" style="margin-bottom:14px">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-      background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:9px 13px">
-      <label style="font-size:12px;color:var(--ink3);font-weight:600">Viewing as</label>
-      <select id="vaSelect" class="btn" style="min-width:200px"></select>
-    </div>
-  </div>
-
-  <div class="vanav hidden" id="vaNav">
-    <button id="navClients" class="active" type="button">Clients</button>
-    <button id="navTexts" type="button" class="hidden">Texts <span id="textsBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
-    <button id="navFulfil" type="button">Fulfilment</button>
-    <button id="navSignups" type="button" class="hidden">Signups <span id="signupBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
-
-    <!-- Everything you touch once a week rather than once an hour. Seven flat
-         tabs wrapped onto two lines and made the frequent ones hard to find;
-         four plus a menu does not. -->
-    <div class="navmore">
-      <button id="navMore" type="button" aria-haspopup="true" aria-expanded="false">More ▾</button>
-      <div id="navMoreMenu" class="menu hidden">
-        <button id="navAvail" type="button">My Availability</button>
-        <button id="navTpl" type="button">Email Templates</button>
-        <button id="navCallTest" type="button" class="hidden">Call &amp; SMS Test</button>
-      </div>
-    </div>
-
-    <!-- The bell sits at the end of the nav and pushes itself right, so it is
-         in the same place on every view rather than only on the client list. -->
-    <div id="smsBellWrap" class="hidden" style="margin-left:auto;position:relative">
-      <button id="smsBell" type="button" title="Unread texts from clients">
-        &#9993;<span id="smsBadge" class="badge due hidden" style="margin-left:5px">0</span>
+    <!-- The unread-text bell. In the topbar rather than the sidebar because it
+         is a notification, not a destination: it should sit where the eye
+         already goes for status, and stay put on every panel. -->
+    <div id="smsBellWrap" class="hidden" style="position:relative">
+      <button id="smsBell" class="ibtn" type="button" title="Unread texts from clients" style="position:relative">
+        &#9993;<span id="smsBadge" class="tb-badge hidden">0</span>
       </button>
-      <div id="smsDrop" class="card hidden" style="position:absolute;right:0;top:calc(100% + 6px);width:min(360px,90vw);max-height:60vh;overflow:auto;z-index:50;padding:0">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bd)">
-          <strong style="font-size:13px">Unread texts</strong>
-          <button class="btn" id="smsMarkAll" type="button" style="font-size:11.5px;padding:3px 8px">Mark all read</button>
+      <div id="smsDrop" class="hidden" style="position:absolute;right:0;top:calc(100% + 8px);width:min(360px,92vw);max-height:60vh;overflow:auto;z-index:60;background:var(--s1);border:1px solid var(--bd2);border-radius:var(--r2);box-shadow:0 20px 44px rgba(0,0,0,.6)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border-bottom:1px solid var(--bd)">
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink2)">Unread texts</strong>
+          <button class="btn btn-xs" id="smsMarkAll" type="button">Mark all read</button>
         </div>
         <div id="smsDropList"></div>
       </div>
     </div>
+
+    <button class="ibtn" id="theme-btn" type="button" title="Toggle theme">◐</button>
+    <a class="ibtn" href="dashboard.html" title="Dashboard">⌂</a>
+    <button class="ibtn" id="logoutBtn" type="button" title="Sign out">⎋</button>
   </div>
 
+  <div class="layout">
+
+    <!-- ═══ SIDEBAR ═══ -->
+    <!-- The tab strip had grown to seven and wrapped onto two lines. A sidebar
+         holds them all at once, grouped by what they are for, and leaves the
+         width where the work is. Ids are unchanged so the existing show/hide
+         still drives it. -->
+    <div class="sidebar hidden" id="vaNav">
+      <div class="sb-header">
+        <div class="sb-status"><div class="sb-status-dot"></div><span id="sbStatus">Loading…</span></div>
+      </div>
+
+      <div class="sb-nav">
+        <div class="sb-group">
+          <span class="sb-group-label">Workspace</span>
+          <button class="navbtn active" id="navClients" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span>Clients
+          </button>
+          <button class="navbtn hidden" id="navTexts" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span>Texts<span id="textsBadge" class="nav-badge hidden">0</span>
+          </button>
+        </div>
+
+        <div class="sb-divider"></div>
+
+        <div class="sb-group">
+          <span class="sb-group-label">Delivery</span>
+          <button class="navbtn" id="navFulfil" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>Fulfilment
+          </button>
+          <button class="navbtn hidden" id="navSignups" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></span>Signups<span id="signupBadge" class="nav-badge hidden">0</span>
+          </button>
+        </div>
+
+        <div class="sb-divider"></div>
+
+        <div class="sb-group">
+          <span class="sb-group-label">Yours</span>
+          <button class="navbtn" id="navAvail" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>My Availability
+          </button>
+          <button class="navbtn" id="navTpl" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg></span>Email Templates
+          </button>
+        </div>
+
+        <div class="sb-divider hidden" id="sbAdminDiv"></div>
+
+        <div class="sb-group">
+          <span class="sb-group-label hidden" id="sbAdminLabel">Admin</span>
+          <button class="navbtn hidden" id="navCallTest" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/></svg></span>Call &amp; SMS Test
+          </button>
+        </div>
+      </div>
+
+      <div class="sb-bottom">
+        <!-- Admin preview lives here rather than as a bar above the work: it is
+             a lens on the panel, so it belongs with the navigation. -->
+        <div id="adminBar" class="hidden" style="margin-bottom:8px">
+          <span class="sb-group-label" style="padding:0 8px 4px">Viewing as</span>
+          <select id="vaSelect" style="width:100%;font-size:11.5px"></select>
+        </div>
+        <button class="navbtn" id="sbLogout" type="button">
+          <span class="ni"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>Log out
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ CONTENT ═══ -->
+    <div class="content">
+      <div class="panelwrap">
   <div id="gate" class="gate">Loading…</div>
 
   <!-- CLIENT LIST -->
@@ -472,7 +599,10 @@ select{cursor:pointer}
       <span class="muted" id="availStatus"></span>
     </div>
   </div>
-</div>
+      </div><!-- /panelwrap -->
+    </div><!-- /content -->
+  </div><!-- /layout -->
+</div><!-- /app -->
 
 <!-- PREVIEW EMAIL MODAL -->
 <!-- Deliberately the same shape as the intro modal: the team reviews a merged
@@ -1037,6 +1167,16 @@ select{cursor:pointer}
   let _availSet = new Set();
   let _availLoaded = false;
 
+  // Same mechanism and the same storage key as ql-mc, so a person who sets
+  // light mode in one tool finds it already set in the other.
+  function toggleTheme() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = dark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    $('theme-btn').textContent = next === 'dark' ? '◐' : '◑';
+    try { localStorage.setItem('ql-theme', next); } catch (_) {}
+  }
+
   function setNav(which) {
     $('navClients').classList.toggle('active', which === 'clients');
     $('navFulfil').classList.toggle('active', which === 'fulfil');
@@ -1045,9 +1185,6 @@ select{cursor:pointer}
     $('navTpl').classList.toggle('active', which === 'tpl');
     $('navCallTest').classList.toggle('active', which === 'calltest');
     $('navTexts').classList.toggle('active', which === 'texts');
-    // So it is still obvious where you are when the active view lives in the
-    // menu rather than on the bar.
-    $('navMore').classList.toggle('active', ['avail','tpl','calltest'].includes(which));
   }
 
   function hideAllViews() {
@@ -1115,7 +1252,14 @@ select{cursor:pointer}
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; return; }
-    $('logoutBtn').addEventListener('click', async () => { await sb.auth.signOut(); location.href = 'index.html'; });
+    const savedTheme = (() => { try { return localStorage.getItem('ql-theme'); } catch (_) { return null; } })() || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    $('theme-btn').textContent = savedTheme === 'dark' ? '◐' : '◑';
+
+    const doLogout = async () => { await sb.auth.signOut(); location.href = 'index.html'; };
+    $('logoutBtn').addEventListener('click', doLogout);
+    $('sbLogout').addEventListener('click', doLogout);
+    $('theme-btn').addEventListener('click', toggleTheme);
     $('backBtn').addEventListener('click', () => {
       if (_cameFromBoard) { _cameFromBoard = false; showFulfilBoard(); }
       else showList();
@@ -1127,20 +1271,6 @@ select{cursor:pointer}
     $('callTestRefresh').addEventListener('click', loadTestCalls);
     $('callTestMineBtn').addEventListener('click', saveMyCallNumber);
     wireSmsBell();
-    // Closes on pick, on an outside click, and on Escape - the three ways
-    // people expect to get out of a menu.
-    $('navMore').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const m = $('navMoreMenu'), open = m.classList.toggle('hidden');
-      $('navMore').setAttribute('aria-expanded', String(!open));
-    });
-    $('navMoreMenu').addEventListener('click', () => $('navMoreMenu').classList.add('hidden'));
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.navmore')) $('navMoreMenu').classList.add('hidden');
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') $('navMoreMenu').classList.add('hidden');
-    });
     $('textsRefresh').addEventListener('click', loadThreads);
     $('textsNewBtn').addEventListener('click', () => {
       const sel = $('textsNewClient');
@@ -1307,10 +1437,16 @@ select{cursor:pointer}
     // member: the admin has to still count as an admin the moment they switch
     // back to their own view, which is one dropdown away.
     $('navCallTest').classList.toggle('hidden', !_realAdmin || !!_selectedVaId);
+    // The group's label and rule follow the only button inside it, or an empty
+    // "Admin" heading sits there for everyone else.
+    const showAdminGroup = _realAdmin && !_selectedVaId;
+    $('sbAdminDiv').classList.toggle('hidden', !showAdminGroup);
+    $('sbAdminLabel').classList.toggle('hidden', !showAdminGroup);
     // Follows the previewed member like the rest of the chrome: previewing a
     // role that cannot text should not show a bell they would never have.
     $('smsBellWrap').classList.toggle('hidden', !iCan('sms_send'));
     $('navTexts').classList.toggle('hidden', !iCan('sms_send'));
+    $('sbStatus').textContent = _me.unrestricted ? 'All clients' : 'Your clients';
     syncSmsBell();
     // Previewing from inside the tab would otherwise leave it on screen with
     // the nav button gone.
