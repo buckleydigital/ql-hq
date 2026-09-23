@@ -223,6 +223,30 @@ h1{font-size:18px;font-weight:500}
     </div>
 
 
+    <!-- Click-to-call numbers -->
+    <!-- One place for every mobile Twilio rings, because the people who place
+         calls are not the same set as the Internal Team: an admin has is_team
+         false and so never showed up in the Internal Team roster, which left the admin
+         with nowhere to enter their own number while being the one most likely
+         to be testing. -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>Click-to-Call Numbers</h2>
+          <p>The mobile Twilio rings first when someone presses Call. Admins and Internal Team in one list.</p>
+        </div>
+      </div>
+      <div class="panel-b">
+        <p style="font-size:12px;color:var(--muted);margin:0 0 14px">
+          Include the country code — <code>+61412345678</code> for Australia, <code>+639171234567</code> for the Philippines.
+          A local <code>0</code> number is assumed Australian; anything else must spell out its country.
+          Whether someone may place calls at all is the <strong>Make calls</strong> permission below.
+        </p>
+        <div id="callNumLoading" class="notice">Loading…</div>
+        <div id="callNumList" class="hidden"></div>
+      </div>
+    </div>
+
     <!-- Create Account panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -489,30 +513,6 @@ h1{font-size:18px;font-weight:500}
         </div>
         <div id="vaLoadingState" class="notice">Loading team…</div>
         <div id="vaList" class="hidden"></div>
-      </div>
-    </div>
-
-    <!-- Click-to-call numbers -->
-    <!-- One place for every mobile Twilio rings, because the people who place
-         calls are not the same set as the Internal Team: an admin has is_team
-         false and so never showed up in the roster above, which left the admin
-         with nowhere to enter their own number while being the one most likely
-         to be testing. -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="panel-h">
-        <div>
-          <h2>Click-to-Call Numbers</h2>
-          <p>The mobile Twilio rings first when someone presses Call. Admins and Internal Team in one list.</p>
-        </div>
-      </div>
-      <div class="panel-b">
-        <p style="font-size:12px;color:var(--muted);margin:0 0 14px">
-          Include the country code — <code>+61412345678</code> for Australia, <code>+639171234567</code> for the Philippines.
-          A local <code>0</code> number is assumed Australian; anything else must spell out its country.
-          Whether someone may place calls at all is the <strong>Make calls</strong> permission below.
-        </p>
-        <div id="callNumLoading" class="notice">Loading…</div>
-        <div id="callNumList" class="hidden"></div>
       </div>
     </div>
 

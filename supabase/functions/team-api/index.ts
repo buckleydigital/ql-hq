@@ -712,6 +712,9 @@ Deno.serve(async (req) => {
             is_admin: isAdmin,
             unrestricted,
             full_name: me?.full_name || null,
+            // The caller's own id, so the panel can save the caller's own
+            // settings without a second round trip to ask who it is talking to.
+            id: caller.id,
             // The mobile a click-to-call rings first. Sent so the panel can say
             // whose phone is about to ring, and so the admin test page can tell
             // the admin when they have not set one.
