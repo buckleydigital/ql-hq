@@ -12,14 +12,24 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5}
   a{color:var(--accent)}
-  .wrap{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap}
   .topbar h1{font-size:18px;margin:0;display:flex;align-items:center;gap:10px}
   .pill{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:100px;background:rgba(71,151,255,.14);color:var(--accent);border:1px solid rgba(71,151,255,.3)}
   .btn{font:inherit;font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--bg2);color:var(--ink);cursor:pointer}
   .btn:hover{border-color:var(--accent)}
   .btn-p{background:var(--accent);border-color:var(--accent);color:#fff}
-  .card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:16px;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);
+    padding:16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .client-row.card:hover{background:#23232c}
+  /* Section headings were the same grey as body text at a smaller size, so a
+     card read as one undifferentiated block. */
+  .sec-title{color:var(--ink2)}
+  .btn-p:hover{filter:brightness(1.08)}
+  .btn:active,.btn-p:active{transform:translateY(1px)}
+  /* A focus ring that is actually visible, for keyboard use. */
+  .btn:focus-visible,.vanav button:focus-visible,#smsBell:focus-visible,
+  .navmore>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .muted{color:var(--ink3)}
   .empty{padding:28px;text-align:center;color:var(--ink3)}
   .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase;letter-spacing:.03em}
@@ -55,7 +65,30 @@
   .avail.ro .avail-cell{cursor:default}
   .avail.ro .avail-cell:hover{background:var(--bg2)}
   .avail.ro .avail-cell.on{background:var(--accent)}
-  .hidden{display:none}
+  .hidden{display:none!important}
+  /* Nav */
+  .vanav{flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:30;
+    background:var(--bg);padding:10px 0;margin-bottom:16px;
+    border-bottom:1px solid var(--bd)}
+  .vanav button{transition:background .12s,border-color .12s,color .12s}
+  .vanav button:hover{color:var(--ink);border-color:var(--ink3)}
+  .vanav button.active{background:rgba(71,151,255,.14);color:var(--accent);
+    border-color:rgba(71,151,255,.45);font-weight:600}
+  .navmore{position:relative}
+  .navmore>button{font:inherit;font-size:13px;padding:8px 16px;border-radius:9px;
+    border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
+  .navmore .menu{position:absolute;left:0;top:calc(100% + 6px);min-width:190px;
+    background:var(--card);border:1px solid var(--bd);border-radius:10px;
+    padding:5px;z-index:40;box-shadow:0 14px 34px rgba(0,0,0,.45)}
+  .navmore .menu button{display:block;width:100%;text-align:left;border:0;
+    background:none;border-radius:7px;padding:9px 11px}
+  .navmore .menu button:hover{background:var(--bg2)}
+  /* The bell reads as a control rather than a stray glyph */
+  #smsBell{font:inherit;font-size:15px;line-height:1;padding:8px 12px;border-radius:9px;
+    border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
+  #smsBell:hover{color:var(--ink);border-color:var(--ink3)}
+  .thread-row:hover{background:var(--bg2)}
+  .sms-drop-item:hover{background:var(--bg2)}
   .badge.new{background:rgba(139,92,246,.16);color:#a78bfa;border:1px solid rgba(139,92,246,.4)}
   .badge.due{background:rgba(245,158,11,.14);color:var(--amb);border:1px solid rgba(245,158,11,.35)}
   .badge.paid{background:rgba(16,185,129,.14);color:var(--grn);border:1px solid rgba(16,185,129,.35)}
@@ -101,6 +134,12 @@
   .logrow .lwho{color:var(--ink);flex:none;min-width:90px}
   .fcard{display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer}
   .fcard:hover{border-color:var(--accent)}
+  @media(max-width:760px){
+    #textsView>div{flex-direction:column}
+    #textsView .card{max-width:none!important;width:100%}
+    .vanav{gap:5px}
+    .vanav button,.navmore>button{padding:7px 12px;font-size:12.5px}
+  }
   @media(max-width:600px){.inv-grid{grid-template-columns:1fr}.li-row{grid-template-columns:1fr 1fr}.logrow{flex-wrap:wrap}.logrow .lwhen{width:auto}}
 </style>
 </head>
@@ -123,13 +162,22 @@
   </div>
 
   <div class="vanav hidden" id="vaNav">
-    <button id="navClients" class="active" type="button">My Clients</button>
+    <button id="navClients" class="active" type="button">Clients</button>
+    <button id="navTexts" type="button" class="hidden">Texts <span id="textsBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
     <button id="navFulfil" type="button">Fulfilment</button>
     <button id="navSignups" type="button" class="hidden">Signups <span id="signupBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
-    <button id="navAvail" type="button">My Availability</button>
-    <button id="navTpl" type="button">Email Templates</button>
-    <button id="navTexts" type="button" class="hidden">Texts <span id="textsBadge" class="badge due hidden" style="margin-left:5px">0</span></button>
-    <button id="navCallTest" type="button" class="hidden">Call &amp; SMS Test</button>
+
+    <!-- Everything you touch once a week rather than once an hour. Seven flat
+         tabs wrapped onto two lines and made the frequent ones hard to find;
+         four plus a menu does not. -->
+    <div class="navmore">
+      <button id="navMore" type="button" aria-haspopup="true" aria-expanded="false">More ▾</button>
+      <div id="navMoreMenu" class="menu hidden">
+        <button id="navAvail" type="button">My Availability</button>
+        <button id="navTpl" type="button">Email Templates</button>
+        <button id="navCallTest" type="button" class="hidden">Call &amp; SMS Test</button>
+      </div>
+    </div>
 
     <!-- The bell sits at the end of the nav and pushes itself right, so it is
          in the same place on every view rather than only on the client list. -->
@@ -138,7 +186,7 @@
         &#9993;<span id="smsBadge" class="badge due hidden" style="margin-left:5px">0</span>
       </button>
       <div id="smsDrop" class="card hidden" style="position:absolute;right:0;top:calc(100% + 6px);width:min(360px,90vw);max-height:60vh;overflow:auto;z-index:50;padding:0">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line,#e5e5ea)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bd)">
           <strong style="font-size:13px">Unread texts</strong>
           <button class="btn" id="smsMarkAll" type="button" style="font-size:11.5px;padding:3px 8px">Mark all read</button>
         </div>
@@ -202,9 +250,13 @@
   <div id="textsView" class="hidden">
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <div class="card" style="flex:1;min-width:260px;max-width:380px;padding:0">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line,#e5e5ea)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bd)">
           <strong style="font-size:14px">Conversations</strong>
           <button class="btn" id="textsRefresh" type="button" style="font-size:11.5px;padding:3px 8px">Refresh</button>
+        </div>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;gap:8px;align-items:center">
+          <select id="textsNewClient" style="flex:1;min-width:0"></select>
+          <button class="btn" id="textsNewBtn" type="button" style="white-space:nowrap">Start</button>
         </div>
         <div class="muted" id="textsListStatus" style="padding:12px;font-size:12px">Loading…</div>
         <div id="textsList" style="max-height:62vh;overflow-y:auto"></div>
@@ -861,6 +913,9 @@
     $('navTpl').classList.toggle('active', which === 'tpl');
     $('navCallTest').classList.toggle('active', which === 'calltest');
     $('navTexts').classList.toggle('active', which === 'texts');
+    // So it is still obvious where you are when the active view lives in the
+    // menu rather than on the bar.
+    $('navMore').classList.toggle('active', ['avail','tpl','calltest'].includes(which));
   }
 
   function hideAllViews() {
@@ -940,7 +995,26 @@
     $('callTestRefresh').addEventListener('click', loadTestCalls);
     $('callTestMineBtn').addEventListener('click', saveMyCallNumber);
     wireSmsBell();
+    // Closes on pick, on an outside click, and on Escape - the three ways
+    // people expect to get out of a menu.
+    $('navMore').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = $('navMoreMenu'), open = m.classList.toggle('hidden');
+      $('navMore').setAttribute('aria-expanded', String(!open));
+    });
+    $('navMoreMenu').addEventListener('click', () => $('navMoreMenu').classList.add('hidden'));
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.navmore')) $('navMoreMenu').classList.add('hidden');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') $('navMoreMenu').classList.add('hidden');
+    });
     $('textsRefresh').addEventListener('click', loadThreads);
+    $('textsNewBtn').addEventListener('click', () => {
+      const sel = $('textsNewClient');
+      if (!sel.value) return;
+      openThread({ company_id: sel.value }, sel.options[sel.selectedIndex].text);
+    });
     $('textsReplyBtn').addEventListener('click', sendThreadReply);
     $('textsReplyInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); }
@@ -1529,7 +1603,7 @@
     $('smsDropList').innerHTML = (data.items || []).length
       ? data.items.map(it => `
         <button type="button" class="sms-drop-item" data-co="${esc(it.company_id || '')}"
-          style="display:block;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--line,#e5e5ea);background:none;cursor:pointer">
+          style="display:block;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--bd);background:none;cursor:pointer">
           <div style="font-weight:600;font-size:12.5px">${esc(it.who)}</div>
           <div class="muted" style="font-size:12px;margin-top:2px">${esc(it.preview)}</div>
           <div class="muted" style="font-size:11px;margin-top:3px">${fmtDateTime(it.created_at)}</div>
@@ -1606,7 +1680,21 @@
     hideAllViews();
     setNav('texts');
     $('textsView').classList.remove('hidden');
+    fillNewThreadPicker();
     loadThreads();
+  }
+
+  // The clients this person could start a conversation with - the same list
+  // they already have, so it needs no extra request and cannot show a client
+  // they are not allowed to text.
+  function fillNewThreadPicker() {
+    const sel = $('textsNewClient');
+    if (!sel) return;
+    const withPhone = (_clients || []).filter(c => c.phone);
+    sel.innerHTML = withPhone.length
+      ? withPhone.map(c => `<option value="${esc(c.id)}">${esc(c.name || '(no name)')}</option>`).join('')
+      : '<option value="">No clients with a phone number</option>';
+    $('textsNewBtn').disabled = !withPhone.length;
   }
 
   async function loadThreads() {
@@ -1614,11 +1702,13 @@
     const { ok, data } = await teamApi({ action: 'list_sms_threads' });
     if (!ok) { status.textContent = data.error || 'Could not load conversations.'; return; }
     const threads = data.threads || [];
-    status.textContent = threads.length ? '' : 'No conversations yet.';
+    status.textContent = threads.length
+      ? ''
+      : 'No conversations yet. Pick a client above to start one.';
     host.innerHTML = threads.map(t => `
       <button type="button" class="thread-row" data-key="${esc(t.key)}"
         data-co="${esc(t.company_id || '')}" data-phone="${esc(t.phone || '')}"
-        style="display:block;width:100%;text-align:left;padding:11px 14px;border:0;border-bottom:1px solid var(--line,#e5e5ea);background:none;cursor:pointer">
+        style="display:block;width:100%;text-align:left;padding:11px 14px;border:0;border-bottom:1px solid var(--bd);background:none;cursor:pointer">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
           <span style="font-weight:600;font-size:13px">${esc(t.who)}</span>
           ${t.unread ? `<span class="badge due">${t.unread}</span>` : ''}
@@ -1640,8 +1730,9 @@
     $('textsThreadStatus').textContent = 'Loading…';
     const { ok, data } = await teamApi({ action: 'list_sms_thread', ...ref });
     if (!ok) { $('textsThreadStatus').textContent = data.error || 'Could not load.'; return; }
-    $('textsThreadStatus').textContent = '';
-    $('textsThread').innerHTML = renderBubbles(data.messages || []);
+    const msgs = data.messages || [];
+    $('textsThreadStatus').textContent = msgs.length ? '' : 'No messages yet — send the first one.';
+    $('textsThread').innerHTML = renderBubbles(msgs);
     $('textsThread').scrollTop = $('textsThread').scrollHeight;
     $('textsReplyBox').classList.toggle('hidden', !iCan('sms_send'));
     // Reading a thread clears its unread, so the list and the bell should catch
@@ -1677,8 +1768,8 @@
       const failed = m.status === 'failed';
       return `<div style="margin:8px 0;display:flex;${out ? 'justify-content:flex-end' : ''}">
         <div style="max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45;
-          background:${out ? 'var(--accent-soft,#e8effc)' : 'var(--bg2,#f2f2f5)'};
-          ${failed ? 'outline:1px solid var(--danger,#c0392b)' : ''}">
+          background:${out ? 'rgba(71,151,255,.16)' : 'var(--bg2)'};
+          ${failed ? 'outline:1px solid var(--red)' : ''}">
           <div>${esc(m.body)}</div>
           <div class="muted" style="font-size:10.5px;margin-top:4px">
             ${out ? esc(m.actor_name || 'Team') : 'Them'} · ${fmtDateTime(m.created_at)}${failed ? ' · failed to send' + (m.error_code ? ' (' + esc(m.error_code) + ')' : '') : ''}
