@@ -7,54 +7,172 @@
 <title>Team Panel · QuoteLeads</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/product-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
-  :root{--bg:#15151b;--bg2:#1b1b22;--card:#1f1f27;--bd:#2c2c38;--ink:#eeeef3;--ink2:#a7a7b8;--ink3:#72728a;--accent:#4797ff;--grn:#10b981;--amb:#f59e0b;--red:#ef4444;--r:10px}
+  /* ── Tokens ───────────────────────────────────────────────────────────────
+     Surfaces step up as they come forward (page → card → input), so depth is
+     readable without every box needing its own border. The old palette put the
+     page and the cards a hair apart and leaned on 1px outlines for the rest,
+     which is what made a screen of them read as a grid of grey rectangles. */
+  :root{
+    --bg:#0d0d12; --bg2:#16161d; --card:#1a1a22; --card-2:#20202a;
+    --bd:#2a2a36; --bd-soft:#22222c;
+    --ink:#f2f2f7; --ink2:#a6a6bb; --ink3:#6e6e85;
+    --accent:#5b9dff; --accent-dim:rgba(91,157,255,.13); --accent-bd:rgba(91,157,255,.4);
+    --grn:#34d399; --amb:#fbbf24; --red:#f87171;
+    --r:14px; --r-sm:9px;
+    --sh:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    --sh-lg:0 20px 48px -16px rgba(0,0,0,.7);
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5}
-  a{color:var(--accent)}
-  .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap}
-  .topbar h1{font-size:18px;margin:0;display:flex;align-items:center;gap:10px}
-  .pill{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:100px;background:rgba(71,151,255,.14);color:var(--accent);border:1px solid rgba(71,151,255,.3)}
-  .btn{font:inherit;font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--bg2);color:var(--ink);cursor:pointer}
-  .btn:hover{border-color:var(--accent)}
-  .btn-p{background:var(--accent);border-color:var(--accent);color:#fff}
-  .card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);
-    padding:16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
-  .client-row.card:hover{background:#23232c}
-  /* Section headings were the same grey as body text at a smaller size, so a
-     card read as one undifferentiated block. */
-  .sec-title{color:var(--ink2)}
-  .btn-p:hover{filter:brightness(1.08)}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;
+    font-feature-settings:'cv11','ss01';letter-spacing:-.006em}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+
+  /* ── Top bar ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:14px;gap:12px;flex-wrap:wrap}
+  .topbar h1{font-size:17px;font-weight:650;margin:0;display:flex;align-items:center;gap:10px;
+    letter-spacing:-.02em}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 9px;border-radius:100px;background:var(--accent-dim);color:var(--accent);
+    border:1px solid var(--accent-bd)}
+
+  /* ── Buttons ── */
+  .btn{font:inherit;font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:var(--r-sm);
+    border:1px solid var(--bd);background:var(--card-2);color:var(--ink2);cursor:pointer;
+    transition:background .13s,border-color .13s,color .13s}
+  .btn:hover{background:#262633;color:var(--ink);border-color:#3a3a49}
+  .btn-p{background:var(--accent);border-color:var(--accent);color:#08111f;font-weight:600}
+  .btn-p:hover{background:#74adff;border-color:#74adff;color:#08111f}
   .btn:active,.btn-p:active{transform:translateY(1px)}
-  /* A focus ring that is actually visible, for keyboard use. */
+  .btn:disabled{opacity:.5;cursor:not-allowed}
   .btn:focus-visible,.vanav button:focus-visible,#smsBell:focus-visible,
   .navmore>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ── Cards ── */
+  .card{background:var(--card);border:1px solid var(--bd-soft);border-radius:var(--r);
+    padding:18px;margin-bottom:14px;box-shadow:var(--sh)}
   .muted{color:var(--ink3)}
-  .empty{padding:28px;text-align:center;color:var(--ink3)}
-  .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:uppercase;letter-spacing:.03em}
-  .badge.managed{background:rgba(245,158,11,.14);color:var(--amb);border:1px solid rgba(245,158,11,.3)}
-  .badge.ppl{background:rgba(16,185,129,.14);color:var(--grn);border:1px solid rgba(16,185,129,.3)}
-  .badge.other{background:rgba(160,160,184,.14);color:var(--ink2);border:1px solid var(--bd)}
-  .client-row{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
-  .client-row:hover{border-color:var(--accent)}
-  .client-name{font-weight:600;font-size:15px}
-  .stat-row{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--ink2)}
-  .stat-row b{color:var(--ink)}
-  table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--bd);vertical-align:top}
-  th{color:var(--ink3);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
-  .sec-title{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin:18px 0 8px;font-weight:600}
-  .kv{display:flex;gap:8px;padding:4px 0;font-size:13px}
-  .kv .k{color:var(--ink3);min-width:120px}
-  textarea{width:100%;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;color:var(--ink);font:inherit;font-size:13px;padding:10px;resize:vertical;min-height:64px}
-  textarea:focus{outline:none;border-color:var(--accent)}
-  .note{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
-  .note-meta{font-size:11px;color:var(--ink3);margin-top:6px}
+  .empty{padding:44px 28px;text-align:center;color:var(--ink3)}
+
+  /* ── Badges & chips ── */
+  .badge{font-size:10px;font-weight:700;padding:2.5px 8px;border-radius:100px;
+    text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+  .badge.managed{background:rgba(251,191,36,.13);color:var(--amb);border:1px solid rgba(251,191,36,.3)}
+  .badge.ppl{background:rgba(52,211,153,.13);color:var(--grn);border:1px solid rgba(52,211,153,.3)}
+  .badge.other{background:rgba(166,166,187,.1);color:var(--ink2);border:1px solid var(--bd)}
+  .chip{font-size:10px;font-weight:700;padding:2.5px 8px;border-radius:100px;
+    border:1px solid var(--bd);color:var(--ink2);white-space:nowrap}
+  .chip.warn{background:rgba(251,191,36,.11);color:var(--amb);border-color:rgba(251,191,36,.32)}
+
+  /* ── Client list ──
+     A row is a target you click, so it gets hover feedback and an arrow that
+     moves. It used to be a static box with the word "View" beside it. */
+  .client-row{display:flex;align-items:center;justify-content:space-between;gap:14px;
+    cursor:pointer;transition:background .13s,border-color .13s,transform .13s}
+  .client-row:hover{background:var(--card-2);border-color:var(--bd);transform:translateY(-1px)}
+  .client-row:hover .goarrow{color:var(--accent);transform:translateX(3px)}
+  .goarrow{color:var(--ink3);transition:color .13s,transform .13s;font-size:15px}
+  .client-name{font-weight:600;font-size:15px;letter-spacing:-.012em;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:7px;font-size:12.5px;color:var(--ink3)}
+  .stat-row b{color:var(--ink2);font-weight:600}
+
+  /* ── Tables ──
+     Header rules and a line under every row made these read like a 1990s
+     spreadsheet. One hairline, and the row lights up under the cursor. */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;vertical-align:top}
+  th{color:var(--ink3);font-weight:600;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.06em;border-bottom:1px solid var(--bd)}
+  td{border-bottom:1px solid var(--bd-soft)}
+  tbody tr:hover td{background:var(--card-2)}
+  tbody tr:last-child td{border-bottom:0}
+
+  .sec-title{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);
+    margin:20px 0 10px;font-weight:700}
+  .kv{display:flex;gap:10px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--bd-soft)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--ink3);min-width:130px;flex:none}
+
+  /* ── Inputs ── */
+  textarea,input[type=text],input[type=date],input[type=tel],select{
+    background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-sm);
+    color:var(--ink);font:inherit;font-size:13px;padding:9px 11px;transition:border-color .13s,box-shadow .13s}
+  textarea{width:100%;resize:vertical;min-height:62px}
+  textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-dim)}
+  textarea::placeholder,input::placeholder{color:var(--ink3)}
+  select{cursor:pointer}
+
+  .note{background:var(--bg2);border:1px solid var(--bd-soft);border-radius:var(--r-sm);
+    padding:11px 13px;margin-bottom:9px}
+  .note-meta{font-size:11px;color:var(--ink3);margin-top:7px}
   .gate{display:flex;align-items:center;justify-content:center;min-height:60vh;color:var(--ink3)}
-  .vanav{display:flex;gap:6px;margin-bottom:18px}
-  .vanav button{font:inherit;font-size:13px;padding:8px 16px;border-radius:9px;border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
-  .vanav button.active{background:var(--card);color:var(--ink);border-color:var(--accent)}
+
+  /* ── Nav ──
+     Four tabs and a menu. Sticky, so it stays reachable in a long client
+     record, with a blur so content scrolling under it does not collide. */
+  .vanav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:30;
+    background:rgba(13,13,18,.88);backdrop-filter:blur(12px);
+    padding:11px 0;margin-bottom:18px;border-bottom:1px solid var(--bd-soft)}
+  .vanav button{font:inherit;font-size:13px;font-weight:500;padding:8px 15px;border-radius:var(--r-sm);
+    border:1px solid transparent;background:transparent;color:var(--ink3);cursor:pointer;
+    transition:background .13s,color .13s}
+  .vanav button:hover{background:var(--card-2);color:var(--ink)}
+  .vanav button.active{background:var(--accent-dim);color:var(--accent);
+    border-color:var(--accent-bd);font-weight:600}
+  .navmore{position:relative}
+  .navmore>button{font:inherit;font-size:13px;font-weight:500;padding:8px 15px;
+    border-radius:var(--r-sm);border:1px solid transparent;background:transparent;
+    color:var(--ink3);cursor:pointer;transition:background .13s,color .13s}
+  .navmore>button:hover{background:var(--card-2);color:var(--ink)}
+  .navmore>button.active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-bd)}
+  .navmore .menu{position:absolute;left:0;top:calc(100% + 6px);min-width:200px;
+    background:var(--card);border:1px solid var(--bd);border-radius:var(--r);
+    padding:6px;z-index:40;box-shadow:var(--sh-lg)}
+  .navmore .menu button{display:block;width:100%;text-align:left;border:0;background:none;
+    border-radius:var(--r-sm);padding:9px 12px;color:var(--ink2)}
+  .navmore .menu button:hover{background:var(--card-2);color:var(--ink)}
+
+  #smsBell{font:inherit;font-size:15px;line-height:1;padding:8px 13px;border-radius:var(--r-sm);
+    border:1px solid var(--bd);background:var(--card-2);color:var(--ink2);cursor:pointer;
+    transition:background .13s,color .13s,border-color .13s}
+  #smsBell:hover{background:#262633;color:var(--ink);border-color:#3a3a49}
+  .thread-row{transition:background .12s}
+  .thread-row:hover,.sms-drop-item:hover{background:var(--card-2)}
+  .thread-row.on{background:var(--accent-dim)}
+
+  .hidden{display:none!important}
+  .badge.new{background:rgba(167,139,250,.14);color:#a78bfa;border:1px solid rgba(167,139,250,.38)}
+  .badge.due{background:rgba(251,191,36,.13);color:var(--amb);border:1px solid rgba(251,191,36,.35)}
+  .badge.paid{background:rgba(52,211,153,.13);color:var(--grn);border:1px solid rgba(52,211,153,.35)}
+  .badge.unpaid{background:rgba(248,113,113,.13);color:var(--red);border:1px solid rgba(248,113,113,.35)}
+  .badge.sent{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent-bd)}
+
+  .task{display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border:1px solid var(--bd-soft);
+    border-radius:var(--r-sm);margin-bottom:9px;background:var(--bg2)}
+  .task .ic{font-size:16px;line-height:1.2}
+  .task .tbody{flex:1}
+  .task.done{opacity:.45}
+  .task.done .tbody{text-decoration:line-through}
+
+  /* Texts */
+  .pane-list .thread-row{border-bottom:1px solid var(--bd-soft)}
+  .pane-list .thread-row:last-child{border-bottom:0}
+  #textsThread{flex:1;min-height:220px}
+  .bubble{max-width:74%;padding:9px 12px;border-radius:15px;font-size:13px;line-height:1.5}
+  .bubble.out{background:var(--accent-dim);border:1px solid var(--accent-bd);border-bottom-right-radius:5px}
+  .bubble.in{background:var(--card-2);border:1px solid var(--bd-soft);border-bottom-left-radius:5px}
+  .bubble.failed{border-color:var(--red)}
+  .bubble .meta{font-size:10.5px;color:var(--ink3);margin-top:5px}
   .avail{border-collapse:collapse;width:100%;max-width:600px}
   .avail th{font-size:11px;color:var(--ink3);font-weight:600;padding:5px 4px;text-align:center}
   .avail td{border:1px solid var(--bd);height:28px}
@@ -65,44 +183,6 @@
   .avail.ro .avail-cell{cursor:default}
   .avail.ro .avail-cell:hover{background:var(--bg2)}
   .avail.ro .avail-cell.on{background:var(--accent)}
-  .hidden{display:none!important}
-  /* Nav */
-  .vanav{flex-wrap:wrap;align-items:center;position:sticky;top:0;z-index:30;
-    background:var(--bg);padding:10px 0;margin-bottom:16px;
-    border-bottom:1px solid var(--bd)}
-  .vanav button{transition:background .12s,border-color .12s,color .12s}
-  .vanav button:hover{color:var(--ink);border-color:var(--ink3)}
-  .vanav button.active{background:rgba(71,151,255,.14);color:var(--accent);
-    border-color:rgba(71,151,255,.45);font-weight:600}
-  .navmore{position:relative}
-  .navmore>button{font:inherit;font-size:13px;padding:8px 16px;border-radius:9px;
-    border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
-  .navmore .menu{position:absolute;left:0;top:calc(100% + 6px);min-width:190px;
-    background:var(--card);border:1px solid var(--bd);border-radius:10px;
-    padding:5px;z-index:40;box-shadow:0 14px 34px rgba(0,0,0,.45)}
-  .navmore .menu button{display:block;width:100%;text-align:left;border:0;
-    background:none;border-radius:7px;padding:9px 11px}
-  .navmore .menu button:hover{background:var(--bg2)}
-  /* The bell reads as a control rather than a stray glyph */
-  #smsBell{font:inherit;font-size:15px;line-height:1;padding:8px 12px;border-radius:9px;
-    border:1px solid var(--bd);background:var(--bg2);color:var(--ink2);cursor:pointer}
-  #smsBell:hover{color:var(--ink);border-color:var(--ink3)}
-  .thread-row:hover{background:var(--bg2)}
-  .sms-drop-item:hover{background:var(--bg2)}
-  .badge.new{background:rgba(139,92,246,.16);color:#a78bfa;border:1px solid rgba(139,92,246,.4)}
-  .badge.due{background:rgba(245,158,11,.14);color:var(--amb);border:1px solid rgba(245,158,11,.35)}
-  .badge.paid{background:rgba(16,185,129,.14);color:var(--grn);border:1px solid rgba(16,185,129,.35)}
-  .badge.unpaid{background:rgba(239,68,68,.14);color:var(--red);border:1px solid rgba(239,68,68,.35)}
-  .badge.sent{background:rgba(71,151,255,.14);color:var(--accent);border:1px solid rgba(71,151,255,.35)}
-  .task{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--bd);border-radius:9px;margin-bottom:8px;background:var(--bg2)}
-  .task .ic{font-size:16px;line-height:1.2}
-  .task .tbody{flex:1}
-  .task.done{opacity:.5}
-  .task.done .tbody{text-decoration:line-through}
-  .chip{font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px;border:1px solid var(--bd);color:var(--ink2);white-space:nowrap}
-  .chip.warn{background:rgba(245,158,11,.12);color:var(--amb);border-color:rgba(245,158,11,.35)}
-  input[type=text],input[type=date],select{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;color:var(--ink);font:inherit;font-size:13px;padding:8px 10px}
-  input:focus,select:focus{outline:none;border-color:var(--accent)}
   .inv-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:30px 14px;overflow-y:auto;z-index:50}
   .inv-overlay.hidden{display:none}
   .inv-modal{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px;max-width:760px;width:100%}
@@ -154,9 +234,10 @@
   </div>
 
   <!-- Admin preview: team member selector -->
-  <div id="adminBar" class="hidden" style="margin-bottom:16px">
-    <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <label style="font-size:12px;color:var(--ink3);font-weight:600">Preview as team member:</label>
+  <div id="adminBar" class="hidden" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+      background:var(--bg2);border:1px solid var(--bd-soft);border-radius:var(--r-sm);padding:9px 13px">
+      <label style="font-size:12px;color:var(--ink3);font-weight:600">Viewing as</label>
       <select id="vaSelect" class="btn" style="min-width:200px"></select>
     </div>
   </div>
@@ -249,7 +330,7 @@
        list. -->
   <div id="textsView" class="hidden">
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
-      <div class="card" style="flex:1;min-width:260px;max-width:380px;padding:0">
+      <div class="card pane-list" style="flex:1;min-width:260px;max-width:380px;padding:0;overflow:hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bd)">
           <strong style="font-size:14px">Conversations</strong>
           <button class="btn" id="textsRefresh" type="button" style="font-size:11.5px;padding:3px 8px">Refresh</button>
@@ -261,7 +342,7 @@
         <div class="muted" id="textsListStatus" style="padding:12px;font-size:12px">Loading…</div>
         <div id="textsList" style="max-height:62vh;overflow-y:auto"></div>
       </div>
-      <div class="card" style="flex:2;min-width:300px">
+      <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
         <div class="sec-title" style="margin-top:0" id="textsThreadWho">Pick a conversation</div>
         <div id="textsThread" style="max-height:52vh;overflow-y:auto;padding:2px"></div>
         <div class="muted" id="textsThreadStatus" style="font-size:12px"></div>
@@ -1311,7 +1392,7 @@
             ${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}
           </div>
         </div>
-        <span class="muted">View →</span>
+        <span class="goarrow">→</span>
       </div>`;
     }).join('');
     el.querySelectorAll('.client-row').forEach(r => r.addEventListener('click', () => openClient(r.dataset.id)));
@@ -1726,6 +1807,8 @@
 
   async function openThread(ref, who) {
     _openThread = ref;
+    document.querySelectorAll('.thread-row').forEach(r => r.classList.toggle(
+      'on', r.dataset.co === (ref.company_id || '') && r.dataset.phone === (ref.phone || '')));
     $('textsThreadWho').textContent = who || 'Conversation';
     $('textsThreadStatus').textContent = 'Loading…';
     const { ok, data } = await teamApi({ action: 'list_sms_thread', ...ref });
@@ -1766,14 +1849,11 @@
     return msgs.map(m => {
       const out = m.direction === 'outbound';
       const failed = m.status === 'failed';
-      return `<div style="margin:8px 0;display:flex;${out ? 'justify-content:flex-end' : ''}">
-        <div style="max-width:78%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45;
-          background:${out ? 'rgba(71,151,255,.16)' : 'var(--bg2)'};
-          ${failed ? 'outline:1px solid var(--red)' : ''}">
+      return `<div style="margin:9px 0;display:flex;${out ? 'justify-content:flex-end' : ''}">
+        <div class="bubble ${out ? 'out' : 'in'}${failed ? ' failed' : ''}">
           <div>${esc(m.body)}</div>
-          <div class="muted" style="font-size:10.5px;margin-top:4px">
-            ${out ? esc(m.actor_name || 'Team') : 'Them'} · ${fmtDateTime(m.created_at)}${failed ? ' · failed to send' + (m.error_code ? ' (' + esc(m.error_code) + ')' : '') : ''}
-          </div>
+          <div class="meta">${out ? esc(m.actor_name || 'Team') : 'Them'} · ${fmtDateTime(m.created_at)}${
+            failed ? ' · failed' + (m.error_code ? ' (' + esc(m.error_code) + ')' : '') : ''}</div>
         </div></div>`;
     }).join('');
   }
