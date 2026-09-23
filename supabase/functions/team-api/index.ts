@@ -1998,6 +1998,41 @@ Deno.serve(async (req) => {
     // The mobile Twilio rings for the first leg of a click-to-call. Admin-set
     // rather than self-set, for the same reason the reply-to is: it decides
     // where a call placed in the agency's name actually goes.
+    // ── Click-to-call numbers, in one place ──────────────────────────────────
+    // Everyone who can place a call needs a mobile on file, and that is not the
+    // same set as "the Internal Team": an admin is not on the team (is_team is
+    // false for them) so they never appeared in the team roster, which left the
+    // admin with nowhere to enter their own number while being the one person
+    // most likely to be testing. Both groups are listed here for that reason.
+    if (action === "list_call_numbers") {
+      const { data: rows } = await adminClient
+        .from("profiles")
+        .select("id, full_name, phone, is_admin, is_team, team_role")
+        .or("is_admin.eq.true,is_team.eq.true");
+      const list = rows || [];
+      const emails = await emailMap(adminClient, list.map((r: { id: string }) => r.id));
+      // Whether this person's ROLE may place calls, so the panel can say when a
+      // number is on file but the permission is not - otherwise "I set my number
+      // and nothing happened" has no visible cause. An admin always may.
+      const { data: permRows } = await adminClient
+        .from("team_role_permissions").select("role, calls_make");
+      const rolePerm: Record<string, boolean> = {};
+      for (const r of permRows || []) rolePerm[r.role as string] = r.calls_make === true;
+
+      return json({
+        people: list.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          full_name: r.full_name || null,
+          email: emails[r.id as string] || "",
+          phone: r.phone || null,
+          is_admin: r.is_admin === true,
+          is_team: r.is_team === true,
+          team_role: (r.team_role as string) || null,
+          can_call: r.is_admin === true || rolePerm[(r.team_role as string) || ""] === true,
+        })).sort((a, b) => Number(b.is_admin) - Number(a.is_admin)),
+      });
+    }
+
     // ── The admin test call ──────────────────────────────────────────────────
     // A free-typed number, which the live path deliberately refuses. The reason
     // the live path refuses is toll fraud: a stolen team login that can dial
