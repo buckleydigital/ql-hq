@@ -25,10 +25,20 @@ Deno.serve(async (req: Request) => {
   const logId = url.searchParams.get("log") ?? "";
   const expected = Deno.env.get("TWILIO_STATUS_SECRET") ?? "";
 
-  // No secret configured means this endpoint is not in use; refuse rather than
-  // fall open, since an empty expected value would otherwise match an empty
-  // token and let anyone through.
-  if (!expected || token !== expected) {
+  // The log id is the credential. It is a v4 uuid handed to Twilio when the
+  // call was placed, so it is not guessable, and all this endpoint can do with
+  // it is set status fields on that one already-existing row - it cannot create
+  // a row, read one back, or place a call.
+  //
+  // Requiring a separate secret INSTEAD of this was worse than it looked: the
+  // callback was simply not requested when the secret was unset, so the one
+  // configuration nobody had done was the one that made failures legible. A
+  // call then failed with "an application error has occurred" and left no error
+  // code anywhere to explain it.
+  //
+  // A configured secret is still enforced, so setting one tightens this further
+  // rather than being ignored.
+  if (expected && token !== expected) {
     return new Response("forbidden", { status: 403 });
   }
   if (!/^[0-9a-f-]{36}$/i.test(logId)) return ok();

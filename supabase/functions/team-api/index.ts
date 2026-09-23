@@ -515,7 +515,13 @@ Deno.serve(async (req) => {
       const twiml =
         `<?xml version="1.0" encoding="UTF-8"?>`
         + `<Response>`
-        + `<Say voice="Polly.Olivia">Connecting you to ${escapeXml(opts.clientLabel)}.</Say>`
+        // Polly.Nicole, not Polly.Olivia. Olivia is one of Polly's NEURAL
+        // voices, and Twilio only accepts those written with the suffix -
+        // "Polly.Olivia-Neural". The bare name is not a voice it knows, so it
+        // rejected the whole document and the agent heard "an application error
+        // has occurred" the moment they picked up. Nicole is a standard
+        // Australian voice and is valid as written.
+        + `<Say voice="Polly.Nicole">Connecting you to ${escapeXml(opts.clientLabel)}.</Say>`
         + `<Dial answerOnBridge="true" callerId="${callerId}" timeout="25">`
         + `<Number>${opts.clientE164}</Number>`
         + `</Dial>`
@@ -547,16 +553,26 @@ Deno.serve(async (req) => {
         Timeout: "25",
       });
       // Twilio tells us how it went, which is the only way the log learns
-      // whether anyone actually answered. Skipped rather than fatal if the
-      // secret is unset: a call the team can make but cannot see the outcome of
-      // still beats no call at all.
+      // whether anyone answered - and, when a call fails, WHY.
+      //
+      // This used to be skipped unless TWILIO_STATUS_SECRET was set, which meant
+      // the one configuration nobody had bothered with was the one that made
+      // failures legible. The first real call died with "an application error
+      // has occurred" and left no error code anywhere, because of exactly that.
+      //
+      // The log row id is the credential now. It is a v4 uuid, so it is not
+      // guessable, and the endpoint it authenticates can do nothing but set
+      // status fields on that one already-existing row. A separate secret is
+      // still honoured when present, but is no longer the difference between
+      // diagnosable and not.
       const statusSecret = Deno.env.get("TWILIO_STATUS_SECRET");
       const fnBase = Deno.env.get("SUPABASE_URL");
-      if (statusSecret && fnBase && logRow?.id) {
+      if (fnBase && logRow?.id) {
         const base = fnBase.replace(".supabase.co", ".functions.supabase.co");
+        const tokenPart = statusSecret ? `token=${encodeURIComponent(statusSecret)}&` : "";
         params.set(
           "StatusCallback",
-          `${base}/twilio-call-status?token=${encodeURIComponent(statusSecret)}&log=${logRow.id}`,
+          `${base}/twilio-call-status?${tokenPart}log=${logRow.id}`,
         );
         params.set("StatusCallbackMethod", "POST");
         for (const ev of ["initiated", "ringing", "answered", "completed"]) {
