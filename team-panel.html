@@ -74,6 +74,11 @@ body{overflow:hidden}
   letter-spacing:-.2px;color:var(--ink);white-space:nowrap}
 .tb-sep{width:1px;height:14px;background:var(--bd2);flex-shrink:0}
 .tb-sp{flex:1}
+.pill{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap;
+  background:var(--acc-dim);color:var(--acc);border:1px solid rgba(79,143,255,.15)}
+.form-label{font-size:10.5px;font-weight:600;color:var(--ink3);
+  text-transform:uppercase;letter-spacing:.04em}
 .ibtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
   border-radius:var(--r);border:1px solid transparent;background:transparent;
   color:var(--ink3);font-size:12px;transition:all .12s;text-decoration:none;flex-shrink:0}
@@ -122,6 +127,22 @@ body{overflow:hidden}
 .sb-bottom .navbtn:hover{color:var(--red)}
 .sb-bottom .navbtn:hover .ni{color:var(--red)}
 .btn-xs{padding:3px 8px;font-size:10px}
+.btn-sm{padding:5px 11px;font-size:11px}
+
+/* ═══ CALL TARGETS ═══
+   A row per number you can ring, sized like something you press. The previous
+   version was a small button beside a phone number in the contact list, which
+   a CSM looked for and could not find. */
+.call-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 13px;margin-bottom:7px;background:var(--s2);
+  border:1px solid var(--bd);border-radius:var(--r);transition:border-color .12s}
+.call-row:hover{border-color:var(--bd3)}
+.call-row:last-of-type{margin-bottom:0}
+.call-who{font-size:13px;font-weight:500;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.call-num{font-family:var(--mono);font-size:11px;color:var(--ink3);
+  margin-top:2px;letter-spacing:.03em}
+.call-btn{flex:none}
 
 /* A narrow screen has no room for a fixed column beside the work, so the
    sidebar becomes a scrolling strip above it. */
@@ -1692,13 +1713,34 @@ select{cursor:pointer}
           ? `<input type="hidden" id="smsTarget" value="${esc(smsTargets[0][0])}">`
           : '');
 
-    const callBtn = (target, hasPhone) => (iCan('calls_make') && hasPhone)
-      ? `<button class="btn-sm call-btn" data-call="${esc(target)}" title="Ring this number from the QuoteLeads number">Call</button>`
-      : '';
+    // Every number on this client that can actually be rung, in one list. It
+    // was a small button tucked beside each phone number in the Contact block,
+    // which a CSM could not find at all - so calling now gets a section of its
+    // own rather than being something you have to already know is there.
+    const callTargets = [
+      ...(c.phone ? [{ target: 'company', who: 'Company number', num: c.phone }] : []),
+      ...(d.contacts || []).filter(pp => pp.phone).map(pp => ({
+        target: pp.id,
+        who: (pp.full_name || 'Contact') + (pp.role ? ' · ' + pp.role : ''),
+        num: pp.phone,
+      })),
+    ];
+
+    const callRows = callTargets.length
+      ? callTargets.map(t => `
+        <div class="call-row">
+          <div style="min-width:0">
+            <div class="call-who">${esc(t.who)}</div>
+            <div class="call-num">${esc(t.num)}</div>
+          </div>
+          <button class="btn btn-p call-btn" data-call="${esc(t.target)}"
+            title="Rings your mobile first, then connects you">&#9743; Call</button>
+        </div>`).join('')
+      : '<div class="muted" style="font-size:12.5px">No phone number on file for this client. Add one to their record to call them.</div>';
 
     const contacts = (d.contacts || []).map(pp => `
       <div class="kv"><span class="k">${esc(pp.full_name || '(no name)')}${pp.role ? ' · ' + esc(pp.role) : ''}</span>
-        <span>${pp.email ? `<a href="mailto:${esc(pp.email)}">${esc(pp.email)}</a>` : ''}${pp.phone ? ' · ' + esc(pp.phone) : ''} ${callBtn(pp.id, pp.phone)}</span></div>`).join('') || '<div class="muted">No contacts on file.</div>';
+        <span>${pp.email ? `<a href="mailto:${esc(pp.email)}">${esc(pp.email)}</a>` : ''}${pp.phone ? ' · ' + esc(pp.phone) : ''}</span></div>`).join('') || '<div class="muted">No contacts on file.</div>';
 
     const notes = (d.notes || []).map(n => `
       <div class="note">${esc(n.body)}<div class="note-meta">${esc(n.author_name || 'Unknown')} · ${fmtDate(n.created_at)}</div></div>`).join('') || '<div class="muted" id="noNotes">No notes yet.</div>';
@@ -1708,23 +1750,28 @@ select{cursor:pointer}
         <div class="client-name" style="font-size:18px">${esc(c.name || '(no name)')} ${planBadge(c.plan)} ${isNew48(cache) ? '<span class="badge new">New</span>' : ''}</div>
         <div class="sec-title">Contact</div>
         <div class="kv"><span class="k">Company email</span><span>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '-'}</span></div>
-        <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '-')} ${callBtn('company', c.phone)}</span></div>
+        <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '-')}</span></div>
         <div class="kv"><span class="k">Website</span><span>${c.domain ? `<a href="${esc(c.domain)}" target="_blank" rel="noopener">${esc(c.domain)}</a>` : '-'}</span></div>
         ${billingSummary(cache)}
         <div class="sec-title">People</div>
         ${contacts}
       </div>
 
+      ${iCan('calls_make') ? `<div class="card">
+        <div class="sec-title" style="margin-top:0">Call this client</div>
+        <p class="muted" style="margin:0 0 12px;font-size:12px">
+          Your own mobile rings first. Answer it and we connect you — they see the QuoteLeads number.
+        </p>
+        ${callRows}
+        <div class="sec-title">Recent calls</div>
+        <div id="callStatus" class="muted" style="font-size:12.5px">Loading calls…</div>
+        <div id="callList"></div>
+      </div>` : ''}
+
       <div class="card">
         <div class="sec-title" style="margin-top:0">Tasks</div>
         ${introRow}${tasksHtml}
       </div>
-
-      ${iCan('calls_make') ? `<div class="card">
-        <div class="sec-title" style="margin-top:0">Calls</div>
-        <div id="callStatus" class="muted">Loading calls…</div>
-        <div id="callList"></div>
-      </div>` : ''}
 
       ${iCan('sms_send') ? `<div class="card">
         <div class="sec-title" style="margin-top:0">Texts</div>
