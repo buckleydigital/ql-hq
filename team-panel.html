@@ -419,6 +419,9 @@ select{cursor:pointer}
           <button class="navbtn active" id="navClients" type="button">
             <span class="ni"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span>Clients
           </button>
+          <button class="navbtn hidden" id="navCalls" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/></svg></span>Calls
+          </button>
           <button class="navbtn hidden" id="navTexts" type="button">
             <span class="ni"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span>Texts<span id="textsBadge" class="nav-badge hidden">0</span>
           </button>
@@ -522,6 +525,19 @@ select{cursor:pointer}
   </div>
 
   <!-- AVAILABILITY -->
+  <!-- CALLS -->
+  <!-- Calling had no destination of its own: it lived inside a client record,
+       two clicks from anywhere, and a CSM looking for "where do I make calls"
+       found nothing in the nav and gave up twice. Every number he can ring is
+       now on one page he can point at. -->
+  <div id="callsView" class="hidden">
+    <div class="sec-title" style="margin-top:0">Call a client</div>
+    <p class="muted" style="margin:-4px 0 14px;font-size:12px">
+      Your mobile rings first. Answer it and we connect you — they see the QuoteLeads number.
+    </p>
+    <div class="card" id="callsList" style="padding:0;overflow:hidden"></div>
+  </div>
+
   <!-- ALL TEXTS -->
   <!-- The per-client card answers "what have we said to this client". This
        answers "who is waiting on me", which is the question someone opens the
@@ -1206,6 +1222,7 @@ select{cursor:pointer}
     $('navTpl').classList.toggle('active', which === 'tpl');
     $('navCallTest').classList.toggle('active', which === 'calltest');
     $('navTexts').classList.toggle('active', which === 'texts');
+    $('navCalls').classList.toggle('active', which === 'calls');
   }
 
   function hideAllViews() {
@@ -1217,6 +1234,7 @@ select{cursor:pointer}
     $('signupView').classList.add('hidden');
     $('callTestView').classList.add('hidden');
     $('textsView').classList.add('hidden');
+    $('callsView').classList.add('hidden');
   }
 
   function avGridHtml(selected, readOnly) {
@@ -1288,6 +1306,7 @@ select{cursor:pointer}
     $('navClients').addEventListener('click', showList);
     $('navCallTest').addEventListener('click', showCallTest);
     $('navTexts').addEventListener('click', showTexts);
+    $('navCalls').addEventListener('click', showCalls);
     $('callTestBtn').addEventListener('click', placeTestCall);
     $('callTestRefresh').addEventListener('click', loadTestCalls);
     $('callTestMineBtn').addEventListener('click', saveMyCallNumber);
@@ -1467,6 +1486,7 @@ select{cursor:pointer}
     // role that cannot text should not show a bell they would never have.
     $('smsBellWrap').classList.toggle('hidden', !iCan('sms_send'));
     $('navTexts').classList.toggle('hidden', !iCan('sms_send'));
+    $('navCalls').classList.toggle('hidden', !iCan('calls_make'));
     $('sbStatus').textContent = _me.unrestricted ? 'All clients' : 'Your clients';
     syncSmsBell();
     // Previewing from inside the tab would otherwise leave it on screen with
@@ -1984,6 +2004,57 @@ select{cursor:pointer}
     input.value = '';
     status.textContent = '';
     loadClientSms(companyId);
+  }
+
+  // ─── Calls: every client you can ring, on one page ────────────────────────
+  // Built from the clients already loaded, so it needs no extra request and
+  // cannot offer a client this person is not allowed to call. Company numbers
+  // only - a specific contact is still rung from inside the client record,
+  // which is one click away on each row.
+  function showCalls() {
+    hideAllViews();
+    setNav('calls');
+    $('callsView').classList.remove('hidden');
+    renderCallsList();
+  }
+
+  function renderCallsList() {
+    const host = $('callsList');
+    const withPhone = (_clients || []).filter(c => c.phone);
+    const without  = (_clients || []).filter(c => !c.phone);
+
+    if (!(_clients || []).length) {
+      host.innerHTML = '<div class="empty">No clients assigned to you yet.</div>';
+      return;
+    }
+
+    host.innerHTML =
+      withPhone.map(c => `
+        <div class="call-row" style="border:0;border-bottom:1px solid var(--bd);border-radius:0;margin:0">
+          <div style="min-width:0">
+            <div class="call-who">${esc(c.name || '(no name)')}</div>
+            <div class="call-num">${esc(c.phone)}</div>
+          </div>
+          <div style="display:flex;gap:7px;flex:none">
+            <button class="btn" data-open="${esc(c.id)}" title="Open the client to ring a specific person">Open</button>
+            <button class="btn btn-p" data-callclient="${esc(c.id)}">&#9743; Call</button>
+          </div>
+        </div>`).join('') +
+      // Shown rather than hidden, so a missing number reads as something to fix
+      // rather than as a client that quietly vanished from the list.
+      without.map(c => `
+        <div class="call-row" style="border:0;border-bottom:1px solid var(--bd);border-radius:0;margin:0;opacity:.6">
+          <div style="min-width:0">
+            <div class="call-who">${esc(c.name || '(no name)')}</div>
+            <div class="call-num">No phone number on file</div>
+          </div>
+          <button class="btn" data-open="${esc(c.id)}" style="flex:none">Open</button>
+        </div>`).join('');
+
+    host.querySelectorAll('[data-callclient]').forEach(b =>
+      b.addEventListener('click', () => startCall(b.dataset.callclient, 'company', b)));
+    host.querySelectorAll('[data-open]').forEach(b =>
+      b.addEventListener('click', () => openClient(b.dataset.open)));
   }
 
   // ─── The Texts tab: every conversation in one place ────────────────────────
