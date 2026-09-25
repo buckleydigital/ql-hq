@@ -150,17 +150,46 @@ body{overflow:hidden}
   .layout{flex-direction:column;overflow:auto}
   .sidebar{width:100%;border-right:0;border-bottom:1px solid var(--bd);overflow:visible}
   .sb-header{display:none}
-  .sb-nav{display:flex;gap:5px;overflow-x:auto;padding:9px 12px}
-  .sb-group{display:flex;gap:5px;margin:0}
+  /* WRAPS, rather than scrolling sideways. A horizontal strip put Texts and
+     Calls off the right-hand edge on a phone, where nothing indicates there is
+     more to scroll to - so on mobile the destinations simply were not there as
+     far as the person looking was concerned. */
+  .sb-nav{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px}
+  .sb-group{display:flex;flex-wrap:wrap;gap:6px;margin:0}
   .sb-group-label,.sb-divider{display:none}
-  .navbtn{width:auto;white-space:nowrap;padding:7px 12px;font-size:12px;
+  .navbtn{width:auto;white-space:nowrap;padding:8px 13px;font-size:12.5px;
     border:1px solid var(--bd2);background:var(--s2);margin:0}
-  .sb-bottom{display:flex;gap:8px;align-items:center;padding:0 12px 10px;
+  .sb-bottom{display:flex;gap:8px;align-items:center;padding:0 14px 12px;
     border-top:0;margin-top:0}
   .sb-bottom #adminBar{margin:0;flex:1}
   body{overflow:auto}
   #app{height:auto;min-height:100vh}
   .content{overflow:visible}
+}
+
+@media(max-width:760px){
+  /* The two Texts panes stack. min-width on them was forcing 300px inside a
+     container narrower than that on a small phone, which pushed the whole page
+     sideways. */
+  #textsView>div{flex-direction:column;gap:12px}
+  #textsView .card{max-width:none!important;width:100%;min-width:0!important}
+  /* Nested scrolling areas inside a page that already scrolls is miserable on
+     a touch screen, and two of them stacked was over a screen and a half of
+     height before you reached the reply box. */
+  #textsList{max-height:40vh!important}
+  #textsThread{max-height:46vh!important}
+  /* The reply box gets its own line, so the Send button is never squeezed to a
+     sliver beside the textarea. */
+  #textsReplyBox{flex-direction:column;align-items:stretch}
+  #textsReplyBox textarea{min-width:0!important;width:100%}
+  #textsReplyBox .btn{width:100%}
+  /* .wrap stopped existing when the Mission Control shell landed, so this rule
+     had been doing nothing and mobile kept the full desktop side padding. */
+  .panelwrap{padding:16px 14px 50px}
+  .kv{flex-direction:column;gap:2px}
+  .kv .k{min-width:0}
+  .call-row{flex-wrap:wrap}
+  .call-row .btn{flex:1}
 }
 
 /* ═══ BUTTONS ═══ */
@@ -351,12 +380,7 @@ select{cursor:pointer}
 .fcard:hover{border-color:var(--bd3);background:var(--s2)}
 
 /* ═══ RESPONSIVE ═══ */
-@media(max-width:760px){
-  #textsView>div{flex-direction:column}
-  #textsView .card{max-width:none!important;width:100%}
-  .wrap{padding:16px 14px 60px}
-  .kv .k{min-width:105px}
-}
+
 @media(max-width:600px){
   .inv-grid{grid-template-columns:1fr}
   .li-row{grid-template-columns:1fr 1fr}
