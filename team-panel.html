@@ -331,6 +331,12 @@ select{cursor:pointer}
 .task.done .tbody{text-decoration:line-through}
 
 /* ═══ TEXTS ═══ */
+/* A <button> inherits neither color nor font from the page - it uses the
+   browser's own control defaults. On a dark background that renders the label
+   almost black on almost black, which is why a conversation's name was barely
+   readable both in this list and in the bell dropdown. */
+.thread-row,.sms-drop-item{font:inherit;color:var(--ink)}
+.thread-row .muted,.sms-drop-item .muted{color:var(--ink3)}
 .pane-list .thread-row{border-bottom:1px solid var(--bd);transition:background .12s}
 .pane-list .thread-row:last-child{border-bottom:0}
 .thread-row:hover,.sms-drop-item:hover{background:var(--s2)}
