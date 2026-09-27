@@ -55,6 +55,7 @@ const ICONS = {
   star:              `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
   "credit-card":     `<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>`,
   check:             `<path d="M21.8 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>`,
+  folder:            `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>`,
 };
 
 function renderIcons() {
@@ -1069,6 +1070,7 @@ const PAGE_META = {
   pipeline:           ["Pipeline",          "Track leads through your pipeline stages."],
   quotes:             ["Quotes",            "Leads that have been quoted."],
   appointments:       ["Appointments",      "Scheduled appointments and bookings."],
+  files:              ["Files",             "Files that came in with your leads."],
   sales:              ["Sales",             "Closed won and lost performance summary."],
   notifications:      ["Notifications",    "AI activity and goal completions."],
   onboarding:         ["Onboarding",        "Connect your Meta assets so we can build your campaigns."],
@@ -1110,6 +1112,7 @@ function navigateTo(page) {
   leadsPage = 0;
   quotesPage = 0;
   appointmentsPage = 0;
+  filesPage = 0;
   salesPage = 0;
 
   const [title, sub] = PAGE_META[page] || [page, ""];
@@ -1124,6 +1127,7 @@ function navigateTo(page) {
     pipeline:           loadPipeline,
     quotes:             loadQuotes,
     appointments:       loadAppointments,
+    files:              loadFiles,
     sales:              loadSales,
     conversations:      loadConversations,
     "bulk-sms":         loadBulkSms,
@@ -3292,6 +3296,121 @@ async function loadSales() {
 }
 
 // ─── Appointments ─────────────────────────────────────────────────────────────
+// ─── Files ────────────────────────────────────────────────────────────────────
+// Files attached to this account's leads (lead.metadata.bill, set by intake
+// functions such as tfa-intake). They live in the private lead-files bucket at
+// <company_id>/<lead_id>/..., and storage RLS only opens a file for someone who
+// can see its lead, so each account only ever sees its own files.
+let filesPage = 0;
+let _filesSearchBound = false;
+
+function leadAttachments(meta) {
+  return meta?.bill?.path ? [{ ...meta.bill, kind: "Electricity bill" }] : [];
+}
+
+function fmtFileSize(bytes) {
+  const n = Number(bytes);
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+async function openLeadFile(path) {
+  if (!path) return;
+  // Open the tab synchronously so popup blockers allow it, then point it at the file.
+  const win = window.open("", "_blank");
+  const { data, error } = await sb.storage.from("lead-files").createSignedUrl(path, 300);
+  if (error || !data?.signedUrl) {
+    win?.close();
+    toast("Couldn't open the file: " + (error?.message || "unknown error"), true);
+    return;
+  }
+  if (win) win.location.href = data.signedUrl;
+  else window.location.href = data.signedUrl;
+}
+window.openLeadFile = openLeadFile;
+
+async function loadFiles() {
+  if (!currentCompanyId) return;
+  const el = document.getElementById("filesPanel");
+  if (!el) return;
+
+  const search = document.getElementById("filesSearch");
+  if (search && !_filesSearchBound) {
+    _filesSearchBound = true;
+    let t;
+    search.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => { filesPage = 0; loadFiles(); }, 250);
+    });
+  }
+
+  try {
+    // Leads with at least one attachment. The files list is small, so filter
+    // and page in the browser; this keeps the search across file names too.
+    const { data, error } = await sb
+      .from("leads")
+      .select("id, name, first_name, last_name, phone, email, created_at, metadata")
+      .eq("company_id", currentCompanyId)
+      .not("metadata->bill", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+
+    const q = (search?.value || "").trim().toLowerCase();
+    const rows = [];
+    for (const l of data || []) {
+      const leadName = l.name || [l.first_name, l.last_name].filter(Boolean).join(" ") || "Unknown lead";
+      for (const f of leadAttachments(l.metadata)) {
+        const hay = `${leadName} ${f.filename || ""} ${l.phone || ""} ${l.email || ""}`.toLowerCase();
+        if (q && !hay.includes(q)) continue;
+        rows.push({ lead: l, leadName, file: f });
+      }
+    }
+
+    if (!rows.length) {
+      el.innerHTML = `<div class="empty">
+  <span class="icon" data-icon="folder" style="width:28px;height:28px"></span>
+  <h3>${q ? "No files match your search" : "No files yet"}</h3>
+  <p>${q ? "Try a different name." : "Files that come in with your leads, like electricity bills from your funnel, will appear here."}</p>
+</div>`;
+      renderIcons();
+      renderPagination("filesPagination", filesPage, 0, PER_PAGE, () => {});
+      return;
+    }
+
+    const pageRows = rows.slice(filesPage * PER_PAGE, (filesPage + 1) * PER_PAGE);
+    el.innerHTML = `<div class="table-lite">${pageRows.map(({ lead, leadName, file }) => `
+      <div class="row">
+        <div>
+          <strong style="font-size:13px">${esc(file.filename || "File")}</strong>
+          <span class="muted">${esc(file.kind)}${fmtFileSize(file.size) ? ` · ${fmtFileSize(file.size)}` : ""}</span>
+        </div>
+        <div style="cursor:pointer" onclick="openOpportunityModal('${lead.id}')">
+          <strong style="font-size:13px">${esc(leadName)}</strong>
+          <span class="muted">${esc(lead.phone || lead.email || "")}</span>
+        </div>
+        <div>
+          <strong style="font-size:13px">${fmtDate(lead.created_at)}</strong>
+          <span class="muted">${fmtTime(lead.created_at)}</span>
+        </div>
+        <div><button class="btn" type="button" style="font-size:12px;padding:4px 10px" data-file-path="${esc(file.path)}">Open</button></div>
+      </div>`).join("")}</div>`;
+    el.querySelectorAll("[data-file-path]").forEach((b) =>
+      b.addEventListener("click", () => openLeadFile(b.dataset.filePath))
+    );
+
+    renderPagination("filesPagination", filesPage, rows.length, PER_PAGE, (page) => {
+      filesPage = page;
+      loadFiles();
+    });
+  } catch (err) {
+    el.innerHTML = `<div class="notice">Failed to load files.</div>`;
+    console.error("loadFiles:", err);
+  }
+}
+
 async function loadAppointments() {
   if (!currentCompanyId) return;
   try {

@@ -534,7 +534,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ob-next b{color:var(--text)}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20260927b"></script>
+<script defer src="./dashboard-supabase.js?v=20260927c"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -619,6 +619,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       <button class="nav-item" data-page="appointments" type="button">
         <span class="icon" data-icon="calendar"></span>
         <span class="nav-text">Appointments</span>
+      </button>
+      <button class="nav-item" data-page="files" type="button">
+        <span class="icon" data-icon="folder"></span>
+        <span class="nav-text">Files</span>
       </button>
     </div>
 
@@ -881,6 +885,11 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
       <!-- Appointments -->
       <div id="page-appointments" class="page hidden">
         <section class="panel"><div class="panel-h"><div><h2>Appointments</h2><p>Scheduled callbacks, on-site visits, and other bookings.</p></div><div class="actions"><button id="openAppointmentModal" class="btn2" type="button"><span class="icon" data-icon="plus"></span><span>New Appointment</span></button></div></div><div id="appointmentsPanel" class="panel-b"></div><div id="appointmentsPagination" style="display:flex;justify-content:center;gap:10px;padding:0 16px 16px"></div></section>
+      </div>
+
+      <!-- Files (attachments sent in with leads, e.g. electricity bills) -->
+      <div id="page-files" class="page hidden">
+        <section class="panel"><div class="panel-h"><div><h2>Files</h2><p>Files that came in with your leads, such as electricity bills uploaded through your funnel.</p></div><div class="actions"><input id="filesSearch" type="search" placeholder="Search by name or file" style="min-width:220px"></div></div><div id="filesPanel" class="panel-b"></div><div id="filesPagination" style="display:flex;justify-content:center;gap:10px;padding:0 16px 16px"></div></section>
       </div>
 
       <!-- Sales -->

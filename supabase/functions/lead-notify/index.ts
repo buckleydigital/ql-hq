@@ -34,6 +34,9 @@ const HIDDEN_FIELDS = new Set([
   "custom_data", "metadata",         // flattened below
 ]);
 
+// Internal keys inside custom_data / metadata (e.g. set by tfa-intake).
+const HIDDEN_EXTRA_KEYS = new Set(["tfa_lead_id", "tracking", "bill", "bill_error"]);
+
 // Preferred order for the common fields; everything else follows.
 const FIELD_ORDER = [
   "phone", "email", "company", "address", "postcode", "service_type",
@@ -120,7 +123,9 @@ function leadFields(lead: Lead): Array<[string, string]> {
   // Extra form answers live in custom_data / metadata.
   for (const bag of [lead.custom_data, lead.metadata]) {
     if (bag && typeof bag === "object" && !Array.isArray(bag)) {
-      for (const [k, v] of Object.entries(bag as Record<string, unknown>)) push(k, v);
+      for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+        if (!HIDDEN_EXTRA_KEYS.has(k)) push(k, v);
+      }
     }
   }
 
