@@ -9,6 +9,8 @@
 -- Reading: a signed-in user can open a file only if they can see the lead it
 -- belongs to. The subquery on public.leads runs under the leads RLS policies,
 -- so company scoping and rep "assigned only" visibility both carry over.
+-- objects.name must be qualified: leads has its own `name` column, and a bare
+-- `name` inside the subquery resolves to the lead's name, matching nothing.
 -- ============================================================================
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -32,7 +34,7 @@ create policy "lead files readable by those who can see the lead"
     bucket_id = 'lead-files'
     and exists (
       select 1 from public.leads l
-      where l.id::text = (storage.foldername(name))[2]
-        and l.company_id::text = (storage.foldername(name))[1]
+      where l.id::text = (storage.foldername(objects.name))[2]
+        and l.company_id::text = (storage.foldername(objects.name))[1]
     )
   );
