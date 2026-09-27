@@ -3305,7 +3305,10 @@ let filesPage = 0;
 let _filesSearchBound = false;
 
 function leadAttachments(meta) {
-  return meta?.bill?.path ? [{ ...meta.bill, kind: "Electricity bill" }] : [];
+  if (!meta?.bill?.path) return [];
+  const t = String(meta.bill.content_type || "");
+  const kind = t === "application/pdf" ? "PDF" : t.startsWith("image/") ? "Image" : "File";
+  return [{ ...meta.bill, kind }];
 }
 
 function fmtFileSize(bytes) {
@@ -3373,7 +3376,7 @@ async function loadFiles() {
       el.innerHTML = `<div class="empty">
   <span class="icon" data-icon="folder" style="width:28px;height:28px"></span>
   <h3>${q ? "No files match your search" : "No files yet"}</h3>
-  <p>${q ? "Try a different name." : "Files that come in with your leads, like electricity bills from your funnel, will appear here."}</p>
+  <p>${q ? "Try a different name." : "Files that came in with your leads will appear here."}</p>
 </div>`;
       renderIcons();
       renderPagination("filesPagination", filesPage, 0, PER_PAGE, () => {});
