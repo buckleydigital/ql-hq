@@ -534,7 +534,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ob-next b{color:var(--text)}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20260927a"></script>
+<script defer src="./dashboard-supabase.js?v=20260927b"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -2132,6 +2132,14 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 
       <!-- Overview Tab -->
       <div id="oppTabOverview" class="opp-tab-content">
+        <!-- Bill uploaded through a client funnel (e.g. TFA Solar) - hidden unless the lead has one -->
+        <div id="oppBillSection" class="hidden" style="margin-bottom:16px;padding:12px 14px;border:1px solid var(--border,#e0e0e0);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="min-width:0">
+            <span style="font-size:13px;font-weight:600">Electricity bill</span>
+            <div id="oppBillName" style="font-size:12px;color:var(--muted);overflow-wrap:anywhere"></div>
+          </div>
+          <button id="viewOppBillBtn" class="btn" type="button" style="font-size:12px;padding:4px 10px;flex-shrink:0">View bill</button>
+        </div>
         <div class="form2">
           <div class="field"><label>Lead Name</label><input id="oppOverviewName" type="text"></div>
           <div class="field"><label>Email</label><input id="oppOverviewEmail" type="text"></div>

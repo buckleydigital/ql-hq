@@ -572,7 +572,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
-  document.getElementById("viewLeadBillBtn")?.addEventListener("click", openLeadBill);
+  document.getElementById("viewLeadBillBtn")?.addEventListener("click", () => openLeadBill("lead"));
+  document.getElementById("viewOppBillBtn")?.addEventListener("click", () => openLeadBill("opp"));
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
   // ── Dispute / Call Log Modals ─────────────────────────────────────────────
@@ -1846,12 +1847,18 @@ function resetLeadForm() {
 // ─── Lead attachments (bill sent through a client funnel) ─────────────────────
 // Files live in the private lead-files bucket; storage RLS only lets someone
 // open a file for a lead they can see, via a short-lived signed URL.
-let _leadBillPath = null;
+// Shown in both the lead details window ("opp") and the edit window ("lead").
+const BILL_VIEWS = {
+  lead: { section: "leadBillSection", name: "leadBillName", idInput: "leadId" },
+  opp:  { section: "oppBillSection",  name: "oppBillName",  idInput: "oppModalLeadId" },
+};
+const _billPaths = { lead: null, opp: null };
 
-async function renderLeadBill(lead) {
-  const section = document.getElementById("leadBillSection");
-  const nameEl  = document.getElementById("leadBillName");
-  _leadBillPath = null;
+async function renderLeadBill(lead, view = "lead") {
+  const ids     = BILL_VIEWS[view];
+  const section = document.getElementById(ids.section);
+  const nameEl  = document.getElementById(ids.name);
+  _billPaths[view] = null;
   section?.classList.add("hidden");
   if (!lead) return;
 
@@ -1864,18 +1871,19 @@ async function renderLeadBill(lead) {
   const bill = meta && meta.bill;
   if (!bill || !bill.path) return;
   // A different lead may have been opened while we were fetching.
-  if (document.getElementById("leadId")?.value !== lead.id) return;
+  if (document.getElementById(ids.idInput)?.value !== lead.id) return;
 
-  _leadBillPath = bill.path;
+  _billPaths[view] = bill.path;
   if (nameEl) nameEl.textContent = bill.filename || "Uploaded bill";
   section?.classList.remove("hidden");
 }
 
-async function openLeadBill() {
-  if (!_leadBillPath) return;
+async function openLeadBill(view = "lead") {
+  const path = _billPaths[view];
+  if (!path) return;
   // Open the tab synchronously so popup blockers allow it, then point it at the file.
   const win = window.open("", "_blank");
-  const { data, error } = await sb.storage.from("lead-files").createSignedUrl(_leadBillPath, 300);
+  const { data, error } = await sb.storage.from("lead-files").createSignedUrl(path, 300);
   if (error || !data?.signedUrl) {
     win?.close();
     toast("Couldn't open the bill: " + (error?.message || "unknown error"), true);
@@ -5409,6 +5417,7 @@ async function openOpportunityModal(leadId) {
   setOppField("oppOverviewAddress", lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "");
   setOppField("oppOverviewAiSummary", lead.ai_summary || "No AI summary yet.");
   setOppField("oppOverviewNotes", lead.notes || "");
+  renderLeadBill(lead, "opp");
 
   // QuoteLeads PPL: only status, value, address & notes are editable here.
   const oppLocked = isPplLocked(lead);
