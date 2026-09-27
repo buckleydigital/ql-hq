@@ -534,7 +534,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ob-next b{color:var(--text)}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20260627a"></script>
+<script defer src="./dashboard-supabase.js?v=20260927a"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -1920,6 +1920,15 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         </div>
         <div id="customFieldInputs" class="customs"></div>
       </form>
+
+      <!-- Bill uploaded through a client funnel (e.g. TFA Solar) - hidden unless the lead has one -->
+      <div id="leadBillSection" class="hidden" style="margin-top:20px;border-top:1px solid var(--border,#e0e0e0);padding-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="min-width:0">
+          <span style="font-size:13px;font-weight:600">Electricity bill</span>
+          <div id="leadBillName" style="font-size:12px;color:var(--muted);overflow-wrap:anywhere"></div>
+        </div>
+        <button id="viewLeadBillBtn" class="btn" type="button" style="font-size:12px;padding:4px 10px;flex-shrink:0">View bill</button>
+      </div>
 
       <!-- PPL call log - visible only for PPL leads -->
       <div id="pplCallLogSection" class="hidden" style="margin-top:20px;border-top:1px solid var(--border,#e0e0e0);padding-top:16px">

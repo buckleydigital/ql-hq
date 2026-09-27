@@ -572,6 +572,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.getElementById("cancelLeadModal")?.addEventListener("click", () => closeModal("leadModal"));
+  document.getElementById("viewLeadBillBtn")?.addEventListener("click", openLeadBill);
   document.getElementById("leadForm")?.addEventListener("submit", handleLeadSave);
 
   // ── Dispute / Call Log Modals ─────────────────────────────────────────────
@@ -1839,6 +1840,49 @@ function resetLeadForm() {
   // Re-enable any fields that a previously-viewed locked lead disabled
   setFieldsLocked(PPL_LOCKED_LEADMODAL_FIELDS, false);
   renderCustomFieldInputs();
+  renderLeadBill(null);
+}
+
+// ─── Lead attachments (bill sent through a client funnel) ─────────────────────
+// Files live in the private lead-files bucket; storage RLS only lets someone
+// open a file for a lead they can see, via a short-lived signed URL.
+let _leadBillPath = null;
+
+async function renderLeadBill(lead) {
+  const section = document.getElementById("leadBillSection");
+  const nameEl  = document.getElementById("leadBillName");
+  _leadBillPath = null;
+  section?.classList.add("hidden");
+  if (!lead) return;
+
+  // The pipeline loads leads without metadata, so fetch it when missing.
+  let meta = lead.metadata;
+  if (meta === undefined) {
+    const { data } = await sb.from("leads").select("metadata").eq("id", lead.id).maybeSingle();
+    meta = data?.metadata;
+  }
+  const bill = meta && meta.bill;
+  if (!bill || !bill.path) return;
+  // A different lead may have been opened while we were fetching.
+  if (document.getElementById("leadId")?.value !== lead.id) return;
+
+  _leadBillPath = bill.path;
+  if (nameEl) nameEl.textContent = bill.filename || "Uploaded bill";
+  section?.classList.remove("hidden");
+}
+
+async function openLeadBill() {
+  if (!_leadBillPath) return;
+  // Open the tab synchronously so popup blockers allow it, then point it at the file.
+  const win = window.open("", "_blank");
+  const { data, error } = await sb.storage.from("lead-files").createSignedUrl(_leadBillPath, 300);
+  if (error || !data?.signedUrl) {
+    win?.close();
+    toast("Couldn't open the bill: " + (error?.message || "unknown error"), true);
+    return;
+  }
+  if (win) win.location.href = data.signedUrl;
+  else window.location.href = data.signedUrl;
 }
 
 async function openEditLead(id) {
@@ -1870,6 +1914,7 @@ async function openEditLead(id) {
   if (leadNotes) leadNotes.value = l.notes || "";
   
   await renderCustomFieldInputs(l.custom_data || {});
+  renderLeadBill(l);
 
   // QuoteLeads PPL: only status, value, address & notes are editable. Lock the
   // identifying fields and custom data; keep dispute + call log available below.

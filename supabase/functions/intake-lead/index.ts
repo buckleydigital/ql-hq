@@ -273,7 +273,9 @@ Deno.serve(async (req) => {
     Object.assign(customFieldsData, rest);
 
     if (Object.keys(customFieldsData).length > 0) {
-      leadInsert.custom_fields = customFieldsData;
+      // The column is custom_data; writing custom_fields made every insert
+      // fail once and the retry below silently dropped these answers.
+      leadInsert.custom_data = customFieldsData;
     }
 
     let { data: lead, error: leadErr } = await db
@@ -284,10 +286,10 @@ Deno.serve(async (req) => {
 
     if (leadErr) {
       if (
-        leadErr.message?.includes("custom_fields") ||
+        leadErr.message?.includes("custom_data") ||
         leadErr.code === "42703"
       ) {
-        delete leadInsert.custom_fields;
+        delete leadInsert.custom_data;
         const retry = await db
           .from("leads")
           .insert(leadInsert)

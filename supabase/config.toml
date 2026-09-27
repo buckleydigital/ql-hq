@@ -93,3 +93,8 @@ verify_jwt = false
 verify_jwt = false
 # Super-admin-only. Verifies the caller's JWT + profiles.is_admin internally,
 # then creates a Stripe checkout link at an admin-set custom price.
+
+# Called by TFA Solar's Supabase (trigger on their leads table); authenticates
+# with the x-intake-secret header instead of a JWT.
+[functions.tfa-intake]
+verify_jwt = false
