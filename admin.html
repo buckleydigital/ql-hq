@@ -888,6 +888,40 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- Lead Notifications panel (every new-lead email/SMS sent to clients) -->
+    <div class="card">
+      <div class="panel-h">
+        <div>
+          <h2>Lead Notifications</h2>
+          <p id="leadNotifyCountLabel">Loading…</p>
+        </div>
+        <div class="filter-bar">
+          <select id="leadNotifyDaysFilter" class="filter-select">
+            <option value="1">Last 24 hours</option>
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <select id="leadNotifyStatusFilter" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="sent">Sent</option>
+            <option value="failed">Failed</option>
+            <option value="skipped">Skipped</option>
+            <option value="sending">Stuck sending</option>
+          </select>
+          <select id="leadNotifyChannelFilter" class="filter-select">
+            <option value="">Email + SMS</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+          </select>
+          <button class="btn btn-sm" id="refreshLeadNotifyBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="leadNotifyTable"><div class="notice">Loading…</div></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2492,6 +2526,68 @@ h1{font-size:18px;font-weight:500}
   document.getElementById('disputeStatusFilter').addEventListener('change', applyDisputeFilter);
   document.getElementById('refreshDisputesBtn').addEventListener('click', loadDisputes);
 
+  // ── Lead Notifications (all accounts) ─────────────────────────────────────
+  function leadNotifyStatusClass(st) {
+    if (st === 'sent') return 'badge-approved';
+    if (st === 'failed') return 'badge-rejected';
+    return 'badge-pending';
+  }
+
+  async function loadLeadNotifications() {
+    var wrap  = document.getElementById('leadNotifyTable');
+    var label = document.getElementById('leadNotifyCountLabel');
+    wrap.innerHTML = '<div class="notice">Loading…</div>';
+    try {
+      var res = await callEdge({
+        action:  'list',
+        days:    Number(document.getElementById('leadNotifyDaysFilter').value),
+        status:  document.getElementById('leadNotifyStatusFilter').value || undefined,
+        channel: document.getElementById('leadNotifyChannelFilter').value || undefined,
+      }, 'admin-lead-notify');
+      var rows = res.rows || [];
+      var failed = rows.filter(function (r) { return r.status === 'failed'; }).length;
+      label.textContent = rows.length + ' notification' + (rows.length === 1 ? '' : 's') +
+        (failed ? ' · ' + failed + ' failed' : '') +
+        ' · ' + (res.enabled_users || 0) + ' user' + (res.enabled_users === 1 ? '' : 's') + ' with notifications on' +
+        (rows.length >= 500 ? ' · showing latest 500' : '');
+      if (!rows.length) {
+        wrap.innerHTML = '<div class="notice">No notifications for this filter.</div>';
+        return;
+      }
+      var th = 'padding:6px 10px';
+      var td = 'padding:8px 10px;border-top:1px solid var(--border);vertical-align:top';
+      var body = rows.map(function (r) {
+        var lead = r.leads || {};
+        var leadName = lead.name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || '-';
+        var err = r.status !== 'sent' && r.response_body
+          ? '<div style="font-size:11px;color:var(--muted);margin-top:3px;max-width:320px;word-break:break-word">' + escapeHtml(String(r.response_body).slice(0, 200)) + '</div>'
+          : '';
+        return '<tr>' +
+          '<td style="' + td + ';font-size:12px;color:var(--muted);white-space:nowrap">' + escapeHtml(new Date(r.created_at).toLocaleString('en-AU')) + '</td>' +
+          '<td style="' + td + '">' + escapeHtml((r.companies && r.companies.name) || '-') + '</td>' +
+          '<td style="' + td + '">' + escapeHtml((r.profiles && r.profiles.full_name) || '-') + '</td>' +
+          '<td style="' + td + '">' + escapeHtml(leadName) + '</td>' +
+          '<td style="' + td + '">' + (r.channel === 'sms' ? 'SMS' : 'Email') + '</td>' +
+          '<td style="' + td + ';font-size:12px">' + escapeHtml(r.destination || '-') + '</td>' +
+          '<td style="' + td + '"><span class="badge-status ' + leadNotifyStatusClass(r.status) + '">' + escapeHtml(r.status) + '</span>' + err + '</td>' +
+          '</tr>';
+      }).join('');
+      wrap.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        '<thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">' +
+        '<th style="' + th + '">When</th><th style="' + th + '">Company</th><th style="' + th + '">User</th>' +
+        '<th style="' + th + '">Lead</th><th style="' + th + '">Channel</th><th style="' + th + '">Sent To</th>' +
+        '<th style="' + th + '">Status</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+    } catch (err) {
+      label.textContent = 'Failed to load';
+      wrap.innerHTML = '<div class="notice" style="color:#b91c1c">Failed to load: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  document.getElementById('refreshLeadNotifyBtn').addEventListener('click', loadLeadNotifications);
+  ['leadNotifyDaysFilter', 'leadNotifyStatusFilter', 'leadNotifyChannelFilter'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', loadLeadNotifications);
+  });
+
   // ── PPL Orders ─────────────────────────────────────────────────────────────
 
   var allPplOrders = [];
@@ -2882,6 +2978,7 @@ h1{font-size:18px;font-weight:500}
 
     // 6. Load disputes panel
     await loadDisputes();
+    loadLeadNotifications();
 
     // 7. Load PPL orders panel and pre-populate company dropdowns
     await Promise.all([loadPplOrders(), loadCompanies()]);

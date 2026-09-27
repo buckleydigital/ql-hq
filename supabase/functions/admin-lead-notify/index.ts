@@ -2,6 +2,7 @@
 // QuoteLeadsHQ - Admin: per-user new lead notification settings
 // =============================================================================
 // Used by the Edit User modal in /admin. Super-admins (profiles.is_admin) only.
+//   action: list    { status?, channel?, days? } -> all sends, all accounts
 //   action: get     { user_id }  -> settings, account email, last 10 sends
 //   action: update  { user_id, enabled, channel, email, phone }
 // Sending itself is done by lead-notify.
@@ -52,6 +53,26 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { action, user_id } = body as { action?: string; user_id?: string };
+
+    // All sends across every account, newest first, for the /admin panel.
+    if (action === "list") {
+      const { status, channel, days } = body as { status?: string; channel?: string; days?: number };
+      const since = new Date(Date.now() - Math.min(Math.max(Number(days) || 30, 1), 365) * 86400000).toISOString();
+      let q = adminClient.from("lead_notification_log")
+        .select("id, lead_id, company_id, profile_id, channel, destination, status, response_code, response_body, created_at, companies(name), profiles(full_name), leads(name, first_name, last_name)")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (status) q = q.eq("status", status);
+      if (channel) q = q.eq("channel", channel);
+      const [{ data: rows, error: lErr }, { count: enabledUsers }] = await Promise.all([
+        q,
+        adminClient.from("profiles").select("id", { count: "exact", head: true }).eq("lead_notify_enabled", true),
+      ]);
+      if (lErr) return json({ error: lErr.message }, 500);
+      return json({ rows: rows || [], enabled_users: enabledUsers ?? 0 });
+    }
+
     if (!user_id || !UUID_RE.test(user_id)) return json({ error: "user_id must be a valid UUID" }, 400);
 
     if (action === "get") {
