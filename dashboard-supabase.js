@@ -3414,6 +3414,56 @@ async function loadSettings() {
       toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
     }, { once: true });
 
+    // New Lead Notifications (per user) - load
+    const lnEnabled = document.getElementById("leadNotifyEnabled");
+    const lnChannel = document.getElementById("leadNotifyChannel");
+    const lnEmail   = document.getElementById("leadNotifyEmail");
+    const lnPhone   = document.getElementById("leadNotifyPhone");
+    if (lnEnabled) lnEnabled.checked = profile?.lead_notify_enabled === true;
+    if (lnChannel) lnChannel.value   = profile?.lead_notify_channel || "email";
+    if (lnEmail) {
+      lnEmail.value = profile?.lead_notify_email || "";
+      lnEmail.placeholder = currentUser.email ? `Defaults to ${currentUser.email}` : "Defaults to your account email";
+    }
+    if (lnPhone) {
+      lnPhone.value = profile?.lead_notify_phone || "";
+      lnPhone.placeholder = profile?.phone ? `Defaults to ${profile.phone}` : "e.g. 0400 000 000";
+    }
+
+    // New Lead Notifications - save (bound once, same pattern as Lead Delivery)
+    const leadNotifyForm = document.getElementById("leadNotifyForm");
+    if (leadNotifyForm && !leadNotifyForm.dataset.bound) {
+      leadNotifyForm.dataset.bound = "1";
+      leadNotifyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const enabled = document.getElementById("leadNotifyEnabled")?.checked ?? false;
+        const channel = document.getElementById("leadNotifyChannel")?.value || "email";
+        const email   = document.getElementById("leadNotifyEmail")?.value.trim() || null;
+        const phone   = document.getElementById("leadNotifyPhone")?.value.trim() || null;
+
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast("Please enter a valid email.", true); return; }
+        if (enabled && channel !== "email") {
+          const { data: me } = await sb.from("profiles").select("phone").eq("id", currentUser.id).maybeSingle();
+          if (!phone && !me?.phone) { toast("Add a mobile number to receive SMS notifications.", true); return; }
+        }
+
+        const saveBtn = leadNotifyForm.querySelector('button[type="submit"]');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+        try {
+          const { error } = await sb.from("profiles").update({
+            lead_notify_enabled: enabled,
+            lead_notify_channel: channel,
+            lead_notify_email: email,
+            lead_notify_phone: phone,
+          }).eq("id", currentUser.id);
+          if (error) { toast("Failed to save notification settings.", true); return; }
+          toast(enabled ? "Lead notifications on." : "Lead notifications off.");
+        } finally {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Notification Settings"; }
+        }
+      });
+    }
+
     // Lead Delivery - load
     const delivery = company?.settings?.lead_delivery || {};
     const deliveryEmailEl   = document.getElementById("deliveryEmail");

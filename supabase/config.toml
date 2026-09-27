@@ -98,3 +98,7 @@ verify_jwt = false
 # with the x-intake-secret header instead of a JWT.
 [functions.tfa-intake]
 verify_jwt = false
+
+# Called by the on_lead_created_notify DB trigger via pg_net (no user JWT).
+[functions.lead-notify]
+verify_jwt = false

@@ -1332,6 +1332,41 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             <div class="actions" style="margin-top:14px"><button id="saveAiSharingBtn" class="btn2" type="button">Save Preference</button></div>
           </div>
         </section>
+        <!-- New Lead Notifications (per user) -->
+        <section class="panel" style="margin-top:24px">
+          <div class="panel-h"><div><h2>New Lead Notifications</h2><p>Get an alert with all of the lead's details whenever a new lead comes into your account. These settings are just for you.</p></div></div>
+          <div class="panel-b">
+            <form id="leadNotifyForm" class="stack">
+              <div class="toggle-group">
+                <label class="toggle-item">
+                  <input id="leadNotifyEnabled" type="checkbox">
+                  <div><span class="toggle-label">Notify me when a new lead comes in</span></div>
+                </label>
+              </div>
+              <div class="form2">
+                <div class="field">
+                  <label for="leadNotifyChannel">Send To</label>
+                  <select id="leadNotifyChannel">
+                    <option value="email">Email</option>
+                    <option value="sms">SMS</option>
+                    <option value="email_sms">Email + SMS</option>
+                  </select>
+                </div>
+                <div></div>
+                <div class="field">
+                  <label for="leadNotifyEmail">Notification Email</label>
+                  <input id="leadNotifyEmail" type="email" placeholder="Defaults to your account email">
+                </div>
+                <div class="field">
+                  <label for="leadNotifyPhone">Notification Mobile</label>
+                  <input id="leadNotifyPhone" type="tel" placeholder="Defaults to your account phone">
+                </div>
+              </div>
+              <p style="font-size:11px;color:var(--muted);margin:0">Leave email or mobile blank to use the ones on your account.</p>
+              <div class="actions"><button class="btn2" type="submit">Save Notification Settings</button></div>
+            </form>
+          </div>
+        </section>
         <!-- Lead Delivery -->
         <section class="panel" style="margin-top:24px">
           <div class="panel-h"><div><h2>Lead Delivery</h2><p>Choose how new leads are delivered to you. Leave a field blank to disable that channel.</p></div></div>

@@ -1103,6 +1103,54 @@ Deno.serve(async (req) => {
 
     // ── action: update_user ───────────────────────────────────────────────────
     // Updates email (auth.users) and/or full_name/is_admin (profiles) for any user.
+    // ── action: get_lead_notify / update_lead_notify ──────────────────────────
+    // Per-user new-lead notification settings (see lead-notify edge function).
+    if (action === 'get_lead_notify') {
+      const { user_id } = body as { user_id?: string };
+      if (!user_id) return json({ error: 'user_id required' }, 400);
+      const [{ data: p, error: pErr }, { data: u }] = await Promise.all([
+        adminClient.from('profiles')
+          .select('phone, lead_notify_enabled, lead_notify_channel, lead_notify_email, lead_notify_phone')
+          .eq('id', user_id).maybeSingle(),
+        adminClient.auth.admin.getUserById(user_id),
+      ]);
+      if (pErr) return json({ error: pErr.message }, 500);
+      if (!p) return json({ error: 'Profile not found' }, 404);
+      const { data: log } = await adminClient.from('lead_notification_log')
+        .select('channel, destination, status, response_body, created_at')
+        .eq('profile_id', user_id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      return json({
+        settings: p,
+        account_email: u?.user?.email ?? null,
+        recent: log || [],
+      });
+    }
+
+    if (action === 'update_lead_notify') {
+      const { user_id, enabled, channel, email, phone } = body as {
+        user_id?: string; enabled?: boolean; channel?: string; email?: string | null; phone?: string | null;
+      };
+      if (!user_id) return json({ error: 'user_id required' }, 400);
+      if (channel !== undefined && !['email', 'sms', 'email_sms'].includes(channel)) {
+        return json({ error: 'channel must be email, sms or email_sms' }, 400);
+      }
+      const cleanEmail = (email || '').trim();
+      if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return json({ error: 'Invalid notification email' }, 400);
+      }
+      const update: Record<string, unknown> = {
+        lead_notify_email: cleanEmail || null,
+        lead_notify_phone: (phone || '').trim() || null,
+      };
+      if (enabled !== undefined) update.lead_notify_enabled = !!enabled;
+      if (channel !== undefined) update.lead_notify_channel = channel;
+      const { error: upErr } = await adminClient.from('profiles').update(update).eq('id', user_id);
+      if (upErr) return json({ error: upErr.message }, 500);
+      return json({ success: true });
+    }
+
     if (action === 'update_user') {
       const { user_id, full_name, email, is_admin } = body as {
         user_id?: string;
