@@ -1878,7 +1878,7 @@ async function renderLeadBill(lead, view = "lead") {
   if (document.getElementById(ids.idInput)?.value !== lead.id) return;
 
   _billPaths[view] = bill.path;
-  if (nameEl) nameEl.textContent = bill.filename || "Uploaded bill";
+  if (nameEl) nameEl.textContent = bill.filename || "Attachment";
   section?.classList.remove("hidden");
 }
 
@@ -1890,7 +1890,7 @@ async function openLeadBill(view = "lead") {
   const { data, error } = await sb.storage.from("lead-files").createSignedUrl(path, 300);
   if (error || !data?.signedUrl) {
     win?.close();
-    toast("Couldn't open the bill: " + (error?.message || "unknown error"), true);
+    toast("Couldn't open the attachment: " + (error?.message || "unknown error"), true);
     return;
   }
   if (win) win.location.href = data.signedUrl;
