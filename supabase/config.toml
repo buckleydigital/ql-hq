@@ -102,3 +102,7 @@ verify_jwt = false
 # Called by the on_lead_created_notify DB trigger via pg_net (no user JWT).
 [functions.lead-notify]
 verify_jwt = false
+
+# /admin lead notification settings; checks the caller's JWT + is_admin itself.
+[functions.admin-lead-notify]
+verify_jwt = false

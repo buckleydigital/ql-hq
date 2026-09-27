@@ -1142,11 +1142,11 @@ h1{font-size:18px;font-weight:500}
   }
 
   // ── Call edge function ────────────────────────────────────────────────────
-  async function callEdge(body) {
+  async function callEdge(body, fnName) {
     var token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
 
-    var res = await fetch(SUPABASE_URL + '/functions/v1/impersonate-user', {
+    var res = await fetch(SUPABASE_URL + '/functions/v1/' + (fnName || 'impersonate-user'), {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
@@ -1986,7 +1986,7 @@ h1{font-size:18px;font-weight:500}
     phone.placeholder = 'Defaults to account phone';
     recent.innerHTML = '';
 
-    callEdge({ action: 'get_lead_notify', user_id: userId }).then(function (res) {
+    callEdge({ action: 'get', user_id: userId }, 'admin-lead-notify').then(function (res) {
       if (editingUserId !== userId) return;
       var s = res.settings || {};
       status.textContent = s.lead_notify_enabled ? 'On' : 'Off';
@@ -2016,13 +2016,13 @@ h1{font-size:18px;font-weight:500}
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       await callEdge({
-        action:  'update_lead_notify',
+        action:  'update',
         user_id: userId,
         enabled: document.getElementById('editUserLeadNotifyEnabled').checked,
         channel: document.getElementById('editUserLeadNotifyChannel').value,
         email:   document.getElementById('editUserLeadNotifyEmail').value.trim() || null,
         phone:   document.getElementById('editUserLeadNotifyPhone').value.trim() || null,
-      });
+      }, 'admin-lead-notify');
       toast('Lead notification settings saved.');
       loadAdminLeadNotify(userId);
     } catch (err) {
