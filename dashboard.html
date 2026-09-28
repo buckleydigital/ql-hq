@@ -22,6 +22,10 @@ body{font-family:"Poppins",sans-serif;font-weight:400;font-size:14px;background:
 /* ── Layout ─────────────────────────────────────── */
 .app{min-height:100vh;display:grid;grid-template-columns:var(--sidebar-w) 1fr}
 .app.collapsed{grid-template-columns:68px 1fr}
+/* Desktop: pin the sidebar to the screen so it stays full-height while the page scrolls */
+@media(min-width:861px){
+  .sidebar{position:sticky;top:0;align-self:start;height:100vh;height:100dvh;overflow-y:auto}
+}
 
 /* ── Sidebar ─────────────────────────────────────── */
 .sidebar{background:linear-gradient(180deg,var(--surface),var(--side));border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:16px;transition:width .2s ease}
