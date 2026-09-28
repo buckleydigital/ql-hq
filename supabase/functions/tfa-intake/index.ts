@@ -103,7 +103,11 @@ Deno.serve(async (req) => {
       // survive edits from the dashboard (which rewrites custom_data).
       const answers: [string, unknown][] = [
         ["Interested in", row.interest],
+        ["Suburb", row.suburb],
         ["Existing solar", row.existing_solar],
+        ["Solar age", row.solar_age],
+        ["Feed-in tariff", row.feed_in_tariff],
+        ["Has battery", row.has_battery],
         ["Quarterly bill", row.bill_range],
         ["Ownership", row.ownership],
         ["Timeframe", row.timeframe],
