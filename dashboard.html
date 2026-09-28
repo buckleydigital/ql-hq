@@ -536,6 +536,20 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ob-next div{font-size:13px;color:var(--muted);line-height:1.7;padding-left:20px;position:relative}
 .ob-next div::before{content:'';position:absolute;left:2px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--accent,#1f6fff)}
 .ob-next b{color:var(--text)}
+.ob-steps a{overflow-wrap:anywhere}
+/* Phones: the generic table-to-cards rule turns each permission into a big card
+   and the 320px min-width pushes it off screen. Show a compact list instead. */
+@media(max-width:860px){
+  .ob-steps li{padding-left:28px}
+  .ob-table{min-width:0;margin-top:10px}
+  .ob-table tbody{display:block;gap:0;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);overflow:hidden}
+  .ob-table tr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;
+    border:0;border-bottom:1px solid var(--border);border-radius:0;background:none}
+  .ob-table tr:last-child{border-bottom:0}
+  .ob-table td,.ob-table tr:last-child td{padding:0;border:0}
+  .ob-table td:last-child{flex-shrink:0}
+  .ob-id code{font-size:14px;word-break:break-all}
+}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="./dashboard-supabase.js?v=20260927e"></script>
