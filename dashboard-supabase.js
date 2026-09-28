@@ -3536,13 +3536,6 @@ async function loadSettings() {
       toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
     }, { once: true });
 
-    // Pay-per-lead accounts get PPL Lead Delivery (sent by ql-mc); everyone
-    // else gets per-user New Lead Notifications. Never both, so a PPL lead is
-    // never alerted twice.
-    const isPplAccount = company?.plan === "ppl";
-    document.getElementById("leadDeliverySection")?.classList.toggle("hidden", !isPplAccount);
-    document.getElementById("leadNotifySection")?.classList.toggle("hidden", isPplAccount);
-
     // New Lead Notifications (per user) - load
     const lnEnabled = document.getElementById("leadNotifyEnabled");
     const lnChannel = document.getElementById("leadNotifyChannel");
@@ -3593,57 +3586,6 @@ async function loadSettings() {
       });
     }
 
-    // Lead Delivery - load
-    const delivery = company?.settings?.lead_delivery || {};
-    const deliveryEmailEl   = document.getElementById("deliveryEmail");
-    const deliverySmsEl     = document.getElementById("deliverySms");
-    const deliveryWebhookEl = document.getElementById("deliveryWebhook");
-    if (deliveryEmailEl)   deliveryEmailEl.value   = delivery.email       || "";
-    if (deliverySmsEl)     deliverySmsEl.value     = delivery.sms_number  || "";
-    if (deliveryWebhookEl) deliveryWebhookEl.value = delivery.webhook_url || "";
-
-    // Lead Delivery - save. Bind once for the page's lifetime (loadSettings runs
-    // on every visit to this page; a guard stops duplicate listeners stacking,
-    // and avoids the old `{ once: true }` that broke the 2nd save in a visit).
-    const leadDeliveryForm = document.getElementById("leadDeliveryForm");
-    if (leadDeliveryForm && !leadDeliveryForm.dataset.bound) {
-      leadDeliveryForm.dataset.bound = "1";
-      leadDeliveryForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const email       = document.getElementById("deliveryEmail")?.value.trim()   || null;
-        const sms_number  = document.getElementById("deliverySms")?.value.trim()     || null;
-        const webhook_url = document.getElementById("deliveryWebhook")?.value.trim() || null;
-
-        const saveBtn = leadDeliveryForm.querySelector('button[type="submit"]');
-        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
-        try {
-          // 1. Save to ql-hq (the source of truth for the client's preference)
-          const { data: cur } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
-          const merged = { ...(cur?.settings || {}), lead_delivery: { email, sms_number, webhook_url } };
-          const { error } = await sb.from("companies").update({ settings: merged }).eq("id", currentCompanyId);
-          if (error) { toast("Failed to save delivery settings.", true); return; }
-
-          // 2. Sync to ql-mc, which is what actually delivers leads. Awaited so
-          //    the toast reflects whether the change really propagated.
-          let synced = false;
-          const { data: _sdRes } = await sb.auth.getSession();
-          if (_sdRes?.session) {
-            try {
-              const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-delivery-config`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_sdRes.session.access_token}`, "apikey": SUPABASE_ANON_KEY },
-              });
-              synced = res.ok;
-            } catch (err) { console.warn("sync-delivery-config:", err); }
-          }
-
-          if (synced) toast("Delivery settings saved.");
-          else toast("Saved, but syncing to the delivery system failed - please save again.", true);
-        } finally {
-          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save Delivery Settings"; }
-        }
-      });
-    }
   } catch (err) {
     toast("Failed to load settings.", true);
   }
