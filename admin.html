@@ -967,8 +967,8 @@ h1{font-size:18px;font-weight:500}
           <span style="font-size:12px;font-weight:500">Super Admin access</span>
         </label>
       </div>
-      <!-- New Lead Notifications (per user) - hidden for pay-per-lead accounts -->
-      <div id="editUserLeadNotifySection" style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
+      <!-- New Lead Notifications (per user) -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span class="form-label" style="margin:0">New Lead Notifications</span>
           <span id="editUserLeadNotifyStatus" style="font-size:11px;color:var(--muted)"></span>
@@ -1802,18 +1802,7 @@ h1{font-size:18px;font-weight:500}
 
     document.getElementById('editUserModal').classList.remove('hidden');
 
-    // Pay-per-lead accounts get leads via Lead Delivery (ql-mc); new-lead
-    // notifications never send for them, so don't offer the controls.
-    var notifySection = document.getElementById('editUserLeadNotifySection');
-    notifySection.style.display = 'none';
-    if (u.company_id) {
-      sb.from('companies').select('plan').eq('id', u.company_id).maybeSingle().then(function (res) {
-        if (editingUserId !== u.id) return;
-        var isPpl = !!(res.data && res.data.plan === 'ppl');
-        notifySection.style.display = isPpl ? 'none' : '';
-        if (!isPpl) loadAdminLeadNotify(u.id);
-      });
-    }
+    loadAdminLeadNotify(u.id);
 
     // Load service areas directly from companies table
     if (u.company_id) {
