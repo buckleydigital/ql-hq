@@ -396,6 +396,127 @@ Deno.serve(async (req: Request) => {
 
     const companyId = ql_hq_company_id.trim()
 
+    // ── action: mark_ads_live ────────────────────────────────────────────────
+    // A managed client was set to "Ads Live" in ql-mc. Tick the ads_live step on
+    // their fulfilment checklist so the Team Panel agrees.
+    //
+    // Any onboarding step in front of it that is still open goes in as
+    // 'skipped', not 'done' - the same rule as the original backfill: ads cannot
+    // be live without them having happened, but nobody here attested to them,
+    // so they stay visibly distinct from a step someone actually ticked. Without
+    // this the client would read as live and stuck at step one at the same time.
+    //
+    // Idempotent: if ads_live is already done nothing is written.
+    if (action === 'mark_ads_live') {
+      const actorName = `${String(body.actor_name ?? '').trim().slice(0, 120) || 'ql-mc'} (via ql-mc)`
+      const rawDate = String(body.ads_live_date ?? '').trim()
+      const liveDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) && new Date(rawDate).getTime() <= Date.now()
+        ? rawDate : null
+      const completedAt = liveDate ? new Date(liveDate).toISOString() : new Date().toISOString()
+
+      const { data: company } = await supabase
+        .from('companies').select('id, ads_live_date').eq('id', companyId).maybeSingle()
+      if (!company) return json({ error: 'company not found' }, 404)
+
+      const { data: defs, error: dErr } = await supabase
+        .from('fulfilment_step_defs')
+        .select('step_key, label, phase, sort_order')
+        .eq('active', true).order('sort_order', { ascending: true })
+      if (dErr) throw dErr
+      const adsDef = (defs || []).find((d: { step_key: string }) => d.step_key === 'ads_live')
+      if (!adsDef) return json({ error: 'ads_live step is not defined' }, 500)
+
+      const { data: rows } = await supabase
+        .from('company_fulfilment').select('step_key, status').eq('company_id', companyId)
+      const statusOf: Record<string, string> = {}
+      for (const r of rows || []) statusOf[r.step_key as string] = r.status as string
+
+      if (statusOf.ads_live === 'done') {
+        return json({ ok: true, updated: false, note: 'ads_live already done' })
+      }
+
+      const settled = (s?: string) => s === 'done' || s === 'skipped'
+      const toSkip = (defs || []).filter((d: { step_key: string; phase: string; sort_order: number }) =>
+        d.phase === 'onboarding' && d.sort_order < adsDef.sort_order && !settled(statusOf[d.step_key]))
+
+      const logRows: Record<string, unknown>[] = []
+
+      // Earlier steps first, so the last recalc the trigger runs sees the
+      // finished state.
+      for (const d of toSkip) {
+        const { error } = await supabase.from('company_fulfilment').upsert({
+          company_id: companyId,
+          step_key: d.step_key,
+          status: 'skipped',
+          completed_at: completedAt,
+          completed_by: null,
+          completed_by_name: actorName,
+          notes: 'Client marked Ads Live in ql-mc before this step was ticked',
+        }, { onConflict: 'company_id,step_key' })
+        if (error) throw error
+        logRows.push({
+          company_id: companyId, actor_id: null, actor_name: actorName,
+          action: 'fulfilment.step_set', step_key: d.step_key,
+          from_status: statusOf[d.step_key] || 'pending', to_status: 'skipped',
+          detail: { label: d.label, source: 'ql-mc', reason: 'inferred from Ads Live' },
+        })
+      }
+
+      const { error: aErr } = await supabase.from('company_fulfilment').upsert({
+        company_id: companyId,
+        step_key: 'ads_live',
+        status: 'done',
+        completed_at: completedAt,
+        completed_by: null,
+        completed_by_name: actorName,
+        notes: null,
+      }, { onConflict: 'company_id,step_key' })
+      if (aErr) throw aErr
+      logRows.push({
+        company_id: companyId, actor_id: null, actor_name: actorName,
+        action: 'fulfilment.step_set', step_key: 'ads_live',
+        from_status: statusOf.ads_live || 'pending', to_status: 'done',
+        detail: { label: adsDef.label, source: 'ql-mc' },
+      })
+
+      // Best effort, like team-api's logAction: the step has landed, a dropped
+      // log line must not turn that into an error.
+      const { error: lErr } = await supabase.from('fulfilment_log').insert(logRows)
+      if (lErr) console.warn('fulfilment_log write failed:', lErr.message)
+
+      // The billing panel reads this; team-api keeps it in step the same way.
+      if (!company.ads_live_date) {
+        await supabase.from('companies')
+          .update({ ads_live_date: liveDate || new Date().toISOString().slice(0, 10) })
+          .eq('id', companyId)
+      }
+
+      // Send the recalculated summary straight back so ql-mc's mirror (progress,
+      // next step, stuck list) reflects this without waiting for the next
+      // Team Panel action. Best effort, same as team-api's pushFulfilmentToMc.
+      const QL_MC_API_URL = Deno.env.get('QL_MC_API_URL')
+      if (QL_MC_API_URL) {
+        try {
+          const { data: sum } = await supabase
+            .from('company_fulfilment_summary')
+            .select('stage, stage_at, active_status, steps_done, steps_settled, steps_total, blocked_count, next_step_key, next_step_due')
+            .eq('company_id', companyId).maybeSingle()
+          if (sum) {
+            const res = await fetch(`${QL_MC_API_URL}/sync-from-hq`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-secret': apiSecret },
+              body: JSON.stringify({ action: 'upsert_fulfilment', hq_company_id: companyId, summary: sum }),
+            })
+            if (!res.ok) console.warn('ql-mc fulfilment mirror rejected:', res.status, await res.text().catch(() => ''))
+          }
+        } catch (e) {
+          console.warn('ql-mc fulfilment mirror failed:', (e as Error).message)
+        }
+      }
+
+      return json({ ok: true, updated: true, skipped: toSkip.map((d: { step_key: string }) => d.step_key) })
+    }
+
     // ── action: scrub ─────────────────────────────────────────────────────────
     // A lead was scrubbed in ql-mc - pull the delivered count back by one on the
     // most relevant order. We mirror this onto BOTH order tables independently:
