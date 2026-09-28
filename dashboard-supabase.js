@@ -3536,6 +3536,13 @@ async function loadSettings() {
       toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
     }, { once: true });
 
+    // Pay-per-lead accounts get PPL Lead Delivery (sent by ql-mc); everyone
+    // else gets per-user New Lead Notifications. Never both, so a PPL lead is
+    // never alerted twice.
+    const isPplAccount = company?.plan === "ppl";
+    document.getElementById("leadDeliverySection")?.classList.toggle("hidden", !isPplAccount);
+    document.getElementById("leadNotifySection")?.classList.toggle("hidden", isPplAccount);
+
     // New Lead Notifications (per user) - load
     const lnEnabled = document.getElementById("leadNotifyEnabled");
     const lnChannel = document.getElementById("leadNotifyChannel");
