@@ -171,6 +171,49 @@ async function maybeMirrorInboundOnly(
 // AI-off / out-of-hours branches (where the lead isn't resolved yet) so an
 // opt-out is always recorded even when the AI won't reply. Returns "stopped"
 // when it was a STOP so the caller can send the confirmation.
+// ── SMS opt-out register ────────────────────────────────────────────────────
+// sms_opt_outs (migration 20260930000001) is the source of truth, keyed by
+// company + phone, so a STOP is kept even when no lead exists for the number.
+// Both helpers go through database functions that also keep leads.sms_opted_out
+// in step.
+const OPT_STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT", "OPT OUT"]);
+const OPT_START_WORDS = new Set(["START", "UNSTOP", "RESUBSCRIBE", "OPTIN", "OPT-IN", "OPT IN"]);
+
+function optOutKeyword(body: string): "stop" | "start" | null {
+  const kw = (body || "").trim().toUpperCase().replace(/[.!,?]/g, "").replace(/\s+/g, " ").trim();
+  if (OPT_STOP_WORDS.has(kw)) return "stop";
+  if (OPT_START_WORDS.has(kw)) return "start";
+  return null;
+}
+
+async function setOptOut(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  phone: string,
+  optedOut: boolean,
+  source: string,
+): Promise<void> {
+  const { error } = await db.rpc("sms_set_opt_out", {
+    p_company_id: companyId, p_phone: phone, p_opted_out: optedOut, p_source: source,
+  });
+  if (error) console.error("sms_set_opt_out failed:", error.message);
+}
+
+// Fails CLOSED: if the register cannot be read, treat the number as opted out.
+// A missed reply is recoverable; texting someone who said STOP is not.
+async function isOptedOut(
+  db: ReturnType<typeof createClient>,
+  companyId: string,
+  phone: string,
+): Promise<boolean> {
+  const { data, error } = await db.rpc("sms_is_opted_out", { p_company_id: companyId, p_phone: phone });
+  if (error) {
+    console.error("sms_is_opted_out failed - treating as opted out:", error.message);
+    return true;
+  }
+  return data === true;
+}
+
 async function flagOptOutIfKeyword(
   db: ReturnType<typeof createClient>,
   companyId: string,
@@ -178,19 +221,11 @@ async function flagOptOutIfKeyword(
   inboundBody: string,
 ): Promise<"stopped" | null> {
   try {
-    const kw = inboundBody.trim().toUpperCase().replace(/[.!,?]/g, "").replace(/\s+/g, " ").trim();
-    const STOP = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT", "OPT OUT"]);
-    const START = new Set(["START", "UNSTOP", "RESUBSCRIBE", "OPTIN", "OPT-IN", "OPT IN"]);
-    const isStop = STOP.has(kw), isStart = START.has(kw);
-    if (!isStop && !isStart) return null;
-    const candidates = [fromNumber, fromNumber.replace(/^\+/, "")];
-    if (fromNumber.startsWith("+61")) candidates.push("0" + fromNumber.slice(3));
-    const { data: ld } = await db.from("leads").select("id").eq("company_id", companyId).in("phone", candidates).limit(1).maybeSingle();
-    if (ld) {
-      if (isStop) await db.from("leads").update({ sms_opted_out: true, sms_opted_out_at: new Date().toISOString() }).eq("id", ld.id);
-      else await db.from("leads").update({ sms_opted_out: false, sms_opted_out_at: null }).eq("id", ld.id);
-    }
-    return isStop ? "stopped" : null;
+    const kw = optOutKeyword(inboundBody);
+    if (!kw) return null;
+    // Recorded against the NUMBER, lead or no lead.
+    await setOptOut(db, companyId, fromNumber, kw === "stop", "sms-reply");
+    return kw === "stop" ? "stopped" : null;
   } catch (e) {
     console.error("flagOptOutIfKeyword failed:", e instanceof Error ? e.message : e);
     return null;
@@ -904,6 +939,22 @@ Deno.serve(async (req) => {
       return twimlResponse("");
     }
 
+    // 2b. Opt-out keywords, before ANY early return.
+    //
+    // Every return below this point (no credits, AI off, out of hours, AI off
+    // for the lead) used to be able to skip the STOP handling, and a STOP from
+    // a number with no lead was recorded nowhere. Now the number is written to
+    // the opt-out register first, whatever happens next. The later handling
+    // still stores the message and sends the confirmation where it did before.
+    const earlyKw = optOutKeyword(inboundBody);
+    if (earlyKw) {
+      await setOptOut(db, companyId, fromNumber, earlyKw === "stop", "sms-reply");
+      // The agency's own number: tell ql-mc now too, so Mission Control's sends
+      // respect it even if a return below skips the usual mirror. The mirror is
+      // idempotent on the Twilio SID, so a second one later is harmless.
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+    }
+
     // 3. Check SMS credits
     const { data: credits } = await db
       .from("sms_credits")
@@ -1083,20 +1134,23 @@ Deno.serve(async (req) => {
     // ── STOP / START opt-out handling (Australian Spam Act) ─────────────────────
     // Runs for every company. STOP flags the lead so the AI, manual and bulk
     // sends can never message them again; START clears it.
-    const optKw = inboundBody.trim().toUpperCase().replace(/[.!,?]/g, "").replace(/\s+/g, " ").trim();
-    const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT", "OPT OUT"]);
-    const START_WORDS = new Set(["START", "UNSTOP", "RESUBSCRIBE", "OPTIN", "OPT-IN", "OPT IN"]);
-    if (STOP_WORDS.has(optKw)) {
-      await db.from("leads").update({ sms_opted_out: true, sms_opted_out_at: new Date().toISOString() }).eq("id", lead.id);
+    // Already recorded in the register at step 2b; this is the confirmation.
+    const optKw = optOutKeyword(inboundBody);
+    if (optKw === "stop") {
+      await setOptOut(db, companyId, fromNumber, true, "sms-reply");
       await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
       return twimlResponse("You have been unsubscribed and won't receive further messages. Reply START to opt back in.");
     }
-    if (START_WORDS.has(optKw)) {
-      await db.from("leads").update({ sms_opted_out: false, sms_opted_out_at: null }).eq("id", lead.id);
+    if (optKw === "start") {
+      await setOptOut(db, companyId, fromNumber, false, "sms-reply");
+      // Mirrored like STOP, so ql-mc clears its register too.
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
       return twimlResponse("You're resubscribed. Reply STOP at any time to opt out.");
     }
     // Already opted out and this isn't a START - store the inbound (done above) but never reply.
-    if (lead.sms_opted_out === true) {
+    // The register is checked as well as the lead row: an opt-out recorded
+    // before this lead existed (or given to ql-mc) must stop the AI too.
+    if (lead.sms_opted_out === true || await isOptedOut(db, companyId, fromNumber)) {
       await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
       return twimlResponse("");
     }

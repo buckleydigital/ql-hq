@@ -177,6 +177,105 @@ Deno.serve(async (req: Request) => {
     const AGENCY_COMPANY_ID =
       Deno.env.get('QL_AGENCY_COMPANY_ID') ?? '77526810-374f-419f-b470-9f506c4169be'
 
+    // ── action: set_sms_opt_out ──────────────────────────────────────────────
+    // A STOP (or START) that reached ql-mc - a reply to one of its numbers, or
+    // an opt-out set there - recorded against the agency's own company, so Don
+    // and every ql-hq send respect it as well. Pinned to the agency company for
+    // the same reason as the agent config below.
+    if (action === 'set_sms_opt_out') {
+      const phone = normalisePhone(String(body.phone ?? ''))
+      if (!phone || typeof body.opted_out !== 'boolean') {
+        return json({ error: "'phone' and boolean 'opted_out' are required" }, 400)
+      }
+      const { error } = await supabase.rpc('sms_set_opt_out', {
+        p_company_id: AGENCY_COMPANY_ID,
+        p_phone: phone,
+        p_opted_out: body.opted_out,
+        p_source: `ql-mc${body.source ? `:${String(body.source).slice(0, 40)}` : ''}`,
+      })
+      if (error) return json({ error: error.message }, 500)
+      return json({ ok: true, phone, opted_out: body.opted_out })
+    }
+
+    // ── action: record_outbound_sms ─────────────────────────────────────────
+    // A text Mission Control sent a lead from the agency number (by hand, in
+    // bulk, or by Jarvis). Twilio never tells ql-hq about it, so without this
+    // Don would answer the lead's reply with no idea what was said to them.
+    // Stored in the lead's open SMS conversation as a human-sent outbound
+    // message - the same shape as any other - so it is simply part of the
+    // history Don reads. Nothing is sent from here.
+    if (action === 'record_outbound_sms') {
+      const phone = normalisePhone(String(body.phone ?? ''))
+      const message = String(body.message ?? '').trim()
+      if (!phone || !message) return json({ error: "'phone' and 'message' are required" }, 400)
+
+      const variants = [...new Set([phone, phone.replace(/^\+/, ''), phone.startsWith('+61') ? '0' + phone.slice(3) : phone])]
+      let { data: lead } = await supabase
+        .from('leads').select('id')
+        .eq('company_id', AGENCY_COMPANY_ID).in('phone', variants)
+        .limit(1).maybeSingle()
+
+      if (!lead) {
+        // Created now rather than on the reply, so the thread carries a name
+        // instead of "SMS Lead" and Don has the context from the first reply.
+        const leadName = String(body.lead_name ?? '').trim()
+        const { data: created, error: leadErr } = await supabase.from('leads').insert({
+          company_id: AGENCY_COMPANY_ID,
+          first_name: leadName.split(/\s+/)[0] || 'SMS Lead',
+          name: leadName || 'SMS Lead',
+          company: body.company ? String(body.company) : null,
+          phone,
+          source: 'ql_mc',
+          pipeline_stage: 'new_lead',
+          ai_enabled: true,
+        }).select('id').single()
+        if (leadErr || !created) return json({ error: `lead: ${leadErr?.message ?? 'not created'}` }, 500)
+        lead = created
+      }
+
+      let { data: conv } = await supabase
+        .from('conversations').select('id')
+        .eq('company_id', AGENCY_COMPANY_ID).eq('lead_id', lead.id)
+        .eq('channel', 'sms').eq('is_open', true)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+
+      if (!conv) {
+        const { data: cfg } = await supabase
+          .from('sms_agent_config').select('id').eq('company_id', AGENCY_COMPANY_ID).maybeSingle()
+        const { data: created, error: convErr } = await supabase.from('conversations').insert({
+          company_id: AGENCY_COMPANY_ID,
+          lead_id: lead.id,
+          channel: 'sms',
+          is_open: true,
+          sms_config_id: cfg?.id ?? null,
+          last_message: message,
+          last_message_at: new Date().toISOString(),
+        }).select('id').single()
+        if (convErr || !created) return json({ error: `conversation: ${convErr?.message ?? 'not created'}` }, 500)
+        conv = created
+      }
+
+      const { error: msgErr } = await supabase.from('messages').insert({
+        conversation_id: conv.id,
+        direction: 'outbound',
+        body: message,
+        channel: 'sms',
+        is_ai_generated: false,
+        metadata: {
+          source: 'ql-mc',
+          sent_by: body.sent_by ? String(body.sent_by) : null,
+          twilio_sid: body.twilio_sid ? String(body.twilio_sid) : null,
+          to: phone,
+        },
+      })
+      if (msgErr) return json({ error: `message: ${msgErr.message}` }, 500)
+      await supabase.from('conversations')
+        .update({ last_message: message, last_message_at: new Date().toISOString() })
+        .eq('id', conv.id)
+
+      return json({ ok: true, lead_id: lead.id, conversation_id: conv.id })
+    }
+
     if (action === 'get_sms_agent_config') {
       const { data, error } = await supabase
         .from('sms_agent_config')

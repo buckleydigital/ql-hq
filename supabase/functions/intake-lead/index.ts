@@ -379,6 +379,16 @@ async function maybeSendWelcomeSms(
     if (!smsConfig.auto_send_welcome) return;
     if (!smsConfig.twilio_number) return;
 
+    // A new lead can arrive on a number that has already opted out (a repeat
+    // enquiry, or a STOP given before the lead existed). Fails closed.
+    const { data: regOptOut, error: regErr } = await db.rpc("sms_is_opted_out", {
+      p_company_id: companyId, p_phone: phone,
+    });
+    if (regOptOut === true || regErr) {
+      console.log("Welcome SMS skipped: number has opted out (or the check failed).");
+      return;
+    }
+
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN");
     if (!twilioSid || !twilioAuth) {

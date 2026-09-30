@@ -404,6 +404,21 @@ async function handleSendSms(
   if (!lead) return json({ error: "Lead not found or does not belong to your company" }, 404);
   if (!lead.phone) return json({ error: "Lead has no phone number" }, 400);
 
+  // Never message a number that has opted out (replied STOP) - legal
+  // requirement, and this endpoint used not to check at all. The register
+  // covers the lead row too. Fails closed.
+  const { data: optedOut, error: optErr } = await db.rpc("sms_is_opted_out", {
+    p_company_id: companyId, p_phone: lead.phone,
+  });
+  if (optedOut === true || optErr) {
+    return json({
+      error: optErr
+        ? "Could not confirm this number has not opted out of SMS. Message not sent."
+        : "This lead has opted out of SMS (replied STOP). Message not sent.",
+      opted_out: !optErr,
+    }, 409);
+  }
+
   // Get company Twilio number
   const { data: smsConfig } = await db
     .from("sms_agent_config")
@@ -543,6 +558,12 @@ async function sendWelcomeSmsIfEnabled(
     .maybeSingle();
 
   if (!smsConfig?.auto_send_welcome || !smsConfig.is_active || !smsConfig.twilio_number) return;
+
+  // A new lead can arrive on a number that has already opted out. Fails closed.
+  const { data: optedOut, error: optErr } = await db.rpc("sms_is_opted_out", {
+    p_company_id: companyId, p_phone: lead.phone as string,
+  });
+  if (optedOut === true || optErr) return;
 
   // Resolve {{first_name}} placeholder
   const firstName = (lead.first_name as string) ||

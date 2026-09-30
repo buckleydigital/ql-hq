@@ -105,8 +105,19 @@ Deno.serve(async (req) => {
     if (!lead?.phone) return json({ error: "Lead has no phone number" }, 400);
 
     // Never message a lead who has opted out (replied STOP) - legal requirement.
-    if (lead.sms_opted_out) {
-      return json({ error: "This lead has opted out of SMS (replied STOP). Message not sent.", opted_out: true }, 409);
+    // The opt-out register is checked as well as the lead row: a STOP recorded
+    // against the number (before this lead existed, or given to ql-mc) counts.
+    // Fails closed - if the check cannot run, nothing is sent.
+    const { data: regOptOut, error: regErr } = await db.rpc("sms_is_opted_out", {
+      p_company_id: companyId, p_phone: lead.phone,
+    });
+    if (lead.sms_opted_out || regOptOut === true || regErr) {
+      return json({
+        error: regErr
+          ? "Could not confirm this number has not opted out of SMS. Message not sent."
+          : "This lead has opted out of SMS (replied STOP). Message not sent.",
+        opted_out: !regErr,
+      }, 409);
     }
 
     // Normalise to E.164 so Twilio accepts all AU formats:

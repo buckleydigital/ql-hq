@@ -109,7 +109,10 @@ Deno.serve(async (req) => {
         }
 
         // Never message a lead who has opted out of SMS (replied STOP).
-        if ((request.leads as { sms_opted_out?: boolean })?.sms_opted_out) {
+        const { data: regOptOut, error: regErr } = await db.rpc("sms_is_opted_out", {
+          p_company_id: request.company_id, p_phone: phone,
+        });
+        if ((request.leads as { sms_opted_out?: boolean })?.sms_opted_out || regOptOut === true || regErr) {
           await db.from("review_requests")
             .update({ status: "skipped" })
             .eq("id", request.id);
