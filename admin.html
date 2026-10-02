@@ -215,6 +215,25 @@ h1{font-size:18px;font-weight:500}
       </div>
     </div>
 
+    <!-- User list panel -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="panel-h">
+        <div>
+          <h2>All Users</h2>
+          <p id="userCountLabel">Loading…</p>
+        </div>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="searchInput" type="search" placeholder="Search by name or email…" autocomplete="off">
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="loadingState" class="notice">Loading users…</div>
+        <div id="userList" class="user-list hidden"></div>
+        <div id="emptyState" class="notice hidden">No users match your search.</div>
+      </div>
+    </div>
+
     <!-- Warning notice -->
     <div class="notice warn" style="margin-bottom:20px">
       <strong>Warning: Impersonation is immediate and permanent until you sign out.</strong>
@@ -488,25 +507,6 @@ h1{font-size:18px;font-weight:500}
         <div id="twilioNumberLoadingState" class="notice">Loading…</div>
         <div id="twilioNumberList" class="hidden"></div>
         <div id="twilioNumberEmptyState" class="notice hidden">No Twilio numbers found.</div>
-      </div>
-    </div>
-
-    <!-- User list panel -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="panel-h">
-        <div>
-          <h2>All Users</h2>
-          <p id="userCountLabel">Loading…</p>
-        </div>
-        <div class="search-wrap">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="searchInput" type="search" placeholder="Search by name or email…" autocomplete="off">
-        </div>
-      </div>
-      <div class="panel-b">
-        <div id="loadingState" class="notice">Loading users…</div>
-        <div id="userList" class="user-list hidden"></div>
-        <div id="emptyState" class="notice hidden">No users match your search.</div>
       </div>
     </div>
 
