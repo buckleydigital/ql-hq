@@ -157,3 +157,46 @@ end;
 $$;
 
 grant execute on function public.refresh_niche_benchmarks() to authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- company_engagement_stats(company_id)
+--
+-- The caller's own numbers, measured exactly like the benchmark (AI-messaged
+-- leads only) so the AI Insights comparison is like-for-like. SECURITY
+-- INVOKER: existing RLS limits callers to companies they can already see.
+-- ─────────────────────────────────────────────────────────────────────────────
+create or replace function public.company_engagement_stats(p_company_id uuid)
+returns table (ai_leads int, callback_rate numeric, reply_rate numeric, lead_score numeric)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with ai_leads as (
+    select l.id, l.ai_score, min(m.created_at) as first_ai_at
+    from messages m
+    join conversations c on c.id = m.conversation_id
+    join leads l        on l.id = c.lead_id
+    join companies co   on co.id = l.company_id
+    where l.company_id = p_company_id
+      and m.is_ai_generated
+      and m.direction = 'outbound'
+      and m.created_at >= co.created_at
+    group by l.id, l.ai_score
+  )
+  select
+    count(*)::int,
+    round(100.0 * count(*) filter (where exists (
+      select 1 from appointments ap
+      where ap.lead_id = al.id and ap.booked_by = 'ai' and ap.appointment_type = 'callback'
+    )) / nullif(count(*), 0), 1),
+    round(100.0 * count(*) filter (where exists (
+      select 1 from messages m
+      join conversations c on c.id = m.conversation_id
+      where c.lead_id = al.id and m.direction = 'inbound' and m.created_at > al.first_ai_at
+    )) / nullif(count(*), 0), 1),
+    round(avg(al.ai_score) filter (where al.ai_score > 0), 0)
+  from ai_leads al;
+$$;
+
+grant execute on function public.company_engagement_stats(uuid) to authenticated;

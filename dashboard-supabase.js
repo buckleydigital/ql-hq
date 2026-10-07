@@ -3526,14 +3526,14 @@ async function loadSettings() {
 
     // AI data sharing toggle
     const aiShareToggle = document.getElementById("settingsAllowAiTraining");
-    if (aiShareToggle) aiShareToggle.checked = company?.settings?.allow_ai_training === true;
+    if (aiShareToggle) aiShareToggle.checked = company?.settings?.allow_ai_training !== false; // opt-out: on unless switched off
     document.getElementById("saveAiSharingBtn")?.addEventListener("click", async () => {
       const allowed = document.getElementById("settingsAllowAiTraining")?.checked ?? false;
       const { data: cur } = await sb.from("companies").select("settings").eq("id", currentCompanyId).maybeSingle();
       const merged = { ...(cur?.settings || {}), allow_ai_training: allowed };
       const { error } = await sb.from("companies").update({ settings: merged }).eq("id", currentCompanyId);
       if (error) { toast("Failed to save preference.", true); return; }
-      toast(allowed ? "Opted in to benchmark contributions." : "Opted out of benchmark contributions.");
+      toast(allowed ? "Your AI engagement data is included in benchmarks." : "Opted out of benchmark contributions.");
     }, { once: true });
 
     // New Lead Notifications (per user) - load
@@ -5892,10 +5892,12 @@ async function loadAiInsights() {
   // ── Performance insights ────────────────────────────────────────────────
   const industryEl = document.getElementById("aiIndustryInsights");
   if (industryEl) {
-    const [{ data: leads }, { data: orderNiches }] = await Promise.all([
+    const [{ data: leads }, { data: orderNiches }, { data: engRows }] = await Promise.all([
       sb.from("leads").select("id, pipeline_stage, ai_enabled, created_at, value").eq("company_id", currentCompanyId),
       sb.from("ppl_lead_orders").select("niche").eq("company_id", currentCompanyId).in("status", ["paid","active","fulfilled"]),
+      sb.rpc("company_engagement_stats", { p_company_id: currentCompanyId }),
     ]);
+    const engagement = engRows?.[0] || null;
 
     // Determine company's primary niche (most ordered)
     let companyNiche = null;
@@ -5908,14 +5910,17 @@ async function loadAiInsights() {
     // Trigger benchmark refresh (throttled server-side to every 6 hours)
     sb.rpc("refresh_niche_benchmarks").catch(() => {});
 
-    // Read benchmark for company's niche (only set if 10+ contributors)
+    // Engagement benchmark: the company's niche once it has 10+ contributors,
+    // otherwise the cross-trade '_all' row (5+ contributors).
     let benchmark = null;
-    if (companyNiche) {
-      const { data: bm } = await sb.from("niche_benchmarks").select("*").eq("niche", companyNiche).maybeSingle();
-      if (bm?.company_count >= 10) benchmark = bm;
-    }
+    const { data: bmRows } = await sb.from("niche_benchmarks").select("*")
+      .in("niche", companyNiche ? [companyNiche, "_all"] : ["_all"]);
+    const nicheBm = bmRows?.find(r => r.niche === companyNiche && r.company_count >= 10);
+    const allBm   = bmRows?.find(r => r.niche === "_all" && r.company_count >= 5);
+    if (nicheBm) benchmark = nicheBm;
+    else if (allBm) benchmark = { ...allBm, crossTrade: true };
 
-    const cards = generatePerformanceInsights(stats, leads || [], benchmark, companyNiche);
+    const cards = generatePerformanceInsights(stats, leads || [], benchmark, companyNiche, engagement);
 
     if (!cards.length) {
       industryEl.innerHTML = `<div class="notice">Add more leads to your pipeline to unlock performance insights.</div>`;
@@ -5943,25 +5948,26 @@ async function loadAiInsights() {
   renderIcons();
 }
 
-function generatePerformanceInsights(stats, leads, benchmark = null, niche = null) {
+function generatePerformanceInsights(stats, leads, benchmark = null, niche = null, engagement = null) {
   const cards = [];
   const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(v);
   const sevenDaysAgo = new Date(Date.now() - 7 * 864e5);
-  const nicheLabel = niche ? niche.charAt(0).toUpperCase() + niche.slice(1) : "AU trade";
-  const bm = benchmark; // shorthand
+  const nicheLabel = niche ? niche.replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) : "AU trade";
+  const bm = benchmark; // shorthand - engagement metrics only, never closed-deal data
+  const peerLabel = bm?.crossTrade ? "trade business" : `${nicheLabel} business`;
+  const peerText = bm ? `across ${bm.company_count} ${peerLabel}es using QuoteLeads AI` : "";
+  const eng = engagement?.ai_leads >= 5 ? engagement : null; // own stats, measured like the benchmark
 
   // 1. AI Coverage
   if (stats && stats.total_leads >= 5) {
     const pct = Math.round((stats.ai_handled_leads / stats.total_leads) * 100);
-    const avgCov = bm?.avg_ai_coverage ?? 65;
+    const avgCov = 65;
     const isAbove = pct >= avgCov;
-    const benchText = bm
-      ? `The ${nicheLabel} niche average across ${bm.company_count} businesses on the platform is ${avgCov}%.`
-      : "Top AU trade businesses target 65%+ coverage.";
+    const benchText = "Top AU trade businesses target 65%+ coverage.";
     cards.push({
       title: "AI Coverage",
       body: isAbove
-        ? `Your AI is handling ${pct}% of leads - above the benchmark. ${benchText} High coverage keeps response times fast and booking rates consistent.`
+        ? `Your AI is handling ${pct}% of leads - above target. ${benchText} High coverage keeps response times fast and booking rates consistent.`
         : pct >= 40
         ? `Your AI is handling ${pct}% of leads. ${benchText} Increasing coverage reduces response time - a key driver of conversion.`
         : `Your AI is handling only ${pct}% of leads. ${benchText} Enabling AI on more leads is one of the fastest wins available.`,
@@ -5973,13 +5979,14 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   }
 
   // 2. Callback booking rate
-  if (stats && stats.ai_handled_leads >= 5) {
-    const rate = parseFloat(((stats.callbacks_booked / stats.ai_handled_leads) * 100).toFixed(1));
-    const avgRate = bm?.avg_callback_rate ?? 28;
-    const p25 = bm?.p25_callback_rate, p75 = bm?.p75_callback_rate;
+  if (eng) {
+    const rate = Number(eng.callback_rate);
+    const r1 = v => (v == null ? null : Math.round(Number(v) * 10) / 10);
+    const avgRate = bm ? r1(bm.avg_callback_rate) : 28;
+    const p25 = r1(bm?.p25_callback_rate), p75 = r1(bm?.p75_callback_rate);
     const isAbove = rate >= avgRate;
     const benchText = bm
-      ? `The ${nicheLabel} niche average is ${avgRate}%${p25 && p75 ? ` (top quartile: ${p75}%+, bottom quartile: ${p25}%-)` : ""} across ${bm.company_count} businesses.`
+      ? `The average is ${avgRate}%${p25 != null && p75 != null ? ` (top quartile: ${p75}%+, bottom quartile: ${p25}% or less)` : ""} ${peerText}.`
       : "The AU trade average is 25–35%.";
     cards.push({
       title: "AI Callback Rate",
@@ -5995,24 +6002,41 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
     });
   }
 
+  // 2b. Reply rate - how often leads respond once the AI messages them
+  if (eng && eng.reply_rate != null) {
+    const rate = Number(eng.reply_rate);
+    const avgRate = bm?.avg_reply_rate != null ? Math.round(Number(bm.avg_reply_rate) * 10) / 10 : null;
+    const isAbove = avgRate != null ? rate >= avgRate : rate >= 45;
+    const benchText = avgRate != null
+      ? `The average is ${avgRate}% ${peerText}.`
+      : "";
+    cards.push({
+      title: "Lead Reply Rate",
+      body: isAbove
+        ? `${rate}% of leads reply once your AI messages them. ${benchText} Your opening message is landing well.`
+        : `${rate}% of leads reply once your AI messages them. ${benchText} A shorter, more personal first message usually lifts replies.`,
+      action: isAbove ? null : "Go to AI Settings → System Prompt and tighten your agent's first message.",
+      type: isAbove ? "good" : "warn",
+      metric: `${rate}%`,
+      metricLabel: "reply rate",
+    });
+  }
+
   // 3. Win rate
   const won  = leads.filter(l => l.pipeline_stage === "closed_won").length;
   const lost = leads.filter(l => l.pipeline_stage === "closed_lost").length;
   if (won + lost >= 5) {
     const winRate = Math.round((won / (won + lost)) * 100);
-    const avgWin = bm?.avg_win_rate ?? 38;
-    const p75Win = bm?.p75_win_rate;
+    const avgWin = 38;
     const isAbove = winRate >= avgWin;
-    const benchText = bm
-      ? `${nicheLabel} niche average is ${avgWin}%${p75Win ? ` (top quartile: ${p75Win}%+)` : ""} across ${bm.company_count} businesses.`
-      : "AU trade average is 35–45%.";
+    const benchText = "AU trade average is 35–45%.";
     cards.push({
       title: "Win Rate",
       body: isAbove
-        ? `You're closing ${winRate}% of qualified leads - above the benchmark. ${benchText} Strong quote follow-up or competitive pricing is driving this.`
+        ? `You're closing ${winRate}% of qualified leads - above the AU trade average. ${benchText} Strong quote follow-up or competitive pricing is driving this.`
         : winRate >= 25
         ? `You're closing ${winRate}% of qualified leads. ${benchText} Consistent follow-up after quoting is the #1 lever for improvement.`
-        : `A ${winRate}% win rate is below the benchmark. ${benchText} Review quote presentation, pricing, and follow-up speed.`,
+        : `A ${winRate}% win rate is below the AU trade average. ${benchText} Review quote presentation, pricing, and follow-up speed.`,
       action: winRate < 25 ? "Check how many sent quotes have no follow-up SMS - use Quotes to trigger automated follow-ups." : null,
       type: isAbove ? "good" : winRate >= 25 ? "warn" : "alert",
       metric: `${winRate}%`,
@@ -6034,12 +6058,12 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   }
 
   // 5. Avg AI lead quality score
-  if (stats && stats.avg_ai_score && stats.ai_handled_leads >= 5) {
-    const score = Math.round(stats.avg_ai_score);
-    const avgScore = bm?.avg_lead_score ?? 55;
+  if (eng && eng.lead_score != null) {
+    const score = Math.round(Number(eng.lead_score));
+    const avgScore = bm?.avg_lead_score != null ? Math.round(Number(bm.avg_lead_score)) : 55;
     const isAbove = score >= avgScore;
-    const benchText = bm
-      ? `The ${nicheLabel} niche average is ${avgScore}/100 across ${bm.company_count} businesses.`
+    const benchText = bm?.avg_lead_score != null
+      ? `The average is ${avgScore}/100 ${peerText}.`
       : "Healthy pipelines typically average 55–70.";
     cards.push({
       title: "Lead Quality Score",
@@ -6058,10 +6082,8 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   const wonWithValue = leads.filter(l => l.pipeline_stage === "closed_won" && Number(l.value) > 0);
   if (wonWithValue.length >= 3) {
     const avg = Math.round(wonWithValue.reduce((s, l) => s + Number(l.value), 0) / wonWithValue.length);
-    const avgDeal = bm?.avg_deal_value ?? null;
-    const benchText = avgDeal
-      ? `The ${nicheLabel} niche average is ${fmt(avgDeal)} across ${bm.company_count} businesses.`
-      : "AU trade mid-range is typically $2,500–$8,000 per job.";
+    const avgDeal = null; // closed-deal data is private - never benchmarked
+    const benchText = "AU trade mid-range is typically $2,500–$8,000 per job.";
     const isAbove = avgDeal ? avg >= avgDeal : avg >= 2500;
     cards.push({
       title: "Average Deal Value",
@@ -6073,10 +6095,10 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   }
 
   // Show a teaser if no benchmark yet
-  if (!bm && niche && cards.length > 0) {
+  if (!bm && cards.length > 0) {
     cards.push({
-      title: "Niche Benchmarks Coming Soon",
-      body: `Once 10+ ${nicheLabel} businesses on QuoteLeads have enough pipeline data, you'll see how you compare to your peers - callback rates, win rates, deal values, and more. Your data contributes automatically if you've opted in under Account Settings.`,
+      title: "Benchmarks Coming Soon",
+      body: "Once enough businesses on QuoteLeads have AI engagement data, you'll see how your callback rate, reply rate and lead quality compare to your peers. Only engagement data is used - never your closed deals or job values.",
       type: "info",
       metric: null,
     });
