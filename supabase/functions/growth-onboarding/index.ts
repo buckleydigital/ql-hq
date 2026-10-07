@@ -60,6 +60,27 @@ function normalisePhone(raw: string): string | null {
   return p;
 }
 
+// Maps the form's step 4 (lead_delivery_methods, delivery_email, delivery_phone)
+// onto the profile's lead_notify_* columns. Blank destinations stay null, which
+// lead-notify reads as "use the account email / phone".
+function leadNotifyFromPayload(p: Record<string, unknown>) {
+  const methods = Array.isArray(p.lead_delivery_methods)
+    ? p.lead_delivery_methods.map((m) => String(m).toLowerCase())
+    : [];
+  const wantEmail = methods.some((m) => m.includes("email"));
+  const wantSms = methods.some((m) => m.includes("sms"));
+  const channel = wantEmail && wantSms ? "email_sms" : wantSms ? "sms" : "email";
+
+  const email = (str(p.delivery_email, 320) || "").toLowerCase();
+  const phone = str(p.delivery_phone, 40);
+  return {
+    lead_notify_enabled: true,
+    lead_notify_channel: channel,
+    lead_notify_email: email && EMAIL_RE.test(email) ? email : null,
+    lead_notify_phone: phone ? normalisePhone(phone) : null,
+  };
+}
+
 const str = (v: unknown, max = 500): string | null => {
   const s = String(v ?? "").trim();
   return s ? s.slice(0, max) : null;
@@ -343,6 +364,16 @@ export async function provisionAccount(
   // The full form, so nothing captured is stranded in the submissions table.
   patch.dfy_profile = sub.payload ?? {};
   await admin.from("companies").update(patch).eq("id", companyId);
+
+  // Lead notifications: step 4 of the form asks how they want leads delivered
+  // and where. Carry that onto the owner's profile, switched on, so it is what
+  // Settings > New Lead Notifications shows on first login. Only for a new
+  // account: an existing user's own notification settings are left alone.
+  if (!existed) {
+    const notify = leadNotifyFromPayload((sub.payload ?? {}) as Record<string, unknown>);
+    const { error: nErr } = await admin.from("profiles").update(notify).eq("id", userId);
+    if (nErr) console.warn("lead notify settings not saved:", nErr.message);
+  }
 
   await admin.from("onboarding_submissions").update({
     company_id: companyId,
