@@ -5978,8 +5978,8 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
     });
   }
 
-  // 2. Callback booking rate
-  if (eng) {
+  // 2. Callback booking rate (null when the AI runs in quote-drafting mode)
+  if (eng && eng.callback_rate != null) {
     const rate = Number(eng.callback_rate);
     const r1 = v => (v == null ? null : Math.round(Number(v) * 10) / 10);
     const avgRate = bm ? r1(bm.avg_callback_rate) : 28;
