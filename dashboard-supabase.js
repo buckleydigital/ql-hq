@@ -5958,8 +5958,10 @@ function generatePerformanceInsights(stats, leads, benchmark = null, niche = nul
   const sevenDaysAgo = new Date(Date.now() - 7 * 864e5);
   const nicheLabel = niche ? niche.replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) : "AU trade";
   const bm = benchmark; // shorthand - engagement metrics only, never closed-deal data
-  const peerLabel = bm?.crossTrade ? "trade business" : `${nicheLabel} business`;
-  const peerText = bm ? `across ${bm.company_count} ${peerLabel}es using QuoteLeads AI` : "";
+  // Never show how many businesses contribute - just that it's a peer average.
+  const peerText = bm
+    ? (bm.crossTrade ? "across businesses using QuoteLeads AI" : `across ${nicheLabel} businesses using QuoteLeads AI`)
+    : "";
   const eng = engagement?.ai_leads >= 5 ? engagement : null; // own stats, measured like the benchmark
 
   // 1. AI Coverage
