@@ -5829,8 +5829,8 @@ async function loadAiInsights() {
     if (!stats || stats.total_leads === 0) {
       convEl.innerHTML = `<div class="notice">Not enough data to compare conversion rates yet.</div>`;
     } else {
-      const aiRate = stats.ai_conversion_rate || 0;
-      const humanRate = stats.human_conversion_rate || 0;
+      const aiRate = Number(stats.ai_conversion_rate) || 0;
+      const humanRate = Number(stats.human_conversion_rate) || 0;
       const maxRate = Math.max(aiRate, humanRate, 1);
 
       convEl.innerHTML = `
@@ -5891,7 +5891,7 @@ async function loadAiInsights() {
 
   // ── Performance insights ────────────────────────────────────────────────
   const industryEl = document.getElementById("aiIndustryInsights");
-  if (industryEl) {
+  if (industryEl) try {
     const [{ data: leads }, { data: orderNiches }, { data: engRows }] = await Promise.all([
       sb.from("leads").select("id, pipeline_stage, ai_enabled, created_at, value").eq("company_id", currentCompanyId),
       sb.from("ppl_lead_orders").select("niche").eq("company_id", currentCompanyId).in("status", ["paid","active","fulfilled"]),
@@ -5907,8 +5907,9 @@ async function loadAiInsights() {
       companyNiche = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
     }
 
-    // Trigger benchmark refresh (throttled server-side to every 6 hours)
-    sb.rpc("refresh_niche_benchmarks").catch(() => {});
+    // Refresh benchmarks first (throttled server-side to every 6 hours).
+    // Supabase query builders have no .catch() - await and ignore the error.
+    await sb.rpc("refresh_niche_benchmarks");
 
     // Engagement benchmark: the company's niche once it has 10+ contributors,
     // otherwise the cross-trade '_all' row (5+ contributors).
@@ -5943,6 +5944,9 @@ async function loadAiInsights() {
         </div>`;
       }).join("");
     }
+  } catch (err) {
+    console.error("Performance insights failed:", err);
+    industryEl.innerHTML = `<div class="notice">Couldn't load performance insights. Please refresh the page.</div>`;
   }
 
   renderIcons();
