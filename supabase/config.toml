@@ -106,3 +106,84 @@ verify_jwt = false
 # /admin lead notification settings; checks the caller's JWT + is_admin itself.
 [functions.admin-lead-notify]
 verify_jwt = false
+
+# ── Everything below matches what is live (checked 2026-10-08) ─────
+# The deploy workflow reads this file, and a function missing here would be
+# deployed with verify_jwt = true, which breaks webhooks and public endpoints.
+# Every function in supabase/functions/ must have an entry.
+
+# Webhooks and server-to-server calls (signature / shared-secret auth).
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.intake-lead]
+verify_jwt = false
+
+[functions.sync-from-mc]
+verify_jwt = false
+
+[functions.sync-delivery-config]
+verify_jwt = false
+
+[functions.twilio-call-status]
+verify_jwt = false
+
+[functions.twilio-team-sms]
+verify_jwt = false
+
+[functions.notify-internal]
+verify_jwt = false
+
+[functions.test-webhook]
+verify_jwt = false
+
+[functions.va-api]
+verify_jwt = false
+
+[functions.ai-learner]
+verify_jwt = false
+
+[functions.fulfilment-ai]
+verify_jwt = false
+
+# Public website forms.
+[functions.growth-onboarding]
+verify_jwt = false
+
+[functions.callback-request]
+verify_jwt = false
+
+[functions.demo-request]
+verify_jwt = false
+
+# Dashboard calls that check the caller's JWT themselves.
+[functions.create-ppl-checkout]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.create-sms-credits-checkout]
+verify_jwt = false
+
+[functions.billing-portal]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false
+
+[functions.dispute-lead]
+verify_jwt = false
+
+[functions.send-review-request]
+verify_jwt = false
+
+# Gateway JWT check left on (as live).
+[functions.provision-twilio]
+verify_jwt = true
+
+[functions.team-api]
+verify_jwt = true
+
+[functions.create-management-subscription]
+verify_jwt = true

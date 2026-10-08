@@ -1,22 +1,101 @@
 name: Deploy Supabase Edge Functions
 
+# Deploys only the functions a push changed (plus any function that imports a
+# changed _shared file), so a push never overwrites unrelated live functions.
+# verify_jwt for each function comes from supabase/config.toml, which must list
+# every function - see the note there.
+#
+# Needs one repository secret: SB_ACCESS_TOKEN, a Supabase personal access
+# token (supabase.com/dashboard/account/tokens) for an account with access to
+# the ql-hq project.
+
 on:
   push:
     branches: [main]
     paths:
       - 'supabase/functions/**'
+      - 'supabase/config.toml'
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: 'Functions to deploy, space-separated (e.g. "stripe-webhook create-ppl-checkout"), or "all"'
+        required: true
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+env:
+  # Not a secret: it is in every public page that talks to Supabase.
+  PROJECT_REF: wjadekgptkstfdootuol
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the access token is set
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SB_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::The SB_ACCESS_TOKEN repository secret is missing. Add a Supabase personal access token under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Work out which functions to deploy
+        id: pick
+        env:
+          INPUT_FUNCTIONS: ${{ github.event.inputs.functions }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd supabase/functions
+          all=$(find . -mindepth 2 -maxdepth 2 -name index.ts -not -path './_*' | cut -d/ -f2 | sort)
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "$INPUT_FUNCTIONS" = "all" ]; then list="$all"; else list="$INPUT_FUNCTIONS"; fi
+          else
+            # A new branch push has no usable "before"; fall back to the last commit.
+            if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE="$AFTER~1"
+            fi
+            changed=$(git diff --name-only "$BEFORE" "$AFTER" -- . | sed 's#^supabase/functions/##')
+            list=$(printf '%s\n' "$changed" | grep -v '^_' | cut -d/ -f1 | sort -u || true)
+            # A changed shared file redeploys every function that imports it.
+            for f in $(printf '%s\n' "$changed" | grep '^_shared/' || true); do
+              name=$(basename "$f")
+              users=$(grep -l "_shared/$name" */*.ts 2>/dev/null | cut -d/ -f1 || true)
+              list=$(printf '%s\n%s\n' "$list" "$users")
+            done
+          fi
+
+          # Keep only real function folders, once each.
+          final=""
+          for fn in $(printf '%s\n' $list | sort -u); do
+            if [ -f "$fn/index.ts" ]; then final="$final $fn"; else echo "Skipping $fn (no such function)"; fi
+          done
+          echo "Deploying:${final:- nothing}"
+          echo "functions=${final# }" >> "$GITHUB_OUTPUT"
 
       - uses: supabase/setup-cli@v1
+        if: steps.pick.outputs.functions != ''
         with:
           version: latest
 
-      - name: Deploy all edge functions
-        run: supabase functions deploy --project-ref ${{ secrets.SB_PROJECT_REF }}
+      - name: Deploy
+        if: steps.pick.outputs.functions != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SB_ACCESS_TOKEN }}
+          FUNCTIONS: ${{ steps.pick.outputs.functions }}
+        run: |
+          set -euo pipefail
+          for fn in $FUNCTIONS; do
+            echo "::group::$fn"
+            supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
+            echo "::endgroup::"
+          done
