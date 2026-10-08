@@ -265,10 +265,17 @@ async function generateCreatives(ctx: Ctx, body: Record<string, unknown>) {
     }, 503);
   }
 
-  const copy = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
+  // The creatives are rendered from the ad copy. If there is none yet, write it
+  // first rather than refusing, so this can be run at any stage.
+  let copy = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
+  if (!Array.isArray(copy.headlines) || !copy.headlines.length) {
+    const res = await generateAdCopy(ctx);
+    if (!res.ok) return res;
+    copy = ((await res.json()).ad_copy || {}) as Record<string, unknown>;
+  }
   const headlines = Array.isArray(copy.headlines) ? (copy.headlines as string[]) : [];
   if (!headlines.length) {
-    return json({ error: "Generate the ad copy first - the creatives are rendered from it." }, 400);
+    return json({ error: "The ad copy came back with no headlines, so there is nothing to render. Try again." }, 502);
   }
 
   const name = String(ctx.company.name || "Your business");

@@ -871,6 +871,27 @@ select{cursor:pointer}
   };
   const AUTOMATIC_ONLY = { spam_gate: 'automatic', account: 'automatic', welcome_email: 'automatic' };
 
+  // Admins can run every automation on every client, whatever stage it is at.
+  function mayRun(a) {
+    if (_isAdmin) return true;
+    if (a === 'ad_copy' || a === 'creatives') return iCan('automations_run');
+    if (a === 'preview_email') return iCan('preview_email_send');
+    if (a === 'intro_email') return iCan('intro_email_send');
+    return false;
+  }
+
+  // Always shown at the top of the checklist, so the tools are there whether or
+  // not the client has the matching step, and at any stage.
+  function automationToolsHtml() {
+    const tools = [
+      ['ad_copy', 'Generate ad copy'], ['creatives', 'Generate creatives'],
+      ['preview_email', 'Send previews…'], ['intro_email', 'Send intro…'],
+    ].filter(([a]) => mayRun(a));
+    if (!tools.length) return '';
+    return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px">${tools.map(([a, l]) =>
+      `<button class="btn btn-xs" data-run="${a}" style="font-size:11px;padding:5px 10px">${l}</button>`).join('')}</div>`;
+  }
+
   function automationBtn(st, status) {
     const a = st.automation;
     if (!a) return '';
@@ -879,9 +900,7 @@ select{cursor:pointer}
     }
     const r = RUNNABLE[a];
     if (!r) return '';
-    if ((a === 'ad_copy' || a === 'creatives') && !iCan('automations_run')) return '';
-    if (a === 'preview_email' && !iCan('preview_email_send')) return '';
-    if (a === 'intro_email' && !iCan('intro_email_send')) return '';
+    if (!mayRun(a)) return '';
     // Still offered on a completed step: regenerating copy or resending previews
     // after a change is normal, so this is "run again", not a one-shot.
     const again = status === 'done' || status === 'skipped';
@@ -939,6 +958,7 @@ select{cursor:pointer}
       <div class="sec-title">Fulfilment</div>
       <div class="card">
         ${head}
+        ${automationToolsHtml()}
         <div class="sec-title" style="margin-top:14px">Onboarding</div>
         ${onboarding.map(stepRowHtml).join('') || '<div class="muted">No steps defined.</div>'}
         ${live.length ? '<div class="sec-title">Once live</div>' + live.map(stepRowHtml).join('') : ''}
