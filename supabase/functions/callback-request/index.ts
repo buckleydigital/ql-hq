@@ -42,6 +42,32 @@ const NICHE_LABELS: Record<string, string> = {
 
 const nicheLabel = (slug: string) => (slug ? NICHE_LABELS[slug] ?? slug : '-')
 
+// Every form that posts here shows a Cloudflare Turnstile check; without
+// verifying it here a bot could skip the page and post straight to this
+// function, filling the Sales Pipeline and contact@ with junk.
+async function turnstileOk(token: string, ip: string | null): Promise<boolean> {
+  const secret = Deno.env.get('CF_TURNSTILE_SECRET')
+  if (!secret) {
+    console.error('CF_TURNSTILE_SECRET is not set - rejecting callback requests until it is')
+    return false
+  }
+  if (!token) return false
+  try {
+    const form = new URLSearchParams({ secret, response: token })
+    if (ip) form.set('remoteip', ip)
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    })
+    const data = await res.json()
+    return data.success === true
+  } catch (e) {
+    console.error('turnstile verify error:', e instanceof Error ? e.message : e)
+    return false
+  }
+}
+
 // Hand the enquiry to ql-mc so it lands on the Sales Pipeline as a New Lead.
 // Best effort: if ql-mc is unreachable the visitor still gets a confirmation
 // and contact@ still gets the email, rather than being told it did not send.
@@ -82,6 +108,11 @@ serve(async (req) => {
     // The page validates before it gets here; this is the backstop.
     if (!name || !email || !phone) {
       return json({ error: 'Name, email and phone are required.' }, 400)
+    }
+
+    const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || null
+    if (!(await turnstileOk(String(body.turnstile_token ?? ''), ip))) {
+      return json({ error: 'Security check failed. Please refresh the page and try again.' }, 403)
     }
 
     const company = String(body.company ?? '').trim()
