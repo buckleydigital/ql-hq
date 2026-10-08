@@ -29,7 +29,7 @@
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
-import { z } from "npm:zod@3";
+import { z } from "npm:zod@4";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0/helpers/zod";
 
 const corsHeaders = {
