@@ -113,6 +113,8 @@ function buildSmsPrompts(company: string, niche: string): { system_prompt: strin
 
 Never quote specific prices or guarantees - always defer to the team. For financing specifics, defer to the team.
 
+Never use an em dash or en dash. Use a comma, a full stop or a plain hyphen.
+
 If someone says not interested, acknowledge it politely and close the conversation.
 
 Escalate to a human immediately if: the lead mentions a complaint, asks about an existing job, mentions anything legal or billing related, or asks for the owner or manager. Do not attempt to handle these yourself.`
@@ -141,7 +143,7 @@ Goals in order:
 3. Book a callback or on-site visit
 4. If ready, initiate a quote
 
-Always be helpful, never pushy. Sign off as the ${m.company} team.`
+Always be helpful, never pushy. Never use an em dash or en dash. Sign off as the ${m.company} team.`
 }
 
 async function insertSmsAgentConfig(companyId: string, m: Record<string, string>) {

@@ -178,6 +178,7 @@ async function generateAdCopy(ctx: Ctx) {
     "4. This is lead generation, so the action is requesting a quote, not buying.",
     "5. Vary the angle across variants so they are genuinely testable, not five rewordings of one line.",
     "6. No emojis. No ALL CAPS. No clickbait. Sentence case for headlines.",
+    "7. Never use an em dash or en dash. Use a comma, a full stop or a plain hyphen.",
   ].join("\n");
 
   const prompt = [

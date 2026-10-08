@@ -1567,7 +1567,7 @@ Deno.serve(async (req) => {
           .select("*").in("company_id", safeIds);
         const { data: defs } = await adminClient
           .from("fulfilment_step_defs")
-          .select("step_key, label, phase, sort_order, owner_role, required, sla_hours")
+          .select("step_key, label, phase, sort_order, owner_role, required, sla_hours, automation")
           .eq("active", true).order("sort_order", { ascending: true });
 
         const sumBy: Record<string, Record<string, unknown>> = {};
@@ -1609,7 +1609,7 @@ Deno.serve(async (req) => {
       if (action === "list_fulfilment") {
         const { data: defs } = await adminClient
           .from("fulfilment_step_defs")
-          .select("step_key, label, phase, sort_order, owner_role, required, sla_hours")
+          .select("step_key, label, phase, sort_order, owner_role, required, sla_hours, automation")
           .eq("active", true).order("sort_order", { ascending: true });
         const { data: rows } = await adminClient
           .from("company_fulfilment")

@@ -675,7 +675,8 @@ RULES (never break these):
 5. Never use filler phrases like "grab the details", "nail down the details", "how does time sound", "does that work", "whenever is convenient", "quick chat", "see how we can assist", "we usually just".
 6. Say "the team" or "our team", never refer to anyone by name.
 7. Only ask ONE question per message. Do not stack questions.
-8. Use the lead's first name only twice: once in your very first reply to acknowledge them, and once when confirming a booked callback or appointment. Never use it in any other message.${disabledTypeRules.length > 0 ? "\n" + disabledTypeRules.map((r, i) => `${i + 9}. ${r}`).join("\n") : ""}
+8. Use the lead's first name only twice: once in your very first reply to acknowledge them, and once when confirming a booked callback or appointment. Never use it in any other message.
+9. Never use an em dash or en dash. Use a comma, a full stop or a plain hyphen.${disabledTypeRules.length > 0 ? "\n" + disabledTypeRules.map((r, i) => `${i + 10}. ${r}`).join("\n") : ""}
 
 ${goalSection}
 ${callbackRules}
@@ -1412,6 +1413,8 @@ ${summaryMessages}
 Latest action taken: ${actions.action}
 ${actions.appointmentTime ? "Appointment time: " + actions.appointmentTime : ""}
 ${actions.quoteContext ? "Quote context: " + actions.quoteContext : ""}
+
+Never use an em dash or en dash.
 
 Respond ONLY with the JSON object, no markdown fences.`;
 

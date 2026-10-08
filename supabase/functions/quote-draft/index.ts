@@ -187,6 +187,8 @@ Generate a JSON array of line items. Each item should have:
 
 Only include items that are relevant to what the lead is asking about. If the conversation mentions specific measurements (m², hours, kW, etc.), use those to calculate quantities. If no specific quantities are mentioned, use reasonable estimates and note them.
 
+Never use an em dash or en dash in a description.
+
 Return ONLY a valid JSON array, no other text.`;
 
           const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
