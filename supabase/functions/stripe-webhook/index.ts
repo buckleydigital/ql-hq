@@ -26,7 +26,7 @@ serve(async (req) => {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  // Subscription lifecycle for the $600/mo management plan. These arrive
+  // Subscription lifecycle for the monthly management plan. These arrive
   // outside checkout - renewals, card failures, cancellations from the billing
   // portal - so they are handled before the checkout branch below.
   if (
@@ -608,7 +608,7 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
   }
 }
 
-// ── Management subscription ($600/mo) ──────────────────────────────────────
+// ── Management subscription (monthly) ──────────────────────────────────────
 // Fires on create, on every renewal that changes status, on card failure, and
 // on cancellation from the billing portal. Stripe holds the truth; we mirror
 // just enough onto the company to render the dashboard without calling the
@@ -655,17 +655,23 @@ async function handleManagementSubscriptionChange(
     const endsOn = sub.current_period_end
       ? new Date(sub.current_period_end * 1000).toLocaleDateString('en-AU')
       : 'unknown'
+    // The client's actual monthly fee (ex GST), read from the subscription so
+    // it is right for per-client prices and after any list-price change.
+    const cents = sub.items?.data?.[0]?.price?.unit_amount
+    const fee = typeof cents === 'number'
+      ? `$${(cents / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 })}/mo + GST`
+      : 'their monthly fee'
 
     if (status === 'active' && was !== 'active') {
       await sendInternalEmail(
         `💰 Management subscription started - ${who}`,
-        `<p><strong>${who}</strong> just switched on ongoing management at $600/mo.</p>
+        `<p><strong>${who}</strong> just switched on ongoing management at ${fee}.</p>
          <p>Next billing date: ${endsOn}</p>`
       )
     } else if (status === 'past_due' && was !== 'past_due') {
       await sendInternalEmail(
         `⚠️ Management payment failed - ${who}`,
-        `<p><strong>${who}</strong>'s $600/mo management payment failed. Stripe will retry, but their card likely needs updating.</p>`
+        `<p><strong>${who}</strong>'s ${fee} management payment failed. Stripe will retry, but their card likely needs updating.</p>`
       )
     } else if (status === 'canceled' && was !== 'canceled') {
       await sendInternalEmail(
