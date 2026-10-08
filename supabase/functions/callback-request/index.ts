@@ -45,27 +45,44 @@ const nicheLabel = (slug: string) => (slug ? NICHE_LABELS[slug] ?? slug : '-')
 // Every form that posts here shows a Cloudflare Turnstile check; without
 // verifying it here a bot could skip the page and post straight to this
 // function, filling the Sales Pipeline and contact@ with junk.
+//
+// The website (quoteleads.com.au) and the dashboard (quoteleadshq.com) use
+// DIFFERENT Turnstile site keys, and each key has its own secret:
+//   CF_TURNSTILE_SECRET       - dashboard key 0x4AAAAAAC0NesB... (login etc.)
+//   CF_TURNSTILE_SECRET_SITE  - website key   0x4AAAAAABj4xs... (these forms)
+// A token is accepted if either secret verifies it.
+async function verifyWith(secret: string, token: string, ip: string | null): Promise<string[] | true> {
+  const form = new URLSearchParams({ secret, response: token })
+  if (ip) form.set('remoteip', ip)
+  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form,
+  })
+  const data = await res.json()
+  return data.success === true ? true : (data['error-codes'] ?? ['unknown'])
+}
+
 async function turnstileOk(token: string, ip: string | null): Promise<boolean> {
-  const secret = Deno.env.get('CF_TURNSTILE_SECRET')
-  if (!secret) {
-    console.error('CF_TURNSTILE_SECRET is not set - rejecting callback requests until it is')
-    return false
-  }
   if (!token) return false
-  try {
-    const form = new URLSearchParams({ secret, response: token })
-    if (ip) form.set('remoteip', ip)
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form,
-    })
-    const data = await res.json()
-    return data.success === true
-  } catch (e) {
-    console.error('turnstile verify error:', e instanceof Error ? e.message : e)
+  const secrets = [Deno.env.get('CF_TURNSTILE_SECRET_SITE'), Deno.env.get('CF_TURNSTILE_SECRET')]
+    .filter((v): v is string => !!v)
+  if (!secrets.length) {
+    console.error('No Turnstile secret is set')
     return false
   }
+  const errors: string[] = []
+  for (const secret of secrets) {
+    try {
+      const r = await verifyWith(secret, token, ip)
+      if (r === true) return true
+      errors.push(...r)
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+  }
+  console.warn('turnstile siteverify said no:', errors.join(', '))
+  return false
 }
 
 // Hand the enquiry to ql-mc so it lands on the Sales Pipeline as a New Lead.
@@ -110,9 +127,13 @@ serve(async (req) => {
       return json({ error: 'Name, email and phone are required.' }, 400)
     }
 
+    // Turnstile is checked but NOT enforced: a real enquiry was refused when
+    // this blocked, so for now a failed check is only logged. Do not turn the
+    // block back on until the logs show real visitors passing.
     const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || null
-    if (!(await turnstileOk(String(body.turnstile_token ?? ''), ip))) {
-      return json({ error: 'Security check failed. Please refresh the page and try again.' }, 403)
+    const tsToken = String(body.turnstile_token ?? '')
+    if (!(await turnstileOk(tsToken, ip))) {
+      console.warn(`turnstile check failed (not blocking) - token ${tsToken ? 'present' : 'missing'}, source ${String(body.source ?? '')}`)
     }
 
     const company = String(body.company ?? '').trim()
