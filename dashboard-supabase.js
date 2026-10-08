@@ -1091,8 +1091,13 @@ const PAGE_META = {
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
+// Pay-per-lead sales are paused: Buy Leads is hidden from every account, PPL
+// ones included. Set to true (and set PPL_SALES_OPEN=true in Supabase, and
+// remove the redirects on the ql-site PPL pages) to reopen.
+const PPL_SALES_OPEN = false;
+
 function isPplAccount() {
-  return currentCompanyPlan === "ppl";
+  return PPL_SALES_OPEN && currentCompanyPlan === "ppl";
 }
 
 function isAdmin() {
