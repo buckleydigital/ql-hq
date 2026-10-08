@@ -611,7 +611,7 @@ Action: "callback" only once a specific call time has been confirmed with the le
   if (callbackEnabled && onsiteEnabled) {
     callbackRules = `
 CALLBACK SCHEDULING:
-Available days: ${callbackDaysList}. Hours: ${callbackStart}–${callbackEnd}.
+Available days: ${callbackDaysList}. Hours: ${callbackStart} to ${callbackEnd}.
 - If the lead says "any time" or similar, confirm the next available slot.
 - If they give a specific time on a valid day within hours, confirm it.
 - If outside hours or days, suggest the nearest valid alternative.
