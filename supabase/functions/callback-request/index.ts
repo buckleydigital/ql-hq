@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import '../_shared/no-em-dash.ts'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
 

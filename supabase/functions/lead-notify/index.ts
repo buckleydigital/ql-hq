@@ -20,6 +20,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import "../_shared/no-em-dash.ts";
 
 const MAX_LEAD_AGE_MS = 30 * 60 * 1000;
 const SMS_MAX_CHARS = 1500; // Twilio hard limit is 1600

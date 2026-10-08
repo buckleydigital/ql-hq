@@ -24,6 +24,7 @@
 // =============================================================================
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { noEmDash } from "../_shared/no-em-dash.ts";
 
 // ── Inline email templates (avoids local-file import that breaks deployment) ──
 const _BRAND_COLOR = "#1f6fff";
@@ -1541,7 +1542,7 @@ Respond ONLY with the JSON object, no markdown fences.`;
 // Return TwiML response (Twilio expects this)
 function twimlResponse(message: string): Response {
   const twiml = message
-    ? `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(message)}</Message></Response>`
+    ? `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(noEmDash(message))}</Message></Response>`
     : `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
 
   return new Response(twiml, {

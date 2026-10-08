@@ -38,6 +38,7 @@
 // the /admin panel, so client + super-admin behaviour is unchanged.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
+import "../_shared/no-em-dash.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

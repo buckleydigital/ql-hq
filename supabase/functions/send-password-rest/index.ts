@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import "../_shared/no-em-dash.ts";
 
 async function verifyTurnstile(token: string): Promise<boolean> {
   const secret = Deno.env.get("CF_TURNSTILE_SECRET");

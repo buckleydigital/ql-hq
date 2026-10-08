@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import "../_shared/no-em-dash.ts";
 
 // ── Account-setup email ───────────────────────────────────────────────────────
 // The account is created WITHOUT a password. The user clicks the setup link
