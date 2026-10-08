@@ -85,6 +85,58 @@ async function turnstileOk(token: string, ip: string | null): Promise<boolean> {
   return false
 }
 
+// What each page told the visitor about when we would call. The solar funnel
+// promises within the hour; the get-started style forms say business hours.
+const promisedCall = (source: string) =>
+  /branded-solar/i.test(source) ? 'within the hour' : 'during business hours (AEST)'
+
+// Confirmation to the person who enquired, so they know it landed, who will
+// ring and from where, and can reply with anything else. Best effort: a
+// failure here never affects their enquiry.
+async function sendWelcomeEmail(to: string, name: string, source: string) {
+  const first = name.split(/\s+/)[0] || 'there'
+  const when = promisedCall(source)
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'QuoteLeads <onboarding@quoteleads.com.au>',
+      to,
+      reply_to: 'contact@quoteleads.com.au',
+      subject: `Thanks ${first}, we'll call you ${when.startsWith('within') ? 'shortly' : 'soon'}`,
+      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px">
+        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
+          <div style="background:#0a0b0f;padding:28px 36px">
+            <img src="https://quoteleads.com.au/quoteleads-logo-white.png" alt="QuoteLeads" style="height:30px">
+          </div>
+          <div style="padding:36px">
+            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 12px">Thanks ${esc(first)}, we've got your request.</h1>
+            <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 20px">
+              Someone from our team will call you ${when}. Keep an eye on your phone - the call may come from a number you don't recognise.
+            </p>
+            <div style="background:#f8f9fb;border-radius:8px;padding:18px 20px;margin-bottom:24px">
+              <p style="font-size:13px;font-weight:600;color:#0a0b0f;margin:0 0 10px">On the call we'll:</p>
+              <ul style="font-size:13px;color:#555;line-height:1.9;margin:0;padding-left:18px">
+                <li>Learn about your business, your service area and how many jobs you want</li>
+                <li>Show you how the Branded Lead Gen System works</li>
+                <li>Answer any questions - there's no obligation</li>
+              </ul>
+            </div>
+            <p style="color:#555;font-size:14px;line-height:1.6;margin:0">
+              Anything you'd like us to know before we call? Just reply to this email.
+            </p>
+            <p style="font-size:12px;color:#999;margin:28px 0 0;line-height:1.6">
+              QuoteLeads &middot; Australian owned and operated &middot; <a href="https://quoteleads.com.au" style="color:#999">quoteleads.com.au</a><br>
+              You're receiving this because you requested a callback on our website.
+            </p>
+          </div>
+        </div>
+      </body></html>`,
+    }),
+  })
+  if (!res.ok) console.error('welcome email failed:', res.status, await res.text())
+}
+
 // Hand the enquiry to ql-mc so it lands on the Sales Pipeline as a New Lead.
 // Best effort: if ql-mc is unreachable the visitor still gets a confirmation
 // and contact@ still gets the email, rather than being told it did not send.
@@ -127,13 +179,14 @@ serve(async (req) => {
       return json({ error: 'Name, email and phone are required.' }, 400)
     }
 
-    // Turnstile is checked but NOT enforced: a real enquiry was refused when
-    // this blocked, so for now a failed check is only logged. Do not turn the
-    // block back on until the logs show real visitors passing.
+    // Enforced since 2026-10-08, after a real website enquiry verified against
+    // CF_TURNSTILE_SECRET_SITE. If real enquiries start failing, check that both
+    // secrets are still set (see turnstileOk) before anything else.
     const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || null
     const tsToken = String(body.turnstile_token ?? '')
     if (!(await turnstileOk(tsToken, ip))) {
-      console.warn(`turnstile check failed (not blocking) - token ${tsToken ? 'present' : 'missing'}, source ${String(body.source ?? '')}`)
+      console.warn(`turnstile check failed - token ${tsToken ? 'present' : 'missing'}, source ${String(body.source ?? '')}`)
+      return json({ error: 'Security check failed. Please refresh the page and try again.' }, 403)
     }
 
     const company = String(body.company ?? '').trim()
@@ -167,7 +220,7 @@ serve(async (req) => {
         reply_to: email,
         subject: `📞 Callback requested - ${company || name}`,
         html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#333;line-height:1.7">
-          <p><strong>${esc(name)}</strong> asked for a callback. They were told we would ring within the hour.</p>
+          <p><strong>${esc(name)}</strong> asked for a callback. They were told we would ring ${promisedCall(source)}.</p>
           <table style="border-collapse:collapse;font-size:14px">
             <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${esc(name)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${esc(company)}</td></tr>
@@ -187,6 +240,9 @@ serve(async (req) => {
       // Only a failure the visitor should see if nothing at all got through.
       if (!onPipeline) return json({ error: 'Could not send the request.' }, 502)
     }
+
+    await sendWelcomeEmail(email, name, source).catch((e) =>
+      console.error('welcome email error:', e instanceof Error ? e.message : e))
 
     return json({ success: true })
   } catch (err) {
