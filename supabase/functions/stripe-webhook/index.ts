@@ -253,9 +253,11 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
     // Sync postcodes to company service areas if postcode-targeted
     const { data: orderData } = await supabase
       .from('ppl_lead_orders')
-      .select('location_type, postcode_list')
+      .select('location_type, postcode_list, service_areas')
       .eq('id', m.order_id)
       .maybeSingle()
+    const areasSummary = summariseServiceAreas(orderData?.service_areas as ServiceArea[] | null)
+      || m.service_areas_summary || ''
 
     if (orderData?.location_type === 'postcodes' && orderData?.postcode_list) {
       const newPostcodes = orderData.postcode_list
@@ -296,7 +298,7 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       pricePerLead:    parseFloat(m.price_per_lead),
       niche:           m.niche,
       subNiche:        m.sub_niche || null,
-      areaCity:        m.area_city,
+      areaCity:        areasSummary ? `${m.area_city} - ${areasSummary}` : m.area_city,
       locationTypeVal: m.location_type || 'radius',
       radiusKm:        parseFloat(m.radius_km || '50'),
       postcodeList:    m.postcode_list || '',
@@ -308,6 +310,8 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       ? `${m.area_city} - State Wide`
       : m.location_type === 'postcodes'
       ? `Postcodes - ${m.postcode_list || '(none)'}`
+      : areasSummary
+      ? `${m.area_city} - ${areasSummary}`
       : `${m.area_city} - ${m.radius_km || 50}km radius`
 
     await sendInternalEmail(

@@ -218,6 +218,7 @@ async function edgeFn(fnName, body) {
 let sb;
 let currentUser      = null;
 let currentCompanyId = null;
+let currentCompanyPlan = null;  // companies.plan - 'ppl' unlocks Buy Leads
 let currentConvId    = null;
 let currentLeadId    = null;
 let customFields     = [];
@@ -983,6 +984,7 @@ async function showApp() {
       }
 
       currentCompany = company;
+      currentCompanyPlan = company?.plan || null;
 
       if (company?.name) {
         const brandName = document.getElementById("brandCompanyName");
@@ -991,6 +993,9 @@ async function showApp() {
         if (sidebarCompany) sidebarCompany.textContent = company.name;
       }
 
+      // Buy Leads (nav item, quick tile, checklist step, buy buttons) is only
+      // for pay-per-lead accounts. Everything marked .ppl-only keys off this.
+      document.body.classList.toggle("plan-ppl", isPplAccount());
 
     }
 
@@ -1083,7 +1088,12 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "billing":          ["Billing",           "Your management plan and payment details."],
+  "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
+
+function isPplAccount() {
+  return currentCompanyPlan === "ppl";
+}
 
 function isAdmin() {
   return currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserIsSuperAdmin;
@@ -1095,6 +1105,7 @@ function applyPermissionRestrictions() {
 }
 
 function navigateTo(page) {
+  if (page === "buy-leads" && !isPplAccount()) page = "dashboard";
   currentPageId = page;
   document.querySelectorAll("[data-page]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.page === page)
@@ -1139,6 +1150,7 @@ function navigateTo(page) {
     "integrations":     loadIntegrations,
     "reviews":          loadReviews,
     "billing":          loadBilling,
+    "buy-leads":        loadBuyLeads,
   };
   loaders[page]?.();
 }
@@ -1183,11 +1195,12 @@ async function loadDashboard() {
 
 
   try {
-    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }] = await Promise.all([
+    const [{ data: leads }, { data: quotes }, { data: appointments }, { data: aiCfg }, { count: orderCount }] = await Promise.all([
       sb.from("leads").select("id, name, email, pipeline_stage, value, ai_enabled, created_at").eq("company_id", currentCompanyId),
       sb.from("quotes").select("id, lead_id, status, created_at").eq("company_id", currentCompanyId),
       sb.from("appointments").select("id, lead_id, status, start_time, created_at").eq("company_id", currentCompanyId),
       sb.from("sms_agent_config").select("is_active, agent_name").eq("company_id", currentCompanyId).maybeSingle(),
+      sb.from("ppl_lead_orders").select("id", { count: "exact", head: true }).eq("company_id", currentCompanyId).not("status", "eq", "pending"),
     ]);
 
     const all          = leads || [];
@@ -1249,7 +1262,7 @@ async function loadDashboard() {
     renderPipelineSnapshot(all);
 
     loadHotLeads();
-    loadOnboardingChecklist(aiCfg, all.length);
+    loadOnboardingChecklist(aiCfg, all.length, orderCount || 0);
     loadActiveOrdersDash();
 
     // ── Status banner ──────────────────────────────────────────────────────
@@ -1509,14 +1522,18 @@ async function openConversationForLead(leadId) {
 }
 
 // ─── Onboarding Checklist (Change 7) ─────────────────────────────────────────
-function loadOnboardingChecklist(aiCfg, leadCount) {
+function loadOnboardingChecklist(aiCfg, leadCount, orderCount) {
   if (localStorage.getItem('onboarding_dismissed')) return;
   const el = document.getElementById('onboardingChecklist');
   if (!el) return;
   const step1Done = aiCfg?.is_active === true && !!aiCfg?.agent_name;
   const step2Done = (leadCount || 0) > 0;
-  const doneCount = [step1Done, step2Done].filter(Boolean).length;
-  if (doneCount === 2) { el.style.display = 'none'; return; }
+  // The lead-pack step only exists for pay-per-lead accounts.
+  const ppl       = isPplAccount();
+  const step3Done = (orderCount || 0) > 0;
+  const steps     = ppl ? [step1Done, step2Done, step3Done] : [step1Done, step2Done];
+  const doneCount = steps.filter(Boolean).length;
+  if (doneCount === steps.length) { el.style.display = 'none'; return; }
   el.style.display = '';
   const setStep = (id, done) => {
     const row  = document.getElementById(id);
@@ -1527,8 +1544,9 @@ function loadOnboardingChecklist(aiCfg, leadCount) {
   };
   setStep('oc_step1', step1Done);
   setStep('oc_step2', step2Done);
+  setStep('oc_step3', step3Done);
   const prog = document.getElementById('onboardingProgress');
-  if (prog) prog.textContent = `${doneCount} of 2 complete`;
+  if (prog) prog.textContent = `${doneCount} of ${steps.length} complete`;
 }
 
 // ─── Custom Fields ────────────────────────────────────────────────────────────
@@ -3918,7 +3936,7 @@ async function loadPplOrdersUI() {
   const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
   const statusColor = s => ({ pending:"#9a9a9a", paid:"#4797FF", active:"#22c55e", fulfilled:"#22c55e", cancelled:"#ef4444" }[s] || "#9a9a9a");
 
-  // Populate cache for the pending-order actions in this panel
+  // Populate cache so retryPplOrder works from this panel too
   orders.forEach(o => _pplOrdersCache.set(o.id, o));
 
   const totalSpend = orders.filter(o => o.status !== "cancelled" && o.status !== "pending").reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
@@ -3945,6 +3963,7 @@ async function loadPplOrdersUI() {
             <div style="font-size:11px;color:#f59e0b;margin-top:4px;font-weight:500">Payment not completed</div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn2" style="font-size:12px;padding:6px 14px" onclick="retryPplOrder('${o.id}')">Complete Payment</button>
             <button class="btn btn-danger" style="font-size:12px;padding:6px 12px" onclick="deletePendingOrderFromSettings('${o.id}')">Delete</button>
           </div>
         </div>
@@ -4012,6 +4031,7 @@ async function handleCreatePplOrder(e) {
     closeModal("pplOrderModal");
     document.getElementById("pplOrderForm")?.reset();
     await loadPplOrdersUI();
+    await loadBuyLeads();
   } catch (err) {
     toast("Failed to create order: " + err.message, true);
   }
@@ -4024,6 +4044,7 @@ async function cancelPplOrder(orderId) {
       if (error) { toast(error.message, true); return; }
       toast("Order cancelled.");
       await loadPplOrdersUI();
+      await loadBuyLeads();
     } catch {
       toast("Failed to cancel order.", true);
     }
@@ -6741,7 +6762,7 @@ async function skipReviewRequest(requestId) {
 }
 
 // =============================================================================
-// PPL order label helpers
+// Buy Leads helpers
 // =============================================================================
 function nicheLabel(niche) {
   if (niche === 'solar_battery' || niche === 'solar-battery') return 'Solar + Battery';
@@ -6749,7 +6770,35 @@ function nicheLabel(niche) {
   return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
 
+// =============================================================================
+// Buy Leads state
+// =============================================================================
+let _pplPricing      = [];  // kept for sub-niche compat; primary prices are _blCityPrices
+let _blDiscountTiers = [];  // [{min_quantity, discount_percent, label, is_popular}]
+let _blNiche         = null;
+let _blSubNiche      = null;
+let _blCity          = null;
+let _blLocType       = 'radius';
+let _blStatewide     = false;       // true when an entire state is selected
+let _blCovMode       = 'radius';    // remembers radius/postcodes when not state-wide
+let _blPPL           = null;
+let _blQty           = 25;
+let _blDiscount      = 0;
+let _blCityPrices    = {};  // niche → price_per_lead for selected city
+let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
+let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
+let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
+const BL_HARD_MAX    = 100; // maximum leads per order
 const _pplOrdersCache = new Map();
+
+// Effective per-order cap for the current selection (sub-niche cap wins, then
+// niche limit; null means unlimited, so fall back to the maximum).
+function blActiveMax() {
+  let cap = null;
+  if (_blNiche && _blSubNiche && _blMax[_blNiche + ':' + _blSubNiche] != null) cap = _blMax[_blNiche + ':' + _blSubNiche];
+  else if (_blNiche && _blMax[_blNiche] != null) cap = _blMax[_blNiche];
+  return cap == null ? BL_HARD_MAX : Math.min(cap, BL_HARD_MAX);
+}
 
 // Sub-niche definitions per parent niche
 const NICHE_SUB_NICHES = {
@@ -6775,6 +6824,881 @@ function subNicheLabel(subNiche) {
   }
   return nicheLabel(subNiche);
 }
+
+async function loadBuyLeads() {
+  if (!currentCompanyId) return;
+
+  const [{ data: orders }, { data: tiers }] = await Promise.all([
+    sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
+    sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
+  ]);
+
+  _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {}; _blMax = {};
+  _blDiscountTiers = tiers || [];
+  _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
+  _blStatewide = false; _blCovMode = 'radius';
+  _blQty = _blDiscountTiers[0]?.min_quantity ?? 25;
+  _blDiscount = 0;
+
+  // City visible from the start; niche hidden until city chosen
+  document.getElementById('buyLeadsCityField').style.display = '';
+  document.getElementById('buyLeadsNicheField').style.display = 'none';
+  document.getElementById('buyLeadsSubNicheField').style.display = 'none';
+  document.getElementById('buyLeadsLocationField').style.display = 'none';
+  document.getElementById('buyLeadsQtyField').style.display = 'none';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  const cityEl = document.getElementById('buyLeadsCity');
+  if (cityEl) {
+    cityEl.value = '';
+    cityEl.onchange = () => {
+      _blCity = cityEl.value || null;
+      _blStatewide = !!cityEl.value && cityEl.selectedOptions[0]?.dataset.statewide === '1';
+      buyLeadsOnCityChange();
+    };
+  }
+
+  renderBuyLeadsNiches();
+  renderBuyLeadsOrders(orders || []);
+
+  document.getElementById('buyLeadsPostcodes')?.addEventListener('input', buyLeadsUpdateSummary);
+  blReset();
+}
+
+const BL_NICHES = ['solar', 'solar-battery', 'roofing', 'hvac', 'renovation', 'battery-retrofit'];
+
+function renderBuyLeadsNiches() {
+  const el = document.getElementById('buyLeadsNicheCards');
+  if (!el) return;
+  el.innerHTML = BL_NICHES.map(niche => {
+    const label = nicheLabel(niche);
+    // Sold out for this city - render greyed out, non-selectable, no price.
+    if (_blSoldOut[niche]) {
+      return `<button type="button" disabled
+        id="nicheCard-${niche}"
+        style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+        ${label} - <span style="color:#f87171">Sold out</span>
+      </button>`;
+    }
+    const price = _blCityPrices[niche];
+    const priceNote = _blCity
+      ? (price ? ` - $${price}/lead` : ' - loading…')
+      : '';
+    const isSelected = niche === _blNiche;
+    return `<button type="button" onclick="buyLeadsSelectNiche('${niche}')"
+      id="nicheCard-${niche}"
+      style="padding:10px 20px;border-radius:10px;border:1px solid ${isSelected ? 'var(--accent,#4797FF)' : 'var(--border)'};background:${isSelected ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      ${label}${priceNote}
+    </button>`;
+  }).join('');
+}
+
+function renderBuyLeadsSubNiches(niche) {
+  const field = document.getElementById('buyLeadsSubNicheField');
+  const el    = document.getElementById('buyLeadsSubNicheCards');
+  const subs  = NICHE_SUB_NICHES[niche];
+  if (!field || !el || !subs) { if (field) field.style.display = 'none'; return; }
+
+  const parentPPL = _blCityPrices[niche] ?? null;
+  const anyNote   = parentPPL != null ? ` - $${parentPPL}/lead` : '';
+  const isAny     = _blSubNiche === null;
+
+  let html = `<button type="button" onclick="buyLeadsSelectSubNiche(null)"
+    id="subNicheCard-any"
+    style="padding:10px 20px;border-radius:10px;border:1px solid ${isAny ? 'var(--accent,#4797FF)' : 'var(--border)'};background:${isAny ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'};color:${isAny ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+    Any ${nicheLabel(niche)}${anyNote}
+  </button>`;
+
+  html += subs.map(s => {
+    // Sold out for this city - render greyed out, non-selectable, no price.
+    if (_blSoldOut[niche + ':' + s.id]) {
+      return `<button type="button" disabled
+        id="subNicheCard-${s.id}"
+        style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+        ${s.label} - <span style="color:#f87171">Sold out</span>
+      </button>`;
+    }
+    const cached    = _blCitySubPrices[niche + ':' + s.id];
+    const priceNote = cached != null ? ` - $${cached}/lead` : (_blCity ? ' - loading…' : '');
+    const isSel     = _blSubNiche === s.id;
+    return `<button type="button" onclick="buyLeadsSelectSubNiche('${s.id}')"
+      id="subNicheCard-${s.id}"
+      style="padding:10px 20px;border-radius:10px;border:1px solid ${isSel ? 'var(--accent,#4797FF)' : 'var(--border)'};background:${isSel ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'};color:${isSel ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
+      ${s.label}${priceNote}
+    </button>`;
+  }).join('');
+
+  el.innerHTML = html;
+  field.style.display = '';
+
+  // Prefetch sub-niche prices in background
+  if (_blCity) subs.forEach(s => blFetchSubNichePrice(niche, s.id));
+}
+
+async function blFetchSubNichePrice(niche, subNicheId) {
+  const cacheKey = niche + ':' + subNicheId;
+  if (_blCitySubPrices[cacheKey] != null || _blSoldOut[cacheKey] || !_blCity) return;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/functions/v1/get-ppl-pricing?niche=${encodeURIComponent(niche)}&sub_niche=${encodeURIComponent(subNicheId)}&area=${encodeURIComponent(_blCity)}`
+    );
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.sold_out === true) {
+      _blSoldOut[cacheKey] = true;
+      // If this sub-niche is currently selected, drop it back to "Any".
+      if (_blNiche === niche && _blSubNiche === subNicheId) {
+        _blSubNiche = null;
+        _blPPL = _blCityPrices[niche] ?? null;
+        buyLeadsUpdateSummary();
+      }
+      renderBuyLeadsSubNiches(niche);
+    } else if (d.price_per_lead != null) {
+      _blCitySubPrices[cacheKey] = d.price_per_lead;
+      _blMax[cacheKey] = d.max_order_qty ?? null;
+      renderBuyLeadsSubNiches(niche);
+      // If this sub-niche is currently selected, update PPL
+      if (_blNiche === niche && _blSubNiche === subNicheId) {
+        _blPPL = d.price_per_lead;
+        buyLeadsUpdateSummary();
+      }
+    }
+  } catch {}
+}
+
+function renderBuyLeadsPacks() {
+  const el = document.getElementById('buyLeadsPackGrid');
+  if (!el) return;
+  if (!_blDiscountTiers.length) {
+    el.innerHTML = `<p style="font-size:13px;color:var(--muted)">No packs available.</p>`;
+    return;
+  }
+  const cap = blActiveMax();
+  el.innerHTML = _blDiscountTiers.map(t => {
+    const isSelected = t.min_quantity === _blQty;
+    const overCap = t.min_quantity > cap;
+    const badge = t.discount_percent > 0
+      ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:700;background:${isSelected ? 'rgba(255,255,255,0.25)' : '#22c55e22'};color:${isSelected ? '#fff' : '#16a34a'}">${t.discount_percent}% off</span>`
+      : '';
+    const popular = t.is_popular
+      ? `<div style="font-size:10px;font-weight:600;color:${isSelected ? 'rgba(255,255,255,0.8)' : 'var(--accent,#4797FF)'};margin-top:2px">Most popular</div>`
+      : '';
+    if (overCap) {
+      return `<button type="button" disabled title="Not available in this area right now"
+        style="padding:12px 18px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--muted);font-size:13px;font-weight:600;cursor:not-allowed;opacity:0.5;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
+        ${t.label}
+      </button>`;
+    }
+    return `<button type="button" id="packCard-${t.min_quantity}"
+      onclick="buyLeadsSelectPack(${t.min_quantity}, ${t.discount_percent})"
+      style="padding:12px 18px;border-radius:10px;border:1px solid ${isSelected ? '#4797FF' : 'var(--border)'};background:${isSelected ? '#4797FF' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4;min-width:100px">
+      ${t.label}${badge}
+      ${popular}
+    </button>`;
+  }).join('');
+  const note = document.getElementById('buyLeadsCapNote');
+  if (note) {
+    if (cap < BL_HARD_MAX) {
+      note.textContent = `Up to ${cap} leads per order available for this lead type in this area.`;
+      note.style.display = '';
+    } else {
+      note.style.display = 'none';
+    }
+  }
+}
+
+function buyLeadsSelectNiche(niche) {
+  if (_blSoldOut[niche]) return;   // sold out for this city - not selectable
+  _blNiche    = niche;
+  _blSubNiche = null;
+  _blPPL      = _blCityPrices[niche] ?? null;
+
+  // Re-render niche cards to update selection highlight
+  renderBuyLeadsNiches();
+
+  document.getElementById('buyLeadsLocationField').style.display = 'none';
+  document.getElementById('buyLeadsQtyField').style.display = 'none';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  const hasSubs = !!NICHE_SUB_NICHES[niche];
+  if (hasSubs) {
+    renderBuyLeadsSubNiches(niche);
+  } else {
+    const subField = document.getElementById('buyLeadsSubNicheField');
+    if (subField) subField.style.display = 'none';
+    // Go straight to coverage
+    document.getElementById('buyLeadsLocationField').style.display = '';
+    document.getElementById('buyLeadsQtyField').style.display = '';
+    buyLeadsApplyCoverageMode();
+    renderBuyLeadsPacks();
+    wireCustomQtyInput();
+  }
+}
+
+function buyLeadsSelectSubNiche(subNicheId) {
+  if (subNicheId && _blSoldOut[_blNiche + ':' + subNicheId]) return;   // sold out - not selectable
+  _blSubNiche = subNicheId;
+
+  // Resolve price: use cached city-specific price or fall back to parent niche price
+  if (subNicheId) {
+    const cached = _blCitySubPrices[_blNiche + ':' + subNicheId];
+    _blPPL = cached ?? _blCityPrices[_blNiche] ?? null;
+    if (!cached && _blCity) blFetchSubNichePrice(_blNiche, subNicheId);
+  } else {
+    _blPPL = _blCityPrices[_blNiche] ?? null;
+  }
+
+  // Re-render sub-niche cards to update selection highlight
+  renderBuyLeadsSubNiches(_blNiche);
+
+  // Advance to coverage + quantity
+  document.getElementById('buyLeadsLocationField').style.display = '';
+  document.getElementById('buyLeadsQtyField').style.display = '';
+  document.getElementById('buyLeadsSummary').style.display = 'none';
+  buyLeadsApplyCoverageMode();
+  renderBuyLeadsPacks();
+  wireCustomQtyInput();
+}
+window.buyLeadsSelectSubNiche = buyLeadsSelectSubNiche;
+
+function buyLeadsSelectPack(qty, discountPct) {
+  _blQty      = qty;
+  _blDiscount = discountPct;
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (input) input.value = qty;
+  renderBuyLeadsPacks();
+  buyLeadsUpdateSummary();
+}
+
+// Returns the best active discount tier for a given quantity (highest min_qty ≤ qty)
+function blGetTierForQty(qty) {
+  let best = null;
+  for (const t of _blDiscountTiers) {
+    if (t.min_quantity <= qty) best = t;
+    else break;
+  }
+  return best;
+}
+
+async function buyLeadsOnCityChange() {
+  const city = _blCity;
+  blSyncCity();
+  if (!city) {
+    _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {};
+    document.getElementById('buyLeadsNicheField').style.display = 'none';
+    document.getElementById('buyLeadsSubNicheField').style.display = 'none';
+    document.getElementById('buyLeadsLocationField').style.display = 'none';
+    document.getElementById('buyLeadsQtyField').style.display = 'none';
+    document.getElementById('buyLeadsSummary').style.display = 'none';
+    return;
+  }
+
+  // Show niche field with loading placeholders
+  _blCityPrices = {}; _blSoldOut = {}; _blMax = {};
+  renderBuyLeadsNiches();
+  document.getElementById('buyLeadsNicheField').style.display = '';
+
+  // Fetch all niche prices in parallel
+  const results = await Promise.allSettled(
+    BL_NICHES.map(niche =>
+      fetch(`${SUPABASE_URL}/functions/v1/get-ppl-pricing?niche=${encodeURIComponent(niche)}&area=${encodeURIComponent(city)}`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => ({ niche, price: d.price_per_lead, soldOut: d.sold_out === true, maxQty: d.max_order_qty ?? null, tiers: d.discount_tiers }))
+    )
+  );
+
+  results.forEach(r => {
+    if (r.status !== 'fulfilled') return;
+    if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers;
+    if (r.value.soldOut) {
+      _blSoldOut[r.value.niche] = true;
+    } else if (r.value.price != null) {
+      _blCityPrices[r.value.niche] = r.value.price;
+      _blMax[r.value.niche] = r.value.maxQty;
+    }
+  });
+
+  renderBuyLeadsNiches();
+
+  // If niche already selected (city changed after), re-resolve PPL and re-render sub-niches
+  if (_blNiche) {
+    if (_blSoldOut[_blNiche]) {
+      // The trade the user had selected is sold out for this city - drop the
+      // selection so they can't proceed on a greyed-out card.
+      _blNiche = null; _blSubNiche = null; _blPPL = null;
+      document.getElementById('buyLeadsSubNicheField').style.display = 'none';
+      document.getElementById('buyLeadsLocationField').style.display = 'none';
+      document.getElementById('buyLeadsQtyField').style.display = 'none';
+      document.getElementById('buyLeadsSummary').style.display = 'none';
+      renderBuyLeadsNiches();
+    } else {
+      _blPPL = _blCityPrices[_blNiche] || null;
+      _blCitySubPrices = {};
+      if (NICHE_SUB_NICHES[_blNiche]) {
+        renderBuyLeadsSubNiches(_blNiche);
+        if (_blSubNiche) blFetchSubNichePrice(_blNiche, _blSubNiche);
+      }
+      buyLeadsApplyCoverageMode();
+    }
+  }
+  buyLeadsUpdateSummary();
+}
+
+function wireCustomQtyInput() {
+  const input = document.getElementById('buyLeadsCustomQty');
+  if (!input) return;
+  const fresh = input.cloneNode(true);
+  fresh.max = blActiveMax();
+  input.parentNode.replaceChild(fresh, input);
+  fresh.value = _blQty;
+  fresh.addEventListener('input', buyLeadsOnCustomQtyChange);
+}
+
+function buyLeadsOnCustomQtyChange() {
+  const input = document.getElementById('buyLeadsCustomQty');
+  let raw = parseInt(input?.value || '0');
+  if (isNaN(raw) || raw < 25) return; // wait until valid
+  const cap = blActiveMax();
+  if (raw > cap) { raw = cap; if (input) input.value = cap; toast(`Up to ${cap} leads per order for this area.`, true); }
+  _blQty = raw;
+  const tier = blGetTierForQty(_blQty);
+  _blDiscount = tier ? tier.discount_percent : 0;
+  renderBuyLeadsPacks(); // re-render to reflect active state
+  buyLeadsUpdateSummary();
+}
+
+// Locks coverage to "state-wide" when an entire state is selected; otherwise
+// restores the Radius / Postcode controls for a specific city.
+function buyLeadsApplyCoverageMode() {
+  const toggle = document.getElementById('buyLeadsLocToggle');
+  const sPanel = document.getElementById('locStatewidePanel');
+  if (_blStatewide) {
+    _blLocType = 'statewide';
+    if (toggle) toggle.style.display = 'none';
+    document.getElementById('locRadiusPanel').style.display    = 'none';
+    document.getElementById('locPostcodesPanel').style.display = 'none';
+    if (sPanel) sPanel.style.display = '';
+    const nm = document.getElementById('buyLeadsStatewideName');
+    if (nm) nm.textContent = _blCity || 'this state';
+    buyLeadsUpdateSummary();
+  } else {
+    if (toggle) toggle.style.display = '';
+    if (sPanel) sPanel.style.display = 'none';
+    buyLeadsSetLocType(_blCovMode);
+  }
+}
+
+function buyLeadsSetLocType(type) {
+  _blLocType = type;
+  _blCovMode = type;
+  const isRadius = type === 'radius';
+
+  const rBtn = document.getElementById('locTypeRadius');
+  const pBtn = document.getElementById('locTypePostcodes');
+  if (rBtn) { rBtn.style.background = isRadius ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'; rBtn.style.borderColor = isRadius ? 'var(--accent,#4797FF)' : 'var(--border)'; rBtn.style.color = isRadius ? '#fff' : 'var(--text,var(--ink))'; }
+  if (pBtn) { pBtn.style.background = !isRadius ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'; pBtn.style.borderColor = !isRadius ? 'var(--accent,#4797FF)' : 'var(--border)'; pBtn.style.color = !isRadius ? '#fff' : 'var(--text,var(--ink))'; }
+
+  document.getElementById('locRadiusPanel').style.display    = isRadius ? '' : 'none';
+  document.getElementById('locPostcodesPanel').style.display = !isRadius ? '' : 'none';
+  buyLeadsUpdateSummary();
+  if (isRadius) blRender(true);
+}
+
+function buyLeadsUpdateSummary() {
+  if (!_blNiche || !_blCity || !_blPPL) return;
+  if (_blQty < 10) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
+
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+
+  let coverage = '';
+  if (_blStatewide) {
+    coverage = 'State wide';
+  } else if (_blLocType === 'postcodes') {
+    const raw = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
+    const count = raw ? raw.split(/[\s,]+/).filter(Boolean).length : 0;
+    if (!count) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
+    coverage = `${count} postcode${count !== 1 ? 's' : ''}`;
+  } else {
+    coverage = blCoverageText();
+  }
+
+  const subtotal = _blQty * _blPPL;
+  const saving   = subtotal * (_blDiscount / 100);
+  const total    = subtotal - saving;
+
+  document.getElementById('buyLeadsSumNiche').textContent    = nicheLabel(_blNiche);
+  const subNicheRow = document.getElementById('buyLeadsSumSubNicheRow');
+  if (subNicheRow) {
+    if (_blSubNiche) {
+      document.getElementById('buyLeadsSumSubNiche').textContent = subNicheLabel(_blSubNiche);
+      subNicheRow.style.display = 'flex';
+    } else {
+      subNicheRow.style.display = 'none';
+    }
+  }
+  const cityLbl = document.getElementById('buyLeadsSumCityLbl');
+  if (cityLbl) cityLbl.textContent = _blStatewide ? 'State' : 'City';
+  document.getElementById('buyLeadsSumCity').textContent     = _blCity;
+  document.getElementById('buyLeadsSumCoverage').textContent = coverage;
+  document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
+  document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
+  document.getElementById('buyLeadsSumTotal').textContent    = fmt(total);
+
+  const discRow = document.getElementById('buyLeadsSumDiscountRow');
+  if (discRow) {
+    if (_blDiscount > 0) {
+      document.getElementById('buyLeadsSumDiscount').textContent = `−${fmt(saving)} (${_blDiscount}% off)`;
+      discRow.style.display = 'flex';
+    } else {
+      discRow.style.display = 'none';
+    }
+  }
+
+  document.getElementById('buyLeadsSummary').style.display = '';
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) btn.onclick = () => startPplCheckout();
+}
+
+// ─── Buy Leads: coverage map + several suburbs ─────────────────────────────
+// A radius order is up to five suburbs, each with its own 50/75/100 km. The
+// first row starts as the chosen city's centre at 50 km, which is the old
+// single-radius order. Leaflet is loaded only when this page opens.
+const BL_GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/';
+const BL_MAX_AREAS = 5;
+const BL_AU = [[-43.7, 113.0], [-10.6, 153.7]];
+const BL_CITIES = {
+  'Brisbane':[-27.4698,153.0251],'Gold Coast':[-28.0167,153.4000],'Sunshine Coast':[-26.6500,153.0667],
+  'Toowoomba':[-27.5598,151.9507],'Cairns':[-16.9186,145.7781],'Rockhampton':[-23.3781,150.5136],
+  'Bundaberg':[-24.8661,152.3489],'Hervey Bay':[-25.2882,152.8531],
+  'Sydney':[-33.8688,151.2093],'Newcastle':[-32.9283,151.7817],'Wollongong':[-34.4278,150.8931],
+  'Central Coast':[-33.4269,151.3417],'Albury/Wodonga':[-36.0737,146.9135],'Tamworth':[-31.0927,150.9320],
+  'Coffs Harbour':[-30.2963,153.1135],'Port Macquarie':[-31.4333,152.9000],
+  'Melbourne':[-37.8136,144.9631],'Geelong':[-38.1499,144.3617],'Shepparton':[-36.3833,145.4000],
+  'Mildura':[-34.2080,142.1246],'Frankston / Mornington Peninsula':[-38.1440,145.1260],'Dandenong':[-37.9870,145.2140],
+  'Bendigo':[-36.7570,144.2794],'Ballarat':[-37.5622,143.8503],'Warragul':[-38.1590,145.9310],
+  'Perth':[-31.9505,115.8605],'Mandurah':[-32.5269,115.7217],'Bunbury':[-33.3271,115.6414],
+  'Adelaide':[-34.9285,138.6007],'Canberra':[-35.2809,149.1300]
+};
+let _blAreas = [], _blAreaSeq = 0, _blMap = null, _blShapes = [], _blLeaflet = null;
+
+function blEsc(t) { return String(t).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c])); }
+function blValidAreas() { return _blAreas.filter(a => a.lat !== null); }
+
+function blLoadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (_blLeaflet) return _blLeaflet;
+  _blLeaflet = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = resolve; js.onerror = reject;
+    document.head.appendChild(js);
+  });
+  return _blLeaflet;
+}
+
+async function blInitMap() {
+  try { await blLoadLeaflet(); } catch { return; }   // no map, the suburb rows still work
+  const el = document.getElementById('blMap');
+  if (!el || !window.L) return;
+  if (_blMap) { _blMap.remove(); _blMap = null; }
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const base = dark ? 'Canvas/World_Dark_Gray' : 'Canvas/World_Light_Gray';
+  _blMap = L.map(el, { scrollWheelZoom: false });
+  _blMap.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${base}_Base/MapServer/tile/{z}/{y}/{x}`,
+    { maxZoom: 16, attribution: '&copy; Esri, OpenStreetMap contributors' }).addTo(_blMap);
+  L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${base}_Reference/MapServer/tile/{z}/{y}/{x}`,
+    { maxZoom: 16 }).addTo(_blMap);
+  _blMap.fitBounds(BL_AU);
+  _blShapes = [];
+  // The location step is hidden until a trade is picked; re-measure when it appears.
+  if ('ResizeObserver' in window) new ResizeObserver(() => { if (_blMap && el.offsetWidth) { _blMap.invalidateSize(); blRender(true); } }).observe(el);
+  blRender(true);
+}
+
+function blReset() {
+  _blAreas.forEach(a => a.reqId++);
+  _blAreas = [];
+  const rows = document.getElementById('blRows');
+  if (rows) rows.innerHTML = '';
+  blAddRow({});
+  blInitMap();
+}
+
+function blAddRow(preset) {
+  if (_blAreas.length >= BL_MAX_AREAS) return;
+  const area = Object.assign({ id: ++_blAreaSeq, label: '', lat: null, lng: null, radius_km: 50, auto: false, reqId: 0 }, preset || {});
+  _blAreas.push(area);
+  const row = document.createElement('div');
+  row.className = 'bl-row';
+  row.id = 'blRow' + area.id;
+  row.innerHTML =
+    '<div class="bl-row-top"><div class="bl-num"></div>' +
+      '<div class="bl-input-wrap"><input type="text" autocomplete="off" placeholder="Suburb or postcode, e.g. Carindale or 4152"><div class="bl-sugg"></div></div>' +
+      '<button type="button" class="bl-remove" aria-label="Remove suburb">&times;</button></div>' +
+    '<div class="bl-travel"><span>Travel</span><input type="range" min="50" max="100" step="25" aria-label="Travel distance in km"><b></b></div>';
+  document.getElementById('blRows').appendChild(row);
+
+  const input = row.querySelector('input[type=text]');
+  const sugg  = row.querySelector('.bl-sugg');
+  const range = row.querySelector('input[type=range]');
+  input.value = area.label;
+  range.value = area.radius_km;
+  row.querySelector('b').textContent = area.radius_km + ' km';
+  let timer = null, items = [], active = -1;
+
+  const renderSugg = () => {
+    sugg.innerHTML = '';
+    items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.textContent = it.text;
+      if (i === active) d.className = 'act';
+      d.addEventListener('mousedown', e => { e.preventDefault(); pick(i); });
+      sugg.appendChild(d);
+    });
+    sugg.classList.toggle('show', items.length > 0);
+  };
+  const pick = (i) => {
+    const it = items[i];
+    items = []; active = -1; renderSugg();
+    if (!it) return;
+    input.value = it.text;
+    area.label = it.text;
+    const myReq = ++area.reqId;
+    fetch(`${BL_GEO}findAddressCandidates?f=json&maxLocations=1&outFields=none&SingleLine=${encodeURIComponent(it.text)}&magicKey=${encodeURIComponent(it.magicKey)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (myReq !== area.reqId) return;
+        const c = (d.candidates || [])[0];
+        if (!c || !c.location) return;
+        area.lat = +c.location.y.toFixed(5);
+        area.lng = +c.location.x.toFixed(5);
+        blChanged(true);
+      }).catch(() => {});
+  };
+
+  input.addEventListener('input', () => {
+    area.label = input.value.trim();
+    area.lat = area.lng = null;
+    area.auto = false;
+    input.classList.remove('err');
+    blChanged(false);
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { items = []; renderSugg(); return; }
+    timer = setTimeout(() => {
+      const myReq = ++area.reqId;
+      fetch(`${BL_GEO}suggest?f=json&countryCode=AUS&maxSuggestions=6&category=${encodeURIComponent('Postal,City,Neighborhood,District,Populated Place')}&text=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(d => {
+          if (myReq !== area.reqId) return;
+          items = (d.suggestions || []).filter(x => !x.isCollection)
+            .map(x => ({ text: x.text.replace(/,\s*AUS$/, ''), magicKey: x.magicKey }));
+          active = items.length ? 0 : -1;
+          renderSugg();
+        }).catch(() => { items = []; renderSugg(); });
+    }, 220);
+  });
+  input.addEventListener('keydown', e => {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; renderSugg(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; renderSugg(); }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(active < 0 ? 0 : active); }
+    else if (e.key === 'Escape') { items = []; renderSugg(); }
+  });
+  input.addEventListener('blur', () => {
+    if (items.length && area.lat === null) pick(active < 0 ? 0 : active);
+    else { items = []; renderSugg(); }
+  });
+  range.addEventListener('input', () => {
+    area.radius_km = parseInt(range.value, 10);
+    row.querySelector('b').textContent = area.radius_km + ' km';
+    blChanged(false);
+  });
+  range.addEventListener('change', () => blRender(true));
+  row.querySelector('.bl-remove').addEventListener('click', () => blRemoveRow(area.id));
+
+  blChanged(false);
+  if (!preset) input.focus();
+}
+window.blAddRow = blAddRow;
+
+function blRemoveRow(id) {
+  const i = _blAreas.findIndex(a => a.id === id);
+  if (i < 0) return;
+  _blAreas[i].reqId++;
+  _blAreas.splice(i, 1);
+  document.getElementById('blRow' + id)?.remove();
+  if (!_blAreas.length) { blAddRow({}); blSyncCity(true); }
+  blChanged(true);
+}
+
+// The auto city-centre row follows the chosen city; suburbs the buyer typed stay.
+function blSyncCity(force) {
+  const centre = _blCity && !_blStatewide && BL_CITIES[_blCity];
+  const first = _blAreas[0];
+  if (!first) return;
+  if (!centre) {
+    if (first.auto) { Object.assign(first, { label: '', lat: null, lng: null, auto: false }); blFillRow(first); }
+    blChanged(true);
+    return;
+  }
+  if (first.auto || force || (!first.label && first.lat === null)) {
+    Object.assign(first, { label: `${_blCity} (city centre)`, lat: centre[0], lng: centre[1], auto: true });
+    first.reqId++;
+    blFillRow(first);
+  }
+  blChanged(true);
+}
+
+function blFillRow(a) {
+  const input = document.querySelector(`#blRow${a.id} input[type=text]`);
+  if (input) { input.value = a.label; input.classList.remove('err'); }
+}
+
+function blChanged(refit) {
+  _blAreas.forEach((a, i) => {
+    const row = document.getElementById('blRow' + a.id);
+    if (!row) return;
+    const n = row.querySelector('.bl-num');
+    n.textContent = i + 1;
+    n.classList.toggle('set', a.lat !== null);
+    row.querySelector('.bl-remove').style.visibility = _blAreas.length > 1 ? 'visible' : 'hidden';
+  });
+  const add = document.getElementById('blAdd');
+  if (add) add.disabled = _blAreas.length >= BL_MAX_AREAS;
+  buyLeadsUpdateSummary();
+  blRender(refit);
+}
+
+function blCoverageText() {
+  const v = blValidAreas();
+  if (v.length > 1) return `${v.length} suburbs`;
+  return `${v.length ? v[0].radius_km : 50}km radius`;
+}
+
+// Only sent when it says more than the old single city-centre circle did.
+function blPayload() {
+  const v = blValidAreas();
+  const plain = v.length === 1 && v[0].auto;
+  return {
+    radius_km: v.length ? Math.max(...v.map(a => a.radius_km)) : 50,
+    service_areas: (v.length && !plain) ? v.map(a => ({ label: a.label, lat: a.lat, lng: a.lng, radius_km: a.radius_km })) : null,
+  };
+}
+
+function blRender(refit) {
+  const cap = document.getElementById('blMapCap');
+  const v = blValidAreas();
+  const centre = _blCity && BL_CITIES[_blCity];
+  if (cap) {
+    if (!_blCity) cap.textContent = 'Pick a city to see your coverage.';
+    else if (v.length > 1) cap.innerHTML = `Leads from around <strong>${v.length} suburbs</strong>, priced at the ${blEsc(_blCity)} rate.`;
+    else if (v.length === 1) cap.innerHTML = `Leads from within <strong>${v[0].radius_km} km</strong> of ${blEsc(v[0].label)}.`;
+    else cap.innerHTML = `Add a suburb below, or leads come from within <strong>50 km</strong> of ${blEsc(_blCity)} city centre.`;
+  }
+  if (!_blMap || !window.L) return;
+  _blShapes.forEach(l => _blMap.removeLayer(l));
+  _blShapes = [];
+  if (v.length) {
+    v.forEach(a => {
+      _blShapes.push(L.circle([a.lat, a.lng], { radius: a.radius_km * 1000, color: '#4797FF', weight: 2, fillColor: '#4797FF', fillOpacity: .14 }).addTo(_blMap));
+      const many = v.length > 1;
+      _blShapes.push(L.marker([a.lat, a.lng], { interactive: false, icon: L.divIcon({ className: '',
+        html: many ? `<div class="bl-pin bl-pin-n">${_blAreas.indexOf(a) + 1}</div>` : '<div class="bl-pin"></div>',
+        iconSize: many ? [22, 22] : [16, 16], iconAnchor: many ? [11, 11] : [8, 8] }) }).addTo(_blMap));
+    });
+  } else if (centre) {
+    _blShapes.push(L.marker(centre, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="bl-pin"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(_blMap));
+  }
+  if (!refit) return;
+  const circles = _blShapes.filter(l => l instanceof L.Circle);
+  if (circles.length) {
+    const b = circles[0].getBounds();
+    circles.slice(1).forEach(c => b.extend(c.getBounds()));
+    _blMap.fitBounds(b, { padding: [20, 20] });
+  } else if (centre) _blMap.setView(centre, 9);
+  else _blMap.fitBounds(BL_AU);
+}
+
+async function startPplCheckout() {
+  const cov       = blPayload();
+  const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
+
+  if (!_blNiche || !_blCity) { toast('Please select a niche and city.', true); return; }
+  if (_blSoldOut[_blNiche] || (_blSubNiche && _blSoldOut[_blNiche + ':' + _blSubNiche])) {
+    toast('That trade is sold out in this area. Please choose another.', true); return;
+  }
+  const cap = blActiveMax();
+  if (_blQty > cap) { toast(`Up to ${cap} leads per order for this area. Please lower the quantity.`, true); return; }
+  if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
+  if (_blLocType === 'radius') {
+    // A suburb typed but never matched would silently drop out of the order.
+    const unmatched = _blAreas.find(a => a.label && a.lat === null);
+    if (unmatched) {
+      const inp = document.querySelector(`#blRow${unmatched.id} input[type=text]`);
+      if (inp) { inp.classList.add('err'); inp.focus(); }
+      toast('Pick that suburb from the suggestions, or remove it.', true);
+      return;
+    }
+  }
+
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({
+        company_id:    currentCompanyId,
+        niche:         _blNiche,
+        sub_niche:     _blSubNiche || null,
+        area_city:     _blCity,
+        location_type: _blLocType,
+        radius_km:     _blLocType === 'radius' ? cov.radius_km : null,
+        postcode_list: _blLocType === 'postcodes' ? postcodes : null,
+        ...(_blLocType === 'radius' && cov.service_areas ? { service_areas: cov.service_areas } : {}),
+        quantity:      _blQty,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL returned');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || 'Failed to start checkout', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
+  }
+}
+
+function renderBuyLeadsOrders(orders) {
+  const el = document.getElementById('buyLeadsOrdersTable');
+  if (!el) return;
+  orders.forEach(o => _pplOrdersCache.set(o.id, o));
+  if (!orders.length) { el.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`; return; }
+
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const statusColor = s => ({ paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#9a9a9a' }[s] || '#9a9a9a');
+
+  const pending = orders.filter(o => o.status === 'pending');
+  const active  = orders.filter(o => o.status !== 'pending');
+
+  let html = '';
+
+  // Pending (incomplete checkout) - shown as banners above the table
+  if (pending.length) {
+    html += pending.map(o => {
+      const city  = o.area_city || o.area || '-';
+      const pendingNicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
+      const label = `${pendingNicheDisplay} - ${city} - ${o.quantity} leads - ${fmt(o.total_amount)}`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#92400e">Payment not completed</div>
+            <div style="font-size:12px;color:#b45309;margin-top:1px">${label}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="retryPplOrder('${o.id}')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid #f59e0b;background:#f59e0b;color:#fff;cursor:pointer;font-family:inherit;font-weight:500">Complete Payment</button>
+          <button onclick="deletePendingOrder('${o.id}')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-family:inherit">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Active / fulfilled / cancelled orders - table
+  if (active.length) {
+    html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">City</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Coverage</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Delivered</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Total</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Status</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Date</th>
+    </tr></thead><tbody>
+    ${active.map(o => {
+      const city = o.area_city || o.area || '-';
+      const coverage = o.location_type === 'statewide'
+        ? 'State wide'
+        : o.location_type === 'postcodes'
+        ? (o.postcode_list ? `${o.postcode_list.split(/[\s,]+/).filter(Boolean).length} postcodes` : 'Postcodes')
+        : (Array.isArray(o.service_areas) && o.service_areas.length > 1)
+        ? `<span title="${blEsc(o.service_areas.map(a => `${a.label} (${a.radius_km}km)`).join('; '))}">${o.service_areas.length} suburbs</span>`
+        : `${o.radius_km || 50}km radius`;
+      const nicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px">${nicheDisplay}</td>
+        <td style="padding:10px">${city}</td>
+        <td style="padding:10px;color:var(--muted)">${coverage}</td>
+        <td style="padding:10px">${o.delivered_count} / ${o.quantity}</td>
+        <td style="padding:10px">${fmt(o.total_amount)}</td>
+        <td style="padding:10px"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};font-weight:500">${o.status}</span></td>
+        <td style="padding:10px;color:var(--muted)">${new Date(o.created_at).toLocaleDateString('en-AU')}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+async function retryPplOrder(orderId) {
+  const o = _pplOrdersCache.get(orderId);
+  if (!o) { toast('Order not found.', true); return; }
+
+  const btn = document.getElementById('buyLeadsCheckoutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+
+  try {
+    // Delete the stale pending row before creating a fresh checkout
+    await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({
+        company_id:    currentCompanyId,
+        niche:         o.niche,
+        sub_niche:     o.sub_niche || null,
+        area_city:     o.area_city || o.area,
+        location_type: o.location_type || 'radius',
+        radius_km:     o.radius_km || 50,
+        postcode_list: o.postcode_list || null,
+        ...(Array.isArray(o.service_areas) && o.service_areas.length ? { service_areas: o.service_areas } : {}),
+        quantity:      o.quantity,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL returned');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message || 'Failed to start checkout', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
+  }
+}
+window.retryPplOrder = retryPplOrder;
+
+async function deletePendingOrder(orderId) {
+  confirmAction('Delete this pending order? This cannot be undone.', async () => {
+    try {
+      const { error } = await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+      if (error) { toast(error.message, true); return; }
+      toast('Pending order deleted.');
+      _pplOrdersCache.delete(orderId);
+      await loadBuyLeads();
+    } catch (err) {
+      toast('Failed to delete order.', true);
+    }
+  });
+}
+window.deletePendingOrder = deletePendingOrder;
 
 async function deletePendingOrderFromSettings(orderId) {
   confirmAction('Delete this pending order? This cannot be undone.', async () => {

@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="QL HQ">
 <link rel="apple-touch-icon" href="/product-logo.png">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://api.twilio.com https://api.resend.com wss://*.supabase.co; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://api.twilio.com https://api.resend.com wss://*.supabase.co https://geocode.arcgis.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self';">
 <title>QuoteLeadsHQ</title>
 <script>window.onTurnstileLoad=function(){window._turnstileReady=true;if(window._initTurnstile)window._initTurnstile();};</script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad" async defer></script>
@@ -550,9 +550,40 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
   .ob-table td:last-child{flex-shrink:0}
   .ob-id code{font-size:14px;word-break:break-all}
 }
+/* Buy Leads coverage map + suburbs */
+.bl-map-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface-2)}
+.bl-map{height:240px;isolation:isolate;background:var(--surface-2)}
+.bl-map-cap{padding:10px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)}
+.bl-map-cap strong{color:var(--text)}
+.bl-pin{width:16px;height:16px;border-radius:50%;background:#4797FF;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.bl-pin-n{width:22px;height:22px;border-width:2px;color:#fff;font:600 11px/18px inherit;text-align:center}
+.bl-row{padding:12px 0;border-bottom:1px solid var(--border)}
+.bl-row-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bl-num{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+.bl-num.set{background:#4797FF;border-color:#4797FF;color:#fff}
+.bl-input-wrap{position:relative;flex:1;min-width:0}
+.bl-input-wrap input{width:100%}
+.bl-input-wrap input.err{border-color:#ef4444}
+.bl-remove{background:none;border:none;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer}
+.bl-sugg{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.bl-sugg.show{display:block}
+.bl-sugg div{padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
+.bl-sugg div:last-child{border-bottom:none}
+.bl-sugg div:hover,.bl-sugg div.act{background:var(--surface-2)}
+.bl-travel{display:flex;align-items:center;gap:12px;padding-left:34px}
+.bl-travel span:first-child{font-size:12px;color:var(--muted)}
+.bl-travel input[type=range]{flex:1;min-width:0;accent-color:#4797FF}
+.bl-travel b{font-size:12px;font-weight:600;min-width:52px;text-align:right}
+.bl-add{background:none;border:none;color:var(--accent,#4797FF);font-size:13px;font-weight:500;padding:12px 0 0;cursor:pointer;font-family:inherit}
+.bl-add:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:520px){.bl-map{height:200px}.bl-travel{padding-left:0}}
+/* Buy Leads is only for pay-per-lead accounts (companies.plan = 'ppl'). */
+.ppl-only{display:none !important}
+body.plan-ppl .ppl-only{display:revert !important}
+body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20260928b"></script>
+<script defer src="./dashboard-supabase.js?v=20261008a"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -661,6 +692,10 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
     <details class="nav-group">
       <summary class="nav-sec">Grow</summary>
       <div class="nav">
+        <button id="navBuyLeads" class="nav-item ppl-only" data-page="buy-leads" type="button">
+          <span class="icon" data-icon="spark"></span>
+          <span class="nav-text">Buy Leads</span>
+        </button>
         <button class="nav-item" data-page="ai-insights" type="button">
           <span class="icon" data-icon="chart"></span>
           <span class="nav-text">Performance</span>
@@ -729,7 +764,7 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <div class="panel-h">
             <div>
               <h2>Get started - 3 steps to your first booked job</h2>
-              <p id="onboardingProgress" style="font-size:13px;color:var(--muted)">0 of 3 complete</p>
+              <p id="onboardingProgress" style="font-size:13px;color:var(--muted)">0 of 2 complete</p>
             </div>
             <button type="button" onclick="document.getElementById('onboardingChecklist').style.display='none';localStorage.setItem('onboarding_dismissed','1')"
                     class="btn" style="font-size:11px;padding:4px 10px">Dismiss</button>
@@ -751,6 +786,14 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
                   <span class="muted" style="display:block;font-size:12px">Leads are delivered automatically from your campaigns and inbound SMS</span>
                 </div>
               </div>
+              <div id="oc_step3" class="check-row ppl-only" style="cursor:pointer" onclick="navigateTo('buy-leads')">
+                <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Buy your first lead pack</strong>
+                  <span class="muted" style="display:block;font-size:12px">Purchase a lead pack to start receiving exclusive leads in your area</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Buy leads →</span>
+              </div>
             </div>
           </div>
         </section>
@@ -761,6 +804,9 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
           <div class="quick-tiles">
             <button class="quick-tile" type="button" onclick="navigateTo('quotes');setTimeout(()=>document.getElementById('openQuoteModal')?.click(),150)">
               <span class="icon" data-icon="file"></span><span>New Quote</span>
+            </button>
+            <button class="quick-tile ppl-only" type="button" onclick="navigateTo('buy-leads')">
+              <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
             </button>
             <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
               <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
@@ -800,6 +846,9 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
             <div>
               <h2>Active Lead Orders</h2>
               <p>Lead packs currently being delivered to your account.</p>
+            </div>
+            <div class="actions">
+              <button class="btn ppl-only" type="button" onclick="navigateTo('buy-leads')">View all orders →</button>
             </div>
           </div>
           <div class="panel-b" id="activeOrdersBody"><div class="notice">Loading…</div></div>
@@ -881,6 +930,9 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
               <span class="icon" data-icon="users" style="width:32px;height:32px"></span>
               <h3>No leads yet</h3>
               <p>Leads flow in automatically in real-time.</p>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <button class="btn ppl-only" type="button" onclick="navigateTo('buy-leads')">Buy leads →</button>
+              </div>
             </div>
             <div id="leadsPagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px"></div>
           </div>
@@ -1909,6 +1961,162 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
         </div>
       </div>
 
+      <!-- Buy Leads (PPL plan only) -->
+      <div id="page-buy-leads" class="page hidden">
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-h">
+              <div><h2>Purchase Lead Pack</h2><p>Exclusive leads delivered in real-time to your pipeline. Minimum 25 per order.</p></div>
+            </div>
+            <div class="panel-b">
+              <div class="stack" style="max-width:580px;gap:24px">
+
+                <!-- Step 1: City -->
+                <div class="field" id="buyLeadsCityField">
+                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">1. LOCATION</label>
+                  <select id="buyLeadsCity" style="margin-top:8px">
+                    <option value="">Select a city or state…</option>
+                    <optgroup label="Queensland">
+                      <option value="Queensland" data-statewide="1">Queensland (State Wide)</option>
+                      <option value="Brisbane">Brisbane</option>
+                      <option value="Gold Coast">Gold Coast</option>
+                      <option value="Sunshine Coast">Sunshine Coast</option>
+                      <option value="Toowoomba">Toowoomba</option>
+
+                      <option value="Cairns">Cairns</option>
+                    </optgroup>
+                    <optgroup label="New South Wales">
+                      <option value="New South Wales" data-statewide="1">New South Wales (State Wide)</option>
+                      <option value="Sydney">Sydney</option>
+                      <option value="Newcastle">Newcastle</option>
+                      <option value="Wollongong">Wollongong</option>
+                      <option value="Central Coast">Central Coast</option>
+                    </optgroup>
+                    <optgroup label="Victoria">
+                      <option value="Victoria" data-statewide="1">Victoria (State Wide)</option>
+                      <option value="Melbourne">Melbourne</option>
+                      <option value="Geelong">Geelong</option>
+                    </optgroup>
+                    <optgroup label="Western Australia">
+                      <option value="Western Australia" data-statewide="1">Western Australia (State Wide)</option>
+                      <option value="Perth">Perth</option>
+                    </optgroup>
+                    <optgroup label="South Australia">
+                      <option value="South Australia" data-statewide="1">South Australia (State Wide)</option>
+                      <option value="Adelaide">Adelaide</option>
+                    </optgroup>
+                    <optgroup label="Australian Capital Territory">
+                      <option value="Australian Capital Territory" data-statewide="1">Australian Capital Territory (State Wide)</option>
+                      <option value="Canberra">Canberra</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <!-- Step 2: Niche -->
+                <div class="field" id="buyLeadsNicheField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Select Trade</label>
+                  <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+                </div>
+
+                <!-- Step 3: Sub-Niche (conditional - HVAC / Roofing / Renovation only) -->
+                <div class="field" id="buyLeadsSubNicheField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
+                  <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+                </div>
+
+                <!-- Step 4: Location type -->
+                <div id="buyLeadsLocationField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Define Coverage Area</label>
+                  <div id="buyLeadsLocToggle" style="display:flex;gap:8px;margin-top:8px;margin-bottom:16px">
+                    <button id="locTypeRadius" type="button" onclick="buyLeadsSetLocType('radius')"
+                      style="padding:8px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
+                      Radius
+                    </button>
+                    <button id="locTypePostcodes" type="button" onclick="buyLeadsSetLocType('postcodes')"
+                      style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
+                      Postcode List
+                    </button>
+                  </div>
+
+                  <div id="locRadiusPanel">
+                    <div class="bl-map-card">
+                      <div id="blMap" class="bl-map"></div>
+                      <div id="blMapCap" class="bl-map-cap">Pick a city to see your coverage.</div>
+                    </div>
+                    <div id="blRows"></div>
+                    <button type="button" id="blAdd" class="bl-add" onclick="blAddRow()">+ Add another suburb</button>
+                  </div>
+
+                  <div id="locPostcodesPanel" style="display:none">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                      <label style="font-size:13px;font-weight:500">Paste postcode list</label>
+                      <a href="https://www.embr.com.au/find-australian-postcodes-inside-radius/index.html" target="_blank" rel="noopener"
+                        style="font-size:12px;color:var(--accent,#4797FF);text-decoration:none">
+                        Find postcodes by radius →
+                      </a>
+                    </div>
+                    <textarea id="buyLeadsPostcodes" rows="4"
+                      placeholder="Paste postcodes here, one per line or comma-separated&#10;e.g. 4000, 4001, 4005, 4006"
+                      style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:13px;resize:vertical;line-height:1.6"></textarea>
+                    <p style="font-size:12px;color:var(--muted);margin-top:6px">Use the link above to find all postcodes within a radius, then paste them here.</p>
+                  </div>
+
+                  <div id="locStatewidePanel" style="display:none">
+                    <div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface-2,var(--bg-lift));border:1px solid var(--accent,#4797FF);border-radius:8px;padding:14px 16px">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#4797FF)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <div>
+                        <div style="font-size:13px;font-weight:600;color:var(--text,var(--ink));margin-bottom:3px">State-wide coverage - <span id="buyLeadsStatewideName">this state</span></div>
+                        <div style="font-size:12px;color:var(--muted);line-height:1.6">Leads will be sourced from anywhere across the state - no radius or postcode list needed. Pick a city instead to target a specific area.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Step 5: Quantity -->
+                <div class="field" id="buyLeadsQtyField" style="display:none">
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">5. Select Quantity</label>
+                  <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
+                  <div id="buyLeadsCapNote" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)"></div>
+                  <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:12px;color:var(--muted)">Custom:</span>
+                    <input id="buyLeadsCustomQty" type="number" min="25" step="1" placeholder="e.g. 35"
+                      style="width:88px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-size:13px;font-family:inherit">
+                    <span style="font-size:12px;color:var(--muted)">leads (min. 25)</span>
+                  </div>
+                </div>
+
+                <!-- Order summary -->
+                <div id="buyLeadsSummary" style="display:none;background:var(--surface-2,var(--bg-lift));border:1px solid var(--border);border-radius:10px;padding:18px">
+                  <p style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Order Summary</p>
+                  <div style="font-size:13px;color:var(--muted);line-height:2.1">
+                    <div style="display:flex;justify-content:space-between"><span>Niche</span><span id="buyLeadsSumNiche" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div id="buyLeadsSumSubNicheRow" style="display:none;justify-content:space-between"><span>Lead Type</span><span id="buyLeadsSumSubNiche" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between"><span id="buyLeadsSumCityLbl">City</span><span id="buyLeadsSumCity" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Coverage</span><span id="buyLeadsSumCoverage" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Quantity</span><span id="buyLeadsSumQty" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Price per lead</span><span id="buyLeadsSumPPL" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div id="buyLeadsSumDiscountRow" style="display:none;justify-content:space-between"><span>Volume discount</span><span id="buyLeadsSumDiscount" style="color:#22c55e;font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total (ex GST)</span><span id="buyLeadsSumTotal">-</span></div>
+                  </div>
+                  <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Purchase Leads →</button>
+                  <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">
+                    Leads delivered in real-time over 7-14 days. By purchasing you agree to the
+                    <a href="https://quoteleads.com.au/pay-per-lead-terms" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:underline">Pay-Per-Lead Terms</a>.
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-h"><div><h2>Order History</h2><p>Your lead pack purchases and delivery status.</p></div></div>
+            <div class="panel-b">
+              <div id="buyLeadsOrdersTable"><div class="notice">Loading orders…</div></div>
+            </div>
+          </section>
+        </div>
+      </div>
 
     </section>
   </main>

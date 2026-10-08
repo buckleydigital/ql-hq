@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
+import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -40,6 +41,16 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    // Reorders are for signed-in pay-per-lead accounts only: the caller must
+    // belong to the company (or be a platform admin) and the company must be
+    // on the 'ppl' plan.
+    const token = (req.headers.get('Authorization') || '').replace('Bearer ', '')
+    const { data: { user } } = token ? await supabase.auth.getUser(token) : { data: { user: null } }
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Please sign in again.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     const {
       company_id,
       niche,
@@ -49,11 +60,25 @@ serve(async (req) => {
       radius_km,
       postcode_list,
       quantity,
+      service_areas,
     } = await req.json()
 
     if (!company_id || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields: company_id, niche, area_city, quantity')
     }
+
+    const { data: caller } = await supabase
+      .from('profiles').select('company_id, is_admin').eq('id', user.id).maybeSingle()
+    if (!caller || (caller.company_id !== company_id && caller.is_admin !== true)) {
+      return new Response(JSON.stringify({ error: 'Not allowed to order for this account.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // Several suburbs, each with its own radius (radius orders only); radius_km
+    // becomes the largest so existing readers still see one value.
+    const areas = location_type === 'radius' || !location_type ? cleanServiceAreas(service_areas) : []
+    const areasSummary = summariseServiceAreas(areas)
+    const radiusKm = areas.length ? Math.max(...areas.map(a => a.radius_km)) : radius_km
     if (Number(quantity) < 25) {
       throw new Error('Minimum order is 25 leads')
     }
@@ -87,16 +112,22 @@ serve(async (req) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('email, name')
+      .select('email, name, plan')
       .eq('id', company_id)
       .maybeSingle()
 
     if (!company) throw new Error('Company not found')
+    if (company.plan !== 'ppl') {
+      return new Response(JSON.stringify({ error: 'Lead packs are only available on pay-per-lead accounts.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     const locationDesc = location_type === 'statewide'
       ? `${area_city} - State Wide coverage`
       : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
+      : areasSummary
+      ? `${area_city} - ${areasSummary}`.slice(0, 300)
       : `${area_city} - ${radius_km ?? 50}km radius`
 
     const nicheDisplay = [normNiche, normSubNiche]
@@ -114,8 +145,9 @@ serve(async (req) => {
         area: area_city,
         area_city,
         location_type: location_type || 'radius',
-        radius_km: (location_type === 'postcodes' || location_type === 'statewide') ? null : (radius_km ?? 50),
+        radius_km: (location_type === 'postcodes' || location_type === 'statewide') ? null : (radiusKm ?? 50),
         postcode_list: location_type === 'postcodes' ? postcode_list : null,
+        ...(areas.length > 0 && { service_areas: areas }),
         quantity,
         price_per_lead: validatedPrice,
         total_amount: validatedPrice * quantity * (1 - discountPercent / 100),
@@ -150,7 +182,8 @@ serve(async (req) => {
         sub_niche:        normSubNiche || '',
         area_city,
         location_type:    location_type || 'radius',
-        radius_km:        String(radius_km ?? 50),
+        radius_km:        String(radiusKm ?? 50),
+        service_areas_summary: areasSummary.slice(0, 500),
         quantity:         String(quantity),
         price_per_lead:   String(validatedPrice),
         discount_percent: String(discountPercent),
