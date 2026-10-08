@@ -3679,7 +3679,7 @@ h1{font-size:18px;font-weight:500}
       : '';
 
     // Management fee is stored in cents, and NULL means "the standard fee", so
-    // the box is left empty rather than pre-filled with 600 - that way a client
+    // the box is left empty rather than pre-filled with the standard fee - that way a client
     // on the standard price follows any future change to it instead of being
     // pinned to today's number.
     var feeDollars = (typeof c.management_fee_cents === 'number') ? (c.management_fee_cents / 100) : null;
@@ -3705,7 +3705,7 @@ h1{font-size:18px;font-weight:500}
         '</label>' +
         '<label class="bill-fld">Management fee ($/mo)' +
           '<input type="number" min="0" max="50000" step="1" data-f="management_fee_cents" ' +
-            'placeholder="600 (standard)" value="' + (feeDollars === null ? '' : escapeHtml(String(feeDollars))) + '">' +
+            'placeholder="690 (standard)" value="' + (feeDollars === null ? '' : escapeHtml(String(feeDollars))) + '">' +
         '</label>' +
         '<label class="bill-fld">Next invoice due' +
           '<input type="date" data-f="next_invoice_due" value="' + escapeHtml(c.next_invoice_due || '') + '">' +

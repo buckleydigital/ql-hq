@@ -4309,7 +4309,7 @@ window.buySmsCredits = buySmsCredits;
 const MGMT_INCLUDED_DAYS = 30;
 
 // Standard management price, used when the account has no per-client fee set.
-const MGMT_STANDARD_FEE_CENTS = 60000;
+const MGMT_STANDARD_FEE_CENTS = 69000;
 // Whole dollars read better on a billing page; only show cents if there are any.
 function fmtMgmtFee(cents) {
   const d = cents / 100;

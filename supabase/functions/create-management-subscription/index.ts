@@ -1,4 +1,4 @@
-// Ongoing management subscription checkout ($600/mo) for authenticated
+// Ongoing management subscription checkout ($690/mo + GST) for authenticated
 // dashboard users.
 //
 // This is the only recurring charge in the platform. Everything else -
@@ -25,14 +25,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// The standard fee, $600/mo ex GST. Must stay in step with the figure quoted on
+// The standard fee, $690/mo ex GST (was $600 until 2026-10-08). Must stay in step with the figure quoted on
 // /pricing and on the funnel's price note.
 //
 // A client can be on a different number: companies.management_fee_cents. NULL
 // there means "the standard fee", so changing this constant moves every client
 // who has not been given a specific price, which is the behaviour you want when
 // the list price changes.
-const MANAGEMENT_CENTS = 60_000
+const MANAGEMENT_CENTS = 69_000
 
 // Statuses that mean Stripe is already billing this company, so sending them
 // to a second checkout would double-charge them.
@@ -61,7 +61,7 @@ serve(async (req) => {
     if (!company) return new Response('Company not found', { status: 404 })
 
     // Already subscribed. Send them to the billing portal instead of taking a
-    // second $600 a month off the same business.
+    // second monthly fee off the same business.
     if (company.management_status && LIVE_STATUSES.includes(company.management_status)) {
       return new Response(
         JSON.stringify({
