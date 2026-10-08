@@ -1091,10 +1091,10 @@ const PAGE_META = {
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
-// Pay-per-lead sales are paused: Buy Leads is hidden from every account, PPL
-// ones included. Set to true (and set PPL_SALES_OPEN=true in Supabase, and
-// remove the redirects on the ql-site PPL pages) to reopen.
-const PPL_SALES_OPEN = false;
+// Pay-per-lead sales switch. When false, Buy Leads is hidden from every
+// account; the checkout functions also refuse unless the Supabase secret
+// PPL_SALES_OPEN is "true". Only accounts with plan 'ppl' ever see it.
+const PPL_SALES_OPEN = true;
 
 function isPplAccount() {
   return PPL_SALES_OPEN && currentCompanyPlan === "ppl";
