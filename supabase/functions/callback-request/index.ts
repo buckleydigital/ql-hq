@@ -90,12 +90,10 @@ async function turnstileOk(token: string, ip: string | null): Promise<boolean> {
 const promisedCall = (source: string) =>
   /branded-solar/i.test(source) ? 'within the hour' : 'during business hours (AEST)'
 
-// Confirmation to the person who enquired, so they know it landed, who will
-// ring and from where, and can reply with anything else. Best effort: a
-// failure here never affects their enquiry.
-async function sendWelcomeEmail(to: string, name: string, source: string) {
+// A short thank-you to the person who enquired. Best effort: a failure here
+// never affects their enquiry.
+async function sendWelcomeEmail(to: string, name: string) {
   const first = name.split(/\s+/)[0] || 'there'
-  const when = promisedCall(source)
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
@@ -103,31 +101,19 @@ async function sendWelcomeEmail(to: string, name: string, source: string) {
       from: 'QuoteLeads <onboarding@quoteleads.com.au>',
       to,
       reply_to: 'contact@quoteleads.com.au',
-      subject: `Thanks ${first}, we'll call you ${when.startsWith('within') ? 'shortly' : 'soon'}`,
+      subject: `Thanks ${first}, we'll call you shortly`,
       html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px">
         <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
           <div style="background:#0a0b0f;padding:28px 36px">
             <img src="https://quoteleads.com.au/quoteleads-logo-white.png" alt="QuoteLeads" style="height:30px">
           </div>
           <div style="padding:36px">
-            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 12px">Thanks ${esc(first)}, we've got your request.</h1>
-            <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 20px">
-              Someone from our team will call you ${when}. Keep an eye on your phone - the call may come from a number you don't recognise.
-            </p>
-            <div style="background:#f8f9fb;border-radius:8px;padding:18px 20px;margin-bottom:24px">
-              <p style="font-size:13px;font-weight:600;color:#0a0b0f;margin:0 0 10px">On the call we'll:</p>
-              <ul style="font-size:13px;color:#555;line-height:1.9;margin:0;padding-left:18px">
-                <li>Learn about your business, your service area and how many jobs you want</li>
-                <li>Show you how the Branded Lead Gen System works</li>
-                <li>Answer any questions - there's no obligation</li>
-              </ul>
-            </div>
-            <p style="color:#555;font-size:14px;line-height:1.6;margin:0">
-              Anything you'd like us to know before we call? Just reply to this email.
+            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 12px">Thanks ${esc(first)}.</h1>
+            <p style="color:#555;font-size:15px;line-height:1.6;margin:0">
+              We've received your request. You can expect a call from our team shortly, during business hours (AEST).
             </p>
             <p style="font-size:12px;color:#999;margin:28px 0 0;line-height:1.6">
-              QuoteLeads &middot; Australian owned and operated &middot; <a href="https://quoteleads.com.au" style="color:#999">quoteleads.com.au</a><br>
-              You're receiving this because you requested a callback on our website.
+              QuoteLeads &middot; <a href="https://quoteleads.com.au" style="color:#999">quoteleads.com.au</a>
             </p>
           </div>
         </div>
@@ -241,7 +227,7 @@ serve(async (req) => {
       if (!onPipeline) return json({ error: 'Could not send the request.' }, 502)
     }
 
-    await sendWelcomeEmail(email, name, source).catch((e) =>
+    await sendWelcomeEmail(email, name).catch((e) =>
       console.error('welcome email error:', e instanceof Error ? e.message : e))
 
     return json({ success: true })
