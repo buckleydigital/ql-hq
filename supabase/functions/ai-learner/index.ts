@@ -144,6 +144,8 @@ For each learning, provide:
 - tags: 1-3 relevant tags (e.g., "pricing", "scheduling", "objection", "urgency", "tone")
 - source_type: "sms" or "mixed" based on where the key interaction happened
 
+Never use an em dash or en dash in an insight; use a comma, a full stop or a plain hyphen.
+
 Respond ONLY with a JSON array of objects. No markdown fences.
 Example: [{"category":"winning_pattern","insight":"...","tags":["pricing","urgency"],"source_type":"sms"}]
 
@@ -240,6 +242,8 @@ Return a JSON array with objects having:
 - insight: a concise, actionable style instruction (e.g., "Keep SMS replies under 10 words for this company's customers - they respond best to very brief, direct messages.")
 - tags: relevant tags like "tone", "length", "follow-up", "formality"
 - source_type: "sms"
+
+Never use an em dash or en dash in an insight; use a comma, a full stop or a plain hyphen.
 
 Respond ONLY with the JSON array. Return [] if insufficient data.`;
 
