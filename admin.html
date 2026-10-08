@@ -4349,6 +4349,8 @@ h1{font-size:18px;font-weight:500}
       ? escapeHtml(o.area_city || '') + ' - State Wide'
       : o.location_type === 'postcodes'
       ? 'Postcodes: ' + (o.postcode_list || '').slice(0, 80) + (o.postcode_list && o.postcode_list.length > 80 ? '…' : '')
+      : (Array.isArray(o.service_areas) && o.service_areas.length)
+      ? (o.area_city || '') + ' - ' + o.service_areas.map(function (a) { return a.label + ' (' + a.radius_km + 'km)'; }).join('; ')
       : escapeHtml(o.area_city || '') + ' - ' + (o.radius_km || 50) + 'km radius';
     var created = o.created_at
       ? new Date(o.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })

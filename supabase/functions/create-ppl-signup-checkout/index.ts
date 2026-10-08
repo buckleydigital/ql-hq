@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
+import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -49,6 +50,7 @@ async function notifyCheckoutStarted(data: {
   first_name: string; last_name: string; email: string; phone: string
   company: string; niche: string; sub_niche: string | null; area_city: string
   location_type: string; radius_km: number; postcode_list: string
+  service_areas_summary: string
   quantity: number; price_per_lead: number; discount_percent: number
   stripe_session_id: string
 }) {
@@ -58,6 +60,8 @@ async function notifyCheckoutStarted(data: {
     ? `${data.area_city} - State Wide`
     : data.location_type === 'postcodes'
     ? `Postcodes - ${data.postcode_list || '(none)'}`
+    : data.service_areas_summary
+    ? `${data.area_city} - ${data.service_areas_summary}`
     : `${data.area_city} - ${data.radius_km}km radius`
 
   const subject = `🛒 Checkout started - ${data.company} (${data.email})`
@@ -108,7 +112,15 @@ serve(async (req) => {
       radius_km,
       postcode_list,
       quantity,
+      service_areas,
     } = await req.json()
+
+    // Several suburbs, each with its own radius (radius orders only). The
+    // order's radius_km becomes the largest of them so every existing reader
+    // of that column still sees a sensible single value.
+    const areas = location_type === 'radius' || !location_type ? cleanServiceAreas(service_areas) : []
+    const areasSummary = summariseServiceAreas(areas)
+    const radiusKm = areas.length ? Math.max(...areas.map(a => a.radius_km)) : radius_km
 
     if (!first_name || !last_name || !email || !phone || !company || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields')
@@ -156,6 +168,7 @@ serve(async (req) => {
         quantity,
         price_per_lead: validatedPrice,
         status: 'pending',
+        ...(areas.length > 0 && { service_areas: areas }),
       })
       .select('id')
       .single()
@@ -164,6 +177,8 @@ serve(async (req) => {
       ? `${area_city} - State Wide coverage`
       : location_type === 'postcodes'
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
+      : areasSummary
+      ? `${area_city} - ${areasSummary}`.slice(0, 300)
       : `${area_city} - ${radius_km ?? 50}km radius`
 
     const nicheDisplay = [normNiche, normSubNiche]
@@ -198,8 +213,10 @@ serve(async (req) => {
         sub_niche:     normSubNiche || '',
         area_city,
         location_type: location_type || 'radius',
-        radius_km:     String(radius_km ?? 50),
+        radius_km:     String(radiusKm ?? 50),
         postcode_list: postcode_list || '',
+        // Readable fallback; the full list (with coordinates) is on signup_attempts.
+        service_areas_summary: areasSummary.slice(0, 500),
         quantity:         String(quantity),
         price_per_lead:   String(validatedPrice),
         discount_percent: String(discountPercent),
@@ -218,8 +235,9 @@ serve(async (req) => {
       niche: normNiche, sub_niche: normSubNiche,
       area_city,
       location_type: location_type || 'radius',
-      radius_km: radius_km ?? 50,
+      radius_km: radiusKm ?? 50,
       postcode_list: postcode_list || '',
+      service_areas_summary: areasSummary,
       quantity,
       price_per_lead: validatedPrice,
       discount_percent: discountPercent,

@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
+import { summariseServiceAreas, type ServiceArea } from '../_shared/service-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -338,6 +339,16 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
 async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL signup for:', m.email)
   try {
+    // Suburbs chosen at checkout (radius orders). The full list waits on the
+    // signup attempt for this session; the metadata only has a readable summary.
+    let serviceAreas: ServiceArea[] = []
+    if (m.location_type !== 'postcodes' && m.location_type !== 'statewide') {
+      const { data: att } = await supabase
+        .from('signup_attempts').select('service_areas')
+        .eq('stripe_session_id', session.id).maybeSingle()
+      if (Array.isArray(att?.service_areas)) serviceAreas = att.service_areas as ServiceArea[]
+    }
+    const areasSummary = summariseServiceAreas(serviceAreas) || m.service_areas_summary || ''
     // createUser triggers handle_new_user() which auto-creates a company + profile
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: m.email,
@@ -422,6 +433,12 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       .single()
     if (orderError) throw new Error(`ppl_lead_orders insert: ${orderError.message}`)
 
+    if (order && serviceAreas.length) {
+      const { error: areasErr } = await supabase
+        .from('ppl_lead_orders').update({ service_areas: serviceAreas }).eq('id', order.id)
+      if (areasErr) console.error('service_areas not saved (non-fatal):', areasErr.message)
+    }
+
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
     const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
@@ -450,7 +467,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
         pricePerLead:    parseFloat(m.price_per_lead),
         niche:           m.niche,
         subNiche:        m.sub_niche || null,
-        areaCity:        m.area_city,
+        areaCity:        areasSummary ? `${m.area_city} - ${areasSummary}` : m.area_city,
         locationTypeVal: m.location_type || 'radius',
         radiusKm:        parseFloat(m.radius_km || '50'),
         postcodeList:    m.postcode_list || '',
@@ -476,6 +493,8 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       ? `${m.area_city} - State Wide`
       : m.location_type === 'postcodes'
       ? `Postcodes - ${m.postcode_list || '(none supplied)'}`
+      : areasSummary
+      ? `${m.area_city} - ${areasSummary}`
       : `${m.area_city} - ${m.radius_km || 50}km radius`
 
     await sendInternalEmail(
