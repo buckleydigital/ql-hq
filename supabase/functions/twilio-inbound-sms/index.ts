@@ -882,8 +882,10 @@ Deno.serve(async (req) => {
     // the STOP block below would put the owner on the opt-out register.
     // Everyone else, and the owner texting any other number, carries on as
     // before.
-    const jarvisOwner = (Deno.env.get("JARVIS_OWNER_NUMBER") || "").trim();
-    if (jarvisOwner && fromNumber === normalisePhone(jarvisOwner)) {
+    // Accepts +61... or a local 04... number.
+    const jarvisOwner = (Deno.env.get("JARVIS_OWNER_NUMBER") || "").replace(/[\s\-()]/g, "");
+    if (jarvisOwner &&
+        fromNumber === normalisePhone(jarvisOwner.startsWith("0") ? "+61" + jarvisOwner.slice(1) : jarvisOwner)) {
       const { data: ps } = await db
         .from("platform_settings").select("shared_ppl_twilio_number").eq("id", 1).maybeSingle();
       const shared = normalisePhone((ps?.shared_ppl_twilio_number as string | null) || "");
