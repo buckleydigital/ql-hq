@@ -115,6 +115,51 @@ async function mirrorToQlMc(payload: {
   }
 }
 
+// The owner's reply to Jarvis, passed to ql-mc's jarvis-reply. Signature is
+// checked first: jarvis-reply can email clients, so a forged form post from
+// the owner's number must not reach it. Not awaited past waitUntil because
+// Twilio gives about fifteen seconds and Jarvis's tool loop can run longer;
+// his answer arrives as a fresh text.
+async function forwardToJarvis(
+  req: Request,
+  rawBody: string,
+  from: string,
+  body: string,
+  messageSid: string,
+): Promise<Response> {
+  const canonicalWebhookUrl = Deno.env.get("TWILIO_WEBHOOK_URL");
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!canonicalWebhookUrl || !authToken ||
+      !(await validateTwilioSignature(req, rawBody, authToken, canonicalWebhookUrl))) {
+    console.error("Jarvis reply: Twilio signature validation failed - dropped");
+    return twimlResponse("");
+  }
+
+  const url = Deno.env.get("QL_MC_API_URL");
+  const secret = Deno.env.get("QL_MC_API_SECRET");
+  if (!url || !secret) {
+    console.warn("QL_MC_API_URL or QL_MC_API_SECRET not set - Jarvis reply dropped");
+    return twimlResponse("");
+  }
+
+  const call = fetch(`${url}/jarvis-reply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-secret": secret },
+    body: JSON.stringify({ from, body, message_sid: messageSid }),
+  })
+    .then(async (res) => {
+      if (!res.ok) console.error(`jarvis-reply returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    })
+    .catch((err) => console.error("jarvis-reply dispatch failed:", err instanceof Error ? err.message : err));
+
+  const rt = (globalThis as Record<string, unknown>).EdgeRuntime as
+    | { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+  if (rt?.waitUntil) rt.waitUntil(call);
+  else await call;
+
+  return twimlResponse("");
+}
+
 // True only for the one company tied to a profiles.is_admin=true user (the
 // agency/super-admin tenant). Every other company is a no-op.
 async function companyIsSuperAdmin(
@@ -829,6 +874,22 @@ Deno.serve(async (req) => {
 
     if (!fromNumber || !toNumber || !inboundBody) {
       return twimlResponse(""); // empty TwiML = no auto-reply
+    }
+
+    // 1b. Jarvis. ql-mc's Jarvis texts and rings the owner from the shared
+    // AI SMS number, so the owner's replies arrive here. Hand exactly those
+    // to ql-mc and stop: they are not a lead's reply, and running them through
+    // the STOP block below would put the owner on the opt-out register.
+    // Everyone else, and the owner texting any other number, carries on as
+    // before.
+    const jarvisOwner = (Deno.env.get("JARVIS_OWNER_NUMBER") || "").trim();
+    if (jarvisOwner && fromNumber === normalisePhone(jarvisOwner)) {
+      const { data: ps } = await db
+        .from("platform_settings").select("shared_ppl_twilio_number").eq("id", 1).maybeSingle();
+      const shared = normalisePhone((ps?.shared_ppl_twilio_number as string | null) || "");
+      if (toNumber === shared) {
+        return await forwardToJarvis(req, rawBody, fromNumber, inboundBody, params.MessageSid || "");
+      }
     }
 
     // Candidate phone formats for the lead lookup below. Twilio reports From
