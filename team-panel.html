@@ -309,7 +309,7 @@ tbody tr:last-child td{border-bottom:none}
 .kv .k{color:var(--ink3);min-width:135px;flex:none}
 
 /* ═══ INPUTS ═══ */
-textarea,input[type=text],input[type=date],input[type=tel],select{
+textarea,input[type=text],input[type=date],input[type=tel],input[type=number],select{
   background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);
   color:var(--ink);font-size:12.5px;padding:7px 10px;outline:none;
   transition:border-color .13s,box-shadow .13s}
@@ -393,6 +393,44 @@ select{cursor:pointer}
   transition:border-color .12s,background .12s}
 .dropzone.drag{border-color:var(--acc);background:var(--acc-dim)}
 .dz-browse{color:var(--acc);cursor:pointer}
+
+/* ═══ CREATIVE STUDIO ═══ */
+.st .st-row{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px}
+.st .st-block{flex:1;min-width:200px}
+.st .st-h{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin:12px 0 7px}
+.st .st-row .st-h{margin-top:0}
+.st-logo{height:64px;display:flex;align-items:center;margin-bottom:8px}
+.st-logo img{max-height:64px;max-width:220px;background:#fff;border-radius:8px;padding:6px}
+.st-colour{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.st-colour input[type=color]{width:44px;height:34px;padding:2px;border:1px solid var(--bd2);border-radius:var(--r);background:var(--s2);cursor:pointer}
+.st-colour input[type=text]{width:100px;font-family:var(--mono)}
+.st-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.st-ph{position:relative;aspect-ratio:1;border-radius:var(--r);overflow:hidden;border:1px solid var(--bd2);background:var(--s2)}
+.st-ph img{width:100%;height:100%;object-fit:cover;display:block}
+.st-ph button{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;line-height:1;font-size:14px}
+.st-add{display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink2);cursor:pointer;border-style:dashed}
+.st-add:hover{color:var(--acc);border-color:var(--acc)}
+.st-sizes{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:16px}
+.st-chip{display:inline-flex;flex-direction:column;padding:6px 10px;border:1px solid var(--bd2);border-radius:var(--r);cursor:pointer;font-size:12px;line-height:1.3;background:var(--s2)}
+.st-chip input{display:none}
+.st-chip span{font-size:10.5px;color:var(--ink3)}
+.st-chip.on{border-color:var(--acc);background:var(--acc-dim);color:var(--acc)}
+.st-custom{display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--ink3);margin-left:4px}
+.st-custom input{width:72px}
+.st textarea{width:100%}
+.st-prompt{margin:14px 0 4px}
+.st-prompt summary{cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.st-prompt textarea{margin-top:8px;font-family:var(--mono);font-size:12px}
+.st-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.st-var{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.st-var input{flex:1;min-width:140px}
+.st-n{width:20px;color:var(--ink3);font-size:12px}
+.st-g{font-size:12.5px;line-height:1.7}
+.st-len{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-left:4px}
+.st-len.over{color:var(--red)}
+.st-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.st-results a{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--ink3);font-size:11px}
+.st-results img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--s2);border-radius:var(--r);border:1px solid var(--bd)}
 
 /* ═══ FULFILMENT ═══ */
 .step{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--bd);
@@ -865,7 +903,7 @@ select{cursor:pointer}
   // they get a label rather than a button - there is nothing useful to press.
   const RUNNABLE = {
     ad_copy:       { label: 'Generate', busy: 'Writing…' },
-    creatives:     { label: 'Generate', busy: 'Rendering…' },
+    creatives:     { label: 'Open studio', busy: 'Opening…' },
     preview_email: { label: 'Send…',    busy: 'Opening…' },
     intro_email:   { label: 'Send…',    busy: 'Opening…' },
   };
@@ -884,7 +922,7 @@ select{cursor:pointer}
   // not the client has the matching step, and at any stage.
   function automationToolsHtml() {
     const tools = [
-      ['ad_copy', 'Generate ad copy'], ['creatives', 'Generate creatives'],
+      ['ad_copy', 'Generate ad copy'], ['creatives', 'Creative studio'],
       ['preview_email', 'Send previews…'], ['intro_email', 'Send intro…'],
     ].filter(([a]) => mayRun(a));
     if (!tools.length) return '';
@@ -1094,11 +1132,17 @@ select{cursor:pointer}
 
     if (automation === 'intro_email')   { openIntroModal(companyId); return; }
     if (automation === 'preview_email') { openPreviewModal(companyId); return; }
+    // Creatives are made in the studio on this page: take them there.
+    if (automation === 'creatives') {
+      const sh = $('studioHost');
+      if (sh) sh.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
 
     const label = btn.textContent;
     btn.disabled = true; btn.textContent = r.busy;
     try {
-      const act = automation === 'ad_copy' ? 'generate_ad_copy' : 'generate_creatives';
+      const act = 'generate_ad_copy';
       const { ok, data } = await aiApi({ action: act, company_id: companyId });
       if (!ok) { alert(data.error || 'That did not work.'); return; }
       // Re-read rather than patching: the step, the summary and the ad copy all
@@ -1107,14 +1151,460 @@ select{cursor:pointer}
       _fulfilBoard = null;
       const host = $('fulfilHost');
       if (host) { host.innerHTML = fulfilSectionHtml(); wireFulfilment(companyId); }
-      if (act === 'generate_creatives' && data.created) {
-        alert(`${data.created} creative${data.created === 1 ? '' : 's'} added to the previews below.`);
-        // The new images are preview_links, so refresh that section too.
-        if (typeof renderPreviewLinksVa === 'function') renderPreviewLinksVa(companyId);
-      }
     } finally {
       btn.disabled = false; btn.textContent = label;
     }
+  }
+
+  // ─── Creative studio ──────────────────────────────────────────────────────
+  // The client's logo and photos, a brand colour, the sizes wanted, and copy
+  // Claude writes from the house creative direction plus a note for this
+  // client. fulfilment-ai keeps the assets and writes the words; the images are
+  // drawn HERE, on a canvas, because a photo creative at story size is more
+  // CPU than an edge function is allowed. They are saved as preview links, the
+  // same as a hand-made Canva upload.
+  const STUDIO_SIZES = [
+    { w: 1080, h: 1080, label: 'Meta square', on: true },
+    { w: 1080, h: 1350, label: 'Meta portrait 4:5', on: true },
+    { w: 1080, h: 1920, label: 'Story / Reel 9:16' },
+    { w: 1200, h: 628,  label: 'Google landscape' },
+    { w: 1200, h: 1200, label: 'Google square' },
+    { w: 960,  h: 1200, label: 'Google portrait 4:5' },
+  ];
+  const STUDIO_FONT = 'QLCreative';
+  let _studio = null;          // state from creative_state, plus local choices
+  let _studioFonts = null;
+
+  function loadStudioFonts() {
+    _studioFonts ??= Promise.all([['500', 'Medium'], ['700', 'Bold'], ['800', 'ExtraBold']].map(([w, n]) =>
+      new FontFace(STUDIO_FONT, `url(assets/creative/Poppins-${n}.ttf)`, { weight: w }).load()
+        .then(f => document.fonts.add(f)))).catch(e => { _studioFonts = null; throw e; });
+    return _studioFonts;
+  }
+
+  async function loadStudio(companyId) {
+    const host = $('studioHost');
+    if (!host) return;
+    host.innerHTML = '<div class="sec-title">Creative studio</div><div class="card muted">Loading…</div>';
+    const { ok, data } = await aiApi({ action: 'creative_state', company_id: companyId });
+    if (!ok) { host.innerHTML = `<div class="sec-title">Creative studio</div><div class="card empty">${esc(data.error || 'Could not load the creative studio.')}</div>`; return; }
+    const prevSizes = _studio && _studio.companyId === companyId ? _studio.sizes : null;
+    _studio = {
+      companyId, ...data,
+      sizes: prevSizes || STUDIO_SIZES.map(s => ({ ...s, on: !!s.on })),
+      count: 3, results: [],
+    };
+    renderStudio();
+  }
+
+  const studioLogo = () => (_studio.assets || []).find(a => a.kind === 'logo') || null;
+  const studioPhotos = () => (_studio.assets || []).filter(a => a.kind === 'photo');
+
+  function renderStudio() {
+    const host = $('studioHost');
+    if (!host || !_studio) return;
+    const st = _studio, logo = studioLogo(), photos = studioPhotos();
+    const brand = st.brand_color || '#1063d6';
+    const copy = st.creative_copy;
+    const sizeChips = st.sizes.map((s, i) => `
+      <label class="st-chip${s.on ? ' on' : ''}"><input type="checkbox" data-st-size="${i}"${s.on ? ' checked' : ''}>
+        <b>${s.w}×${s.h}</b><span>${esc(s.label || 'Custom')}</span></label>`).join('');
+    const variants = copy && Array.isArray(copy.variants) ? copy.variants : [];
+    const g = (copy && copy.google) || {};
+    const lenTag = (t, max) => `<span class="st-len${String(t || '').length > max ? ' over' : ''}">${String(t || '').length}/${max}</span>`;
+
+    host.innerHTML = `
+      <div class="sec-title">Creative studio</div>
+      <div class="card st">
+        <div class="st-row">
+          <div class="st-block">
+            <div class="st-h">Logo</div>
+            <div class="st-logo">${logo ? `<img src="${esc(logo.url)}" alt="Logo">` : '<span class="muted">No logo yet</span>'}</div>
+            <label class="btn btn-sm">${logo ? 'Replace logo' : 'Upload logo'}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-st-up="logo" hidden></label>
+          </div>
+          <div class="st-block">
+            <div class="st-h">Brand colour</div>
+            <div class="st-colour">
+              <input type="color" id="stColour" value="${esc(brand)}">
+              <input type="text" id="stHex" value="${esc(brand)}" maxlength="7" spellcheck="false">
+            </div>
+            <button class="btn btn-sm" id="stFromLogo" type="button"${logo ? '' : ' disabled'}>Pick from logo</button>
+          </div>
+        </div>
+
+        <div class="st-h">Photos <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· their own job photos work best; stock if they have none</span></div>
+        <div class="st-photos">
+          ${photos.map(p => `<div class="st-ph"><img src="${esc(p.url)}" alt=""><button type="button" data-st-del="${esc(p.id)}" title="Remove">×</button></div>`).join('')}
+          <label class="st-ph st-add">+ Add photos<input type="file" accept="image/png,image/jpeg,image/webp" multiple data-st-up="photo" hidden></label>
+        </div>
+
+        <div class="st-h">Sizes</div>
+        <div class="st-sizes">${sizeChips}
+          <span class="st-custom"><input type="number" id="stW" placeholder="W" min="200" max="4000"> × <input type="number" id="stH" placeholder="H" min="200" max="4000"> <button class="btn btn-sm" id="stAddSize" type="button">Add size</button></span>
+        </div>
+
+        <div class="st-row" style="align-items:flex-end">
+          <div class="st-block" style="flex:0 0 auto">
+            <div class="st-h">Variants</div>
+            <select id="stCount">${[1, 2, 3, 4, 5, 6].map(n => `<option${n === st.count ? ' selected' : ''}>${n}</option>`).join('')}</select>
+          </div>
+          <div class="st-block" style="flex:1">
+            <div class="st-h">Note for this client <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+            <textarea id="stNote" rows="2" placeholder="e.g. Push the battery rebate. No prices. Mention they are family owned.">${esc(st.creative_note || '')}</textarea>
+          </div>
+        </div>
+
+        <details class="st-prompt">
+          <summary>Creative direction ${st.prompt_is_default ? '<span class="muted">(default)</span>' : '<span class="muted">(customised)</span>'}</summary>
+          <textarea id="stPrompt" rows="9"${st.can_edit_prompt ? '' : ' readonly'}>${esc(st.prompt || '')}</textarea>
+          <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Applies to every client. The fixed rules (never invent a fact, Google's length limits, no dashes) always apply on top.</div>
+          ${st.can_edit_prompt ? `<button class="btn btn-sm btn-p" id="stSavePrompt" type="button">Save direction</button>
+            <button class="btn btn-sm" id="stResetPrompt" type="button">Reset to default</button>` : '<span class="muted" style="font-size:11.5px">Only an admin can change it.</span>'}
+        </details>
+
+        <div class="st-actions">
+          <button class="btn btn-p" id="stGo" type="button">Write copy &amp; make creatives</button>
+          ${variants.length ? '<button class="btn" id="stRemake" type="button">Remake with this copy</button>' : ''}
+          <span class="muted" id="stStatus" style="font-size:12px"></span>
+        </div>
+
+        ${variants.length ? `
+          <div class="st-h" style="margin-top:16px">Image copy <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· edit here, then Remake</span></div>
+          ${variants.map((v, i) => `<div class="st-var">
+            <span class="st-n">${i + 1}</span>
+            <input type="text" data-st-v="${i}" data-k="headline" value="${esc(v.headline || '')}" placeholder="Headline">
+            <input type="text" data-st-v="${i}" data-k="subline" value="${esc(v.subline || '')}" placeholder="Supporting line">
+            <input type="text" data-st-v="${i}" data-k="cta" value="${esc(v.cta || '')}" placeholder="Button" style="max-width:150px">
+          </div>`).join('')}
+          ${(g.headlines || []).length ? `
+            <div class="st-h" style="margin-top:14px">Google copy</div>
+            <div class="st-g">
+              ${(g.headlines || []).map(h => `<div>${esc(h)} ${lenTag(h, 30)}</div>`).join('')}
+              ${g.long_headline ? `<div><i>Long:</i> ${esc(g.long_headline)} ${lenTag(g.long_headline, 90)}</div>` : ''}
+              ${(g.descriptions || []).map(d => `<div class="muted">${esc(d)} ${lenTag(d, 90)}</div>`).join('')}
+            </div>` : ''}
+          ${copy.notes_for_team ? `<div class="muted" style="font-size:12px;margin-top:8px"><b>Notes:</b> ${esc(copy.notes_for_team)}</div>` : ''}` : ''}
+
+        ${st.results.length ? `<div class="st-h" style="margin-top:16px">Made just now <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· also added to the preview links</span></div>
+          <div class="st-results">${st.results.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" download><img src="${esc(r.url)}" alt=""><span>${r.w}×${r.h}</span></a>`).join('')}</div>` : ''}
+      </div>`;
+    wireStudio();
+  }
+
+  function studioStatus(t) { const el = $('studioHost') && $('stStatus'); if (el) el.textContent = t || ''; }
+
+  function wireStudio() {
+    const host = $('studioHost'), st = _studio, cid = st.companyId;
+    host.querySelectorAll('[data-st-up]').forEach(inp => inp.addEventListener('change', () => studioUpload(inp.dataset.stUp, [...inp.files])));
+    host.querySelectorAll('[data-st-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Remove this photo from the library?')) return;
+      const { ok, data } = await aiApi({ action: 'delete_asset', company_id: cid, asset_id: b.dataset.stDel });
+      if (!ok) return alert(data.error || 'Could not remove it.');
+      st.assets = st.assets.filter(a => a.id !== b.dataset.stDel); renderStudio();
+    }));
+    const colour = $('stColour'), hex = $('stHex');
+    const setColour = async (v, save) => {
+      if (!/^#[0-9a-f]{6}$/i.test(v)) return;
+      st.brand_color = v.toLowerCase(); colour.value = st.brand_color; hex.value = st.brand_color;
+      if (save) await aiApi({ action: 'save_creative_settings', company_id: cid, brand_color: st.brand_color });
+    };
+    colour.addEventListener('input', () => { hex.value = colour.value; st.brand_color = colour.value; });
+    colour.addEventListener('change', () => setColour(colour.value, true));
+    hex.addEventListener('change', () => { const v = hex.value.trim(); setColour(v.startsWith('#') ? v : '#' + v, true); });
+    $('stFromLogo').addEventListener('click', async () => {
+      const logo = studioLogo(); if (!logo) return;
+      const c = logoColour(await studioBitmap(logo.url));
+      if (!c) return alert('Could not find a clear brand colour in the logo - pick one instead.');
+      await setColour(c, true);
+    });
+    host.querySelectorAll('[data-st-size]').forEach(cb => cb.addEventListener('change', () => {
+      st.sizes[+cb.dataset.stSize].on = cb.checked; cb.closest('.st-chip').classList.toggle('on', cb.checked);
+    }));
+    $('stAddSize').addEventListener('click', () => {
+      const w = Math.round(+$('stW').value), h = Math.round(+$('stH').value);
+      if (!(w >= 200 && w <= 4000 && h >= 200 && h <= 4000)) return alert('Sizes are 200 to 4000 pixels each way.');
+      if (!st.sizes.some(s => s.w === w && s.h === h)) st.sizes.push({ w, h, label: 'Custom', on: true });
+      else st.sizes.find(s => s.w === w && s.h === h).on = true;
+      renderStudio();
+    });
+    $('stCount').addEventListener('change', () => { st.count = +$('stCount').value; });
+    $('stNote').addEventListener('change', () => {
+      st.creative_note = $('stNote').value;
+      aiApi({ action: 'save_creative_settings', company_id: cid, creative_note: st.creative_note });
+    });
+    host.querySelectorAll('[data-st-v]').forEach(inp => inp.addEventListener('input', () => {
+      st.creative_copy.variants[+inp.dataset.stV][inp.dataset.k] = inp.value;
+    }));
+    if ($('stSavePrompt')) {
+      $('stSavePrompt').addEventListener('click', () => saveStudioPrompt($('stPrompt').value));
+      $('stResetPrompt').addEventListener('click', () => { if (confirm('Go back to the default creative direction?')) saveStudioPrompt(''); });
+    }
+    $('stGo').addEventListener('click', () => makeCreatives(true));
+    if ($('stRemake')) $('stRemake').addEventListener('click', () => makeCreatives(false));
+  }
+
+  async function saveStudioPrompt(text) {
+    const { ok, data } = await aiApi({ action: 'save_creative_prompt', company_id: _studio.companyId, prompt: text });
+    if (!ok) return alert(data.error || 'Could not save it.');
+    _studio.prompt = text.trim() || _studio.default_prompt;
+    _studio.prompt_is_default = data.prompt_is_default;
+    renderStudio();
+    const d = $('studioHost').querySelector('.st-prompt'); if (d) d.open = true;
+  }
+
+  // Images come in through a canvas: resized (photos to 2048px, logos to
+  // 1000px), and re-encoded to JPG or PNG, which is all the server takes.
+  async function studioUpload(kind, files) {
+    const st = _studio;
+    for (let i = 0; i < files.length; i++) {
+      studioStatus(`Uploading ${i + 1} of ${files.length}…`);
+      try {
+        const bmp = await createImageBitmap(files[i]);
+        const max = kind === 'logo' ? 1000 : 2048;
+        const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        const type = kind === 'logo' ? 'image/png' : 'image/jpeg';
+        const { ok, data } = await aiApi({
+          action: 'upload_asset', company_id: st.companyId, kind, content_type: type,
+          data: c.toDataURL(type, 0.9), width: c.width, height: c.height, filename: files[i].name,
+        });
+        if (!ok) { alert(`${files[i].name}: ${data.error || 'upload failed'}`); continue; }
+        if (kind === 'logo') st.assets = st.assets.filter(a => a.kind !== 'logo');
+        st.assets.push(data.asset);
+        // First logo and no colour yet: take the colour from it.
+        if (kind === 'logo' && !st.brand_color) {
+          const col = logoColour(bmp);
+          if (col) { st.brand_color = col; await aiApi({ action: 'save_creative_settings', company_id: st.companyId, brand_color: col }); }
+        }
+      } catch (e) {
+        alert(`${files[i].name}: could not read that image (${e.message || e}).`);
+      }
+    }
+    studioStatus('');
+    renderStudio();
+  }
+
+  // Fetched rather than <img crossorigin>, so the canvas is never tainted and
+  // toDataURL keeps working.
+  async function studioBitmap(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`image ${r.status}`);
+    return createImageBitmap(await r.blob());
+  }
+
+  /** The dominant saturated colour in a logo, ignoring white, black and greys. */
+  function logoColour(bmp) {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 64, 64);
+    const px = g.getImageData(0, 0, 64, 64).data;
+    const buckets = new Map();
+    for (let i = 0; i < px.length; i += 4) {
+      const [r, gr, b, a] = [px[i], px[i + 1], px[i + 2], px[i + 3]];
+      if (a < 200) continue;
+      const mx = Math.max(r, gr, b), mn = Math.min(r, gr, b), l = (mx + mn) / 510;
+      const sat = mx === mn ? 0 : (mx - mn) / (255 - Math.abs(mx + mn - 255));
+      if (sat < 0.3 || l > 0.9 || l < 0.1) continue;
+      const key = (r >> 5) * 64 + (gr >> 5) * 8 + (b >> 5);
+      const e = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+      e.n++; e.r += r; e.g += gr; e.b += b; buckets.set(key, e);
+    }
+    let best = null;
+    for (const e of buckets.values()) if (!best || e.n > best.n) best = e;
+    if (!best || best.n < 20) return null;
+    return '#' + [best.r, best.g, best.b].map(v => Math.round(v / best.n).toString(16).padStart(2, '0')).join('');
+  }
+
+  async function makeCreatives(writeCopy) {
+    const st = _studio, cid = st.companyId;
+    const sizes = st.sizes.filter(s => s.on);
+    if (!sizes.length) return alert('Pick at least one size.');
+    const go = $('stGo'), again = $('stRemake');
+    [go, again].forEach(b => b && (b.disabled = true));
+    try {
+      st.creative_note = $('stNote').value;
+      if (writeCopy) {
+        studioStatus('Writing the copy…');
+        const { ok, data } = await aiApi({ action: 'write_creative_copy', company_id: cid, count: st.count, creative_note: st.creative_note });
+        if (!ok) { alert(data.error || 'The copy could not be written.'); return; }
+        st.creative_copy = data.creative_copy;
+      }
+      const variants = (st.creative_copy && st.creative_copy.variants) || [];
+      if (!variants.length) { alert('There is no copy yet.'); return; }
+      const jobs = [];
+      variants.forEach((v, i) => sizes.forEach(s => jobs.push({ v, i, s })));
+      if (jobs.length > 36 && !confirm(`That is ${jobs.length} images. Make them all?`)) return;
+
+      studioStatus('Loading fonts and photos…');
+      await loadStudioFonts();
+      const logoA = studioLogo(), photoA = studioPhotos();
+      const [logo, ...photos] = await Promise.all([
+        logoA ? studioBitmap(logoA.url) : null,
+        ...photoA.map(p => studioBitmap(p.url).catch(() => null)),
+      ]);
+      const usable = photos.filter(Boolean);
+
+      st.results = [];
+      for (let n = 0; n < jobs.length; n++) {
+        const { v, i, s } = jobs[n];
+        studioStatus(`Making ${n + 1} of ${jobs.length}…`);
+        const photo = usable.length ? usable[i % usable.length] : null;
+        // Variants alternate the two photo layouts; with no photos, the brand
+        // colour carries every one.
+        const layout = photo ? (i % 2 ? 'split' : 'overlay') : 'band';
+        const canvas = drawCreative({
+          W: s.w, H: s.h, layout, headline: v.headline, subline: v.subline, cta: v.cta,
+          brand: st.brand_color || '#1063d6', photo, logo,
+        });
+        const { ok, data } = await aiApi({
+          action: 'save_creative', company_id: cid, content_type: 'image/jpeg',
+          data: canvas.toDataURL('image/jpeg', 0.92),
+          label: `Creative ${i + 1} · ${s.w}×${s.h} · ${v.headline}`.slice(0, 300),
+          last: n === jobs.length - 1, batch_count: jobs.length,
+        });
+        if (!ok) { alert(`Saving image ${n + 1} failed: ${data.error || 'unknown error'}`); break; }
+        st.results.push({ url: data.url, w: s.w, h: s.h });
+      }
+      studioStatus('');
+      renderStudio();
+      // The new images are preview links, and the checklist step moved.
+      const links = await teamApi({ action: 'list_preview_links', company_id: cid });
+      if (links.ok) { _detailLinks = links.data.links || []; renderPreviewLinksVa(cid); }
+      await loadFulfilment(cid);
+      const fh = $('fulfilHost');
+      if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); }
+    } finally {
+      [$('stGo'), $('stRemake')].forEach(b => b && (b.disabled = false));
+      if ($('stStatus') && /^(Writing|Loading|Making)/.test($('stStatus').textContent)) studioStatus('');
+    }
+  }
+
+  // ── Drawing ──
+  // Three layouts, all scaled from a 1080 square: 'overlay' (photo full bleed,
+  // copy over a dark fade), 'split' (photo, then a brand-colour panel; side by
+  // side on landscape sizes) and 'band' (brand colour only, no photo).
+  function hexRgb(hex) { const n = parseInt(String(hex).slice(1), 16) || 0; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function onColour(hex) {
+    const [r, g, b] = hexRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#0b0e14' : '#ffffff';
+  }
+  function shade(hex, f) { return '#' + hexRgb(hex).map(v => Math.round(v * f).toString(16).padStart(2, '0')).join(''); }
+
+  function drawCreative(o) {
+    const { W, H } = o;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.textBaseline = 'alphabetic';
+    // One point at the 1080 square: scales with area, never so large the copy
+    // cannot fit across a narrow canvas.
+    const u = Math.min(Math.sqrt(W * H) / 1080, W / 900);
+    const pad = Math.round(64 * u);
+    const brand = o.brand;
+    const font = (w, s) => `${w} ${s}px ${STUDIO_FONT}`;
+
+    const cover = (img, x, y, w, h) => {
+      const k = Math.max(w / img.width, h / img.height);
+      const sw = w / k, sh = h / k;
+      g.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
+    };
+    const wrap = (text, maxW) => {
+      const lines = []; let line = '';
+      for (const w of String(text || '').split(/\s+/).filter(Boolean)) {
+        const next = line ? line + ' ' + w : w;
+        if (line && g.measureText(next).width > maxW) { lines.push(line); line = w; } else line = next;
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    const fit = (text, weight, max, min, maxW, maxLines) => {
+      for (let s = Math.round(max); s >= min; s -= 2) {
+        g.font = font(weight, s);
+        const lines = wrap(text, maxW);
+        if (lines.length <= maxLines) return { size: s, lines };
+      }
+      g.font = font(weight, min);
+      return { size: min, lines: wrap(text, maxW).slice(0, maxLines) };
+    };
+    const rrect = (x, y, w, h, r, fill) => { g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); };
+
+    // Logo on a white plate: logos come dark, light, transparent or boxed, and
+    // white is the one thing every one of them reads on.
+    const logoPlate = (x, y, maxW, maxH) => {
+      if (!o.logo) return;
+      const r = o.logo.width / o.logo.height;
+      let lh = maxH, lw = lh * r;
+      if (lw > maxW) { lw = maxW; lh = lw / r; }
+      const pp = Math.round(lh * 0.24);
+      rrect(x, y, lw + pp * 2, lh + pp * 2, pp * 0.9, '#ffffff');
+      g.drawImage(o.logo, x + pp, y + pp, lw, lh);
+    };
+
+    // Headline, supporting line and button, stacked up from yBottom.
+    const copyBlock = (x, yBottom, maxW, maxH, fg, sub, btnBg, btnFg) => {
+      const cs = Math.round(30 * u);
+      g.font = font(700, cs);
+      const label = String(o.cta || 'Get a free quote').slice(0, 26);
+      const bw = g.measureText(label).width + cs * 2.2, bh = cs * 2.3;
+      rrect(x, yBottom - bh, bw, bh, bh / 2, btnBg);
+      g.fillStyle = btnFg; g.textAlign = 'center';
+      g.fillText(label, x + bw / 2, yBottom - bh / 2 + cs * 0.36);
+      g.textAlign = 'left';
+      let y = yBottom - bh - Math.round(34 * u);
+      if (o.subline) {
+        const s = fit(o.subline, 500, 36 * u, 24 * u, maxW, 2);
+        const lh = s.size * 1.35;
+        g.fillStyle = sub;
+        s.lines.forEach((l, i) => g.fillText(l, x, y - (s.lines.length - 1 - i) * lh));
+        y -= (s.lines.length - 1) * lh + s.size * 1.3 + Math.round(22 * u);
+      }
+      const room = Math.max(maxH - (yBottom - y), 140 * u);
+      const h = fit(o.headline, 800, Math.min(92 * u, room / 2.2), 40 * u, maxW, room > 420 * u ? 4 : 3);
+      const lh = h.size * 1.1;
+      g.fillStyle = fg;
+      h.lines.forEach((l, i) => g.fillText(l, x, y - (h.lines.length - 1 - i) * lh));
+    };
+
+    const dark = onColour(brand) === '#ffffff';
+    const panelFg = onColour(brand), panelSub = dark ? 'rgba(255,255,255,.86)' : 'rgba(11,14,20,.78)';
+    const panelBtnBg = dark ? '#ffffff' : '#0b0e14', panelBtnFg = dark ? shade(brand, 0.8) : '#ffffff';
+    const layout = o.photo ? o.layout : 'band';
+
+    if (layout === 'overlay') {
+      cover(o.photo, 0, 0, W, H);
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, 'rgba(0,0,0,.35)'); gr.addColorStop(0.22, 'rgba(0,0,0,0)');
+      gr.addColorStop(0.42, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.86)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      const bar = Math.round(10 * u);
+      g.fillStyle = brand; g.fillRect(0, H - bar, W, bar);
+      logoPlate(pad, pad, W * 0.42, 70 * u);
+      copyBlock(pad, H - pad - bar, W - pad * 2, H * 0.5, '#ffffff', 'rgba(255,255,255,.88)', brand, onColour(brand));
+    } else if (layout === 'split') {
+      if (W / H >= 1.25) {
+        const pw = Math.round(W * 0.52);
+        cover(o.photo, 0, 0, pw, H);
+        g.fillStyle = brand; g.fillRect(pw, 0, W - pw, H);
+        logoPlate(pw + pad, pad, (W - pw) * 0.7, 60 * u);
+        copyBlock(pw + pad, H - pad, W - pw - pad * 2, H - pad * 3 - 80 * u, panelFg, panelSub, panelBtnBg, panelBtnFg);
+      } else {
+        const ph = Math.round(H * (H / W > 1.5 ? 0.55 : 0.52));
+        cover(o.photo, 0, 0, W, ph);
+        g.fillStyle = brand; g.fillRect(0, ph, W, H - ph);
+        logoPlate(pad, pad, W * 0.42, 66 * u);
+        copyBlock(pad, H - pad, W - pad * 2, H - ph - pad * 2, panelFg, panelSub, panelBtnBg, panelBtnFg);
+      }
+    } else {
+      const gr = g.createLinearGradient(0, 0, W, H);
+      gr.addColorStop(0, brand); gr.addColorStop(1, shade(brand, 0.62));
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      g.fillStyle = 'rgba(255,255,255,.07)';
+      g.beginPath(); g.arc(W * 0.92, H * 0.08, Math.min(W, H) * 0.42, 0, Math.PI * 2); g.fill();
+      logoPlate(pad, pad, W * 0.42, 70 * u);
+      copyBlock(pad, H - pad, W - pad * 2, H - pad * 3 - 100 * u, panelFg, panelSub,
+        dark ? '#ffffff' : '#0b0e14', dark ? shade(brand, 0.75) : '#ffffff');
+    }
+    return c;
   }
 
   // ─── Signup review queue ──────────────────────────────────────────────────
@@ -1886,6 +2376,7 @@ select{cursor:pointer}
       </div>` : ''}
 
       <div id="fulfilHost">${fulfilSectionHtml()}</div>
+      ${mayRun('creatives') ? '<div id="studioHost"></div>' : ''}
 
       <div class="card">
         <div class="sec-title" style="margin-top:0">DFY details</div>
@@ -1937,6 +2428,7 @@ select{cursor:pointer}
     }
     $('newInvBtn').addEventListener('click', () => openInvModal(companyId, c));
     wireFulfilment(companyId);
+    if (mayRun('creatives')) loadStudio(companyId);
     const introBtn = $('detailBody').querySelector('[data-intro-toggle]');
     if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, !cache.intro_email_sent, introBtn));
     const introSendBtn = $('detailBody').querySelector('[data-intro-send]');

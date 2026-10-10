@@ -5,8 +5,25 @@
 //
 //   generate_ad_copy    Claude writes Meta ad copy from what the client told us
 //                       in onboarding, into companies.generated_ad_copy.
-//   generate_creatives  htmlcsstoimage renders that copy into images, which land
-//                       in preview_links so the preview email can attach them.
+//
+//   The creative studio (step 5):
+//   creative_state      the client's assets, brand colour, note, the creative
+//                       direction prompt and the last creative copy.
+//   upload_asset / delete_asset
+//                       the client's logo and photos (preview-images bucket,
+//                       <company>/assets/), listed in company_assets.
+//   save_creative_settings  brand colour and this client's note.
+//   save_creative_prompt    the house creative direction (admins only).
+//   write_creative_copy Claude writes the words for the images, and Google's
+//                       headlines and descriptions, from the prompt + brief.
+//   save_creative       the panel draws each image on a canvas (sizes are the
+//                       team's choice) and sends it here; it lands in
+//                       preview_links like a hand-made Canva upload.
+//
+// Why the panel draws the images rather than this function: a photo creative
+// at story size takes over a second of CPU to render in wasm, and an edge
+// function gets about two. A browser canvas does it instantly, measures text
+// exactly, and costs nothing per image.
 //
 // Separate from team-api on purpose: these two calls reach out to third parties
 // and can take tens of seconds, where every team-api action is a fast database
@@ -22,10 +39,8 @@
 //
 // REQUIRED SECRETS
 //   ANTHROPIC_API_KEY  - the Claude API key (the SDK reads this name itself)
-//   HCTI_USER_ID       - htmlcsstoimage.com User ID
-//   HCTI_API_KEY       - htmlcsstoimage.com API Key
-// Each is checked at the point of use and reported as a clear message rather
-// than a stack trace, so a missing key looks like configuration, not a bug.
+// Checked at the point of use and reported as a clear message rather than a
+// stack trace, so a missing key looks like configuration, not a bug.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
@@ -106,17 +121,24 @@ Deno.serve(async (req: Request) => {
 
     const { data: company } = await admin
       .from("companies")
-      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend")
+      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend, brand_color, creative_note, creative_copy")
       .eq("id", companyId).maybeSingle();
     if (!company) return json({ error: "Client not found" }, 404);
 
-    const ctx = { admin, companyId, company, actor: { id: caller.id, name: actorName } };
+    const ctx = { admin, companyId, company, actor: { id: caller.id, name: actorName }, isAdmin };
 
     if (action === "get_ad_copy") {
       return json({ ad_copy: company.generated_ad_copy ?? null });
     }
     if (action === "generate_ad_copy")   return await generateAdCopy(ctx);
-    if (action === "generate_creatives") return await generateCreatives(ctx, body as Record<string, unknown>);
+    const b = body as Record<string, unknown>;
+    if (action === "creative_state")         return await creativeState(ctx);
+    if (action === "upload_asset")           return await uploadAsset(ctx, b);
+    if (action === "delete_asset")           return await deleteAsset(ctx, b);
+    if (action === "save_creative_settings") return await saveCreativeSettings(ctx, b);
+    if (action === "save_creative_prompt")   return await saveCreativePrompt(ctx, b);
+    if (action === "write_creative_copy")    return await writeCreativeCopy(ctx, b);
+    if (action === "save_creative")          return await saveCreative(ctx, b);
 
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
@@ -130,15 +152,13 @@ type Ctx = {
   companyId: string;
   company: Record<string, unknown>;
   actor: { id: string; name: string };
+  isAdmin: boolean;
 };
 
-// ─── Step 4: ad copy ─────────────────────────────────────────────────────────
-async function generateAdCopy(ctx: Ctx) {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) {
-    return json({ error: "ANTHROPIC_API_KEY is not set on this project, so ad copy cannot be generated yet." }, 503);
-  }
-
+// Everything we actually know, and nothing invented. The onboarding form is
+// the source: if a field is blank we leave it out rather than filling it with
+// a plausible guess, because a guess reads as fact in finished ad copy.
+function briefFacts(ctx: Ctx): string[] {
   const c = ctx.company;
   const profile = (c.dfy_profile || {}) as Record<string, unknown>;
   const pick = (...keys: string[]) => {
@@ -148,10 +168,6 @@ async function generateAdCopy(ctx: Ctx) {
     }
     return null;
   };
-
-  // Everything we actually know, and nothing invented. The onboarding form is
-  // the source: if a field is blank we leave it out rather than filling it with
-  // a plausible guess, because a guess reads as fact in finished ad copy.
   const facts: string[] = [];
   const add = (label: string, v: unknown) => {
     if (v != null && String(v).trim()) facts.push(`${label}: ${String(v).trim().slice(0, 1200)}`);
@@ -165,7 +181,17 @@ async function generateAdCopy(ctx: Ctx) {
   add("Products and brands they install", pick("products_brands"));
   add("Anything else they told us", pick("additional_info"));
   add("Max daily ad spend", c.max_daily_ad_spend);
+  return facts;
+}
 
+// ─── Step 4: ad copy ─────────────────────────────────────────────────────────
+async function generateAdCopy(ctx: Ctx) {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    return json({ error: "ANTHROPIC_API_KEY is not set on this project, so ad copy cannot be generated yet." }, 503);
+  }
+
+  const facts = briefFacts(ctx);
   const client = new Anthropic({ apiKey });
 
   const system = [
@@ -249,140 +275,251 @@ async function generateAdCopy(ctx: Ctx) {
   return json({ ok: true, ad_copy: record });
 }
 
-// ─── Step 5: creatives ───────────────────────────────────────────────────────
-// htmlcsstoimage renders an HTML/CSS block to a hosted PNG. The templates below
-// are deliberately plain: they are for the client to approve a MESSAGE, not a
-// finished design. Anything bespoke is made in Canva and uploaded through the
-// existing preview-image upload, which is why the checklist keeps a manual
-// creative step alongside this one.
-async function generateCreatives(ctx: Ctx, body: Record<string, unknown>) {
-  const userId = Deno.env.get("HCTI_USER_ID");
-  const apiKey = Deno.env.get("HCTI_API_KEY");
-  if (!userId || !apiKey) {
-    return json({
-      error: "HCTI_USER_ID and HCTI_API_KEY are not set on this project, so creatives cannot be rendered yet. " +
-             "Creatives can still be made in Canva and uploaded as preview images.",
-    }, 503);
-  }
+// ─── Step 5: the creative studio ─────────────────────────────────────────────
+// A client's own photos and logo, the words Claude writes for the images, and
+// the finished images the panel draws. See the header for why the drawing
+// happens in the browser.
 
-  // The creatives are rendered from the ad copy. If there is none yet, write it
-  // first rather than refusing, so this can be run at any stage.
-  let copy = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
-  if (!Array.isArray(copy.headlines) || !copy.headlines.length) {
-    const res = await generateAdCopy(ctx);
-    if (!res.ok) return res;
-    copy = ((await res.json()).ad_copy || {}) as Record<string, unknown>;
-  }
-  const headlines = Array.isArray(copy.headlines) ? (copy.headlines as string[]) : [];
-  if (!headlines.length) {
-    return json({ error: "The ad copy came back with no headlines, so there is nothing to render. Try again." }, 502);
-  }
+const BUCKET = "preview-images";
+const HEX = /^#[0-9a-f]{6}$/i;
 
-  const name = String(ctx.company.name || "Your business");
-  const area = String(ctx.company.service_area || "");
-  const cta  = String(copy.call_to_action || "Get a quote");
+// The house creative direction. Editable by an admin in the panel (stored in
+// platform_settings.creative_prompt); this is what applies until they do.
+// The hard rules (never invent a fact, lengths, no dashes) are NOT in here:
+// they are fixed below, so editing the direction can never switch them off.
+const DEFAULT_CREATIVE_PROMPT = [
+  "Write the words that go ON the ad images: a headline, one supporting line and a button label.",
+  "The images are for Meta (Facebook, Instagram) and Google image ads aimed at homeowners.",
+  "",
+  "- The headline is read in under two seconds on a phone: 3 to 7 words, a clear homeowner benefit or outcome, not the business name.",
+  "- The supporting line adds one concrete reason to act: local, the service area, what the quote involves, a real offer from the brief.",
+  "- The button says what happens next: 'Get a free quote', 'Check your roof', 'Book a quote'. 2 to 4 words.",
+  "- Each variant takes a different angle (savings, local and trusted, quick and easy, quality of the products) so they can be tested against each other.",
+  "- Plain, confident, friendly. Sounds like a local tradie, not an agency.",
+].join("\n");
 
-  // Three variants from the three strongest headlines, so the client has a
-  // genuine choice rather than one take-it-or-leave-it image.
-  const wanted = Math.min(Math.max(Number(body.count) || 3, 1), 5);
-  const picks = headlines.slice(0, wanted);
+const CreativeCopySchema = z.object({
+  variants: z.array(z.object({
+    headline: z.string().describe("3 to 7 words, under 45 characters"),
+    subline: z.string().describe("One supporting line, under 70 characters"),
+    cta: z.string().describe("Button label, 2 to 4 words, under 22 characters"),
+    angle: z.string().describe("The angle in a few words, for the team"),
+  })).describe("One per requested image variant"),
+  google: z.object({
+    headlines: z.array(z.string()).describe("5 Google headlines, each 30 characters or fewer"),
+    long_headline: z.string().describe("One Google long headline, 90 characters or fewer"),
+    descriptions: z.array(z.string()).describe("4 Google descriptions, each 90 characters or fewer"),
+  }),
+  notes_for_team: z.string().describe("Anything to check before it goes live, or what the brief was missing"),
+});
 
-  const results: Array<{ url: string; label: string }> = [];
-  const failures: string[] = [];
-
-  for (let i = 0; i < picks.length; i++) {
-    const html = creativeHtml(picks[i], name, area, cta, i);
-    try {
-      const res = await fetch("https://hcti.io/v1/image", {
-        method: "POST",
-        headers: {
-          Authorization: "Basic " + btoa(`${userId}:${apiKey}`),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          html,
-          // 1080x1080, the Meta feed square. device_scale 2 so it is not soft
-          // on a retina screen when the client opens the preview email.
-          viewport_width: 1080,
-          viewport_height: 1080,
-          device_scale: 2,
-          ms_delay: 250,
-        }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || !payload?.url) {
-        failures.push(`Variant ${i + 1}: ${payload?.error || `HTTP ${res.status}`}`);
-        continue;
-      }
-      results.push({ url: payload.url as string, label: `Creative ${i + 1} - ${picks[i]}`.slice(0, 300) });
-    } catch (e) {
-      failures.push(`Variant ${i + 1}: ${(e as Error).message}`);
-    }
-  }
-
-  if (!results.length) {
-    await setStep(ctx, "creatives_generated", "blocked", `Rendering failed: ${failures.join("; ")}`.slice(0, 500));
-    return json({ error: `No creatives could be rendered. ${failures.join("; ")}` }, 502);
-  }
-
-  // Into preview_links, which is what the preview email already reads, so a
-  // generated creative and a hand-made Canva upload are the same kind of thing
-  // from here on.
-  const rows = results.map((r) => ({
-    company_id: ctx.companyId, kind: "image", url: r.url, label: r.label, created_by: ctx.actor.id,
-  }));
-  const { error: insErr } = await ctx.admin.from("preview_links").insert(rows);
-  if (insErr) return json({ error: insErr.message }, 500);
-
-  await setStep(
-    ctx, "creatives_generated",
-    failures.length ? "in_progress" : "done",
-    failures.length
-      ? `${results.length} rendered, ${failures.length} failed: ${failures.join("; ")}`.slice(0, 500)
-      : `${results.length} creatives rendered`,
-  );
-
-  return json({ ok: true, created: results.length, links: results, failures });
+async function creativePrompt(ctx: Ctx): Promise<{ prompt: string; custom: boolean }> {
+  const { data } = await ctx.admin.from("platform_settings").select("creative_prompt").eq("id", 1).maybeSingle();
+  const custom = String(data?.creative_prompt ?? "").trim();
+  return { prompt: custom || DEFAULT_CREATIVE_PROMPT, custom: !!custom };
 }
 
-// A plain, legible square. Inline CSS and a system font stack on purpose: no
-// external fetch means nothing to fail at render time or silently substitute.
-function creativeHtml(headline: string, business: string, area: string, cta: string, variant: number): string {
-  const esc = (v: string) =>
-    String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const themes = [
-    { bg: "#0f172a", fg: "#ffffff", accent: "#4797ff", sub: "#a8b3c7" },
-    { bg: "#f7f8fb", fg: "#14161c", accent: "#1063d6", sub: "#5b6474" },
-    { bg: "#10231c", fg: "#ffffff", accent: "#10b981", sub: "#9fc2b5" },
-    { bg: "#1b1526", fg: "#ffffff", accent: "#a78bfa", sub: "#b7abc9" },
-    { bg: "#241611", fg: "#ffffff", accent: "#fb923c", sub: "#cbb0a2" },
-  ];
-  const t = themes[variant % themes.length];
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{width:1080px;height:1080px;background:${t.bg};color:${t.fg};
-       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-       display:flex;flex-direction:column;justify-content:space-between;padding:88px}
-  .eyebrow{font-size:30px;letter-spacing:.14em;text-transform:uppercase;color:${t.accent};font-weight:700}
-  .headline{font-size:96px;line-height:1.08;font-weight:800;letter-spacing:-.02em;max-width:880px}
-  .area{font-size:38px;color:${t.sub};margin-top:32px}
-  .footer{display:flex;align-items:center;justify-content:space-between;gap:24px}
-  .biz{font-size:34px;font-weight:600;color:${t.sub};max-width:560px}
-  .cta{background:${t.accent};color:${t.bg === "#f7f8fb" ? "#ffffff" : "#0b0e14"};
-       font-size:36px;font-weight:700;padding:28px 46px;border-radius:999px;white-space:nowrap}
-  .rule{height:10px;width:140px;background:${t.accent};border-radius:999px;margin-bottom:44px}
-</style></head><body>
-  <div><div class="eyebrow">Free quote</div></div>
-  <div>
-    <div class="rule"></div>
-    <div class="headline">${esc(headline)}</div>
-    ${area ? `<div class="area">${esc(area)}</div>` : ""}
-  </div>
-  <div class="footer">
-    <div class="biz">${esc(business)}</div>
-    <div class="cta">${esc(cta)}</div>
-  </div>
-</body></html>`;
+async function creativeState(ctx: Ctx) {
+  const [{ data: assets }, p] = await Promise.all([
+    ctx.admin.from("company_assets").select("id, kind, url, width, height, label, created_at")
+      .eq("company_id", ctx.companyId).order("created_at", { ascending: true }),
+    creativePrompt(ctx),
+  ]);
+  return json({
+    assets: assets ?? [],
+    brand_color: ctx.company.brand_color ?? null,
+    creative_note: ctx.company.creative_note ?? "",
+    creative_copy: ctx.company.creative_copy ?? null,
+    prompt: p.prompt,
+    prompt_is_default: !p.custom,
+    default_prompt: DEFAULT_CREATIVE_PROMPT,
+    can_edit_prompt: ctx.isAdmin,
+    business: { name: ctx.company.name ?? "", area: ctx.company.service_area ?? "" },
+  });
+}
+
+/** base64 (bare or data: URL) to bytes, or null. */
+function decodeImage(data: unknown): Uint8Array | null {
+  if (typeof data !== "string" || !data) return null;
+  try {
+    const raw = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
+    const bin = atob(raw);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function storeImage(ctx: Ctx, folder: string, data: unknown, contentType: string) {
+  // PNG and JPEG only: those are what every ad platform and every browser
+  // canvas reads, and the panel converts anything else before sending.
+  if (!/^image\/(png|jpeg)$/.test(contentType)) throw new Error("Only PNG or JPG images");
+  const bytes = decodeImage(data);
+  if (!bytes) throw new Error("Invalid image data");
+  if (bytes.length > 10 * 1024 * 1024) throw new Error("Image exceeds 10 MB");
+  const path = `${ctx.companyId}/${folder}/${crypto.randomUUID()}.${contentType === "image/png" ? "png" : "jpg"}`;
+  const { error } = await ctx.admin.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: false });
+  if (error) throw new Error(error.message);
+  const { data: pub } = ctx.admin.storage.from(BUCKET).getPublicUrl(path);
+  return { path, url: pub.publicUrl };
+}
+
+async function uploadAsset(ctx: Ctx, b: Record<string, unknown>) {
+  const kind = b.kind === "logo" ? "logo" : "photo";
+  let stored;
+  try {
+    stored = await storeImage(ctx, "assets", b.data, String(b.content_type || ""));
+  } catch (e) {
+    return json({ error: (e as Error).message }, 400);
+  }
+  // One logo per client: a new one replaces the old.
+  if (kind === "logo") {
+    const { data: old } = await ctx.admin.from("company_assets").select("id, path")
+      .eq("company_id", ctx.companyId).eq("kind", "logo");
+    if (old?.length) {
+      await ctx.admin.storage.from(BUCKET).remove(old.map((o) => o.path as string));
+      await ctx.admin.from("company_assets").delete().in("id", old.map((o) => o.id as string));
+    }
+  }
+  const dim = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
+  const { data, error } = await ctx.admin.from("company_assets").insert({
+    company_id: ctx.companyId, kind, url: stored.url, path: stored.path,
+    width: dim(b.width), height: dim(b.height),
+    label: String(b.filename || "").trim().slice(0, 200) || null,
+    created_by: ctx.actor.id,
+  }).select("id, kind, url, width, height, label, created_at").single();
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, asset: data });
+}
+
+async function deleteAsset(ctx: Ctx, b: Record<string, unknown>) {
+  const { data: row } = await ctx.admin.from("company_assets").select("id, path")
+    .eq("id", String(b.asset_id || "")).eq("company_id", ctx.companyId).maybeSingle();
+  if (!row) return json({ error: "No such asset for this client" }, 404);
+  await ctx.admin.storage.from(BUCKET).remove([row.path as string]);
+  await ctx.admin.from("company_assets").delete().eq("id", row.id);
+  return json({ ok: true });
+}
+
+async function saveCreativeSettings(ctx: Ctx, b: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  if ("brand_color" in b) {
+    const c = String(b.brand_color ?? "").trim();
+    if (c && !HEX.test(c)) return json({ error: "Brand colour must be a hex colour like #1063d6" }, 400);
+    patch.brand_color = c ? c.toLowerCase() : null;
+  }
+  if ("creative_note" in b) patch.creative_note = String(b.creative_note ?? "").trim().slice(0, 2000) || null;
+  if (!Object.keys(patch).length) return json({ ok: true });
+  const { error } = await ctx.admin.from("companies").update(patch).eq("id", ctx.companyId);
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true });
+}
+
+async function saveCreativePrompt(ctx: Ctx, b: Record<string, unknown>) {
+  if (!ctx.isAdmin) return json({ error: "Only an admin can change the creative direction" }, 403);
+  const text = String(b.prompt ?? "").trim().slice(0, 6000);
+  // Blank, or identical to the built-in one, means "use the default", so a
+  // later improvement to the default reaches everyone who never customised it.
+  const value = !text || text === DEFAULT_CREATIVE_PROMPT ? null : text;
+  const { error } = await ctx.admin.from("platform_settings").update({ creative_prompt: value }).eq("id", 1);
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, prompt_is_default: value === null });
+}
+
+async function writeCreativeCopy(ctx: Ctx, b: Record<string, unknown>) {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY is not set on this project, so creative copy cannot be written yet." }, 503);
+
+  const count = Math.min(Math.max(Number(b.count) || 3, 1), 8);
+  // The note can arrive with the request so what is in the box is what is used,
+  // saved or not.
+  const note = String(b.creative_note ?? ctx.company.creative_note ?? "").trim().slice(0, 2000);
+  const { prompt: direction } = await creativePrompt(ctx);
+  const facts = briefFacts(ctx);
+  const meta = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
+
+  const system = [
+    "You write the image text for lead generation ads for Australian home services businesses.",
+    "",
+    "Fixed rules, which override anything in the creative direction:",
+    "1. Never invent a fact. No prices, discounts, rebates, guarantees, timeframes, star ratings, review counts, years in business or accreditations unless they appear in the brief. If the brief is thin, write copy that works without specifics.",
+    "2. No claim a regulator would want substantiated: no 'best', 'cheapest', 'number one', nothing absolute.",
+    "3. Australian English. No emojis, no ALL CAPS, no clickbait. Sentence case.",
+    "4. Never use an em dash or en dash. Use a comma, a full stop or a plain hyphen.",
+    "5. Keep to every length in the schema exactly: Google rejects a headline over 30 characters or a description over 90.",
+    "",
+    "CREATIVE DIRECTION (from the agency):",
+    direction,
+  ].join("\n");
+
+  const user = [
+    `Write ${count} image variants, plus the Google copy, for this business.`,
+    "",
+    "BRIEF (everything we know - do not add to it):",
+    facts.length ? facts.map((f) => `  - ${f}`).join("\n") : "  - (No onboarding detail captured yet)",
+    note ? `\nFOR THIS CLIENT SPECIFICALLY:\n${note}` : "",
+    Array.isArray(meta.headlines) && meta.headlines.length
+      ? `\nTheir Meta ad headlines, for consistency (do not just repeat them):\n${(meta.headlines as string[]).map((h) => `  - ${h}`).join("\n")}`
+      : "",
+  ].join("\n");
+
+  let parsed: z.infer<typeof CreativeCopySchema> | null = null;
+  try {
+    const client = new Anthropic({ apiKey });
+    const res = await client.messages.parse({
+      model: "claude-opus-5",
+      max_tokens: 8000,
+      system,
+      messages: [{ role: "user", content: user }],
+      output_config: { format: zodOutputFormat(CreativeCopySchema) },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    } as Parameters<typeof client.messages.parse>[0]);
+    if (res.stop_reason === "refusal") {
+      return json({ error: `The model declined this request: ${res.stop_details?.explanation || "no reason given"}` }, 422);
+    }
+    parsed = res.parsed_output as z.infer<typeof CreativeCopySchema> | null;
+  } catch (e) {
+    const msg = (e as Error).message || "The request failed";
+    console.error("write_creative_copy failed:", msg);
+    return json({ error: `Creative copy failed: ${msg}` }, 502);
+  }
+  if (!parsed || !parsed.variants?.length) return json({ error: "The model returned no usable copy. Try again." }, 502);
+
+  const record = {
+    ...parsed,
+    variants: parsed.variants.slice(0, count),
+    generated_at: new Date().toISOString(),
+    generated_by: ctx.actor.name,
+  };
+  const patch: Record<string, unknown> = { creative_copy: record };
+  if ("creative_note" in b) patch.creative_note = note || null;
+  const { error } = await ctx.admin.from("companies").update(patch).eq("id", ctx.companyId);
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, creative_copy: record });
+}
+
+// One finished image from the panel. `last` marks the end of a batch, which is
+// when the checklist step moves - once, with the count, not per image.
+async function saveCreative(ctx: Ctx, b: Record<string, unknown>) {
+  let stored;
+  try {
+    stored = await storeImage(ctx, "creatives", b.data, String(b.content_type || "image/jpeg"));
+  } catch (e) {
+    return json({ error: (e as Error).message }, 400);
+  }
+  const label = String(b.label || "Creative").trim().slice(0, 300);
+  const { error } = await ctx.admin.from("preview_links").insert({
+    company_id: ctx.companyId, kind: "image", url: stored.url, label, created_by: ctx.actor.id,
+  });
+  if (error) return json({ error: error.message }, 500);
+  if (b.last) {
+    const n = Number(b.batch_count) || 1;
+    await setStep(ctx, "creatives_generated", "done", `${n} creative${n === 1 ? "" : "s"} made in the creative studio`);
+  }
+  return json({ ok: true, url: stored.url });
 }
 
 // ─── Shared: move a step and log it ──────────────────────────────────────────
