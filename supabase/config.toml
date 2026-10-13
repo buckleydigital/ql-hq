@@ -108,8 +108,8 @@ verify_jwt = false
 verify_jwt = false
 
 # ── Everything below matches what is live (checked 2026-10-08) ─────
-# The deploy workflow reads this file, and a function missing here would be
-# deployed with verify_jwt = true, which breaks webhooks and public endpoints.
+# Deploy each function with the verify_jwt listed here: deploying one with
+# verify_jwt = true by mistake breaks webhooks and public endpoints.
 # Every function in supabase/functions/ must have an entry.
 
 # Webhooks and server-to-server calls (signature / shared-secret auth).
