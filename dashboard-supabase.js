@@ -2910,7 +2910,7 @@ async function loadPipeline() {
   try {
     const { data } = await sb
       .from("leads")
-      .select("id, name, email, phone, pipeline_stage, value, ai_score, ai_status, ai_summary, created_at")
+      .select("*")
       .eq("company_id", currentCompanyId);
     allLeads = data || [];
     buildKanban(allLeads);
@@ -5561,7 +5561,7 @@ async function openOpportunityModal(leadId) {
   setOppField("oppOverviewValue", lead.value || "");
   setOppField("oppOverviewAiScore", aiScoreDisplay(lead));
   setOppField("oppOverviewAiStatus", aiStatusLabel(lead));
-  setOppField("oppOverviewAddress", lead.address ? `${lead.address}${lead.postcode ? `, ${lead.postcode}` : ""}` : "");
+  setOppField("oppOverviewAddress", lead.address || "");
   setOppField("oppOverviewAiSummary", lead.ai_summary || "No AI summary yet.");
   setOppField("oppOverviewNotes", lead.notes || "");
   renderLeadBill(lead, "opp");
