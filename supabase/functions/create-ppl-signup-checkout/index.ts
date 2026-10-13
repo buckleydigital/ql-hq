@@ -99,6 +99,16 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    // Pay-per-lead orders can be paused from platform_settings.ppl_orders_paused.
+    // Nothing is created and nobody is charged while they are.
+    const { data: settings } = await supabase
+      .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
+    if (settings?.ppl_orders_paused === true) {
+      return new Response(
+        JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
     const {
       first_name,
       last_name,

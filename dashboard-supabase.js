@@ -1091,6 +1091,19 @@ const PAGE_META = {
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
+// Lead pack orders are paused. Set to false to take orders again (and set
+// platform_settings.ppl_orders_paused to false, which the checkout checks).
+const PPL_ORDERS_PAUSED = true;
+const PPL_PAUSED_MSG = 'Lead pack orders are paused right now. Your existing orders and leads are not affected.';
+if (PPL_ORDERS_PAUSED) {
+  document.addEventListener('DOMContentLoaded', () => {
+    const b = document.getElementById('buyLeadsCheckoutBtn');
+    if (b) { b.disabled = true; b.style.opacity = '.5'; b.style.cursor = 'not-allowed'; b.textContent = 'Orders paused'; }
+    const n = document.getElementById('buyLeadsPausedNote');
+    if (n) n.style.display = 'block';
+  });
+}
+
 // Buy Leads is shown only to accounts on the 'ppl' plan.
 function isPplAccount() {
   return currentCompanyPlan === "ppl";
@@ -7534,6 +7547,7 @@ function blRender(refit) {
 }
 
 async function startPplCheckout() {
+  if (PPL_ORDERS_PAUSED) { toast(PPL_PAUSED_MSG, true); return; }
   const cov       = blPayload();
   const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
 
@@ -7657,6 +7671,7 @@ function renderBuyLeadsOrders(orders) {
 }
 
 async function retryPplOrder(orderId) {
+  if (PPL_ORDERS_PAUSED) { toast(PPL_PAUSED_MSG, true); return; }
   const o = _pplOrdersCache.get(orderId);
   if (!o) { toast('Order not found.', true); return; }
 
