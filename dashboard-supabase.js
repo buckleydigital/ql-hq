@@ -6880,7 +6880,7 @@ async function loadBuyLeads() {
   blReset();
 }
 
-const BL_NICHES = ['solar', 'solar-battery', 'hvac', 'battery-retrofit'];
+const BL_NICHES = ['solar-battery', 'hvac', 'battery-retrofit'];
 
 function renderBuyLeadsNiches() {
   const el = document.getElementById('buyLeadsNicheCards');

@@ -5,6 +5,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
 import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
+import { isPplNiche } from '../_shared/ppl-niches.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -141,6 +142,7 @@ serve(async (req) => {
 
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
     const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
+    if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
 
     // Validate price from DB - never trust client
     const pricing = await resolvePrice(normNiche, normSubNiche, area_city)

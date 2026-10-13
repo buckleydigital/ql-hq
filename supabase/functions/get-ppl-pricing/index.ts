@@ -6,6 +6,7 @@
 // the dashboard and the checkout functions all read.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isPplNiche } from '../_shared/ppl-niches.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -41,6 +42,13 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: 'niche is required' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  if (!isPplNiche(niche)) {
+    return new Response(
+      JSON.stringify({ error: `Pay per lead is not offered for: ${niche}` }),
+      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 
