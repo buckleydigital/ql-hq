@@ -41,15 +41,6 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-
-    // Kill switch: set the PPL_SALES_OPEN secret to 'false' in Supabase to stop
-    // pay-per-lead sales. Nothing is created and nobody is charged while it is.
-    if (Deno.env.get('PPL_SALES_OPEN') === 'false') {
-      return new Response(
-        JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
     // Reorders are for signed-in pay-per-lead accounts only: the caller must
     // belong to the company (or be a platform admin) and the company must be
     // on the 'ppl' plan.

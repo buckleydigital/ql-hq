@@ -1091,13 +1091,9 @@ const PAGE_META = {
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
-// Pay-per-lead sales switch. When false, Buy Leads is hidden from every
-// account; the checkout functions also refuse unless the Supabase secret
-// PPL_SALES_OPEN is "true". Only accounts with plan 'ppl' ever see it.
-const PPL_SALES_OPEN = true;
-
+// Buy Leads is shown only to accounts on the 'ppl' plan.
 function isPplAccount() {
-  return PPL_SALES_OPEN && currentCompanyPlan === "ppl";
+  return currentCompanyPlan === "ppl";
 }
 
 function isAdmin() {
