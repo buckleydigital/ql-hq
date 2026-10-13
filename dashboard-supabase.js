@@ -1091,18 +1091,21 @@ const PAGE_META = {
   "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
 };
 
-// Lead pack orders are paused. Set to false to take orders again (and set
-// platform_settings.ppl_orders_paused to false, which the checkout checks).
-const PPL_ORDERS_PAUSED = true;
+// Lead pack orders can be paused with platform_settings.ppl_orders_paused in
+// ql-hq, the one switch the website, this page and the checkout all read.
+let PPL_ORDERS_PAUSED = false;
 const PPL_PAUSED_MSG = 'Lead pack orders are paused right now. Your existing orders and leads are not affected.';
-if (PPL_ORDERS_PAUSED) {
-  document.addEventListener('DOMContentLoaded', () => {
-    const b = document.getElementById('buyLeadsCheckoutBtn');
-    if (b) { b.disabled = true; b.style.opacity = '.5'; b.style.cursor = 'not-allowed'; b.textContent = 'Orders paused'; }
-    const n = document.getElementById('buyLeadsPausedNote');
-    if (n) n.style.display = 'block';
-  });
-}
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/get-ppl-pricing?status=1`);
+    PPL_ORDERS_PAUSED = (await res.json()).paused === true;
+  } catch (_e) { return; } // the checkout still refuses while paused
+  if (!PPL_ORDERS_PAUSED) return;
+  const b = document.getElementById('buyLeadsCheckoutBtn');
+  if (b) { b.disabled = true; b.style.opacity = '.5'; b.style.cursor = 'not-allowed'; b.textContent = 'Orders paused'; }
+  const n = document.getElementById('buyLeadsPausedNote');
+  if (n) n.style.display = 'block';
+});
 
 // Buy Leads is shown only to accounts on the 'ppl' plan.
 function isPplAccount() {

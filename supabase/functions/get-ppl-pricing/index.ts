@@ -1,5 +1,9 @@
 // Public endpoint - returns PPL price for a given niche + optional sub_niche + optional area.
-// GET ?niche=roofing&sub_niche=tile_metal&area=Brisbane  → { price_per_lead, discount_tiers }
+// GET ?niche=roofing&sub_niche=tile_metal&area=Brisbane  → { price_per_lead, discount_tiers, paused }
+// GET ?status=1                                          → { paused }
+//
+// paused is platform_settings.ppl_orders_paused: the one switch the website,
+// the dashboard and the checkout functions all read.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -17,6 +21,18 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const url      = new URL(req.url)
+
+  const { data: settings } = await supabase
+    .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
+  const paused = settings?.ppl_orders_paused === true
+
+  if (url.searchParams.has('status')) {
+    return new Response(
+      JSON.stringify({ paused }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
   const niche    = url.searchParams.get('niche')?.toLowerCase().trim().replace(/-/g, '_')
   const subNiche = url.searchParams.get('sub_niche')?.toLowerCase().trim().replace(/-/g, '_') || null
   const area     = url.searchParams.get('area')?.toLowerCase().trim() || null
@@ -85,6 +101,7 @@ serve(async (req) => {
       sold_out: pricing.sold_out === true,
       max_order_qty: pricing.max_order_qty ?? null,
       discount_tiers: tiers || [],
+      paused,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
