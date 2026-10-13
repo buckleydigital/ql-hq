@@ -932,7 +932,14 @@ Deno.serve(async (req) => {
     // auto-attributed to one of the sharing companies.
     let allowNewLead = false;
 
-    if (candidateConfigs.length === 1) {
+    // The shared number always goes through lead matching, even when only one
+    // company on it is active right now: every company has this number, so
+    // "only one active config" says nothing about who the sender belongs to.
+    const { data: settingsRow } = await db
+      .from("platform_settings").select("shared_ppl_twilio_number").eq("id", 1).maybeSingle();
+    const sharedNumber = normalisePhone((settingsRow?.shared_ppl_twilio_number as string | null) || "");
+
+    if (candidateConfigs.length === 1 && toNumber !== sharedNumber) {
       smsConfig = candidateConfigs[0];
       allowNewLead = true;
     } else {

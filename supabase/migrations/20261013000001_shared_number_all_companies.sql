@@ -1,15 +1,19 @@
 -- =============================================================================
--- Managed companies get the shared SMS number on sign up
+-- Every company gets the shared SMS number on sign up
 -- =============================================================================
--- Only a PPL purchase ever assigned the shared number (stripe-webhook ->
--- provision-twilio), so managed clients - who arrive through Stripe, growth
--- onboarding, sync-from-mc, create-user-silent or an admin plan change - were
--- left with no number at all until someone noticed.
+-- +61485016260 (platform_settings.shared_ppl_twilio_number) is the default
+-- number for every client, whatever their plan. Until now only a PPL purchase
+-- assigned it (stripe-webhook -> provision-twilio), so managed and free
+-- clients - who arrive through Stripe, growth onboarding, sync-from-mc,
+-- create-user-silent or an admin - were left with no number at all until
+-- someone noticed.
 --
--- A trigger rather than a call in each of those paths: they all end in the
--- companies row saying plan = 'managed', so this is the one place none of
--- them can miss. Managed only, deliberately: a PPL company must still reach
--- provision-twilio with no number, because that is what switches its AI on.
+-- A trigger rather than a call in each of those paths, so none can miss it.
+-- Assigning the number does not switch the AI on: provision-twilio still does
+-- that on a PPL purchase, and no longer skips a company just because it
+-- already has the number. Clients only ever see texts from their own leads:
+-- twilio-inbound-sms routes every message on the shared number by matching
+-- the sender against each company's leads.
 --
 -- Same shape as provision-twilio and the admin bulk assign: a twilio_numbers
 -- row with no twilio_sid (so it can never be released on Twilio), and the
@@ -20,7 +24,10 @@
 -- row this fills in (same-event triggers fire in name order).
 -- =============================================================================
 
-create or replace function public.assign_shared_number_to_managed()
+drop trigger if exists auto_provision_sms_shared_number on public.companies;
+drop function if exists public.assign_shared_number_to_managed();
+
+create or replace function public.assign_shared_number_to_company()
 returns trigger
 language plpgsql
 security definer
@@ -29,9 +36,6 @@ as $$
 declare
   shared text;
 begin
-  if new.plan is distinct from 'managed' then
-    return new;
-  end if;
   if exists (select 1 from public.twilio_numbers where company_id = new.id) then
     return new;
   end if;
@@ -54,8 +58,7 @@ begin
 end;
 $$;
 
-drop trigger if exists auto_provision_sms_shared_number on public.companies;
 create trigger auto_provision_sms_shared_number
-  after insert or update of plan on public.companies
+  after insert on public.companies
   for each row
-  execute function public.assign_shared_number_to_managed();
+  execute function public.assign_shared_number_to_company();

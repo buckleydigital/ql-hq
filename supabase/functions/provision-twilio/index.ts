@@ -31,34 +31,34 @@ serve(async (req) => {
   const { company_id } = await req.json()
   if (!company_id) return new Response('Missing company_id', { status: 400 })
 
-  // Skip if already provisioned
-  const { data: existing } = await supabase
-    .from('twilio_numbers')
-    .select('id, phone_number')
-    .eq('company_id', company_id)
-    .maybeSingle()
-
-  if (existing) {
-    return new Response(
-      JSON.stringify({ already_provisioned: true, phone_number: existing.phone_number }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
-
   try {
-    const phoneNumber = await getSharedTwilioNumber()
+    // Every company is given the shared number when it is created (see the
+    // auto_provision_sms_shared_number trigger), so the row is normally
+    // already there and this only switches the AI on. Still inserted here if
+    // missing, for any company that predates the trigger.
+    const { data: existing } = await supabase
+      .from('twilio_numbers')
+      .select('id, phone_number')
+      .eq('company_id', company_id)
+      .limit(1)
+      .maybeSingle()
 
-    // Assign the shared number - nothing to buy from Twilio, it's already
-    // purchased and wired to the inbound webhook. Deliberately no
-    // twilio_sid stored: admin's "delete number" action releases a number on
-    // Twilio when it has a sid, and this number must never be released while
-    // other companies are still assigned to it.
-    const { error: insertErr } = await supabase.from('twilio_numbers').insert({
-      company_id,
-      phone_number: phoneNumber,
-      friendly_name: 'QuoteLeads SMS (shared PPL number)',
-    })
-    if (insertErr) throw new Error(`twilio_numbers insert: ${insertErr.message}`)
+    let phoneNumber = existing?.phone_number as string | undefined
+    if (!phoneNumber) {
+      phoneNumber = await getSharedTwilioNumber()
+
+      // Assign the shared number - nothing to buy from Twilio, it's already
+      // purchased and wired to the inbound webhook. Deliberately no
+      // twilio_sid stored: admin's "delete number" action releases a number on
+      // Twilio when it has a sid, and this number must never be released while
+      // other companies are still assigned to it.
+      const { error: insertErr } = await supabase.from('twilio_numbers').insert({
+        company_id,
+        phone_number: phoneNumber,
+        friendly_name: 'QuoteLeads SMS (shared PPL number)',
+      })
+      if (insertErr) throw new Error(`twilio_numbers insert: ${insertErr.message}`)
+    }
 
     // Enable AI agent
     await supabase
