@@ -913,11 +913,15 @@ Deno.serve(async (req) => {
     // company to see the conversation. This is the only thing standing
     // between "shared number" and leaking one company's texts into another's
     // dashboard, so it must never fall back to guessing.
+    //
+    // Every company on the number is a candidate, AI on or off: a reply from a
+    // lead whose company has the AI switched off still belongs in that
+    // company's conversations (it is stored without a reply, below), rather
+    // than being dropped because nobody "active" owned it.
     const { data: candidateConfigs, error: configErr } = await db
       .from("sms_agent_config")
       .select("*, companies:company_id(id, name, settings)")
-      .eq("twilio_number", toNumber)
-      .eq("is_active", true);
+      .eq("twilio_number", toNumber);
 
     if (configErr || !candidateConfigs || candidateConfigs.length === 0) {
       console.error("No SMS config for number:", toNumber, configErr);
@@ -983,7 +987,7 @@ Deno.serve(async (req) => {
 
       smsConfig = candidateConfigs.find((c) => c.company_id === resolvedCompanyId);
       if (!smsConfig) {
-        console.error(`Resolved company ${resolvedCompanyId} has no active config on ${toNumber} - dropping.`);
+        console.error(`Resolved company ${resolvedCompanyId} has no config on ${toNumber} - dropping.`);
         return twimlResponse("");
       }
     }
@@ -1025,6 +1029,28 @@ Deno.serve(async (req) => {
       // respect it even if a return below skips the usual mirror. The mirror is
       // idempotent on the Twilio SID, so a second one later is harmless.
       await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+    }
+
+    // 2c. AI switched off for this company: keep the reply in its
+    // conversations and stop. No AI reply, no credits used, and never a new
+    // lead - same as auto-reply off, but ahead of the credit check because
+    // storing a message costs nothing.
+    if (!smsConfig.is_active) {
+      const { data: offLead } = await db
+        .from("leads")
+        .select("id")
+        .eq("company_id", companyId)
+        .in("phone", phoneCandidates)
+        .limit(1)
+        .maybeSingle();
+      if (!offLead && !allowNewLead) {
+        console.warn(`Shared number ${toNumber}: no existing lead for ${fromNumber} in company ${companyId} - dropping.`);
+        return twimlResponse("");
+      }
+      await storeInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, offLead?.id);
+      const optOut = await flagOptOutIfKeyword(db, companyId, fromNumber, inboundBody);
+      await maybeMirrorInboundOnly(db, companyId, fromNumber, toNumber, inboundBody, params.MessageSid || null);
+      return twimlResponse(optOut === "stopped" ? "You have been unsubscribed and won't receive further messages. Reply START to opt back in." : "");
     }
 
     // 3. Check SMS credits
