@@ -43,6 +43,22 @@ serve(async (req) => {
     return new Response('OK', { status: 200 })
   }
 
+  // Stripe can deliver the same event more than once (retries, timeouts).
+  // Record each checkout event before acting on it so a repeat delivery can't
+  // add credits or create an order twice. If the insert fails for any other
+  // reason, carry on rather than drop a paid order.
+  const { error: seenErr } = await supabase
+    .from('stripe_webhook_events')
+    .insert({ id: event.id, type: event.type })
+  if (seenErr?.code === '23505') {
+    console.log('Duplicate Stripe event ignored:', event.id)
+    return new Response(JSON.stringify({ received: true, duplicate: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  if (seenErr) console.error('stripe_webhook_events insert error:', seenErr.message)
+
   const session = event.data.object as Stripe.Checkout.Session
   const m = session.metadata || {}
 
@@ -239,10 +255,21 @@ async function syncPplOrderToMc(params: {
 async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL payment for order:', m.order_id)
   try {
-    await supabase
+    const { data: activated, error: activateErr } = await supabase
       .from('ppl_lead_orders')
       .update({ status: 'active', stripe_payment_intent_id: session.payment_intent as string })
       .eq('id', m.order_id)
+      .select('id')
+    // Paid but not activated: alert, then still record and sync the order so
+    // fulfilment isn't held up while someone fixes the order row.
+    if (activateErr || !activated?.length) {
+      const reason = activateErr ? activateErr.message : 'order row not found'
+      console.error('ppl_lead_orders activate failed:', m.order_id, reason)
+      await sendInternalEmail(
+        `⚠️ PPL order paid but not activated - order ${m.order_id}`,
+        `<p>Reason: ${reason}</p><p>Order ID: ${m.order_id}</p><p>Company ID: ${m.company_id}</p><p>Stripe session: ${session.id}</p>`
+      )
+    }
 
     // Sync postcodes to company service areas if postcode-targeted
     const { data: orderData } = await supabase
@@ -694,7 +721,8 @@ async function handleSmsCreditsTopUp(session: Stripe.Checkout.Session, m: Record
     const credits = parseInt(m.credits)
     if (!credits || credits <= 0) throw new Error('Invalid credits value')
 
-    await supabase.rpc('add_sms_credits', { p_company_id: m.company_id, p_amount: credits })
+    const { error: creditErr } = await supabase.rpc('add_sms_credits', { p_company_id: m.company_id, p_amount: credits })
+    if (creditErr) throw new Error(`add_sms_credits: ${creditErr.message}`)
 
     const { data: company } = await supabase
       .from('companies').select('name, email').eq('id', m.company_id).maybeSingle()

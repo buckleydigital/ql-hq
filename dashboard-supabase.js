@@ -5534,10 +5534,17 @@ function esc(str) {
 async function openOpportunityModal(leadId) {
   if (!leadId) return;
 
-  const lead = allLeads.find((l) => l.id === leadId);
+  // allLeads only holds the page last loaded by the Leads or Pipeline view, so
+  // a lead opened from the dashboard or Files page may not be in it yet.
+  let lead = allLeads.find((l) => l.id === leadId);
   if (!lead) {
-    toast("Lead not found.", true);
-    return;
+    const { data, error } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
+    if (error || !data) {
+      toast("Lead not found.", true);
+      return;
+    }
+    lead = data;
+    allLeads.push(lead);
   }
 
   // Store lead ID
