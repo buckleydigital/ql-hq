@@ -391,8 +391,8 @@ Deno.serve(async (req) => {
           const QL_MC_API_SECRET = Deno.env.get("QL_MC_API_SECRET");
           if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
             console.warn("QL_MC_API_URL / QL_MC_API_SECRET not configured - manual dispute scrub not synced to ql-mc");
-          } else if (!dLead?.name || !dLead?.phone) {
-            console.warn("manual dispute approved but lead has no name/phone - cannot match in ql-mc");
+          } else if (!dispute.lead_id && (!dLead?.name || !dLead?.phone)) {
+            console.warn("manual dispute approved but lead has no id or name/phone - cannot match in ql-mc");
           } else {
             const res = await fetch(`${QL_MC_API_URL}/sync-from-hq`, {
               method: "POST",
@@ -400,8 +400,9 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 action: "scrub_lead",
                 ql_hq_company_id: dispute.company_id,
-                phone: dLead.phone,
-                name: dLead.name,
+                hq_lead_id: dispute.lead_id ?? null,
+                phone: dLead?.phone ?? null,
+                name: dLead?.name ?? null,
               }),
             });
             if (!res.ok) console.error("manual dispute scrub sync: ql-mc returned", res.status, await res.text());

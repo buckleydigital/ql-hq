@@ -618,16 +618,68 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── action: scrub ─────────────────────────────────────────────────────────
-    // A lead was scrubbed in ql-mc - pull the delivered count back by one on the
-    // most relevant order. We mirror this onto BOTH order tables independently:
-    //   • ppl_orders.delivered_leads      (admin fulfillment tracker)
-    //   • ppl_lead_orders.delivered_count (client dashboard order)
-    // Each is guarded: if that table has no matching row for the company, it's
-    // skipped silently so nothing breaks. Prefer the oldest active order, fall
-    // back to the most recently completed/fulfilled one (in case the scrub tips
-    // it back under the threshold and should reopen).
+    // A lead was scrubbed in ql-mc. Find that exact lead here, flag it as
+    // scrubbed (which blocks any later dispute), and only then pull the
+    // delivered count back by one on the most relevant order. No lead found,
+    // or already flagged, means no credit: the count only ever moved for leads
+    // that reached this database, and a repeat send must not credit twice.
+    //
+    // The lead is matched by hq_lead_id when ql-mc knows it (it is in ql-mc's
+    // delivery log), else by phone + name + company, all exact.
     if (action === 'scrub') {
+      const { hq_lead_id, lead: leadIdent } = body as {
+        hq_lead_id?: string | null
+        lead?: { name?: string | null; phone?: string | null }
+      }
+
+      let leadId: string | null = null
+      if (hq_lead_id) {
+        const { data: byId } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('id', hq_lead_id)
+          .eq('company_id', companyId)
+          .eq('is_ppl', true)
+          .maybeSingle()
+        leadId = (byId?.id as string | undefined) ?? null
+      }
+      if (!leadId && leadIdent?.phone && leadIdent?.name) {
+        const wantPhone = normalisePhone(leadIdent.phone)
+        const wantName  = leadIdent.name.trim().toLowerCase()
+        const { data: hqLeads } = !wantPhone ? { data: [] } : await supabase
+          .from('leads')
+          .select('id, name, phone')
+          .eq('company_id', companyId)
+          .eq('is_ppl', true)
+          .eq('ppl_scrubbed', false)
+          .order('created_at', { ascending: false })
+          .limit(200)
+        const hqMatch = (hqLeads || []).find((l: { name?: string | null; phone?: string | null }) =>
+          normalisePhone((l.phone as string) || '') === wantPhone &&
+          ((l.name as string) || '').trim().toLowerCase() === wantName,
+        )
+        leadId = (hqMatch as { id: string } | undefined)?.id ?? null
+      }
+
+      if (!leadId) {
+        return json({ ok: true, credited: false, note: 'no matching ppl lead in ql-hq' })
+      }
+
+      // Flag first, and only if not already flagged: this is what makes a
+      // repeat send a no-op.
+      const { data: flagged } = await supabase
+        .from('leads')
+        .update({ ppl_scrubbed: true, updated_at: new Date().toISOString() })
+        .eq('id', leadId)
+        .eq('ppl_scrubbed', false)
+        .select('id')
+      if (!flagged?.length) {
+        return json({ ok: true, credited: false, lead_flagged: leadId, note: 'already scrubbed' })
+      }
+
       // ── ppl_orders (admin) ──────────────────────────────────────────────────
+      // Prefer the oldest active order, fall back to the most recently
+      // completed one (the scrub may tip it back under and reopen it).
       let { data: order } = await supabase
         .from('ppl_orders')
         .select('id, delivered_leads, total_leads, status')
@@ -652,7 +704,6 @@ Deno.serve(async (req: Request) => {
       let delivered_leads: number | null = null
       if (order) {
         const newDelivered = Math.max(0, order.delivered_leads - 1)
-        // If we're pulling back below total, reopen a completed order
         const newStatus = order.status === 'completed' && newDelivered < order.total_leads
           ? 'active'
           : order.status
@@ -688,7 +739,6 @@ Deno.serve(async (req: Request) => {
       let delivered_count: number | null = null
       if (leadOrder) {
         const newCount = Math.max(0, leadOrder.delivered_count - 1)
-        // If we're pulling back below quantity, reopen a fulfilled order
         const newStatus = leadOrder.status === 'fulfilled' && newCount < leadOrder.quantity
           ? 'active'
           : leadOrder.status
@@ -699,36 +749,7 @@ Deno.serve(async (req: Request) => {
         delivered_count = newCount
       }
 
-      // ── flag the exact lead as scrubbed (blocks any future dispute) ─────────
-      // Matched by phone + name + company, all exact (phone E.164-normalised,
-      // name trimmed case-insensitive). Most recent un-flagged match wins.
-      let lead_flagged: string | null = null
-      const leadIdent = (body as { lead?: { name?: string | null; phone?: string | null } }).lead
-      if (leadIdent?.phone && leadIdent?.name) {
-        const wantPhone = normalisePhone(leadIdent.phone)
-        const wantName  = leadIdent.name.trim().toLowerCase()
-        const { data: hqLeads } = await supabase
-          .from('leads')
-          .select('id, name, phone, ppl_scrubbed')
-          .eq('company_id', companyId)
-          .eq('is_ppl', true)
-          .eq('ppl_scrubbed', false)
-          .order('created_at', { ascending: false })
-          .limit(200)
-        const hqMatch = (hqLeads || []).find((l: { name?: string | null; phone?: string | null }) =>
-          normalisePhone((l.phone as string) || '') === wantPhone &&
-          ((l.name as string) || '').trim().toLowerCase() === wantName,
-        )
-        if (hqMatch) {
-          await supabase
-            .from('leads')
-            .update({ ppl_scrubbed: true, updated_at: new Date().toISOString() })
-            .eq('id', (hqMatch as { id: string }).id)
-          lead_flagged = (hqMatch as { id: string }).id
-        }
-      }
-
-      return json({ ok: true, delivered_leads, delivered_count, lead_flagged })
+      return json({ ok: true, credited: true, delivered_leads, delivered_count, lead_flagged: leadId })
     }
 
     // ── default action: sync delivery config + postcodes ─────────────────────

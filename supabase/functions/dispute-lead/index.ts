@@ -30,6 +30,7 @@ export async function notifyMcDisputeApproved(
   companyId: string,
   leadName: string | null,
   leadPhone: string | null,
+  leadId: string | null = null,
 ): Promise<boolean> {
   const QL_MC_API_URL    = Deno.env.get("QL_MC_API_URL");
   const QL_MC_API_SECRET = Deno.env.get("QL_MC_API_SECRET");
@@ -37,8 +38,8 @@ export async function notifyMcDisputeApproved(
     console.warn("QL_MC_API_URL / QL_MC_API_SECRET not configured - dispute scrub not synced to ql-mc");
     return false;
   }
-  if (!leadName || !leadPhone) {
-    console.warn("dispute approved but lead has no name/phone - cannot match in ql-mc");
+  if (!leadId && (!leadName || !leadPhone)) {
+    console.warn("dispute approved but lead has no id or name/phone - cannot match in ql-mc");
     return false;
   }
   try {
@@ -48,6 +49,7 @@ export async function notifyMcDisputeApproved(
       body: JSON.stringify({
         action: "scrub_lead",
         ql_hq_company_id: companyId,
+        hq_lead_id: leadId,
         phone: leadPhone,
         name: leadName,
       }),
@@ -346,7 +348,7 @@ Deno.serve(async (req) => {
     // here. Failure never breaks the dispute - it stays approved and can be
     // reconciled by an admin scrub in ql-mc.
     if (disputeStatus === "auto_approved") {
-      await notifyMcDisputeApproved(companyId, lead.name ?? null, lead.phone ?? null);
+      await notifyMcDisputeApproved(companyId, lead.name ?? null, lead.phone ?? null, lead.id);
     }
 
     // ── Scrub cap info (always return so UI can show it) ──────────────────────
