@@ -82,22 +82,6 @@ async function provisionTwilio(companyId: string) {
   }).catch(err => console.error('provision-twilio error:', err))
 }
 
-// Whether a previous lead pack already switched this company's SMS AI on.
-// Not "has a number": every company is given the shared number when it is
-// created, so that would skip the first purchase too. Only the first pack
-// provisions, so a reorder never turns the AI back on after the client
-// switched it off.
-async function hasBeenProvisioned(companyId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('ppl_lead_orders')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('twilio_provisioned', true)
-    .limit(1)
-    .maybeSingle()
-  return !!data
-}
-
 async function createMagicLink(email: string, page?: string): Promise<string> {
   // `page` deep links into a dashboard section, e.g. 'onboarding' so a new
   // managed client lands on the Meta access steps rather than a blank Status
@@ -278,11 +262,9 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
       await supabase.from('companies').update({ ppl_agreed_postcodes: merged }).eq('id', m.company_id)
     }
 
-    if (!await hasBeenProvisioned(m.company_id)) {
-      await provisionTwilio(m.company_id)
-      await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', m.order_id)
-    }
-
+    // A repeat pack never touches SMS settings: the company already has the
+    // shared number (assigned when it was created) and its AI stays however
+    // the client left it. Only a PPL signup switches the AI on.
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
     const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
