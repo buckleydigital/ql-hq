@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
 import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
-import { isPplNiche } from '../_shared/ppl-niches.ts'
+import { isPplNiche, pplMinQuantity, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -90,8 +90,11 @@ serve(async (req) => {
     const areas = location_type === 'radius' || !location_type ? cleanServiceAreas(service_areas) : []
     const areasSummary = summariseServiceAreas(areas)
     const radiusKm = areas.length ? Math.max(...areas.map(a => a.radius_km)) : radius_km
-    if (Number(quantity) < 25) {
-      throw new Error('Minimum order is 25 leads')
+    const minQty = await pplMinQuantity(supabase, company_id)
+    if (Number(quantity) < minQty) {
+      throw new Error(minQty === PPL_TRIAL_MIN
+        ? `Your first order (a trial) is a minimum of ${minQty} leads`
+        : `Re-orders are a minimum of ${minQty} leads`)
     }
 
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')

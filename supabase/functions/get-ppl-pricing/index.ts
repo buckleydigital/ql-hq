@@ -6,7 +6,7 @@
 // the dashboard and the checkout functions all read.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { isPplNiche } from '../_shared/ppl-niches.ts'
+import { isPplNiche, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -108,7 +108,8 @@ serve(async (req) => {
       price_per_lead: pricing.price_per_lead,
       sold_out: pricing.sold_out === true,
       max_order_qty: pricing.max_order_qty ?? null,
-      discount_tiers: tiers || [],
+      // Packs below the trial minimum are no longer offered.
+      discount_tiers: (tiers || []).filter((t: { min_quantity: number }) => t.min_quantity >= PPL_TRIAL_MIN),
       paused,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

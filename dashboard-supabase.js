@@ -6813,6 +6813,11 @@ let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected
 let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
 let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
 const BL_HARD_MAX    = 100; // maximum leads per order
+// Minimum per order: a first order is a 50-lead trial, re-orders are 100+.
+// The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
+const BL_TRIAL_MIN   = 50;
+const BL_REORDER_MIN = 100;
+let _blMinQty        = BL_TRIAL_MIN;
 const _pplOrdersCache = new Map();
 
 // Effective per-order cap for the current selection (sub-niche cap wins, then
@@ -6843,16 +6848,25 @@ function subNicheLabel(subNiche) {
 async function loadBuyLeads() {
   if (!currentCompanyId) return;
 
-  const [{ data: orders }, { data: tiers }] = await Promise.all([
+  const [{ data: orders }, { data: tiers }, { count: legacyOrders }] = await Promise.all([
     sb.from('ppl_lead_orders').select('*').eq('company_id', currentCompanyId).order('created_at', { ascending: false }),
     sb.from('volume_discount_tiers').select('min_quantity, discount_percent, label, is_popular').eq('active', true).order('sort_order'),
+    sb.from('ppl_orders').select('id', { count: 'exact', head: true }).eq('company_id', currentCompanyId).in('status', ['active', 'completed']),
   ]);
+  const paidBefore = (orders || []).some(o => ['active', 'fulfilled', 'completed'].includes(o.status)) || (legacyOrders || 0) > 0;
+  _blMinQty = paidBefore ? BL_REORDER_MIN : BL_TRIAL_MIN;
 
   _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {}; _blMax = {};
-  _blDiscountTiers = tiers || [];
+  _blDiscountTiers = (tiers || []).filter(t => t.min_quantity >= _blMinQty);
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blStatewide = false; _blCovMode = 'radius';
-  _blQty = _blDiscountTiers[0]?.min_quantity ?? 25;
+  _blQty = _blDiscountTiers[0]?.min_quantity ?? _blMinQty;
+  const minNote = document.getElementById('buyLeadsMinNote');
+  if (minNote) minNote.textContent = paidBefore
+    ? `Re-orders are a minimum of ${BL_REORDER_MIN} leads.`
+    : `Your first order is a trial of at least ${BL_TRIAL_MIN} leads.`;
+  const customMin = document.getElementById('buyLeadsCustomMin');
+  if (customMin) customMin.textContent = `leads (min. ${_blMinQty})`;
   _blDiscount = 0;
 
   // City visible from the start; niche hidden until city chosen
@@ -7164,6 +7178,7 @@ function wireCustomQtyInput() {
   if (!input) return;
   const fresh = input.cloneNode(true);
   fresh.max = blActiveMax();
+  fresh.min = _blMinQty;
   input.parentNode.replaceChild(fresh, input);
   fresh.value = _blQty;
   fresh.addEventListener('input', buyLeadsOnCustomQtyChange);
@@ -7172,7 +7187,7 @@ function wireCustomQtyInput() {
 function buyLeadsOnCustomQtyChange() {
   const input = document.getElementById('buyLeadsCustomQty');
   let raw = parseInt(input?.value || '0');
-  if (isNaN(raw) || raw < 25) return; // wait until valid
+  if (isNaN(raw) || raw < _blMinQty) return; // wait until valid
   const cap = blActiveMax();
   if (raw > cap) { raw = cap; if (input) input.value = cap; toast(`Up to ${cap} leads per order for this area.`, true); }
   _blQty = raw;
@@ -7551,6 +7566,9 @@ async function startPplCheckout() {
   }
   const cap = blActiveMax();
   if (_blQty > cap) { toast(`Up to ${cap} leads per order for this area. Please lower the quantity.`, true); return; }
+  if (_blQty < _blMinQty) {
+    toast(_blMinQty === BL_REORDER_MIN ? `Re-orders are a minimum of ${BL_REORDER_MIN} leads.` : `Your first order is a minimum of ${BL_TRIAL_MIN} leads.`, true); return;
+  }
   if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
   if (_blLocType === 'radius') {
     // A suburb typed but never matched would silently drop out of the order.

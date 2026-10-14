@@ -5,7 +5,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
 import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
-import { isPplNiche } from '../_shared/ppl-niches.ts'
+import { isPplNiche, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -136,8 +136,9 @@ serve(async (req) => {
     if (!first_name || !last_name || !email || !phone || !company || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields')
     }
-    if (Number(quantity) < 25) {
-      throw new Error('Minimum order is 25 leads')
+    // Signing up is a first order, so the trial minimum applies.
+    if (Number(quantity) < PPL_TRIAL_MIN) {
+      throw new Error(`Your first order (a trial) is a minimum of ${PPL_TRIAL_MIN} leads`)
     }
 
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
