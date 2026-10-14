@@ -86,10 +86,8 @@ async function turnstileOk(token: string, ip: string | null): Promise<boolean> {
   return false
 }
 
-// What each page told the visitor about when we would call. The solar funnel
-// promises within the hour; the get-started style forms say business hours.
-const promisedCall = (source: string) =>
-  /branded-solar/i.test(source) ? 'within the hour' : 'during business hours (AEST)'
+// What every form tells the visitor about when we will call.
+const PROMISED_CALL = 'during business hours (AEST)'
 
 // A short thank-you to the person who enquired. Best effort: a failure here
 // never affects their enquiry.
@@ -207,7 +205,7 @@ serve(async (req) => {
         reply_to: email,
         subject: `📞 Callback requested - ${company || name}`,
         html: `<div style="font-family:system-ui,sans-serif;font-size:14px;color:#333;line-height:1.7">
-          <p><strong>${esc(name)}</strong> asked for a callback. They were told we would ring ${promisedCall(source)}.</p>
+          <p><strong>${esc(name)}</strong> asked for a callback. They were told we would ring ${PROMISED_CALL}.</p>
           <table style="border-collapse:collapse;font-size:14px">
             <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${esc(name)}</td></tr>
             <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${esc(company)}</td></tr>
