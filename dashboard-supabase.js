@@ -6812,7 +6812,10 @@ let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
 let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
 let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
-const BL_HARD_MAX    = 100; // maximum leads per order
+// Leads per area per order: a suburb or a postcode list is up to 100, a whole
+// state up to 300. Each suburb is its own order (create-ppl-checkout).
+const BL_HARD_MAX    = 100;
+const BL_STATE_MAX   = 300;
 // Minimum per order: a first order is a 50-lead trial, re-orders are 100+.
 // The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
 const BL_TRIAL_MIN   = 50;
@@ -6826,7 +6829,8 @@ function blActiveMax() {
   let cap = null;
   if (_blNiche && _blSubNiche && _blMax[_blNiche + ':' + _blSubNiche] != null) cap = _blMax[_blNiche + ':' + _blSubNiche];
   else if (_blNiche && _blMax[_blNiche] != null) cap = _blMax[_blNiche];
-  return cap == null ? BL_HARD_MAX : Math.min(cap, BL_HARD_MAX);
+  const typeMax = _blStatewide ? BL_STATE_MAX : BL_HARD_MAX;
+  return cap == null ? typeMax : Math.min(cap, typeMax);
 }
 
 // Sub-niche definitions per parent niche
@@ -7027,7 +7031,7 @@ function renderBuyLeadsPacks() {
   }).join('');
   const note = document.getElementById('buyLeadsCapNote');
   if (note) {
-    if (cap < BL_HARD_MAX) {
+    if (cap < (_blStatewide ? BL_STATE_MAX : BL_HARD_MAX)) {
       note.textContent = `Up to ${cap} leads per order available for this lead type in this area.`;
       note.style.display = '';
     } else {
@@ -7138,7 +7142,8 @@ async function buyLeadsOnCityChange() {
 
   results.forEach(r => {
     if (r.status !== 'fulfilled') return;
-    if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers;
+    // Same packs as loadBuyLeads: none below this account's minimum.
+    if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers.filter(t => t.min_quantity >= _blMinQty);
     if (r.value.soldOut) {
       _blSoldOut[r.value.niche] = true;
     } else if (r.value.price != null) {
@@ -7189,7 +7194,7 @@ function buyLeadsOnCustomQtyChange() {
   let raw = parseInt(input?.value || '0');
   if (isNaN(raw) || raw < _blMinQty) return; // wait until valid
   const cap = blActiveMax();
-  if (raw > cap) { raw = cap; if (input) input.value = cap; toast(`Up to ${cap} leads per order for this area.`, true); }
+  if (raw > cap) { raw = cap; if (input) input.value = cap; toast(`Up to ${cap} leads per area per order.`, true); }
   _blQty = raw;
   const tier = blGetTierForQty(_blQty);
   _blDiscount = tier ? tier.discount_percent : 0;
@@ -7210,10 +7215,16 @@ function buyLeadsApplyCoverageMode() {
     if (sPanel) sPanel.style.display = '';
     const nm = document.getElementById('buyLeadsStatewideName');
     if (nm) nm.textContent = _blCity || 'this state';
+    renderBuyLeadsPacks();
+    wireCustomQtyInput();
     buyLeadsUpdateSummary();
   } else {
     if (toggle) toggle.style.display = '';
     if (sPanel) sPanel.style.display = 'none';
+    // Back from a state (up to 300) to a city (up to 100 per area).
+    if (_blQty > blActiveMax()) { _blQty = blActiveMax(); _blDiscount = blGetTierForQty(_blQty)?.discount_percent ?? 0; }
+    renderBuyLeadsPacks();
+    wireCustomQtyInput();
     buyLeadsSetLocType(_blCovMode);
   }
 }
@@ -7252,7 +7263,11 @@ function buyLeadsUpdateSummary() {
     coverage = blCoverageText();
   }
 
-  const subtotal = _blQty * _blPPL;
+  // Each suburb is its own order of _blQty leads at its own nearest city's
+  // price. This estimate (every area at the chosen city's price) shows at
+  // once; blQuote then swaps in the server's exact per-area prices.
+  const areaCount = (_blLocType === 'radius' && !_blStatewide) ? Math.max(1, blValidAreas().length) : 1;
+  const subtotal = _blQty * _blPPL * areaCount;
   const saving   = subtotal * (_blDiscount / 100);
   const total    = subtotal - saving;
 
@@ -7270,9 +7285,12 @@ function buyLeadsUpdateSummary() {
   if (cityLbl) cityLbl.textContent = _blStatewide ? 'State' : 'City';
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
-  document.getElementById('buyLeadsSumQty').textContent      = `${_blQty} leads`;
+  document.getElementById('buyLeadsSumQty').textContent      = areaCount > 1
+    ? `${_blQty * areaCount} leads (${_blQty} per suburb)` : `${_blQty} leads`;
   document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
   document.getElementById('buyLeadsSumTotal').textContent    = fmt(total);
+  const areasEl = document.getElementById('buyLeadsSumAreas');
+  if (areasEl) { areasEl.innerHTML = ''; areasEl.style.display = 'none'; }
 
   const discRow = document.getElementById('buyLeadsSumDiscountRow');
   if (discRow) {
@@ -7283,10 +7301,75 @@ function buyLeadsUpdateSummary() {
       discRow.style.display = 'none';
     }
   }
+  blQuoteSoon();
 
   document.getElementById('buyLeadsSummary').style.display = '';
   const btn = document.getElementById('buyLeadsCheckoutBtn');
   if (btn) btn.onclick = () => startPplCheckout();
+}
+
+// The order as create-ppl-checkout will charge it: one line per area, each at
+// its own price. Debounced, and a stale answer never overwrites a newer one.
+let _blQuoteTimer = null, _blQuoteSeq = 0;
+function blOrderBody() {
+  const cov = blPayload();
+  const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
+  return {
+    company_id:    currentCompanyId,
+    niche:         _blNiche,
+    sub_niche:     _blSubNiche || null,
+    area_city:     _blCity,
+    location_type: _blLocType,
+    radius_km:     _blLocType === 'radius' ? cov.radius_km : null,
+    postcode_list: _blLocType === 'postcodes' ? postcodes : null,
+    ...(_blLocType === 'radius' && cov.service_areas ? { service_areas: cov.service_areas } : {}),
+    quantity:      _blQty,
+  };
+}
+function blQuoteSoon() {
+  clearTimeout(_blQuoteTimer);
+  _blQuoteTimer = setTimeout(blQuote, 400);
+}
+async function blQuote() {
+  if (!_blNiche || !_blCity || _blQty < _blMinQty || _blQty > blActiveMax()) return;
+  if (_blLocType === 'radius' && _blAreas.some(a => a.label && a.lat === null)) return;
+  const seq = ++_blQuoteSeq;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ ...blOrderBody(), dry_run: true }),
+    });
+    const q = await res.json();
+    if (seq !== _blQuoteSeq) return;
+    const areasEl = document.getElementById('buyLeadsSumAreas');
+    if (!res.ok || !Array.isArray(q.areas)) {
+      if (areasEl && q.error) { areasEl.innerHTML = `<div style="color:#f87171">${blEsc(q.error)}</div>`; areasEl.style.display = ''; }
+      return;
+    }
+    const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+    const prices = [...new Set(q.areas.map(a => a.price_per_lead))];
+    document.getElementById('buyLeadsSumPPL').textContent = prices.length === 1 ? fmt(prices[0]) : 'Varies by suburb';
+    document.getElementById('buyLeadsSumQty').textContent = q.areas.length > 1
+      ? `${q.total_quantity} leads (${q.areas[0].quantity} per suburb)` : `${q.total_quantity} leads`;
+    document.getElementById('buyLeadsSumTotal').textContent = fmt(q.total_ex_gst);
+    const full = q.areas.reduce((n, a) => n + a.price_per_lead * a.quantity, 0);
+    const saving = full - q.total_ex_gst;
+    const discRow = document.getElementById('buyLeadsSumDiscountRow');
+    if (discRow) {
+      if (saving > 0.005) {
+        document.getElementById('buyLeadsSumDiscount').textContent = `−${fmt(saving)} (${q.areas[0].discount_percent}% off)`;
+        discRow.style.display = 'flex';
+      } else discRow.style.display = 'none';
+    }
+    if (areasEl) {
+      areasEl.innerHTML = q.areas.length > 1 ? q.areas.map(a =>
+        `<div style="display:flex;justify-content:space-between;gap:12px"><span>${blEsc(a.label)} · ${a.quantity} × ${fmt(a.price_per_lead)}</span><span style="color:var(--text,var(--ink));font-weight:500;white-space:nowrap">${fmt(a.total_amount)}</span></div>`
+      ).join('') + `<div style="font-size:11px;line-height:1.5;margin-top:4px">Each suburb is its own order with its own leads, priced at its nearest city.</div>` : '';
+      areasEl.style.display = q.areas.length > 1 ? '' : 'none';
+    }
+  } catch {}
 }
 
 // ─── Buy Leads: coverage map + several suburbs ─────────────────────────────
@@ -7527,7 +7610,7 @@ function blRender(refit) {
   const centre = _blCity && BL_CITIES[_blCity];
   if (cap) {
     if (!_blCity) cap.textContent = 'Pick a city to see your coverage.';
-    else if (v.length > 1) cap.innerHTML = `Leads from around <strong>${v.length} suburbs</strong>, priced at the ${blEsc(_blCity)} rate.`;
+    else if (v.length > 1) cap.innerHTML = `<strong>${v.length} suburbs</strong>, each its own order with its own leads, priced at its nearest city.`;
     else if (v.length === 1) cap.innerHTML = `Leads from within <strong>${v[0].radius_km} km</strong> of ${blEsc(v[0].label)}.`;
     else cap.innerHTML = `Add a suburb below, or leads come from within <strong>50 km</strong> of ${blEsc(_blCity)} city centre.`;
   }
@@ -7557,7 +7640,6 @@ function blRender(refit) {
 
 async function startPplCheckout() {
   if (PPL_ORDERS_PAUSED) { toast(PPL_PAUSED_MSG, true); return; }
-  const cov       = blPayload();
   const postcodes = (document.getElementById('buyLeadsPostcodes')?.value || '').trim();
 
   if (!_blNiche || !_blCity) { toast('Please select a niche and city.', true); return; }
@@ -7565,7 +7647,7 @@ async function startPplCheckout() {
     toast('That trade is sold out in this area. Please choose another.', true); return;
   }
   const cap = blActiveMax();
-  if (_blQty > cap) { toast(`Up to ${cap} leads per order for this area. Please lower the quantity.`, true); return; }
+  if (_blQty > cap) { toast(`Up to ${cap} leads per area per order. Please lower the quantity.`, true); return; }
   if (_blQty < _blMinQty) {
     toast(_blMinQty === BL_REORDER_MIN ? `Re-orders are a minimum of ${BL_REORDER_MIN} leads.` : `Your first order is a minimum of ${BL_TRIAL_MIN} leads.`, true); return;
   }
@@ -7589,17 +7671,7 @@ async function startPplCheckout() {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({
-        company_id:    currentCompanyId,
-        niche:         _blNiche,
-        sub_niche:     _blSubNiche || null,
-        area_city:     _blCity,
-        location_type: _blLocType,
-        radius_km:     _blLocType === 'radius' ? cov.radius_km : null,
-        postcode_list: _blLocType === 'postcodes' ? postcodes : null,
-        ...(_blLocType === 'radius' && cov.service_areas ? { service_areas: cov.service_areas } : {}),
-        quantity:      _blQty,
-      }),
+      body: JSON.stringify(blOrderBody()),
     });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'No checkout URL returned');
@@ -7624,12 +7696,22 @@ function renderBuyLeadsOrders(orders) {
 
   let html = '';
 
-  // Pending (incomplete checkout) - shown as banners above the table
+  // Pending (incomplete checkout) - shown as banners above the table. The
+  // areas of one checkout are one banner, retried and deleted together.
   if (pending.length) {
-    html += pending.map(o => {
-      const city  = o.area_city || o.area || '-';
+    const groups = new Map();
+    pending.forEach(o => {
+      const k = o.stripe_session_id || o.id;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(o);
+    });
+    html += [...groups.values()].map(g => {
+      const o = g[0];
+      const city  = g.map(x => x.area_city || x.area || '-').join(', ');
+      const qty   = g.reduce((n, x) => n + (x.quantity || 0), 0);
+      const total = g.reduce((n, x) => n + Number(x.total_amount || 0), 0);
       const pendingNicheDisplay = nicheLabel(o.niche) + (o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : '');
-      const label = `${pendingNicheDisplay} - ${city} - ${o.quantity} leads - ${fmt(o.total_amount)}`;
+      const label = `${pendingNicheDisplay} - ${blEsc(city)} - ${qty} leads - ${fmt(total)}`;
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid #f59e0b44;background:#fffbeb;margin-bottom:10px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div>
@@ -7686,13 +7768,20 @@ async function retryPplOrder(orderId) {
   if (PPL_ORDERS_PAUSED) { toast(PPL_PAUSED_MSG, true); return; }
   const o = _pplOrdersCache.get(orderId);
   if (!o) { toast('Order not found.', true); return; }
+  // Every pending area from the same checkout goes back in together.
+  const group = o.stripe_session_id
+    ? [..._pplOrdersCache.values()].filter(x => x.status === 'pending' && x.stripe_session_id === o.stripe_session_id)
+    : [o];
+  const areas = group.flatMap(x => Array.isArray(x.service_areas) ? x.service_areas : []);
+  // area is the city an order is priced at; older orders kept it in area_city.
+  const city = o.postcodes ? (o.area || o.area_city) : (o.area_city || o.area);
 
   const btn = document.getElementById('buyLeadsCheckoutBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
 
   try {
-    // Delete the stale pending row before creating a fresh checkout
-    await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+    // Delete the stale pending rows before creating a fresh checkout
+    await sb.from('ppl_lead_orders').delete().in('id', group.map(x => x.id)).eq('status', 'pending');
 
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-ppl-checkout`, {
@@ -7702,11 +7791,11 @@ async function retryPplOrder(orderId) {
         company_id:    currentCompanyId,
         niche:         o.niche,
         sub_niche:     o.sub_niche || null,
-        area_city:     o.area_city || o.area,
+        area_city:     city,
         location_type: o.location_type || 'radius',
         radius_km:     o.radius_km || 50,
         postcode_list: o.postcode_list || null,
-        ...(Array.isArray(o.service_areas) && o.service_areas.length ? { service_areas: o.service_areas } : {}),
+        ...(areas.length ? { service_areas: areas } : {}),
         quantity:      o.quantity,
       }),
     });
@@ -7720,13 +7809,22 @@ async function retryPplOrder(orderId) {
 }
 window.retryPplOrder = retryPplOrder;
 
+// A pending order and the other areas of the same checkout.
+function blPendingGroupIds(orderId) {
+  const o = _pplOrdersCache.get(orderId);
+  if (!o?.stripe_session_id) return [orderId];
+  return [..._pplOrdersCache.values()]
+    .filter(x => x.status === 'pending' && x.stripe_session_id === o.stripe_session_id).map(x => x.id);
+}
+
 async function deletePendingOrder(orderId) {
   confirmAction('Delete this pending order? This cannot be undone.', async () => {
     try {
-      const { error } = await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+      const ids = blPendingGroupIds(orderId);
+      const { error } = await sb.from('ppl_lead_orders').delete().in('id', ids).eq('status', 'pending');
       if (error) { toast(error.message, true); return; }
       toast('Pending order deleted.');
-      _pplOrdersCache.delete(orderId);
+      ids.forEach(id => _pplOrdersCache.delete(id));
       await loadBuyLeads();
     } catch (err) {
       toast('Failed to delete order.', true);
@@ -7738,10 +7836,11 @@ window.deletePendingOrder = deletePendingOrder;
 async function deletePendingOrderFromSettings(orderId) {
   confirmAction('Delete this pending order? This cannot be undone.', async () => {
     try {
-      const { error } = await sb.from('ppl_lead_orders').delete().eq('id', orderId).eq('status', 'pending');
+      const ids = blPendingGroupIds(orderId);
+      const { error } = await sb.from('ppl_lead_orders').delete().in('id', ids).eq('status', 'pending');
       if (error) { toast(error.message, true); return; }
       toast('Pending order deleted.');
-      _pplOrdersCache.delete(orderId);
+      ids.forEach(id => _pplOrdersCache.delete(id));
       await loadPplOrdersUI();
     } catch (err) {
       toast('Failed to delete order.', true);

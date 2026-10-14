@@ -1,8 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
-import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
 import { isPplNiche, pplMinQuantity, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
+import { buildPplAreas, summarisePplAreas, type PplArea } from '../_shared/ppl-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -15,43 +15,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Resolve price: sub_niche+area → sub_niche default → parent area → parent default
-async function resolvePrice(niche: string, subNiche: string | null, area: string) {
-  const { data: rows } = await supabase
-    .from('ppl_pricing')
-    .select('price_per_lead, sub_niche, area, max_order_qty')
-    .eq('niche', niche)
-
-  if (!rows?.length) return null
-
-  const match = (sn: string | null, a: string | null) =>
-    rows.find(r =>
-      (sn === null ? !r.sub_niche : r.sub_niche === sn) &&
-      (a  === null ? !r.area      : r.area?.toLowerCase() === a.toLowerCase())
-    ) ?? null
-
-  return (
-    (subNiche ? match(subNiche, area) : null) ??
-    (subNiche ? match(subNiche, null) : null) ??
-    match(null, area) ??
-    match(null, null)
-  )
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    // Pay-per-lead orders can be paused from platform_settings.ppl_orders_paused.
-    // Nothing is created and nobody is charged while they are.
-    const { data: settings } = await supabase
-      .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
-    if (settings?.ppl_orders_paused === true) {
-      return new Response(
-        JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
     // Reorders are for signed-in pay-per-lead accounts only: the caller must
     // belong to the company (or be a platform admin) and the company must be
     // on the 'ppl' plan.
@@ -72,7 +39,23 @@ serve(async (req) => {
       postcode_list,
       quantity,
       service_areas,
+      dry_run,
     } = await req.json()
+    // quantity is per area: each suburb (or the postcode list, or the state)
+    // becomes its own order with that many leads.
+    // dry_run prices the order for the form's summary and creates nothing.
+    const quoteOnly = dry_run === true
+
+    // Pay-per-lead orders can be paused from platform_settings.ppl_orders_paused.
+    // Nothing is created and nobody is charged while they are.
+    const { data: settings } = await supabase
+      .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
+    if (!quoteOnly && settings?.ppl_orders_paused === true) {
+      return new Response(
+        JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!company_id || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields: company_id, niche, area_city, quantity')
@@ -85,45 +68,38 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Several suburbs, each with its own radius (radius orders only); radius_km
-    // becomes the largest so existing readers still see one value.
-    const areas = location_type === 'radius' || !location_type ? cleanServiceAreas(service_areas) : []
-    const areasSummary = summariseServiceAreas(areas)
-    const radiusKm = areas.length ? Math.max(...areas.map(a => a.radius_km)) : radius_km
     const minQty = await pplMinQuantity(supabase, company_id)
-    if (Number(quantity) < minQty) {
-      throw new Error(minQty === PPL_TRIAL_MIN
-        ? `Your first order (a trial) is a minimum of ${minQty} leads`
-        : `Re-orders are a minimum of ${minQty} leads`)
-    }
-
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
     const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
     if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
 
-    // Always validate price from DB - never trust client.
-    const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
-    if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
-
-    const validatedPrice = pricing.price_per_lead
-
-    // Enforce per-order volume limit for this niche/area (null = unlimited, ceiling 100)
-    const orderCap = Math.min(pricing.max_order_qty ?? 100, 100)
-    if (Number(quantity) > orderCap) {
-      throw new Error(`Maximum order for this area is ${orderCap} leads`)
+    // Prices, caps, minimums and discounts all come from the database here.
+    let areas: PplArea[]
+    try {
+      areas = await buildPplAreas(supabase, {
+        niche: normNiche, subNiche: normSubNiche, areaCity: area_city,
+        locationType: location_type || 'radius', radiusKm: radius_km, postcodeList: postcode_list,
+        serviceAreas: service_areas, quantity: Number(quantity), minQuantity: minQty,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const hint = Number(quantity) < minQty
+        ? (minQty === PPL_TRIAL_MIN ? ` Your first order (a trial) is a minimum of ${minQty} leads per area.` : ` Re-orders are a minimum of ${minQty} leads per area.`)
+        : ''
+      return new Response(JSON.stringify({ error: msg + hint }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Derive discount server-side - never trust a client-supplied value
-    const { data: tierRows } = await supabase
-      .from('volume_discount_tiers')
-      .select('min_quantity, discount_percent')
-      .eq('active', true)
-      .lte('min_quantity', quantity)
-      .order('min_quantity', { ascending: false })
-      .limit(1)
-
-    const discountPercent = tierRows?.[0]?.discount_percent ?? 0
-    const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
+    if (quoteOnly) {
+      return new Response(JSON.stringify({
+        areas: areas.map((a) => ({
+          label: a.label, city: a.city, quantity: a.quantity, price_per_lead: a.price_per_lead,
+          discount_percent: a.discount_percent, total_amount: a.total_amount, postcode_count: a.postcodes.length,
+        })),
+        total_quantity: areas.reduce((n, a) => n + a.quantity, 0),
+        total_ex_gst: Math.round(areas.reduce((n, a) => n + a.total_amount, 0) * 100) / 100,
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     const { data: company } = await supabase
       .from('companies')
@@ -137,71 +113,67 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const locationDesc = location_type === 'statewide'
-      ? `${area_city} - State Wide coverage`
-      : location_type === 'postcodes'
-      ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
-      : areasSummary
-      ? `${area_city} - ${areasSummary}`.slice(0, 300)
-      : `${area_city} - ${radius_km ?? 50}km radius`
-
     const nicheDisplay = [normNiche, normSubNiche]
       .filter(Boolean)
       .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
       .join(' › ')
 
-    // Create pending order
-    const { data: order, error: orderErr } = await supabase
+    // One pending order per area. area is the city it is priced at; area_city
+    // is the area as the buyer sees it.
+    const { data: orders, error: orderErr } = await supabase
       .from('ppl_lead_orders')
-      .insert({
+      .insert(areas.map((a) => ({
         company_id,
         niche: normNiche,
         sub_niche: normSubNiche,
-        area: area_city,
-        area_city,
-        location_type: location_type || 'radius',
-        radius_km: (location_type === 'postcodes' || location_type === 'statewide') ? null : (radiusKm ?? 50),
-        postcode_list: location_type === 'postcodes' ? postcode_list : null,
-        ...(areas.length > 0 && { service_areas: areas }),
-        quantity,
-        price_per_lead: validatedPrice,
-        total_amount: validatedPrice * quantity * (1 - discountPercent / 100),
+        area: a.city,
+        area_city: a.label,
+        location_type: a.location_type,
+        radius_km: a.radius_km,
+        postcode_list: a.postcode_list,
+        ...(a.service_area && { service_areas: [a.service_area] }),
+        postcodes: a.postcodes,
+        quantity: a.quantity,
+        price_per_lead: a.price_per_lead,
+        total_amount: a.total_amount,
         status: 'pending',
-      })
+      })))
       .select('id')
-      .single()
 
-    if (orderErr) throw new Error(`Order creation failed: ${orderErr.message}`)
+    if (orderErr || !orders?.length) throw new Error(`Order creation failed: ${orderErr?.message || 'no rows'}`)
+    const orderIds = orders.map((o: { id: string }) => o.id)
+    const totalQty = areas.reduce((n, a) => n + a.quantity, 0)
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       ...(company.email ? { customer_email: company.email } : {}),
-      line_items: [{
+      line_items: areas.map((a) => ({
         price_data: {
           currency: 'aud',
-          unit_amount: totalCents,
+          unit_amount: Math.round(a.total_amount * 100),
           product_data: {
-            name: `${quantity} ${nicheDisplay} leads`,
-            description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
+            name: `${a.quantity} ${nicheDisplay} leads - ${a.label}`.slice(0, 250),
+            description: `Priced at the ${a.city} rate${a.discount_percent ? `, ${a.discount_percent}% volume discount` : ''}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
         quantity: 1,
         tax_rates: [Deno.env.get('STRIPE_TAX_RATE_GST')!],
-      }],
+      })),
       metadata: {
         type: 'ppl',
         company_id,
-        order_id:         order!.id,
+        order_id:         orderIds[0],
+        order_ids:        orderIds.join(','),
         niche:            normNiche,
         sub_niche:        normSubNiche || '',
         area_city,
         location_type:    location_type || 'radius',
-        radius_km:        String(radiusKm ?? 50),
-        service_areas_summary: areasSummary.slice(0, 500),
-        quantity:         String(quantity),
-        price_per_lead:   String(validatedPrice),
-        discount_percent: String(discountPercent),
+        radius_km:        String(radius_km ?? 50),
+        service_areas_summary: summarisePplAreas(areas).slice(0, 500),
+        quantity:         String(totalQty),
+        price_per_lead:   String(areas[0].price_per_lead),
+        discount_percent: String(areas[0].discount_percent),
       },
       success_url: 'https://quoteleadshq.com/dashboard.html?ppl_success=true',
       cancel_url:  'https://quoteleadshq.com/dashboard.html?ppl_cancelled=true',
@@ -210,7 +182,7 @@ serve(async (req) => {
     await supabase
       .from('ppl_lead_orders')
       .update({ stripe_session_id: session.id })
-      .eq('id', order!.id)
+      .in('id', orderIds)
 
     return new Response(
       JSON.stringify({ url: session.url }),

@@ -4,8 +4,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
-import { cleanServiceAreas, summariseServiceAreas } from '../_shared/service-areas.ts'
 import { isPplNiche, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
+import { buildPplAreas, summarisePplAreas, type PplArea } from '../_shared/ppl-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -16,29 +16,6 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-// Resolve price: sub_niche+area → sub_niche default → parent area → parent default
-async function resolvePrice(niche: string, subNiche: string | null, area: string) {
-  const { data: rows } = await supabase
-    .from('ppl_pricing')
-    .select('price_per_lead, sub_niche, area, max_order_qty')
-    .eq('niche', niche)
-
-  if (!rows?.length) return null
-
-  const match = (sn: string | null, a: string | null) =>
-    rows.find(r =>
-      (sn === null ? !r.sub_niche : r.sub_niche === sn) &&
-      (a  === null ? !r.area      : r.area?.toLowerCase() === a.toLowerCase())
-    ) ?? null
-
-  return (
-    (subNiche ? match(subNiche, area) : null) ??
-    (subNiche ? match(subNiche, null) : null) ??
-    match(null, area) ??
-    match(null, null)
-  )
 }
 
 // Fire internal notification via the notify-internal edge function
@@ -53,16 +30,17 @@ async function notifyCheckoutStarted(data: {
   location_type: string; radius_km: number; postcode_list: string
   service_areas_summary: string
   quantity: number; price_per_lead: number; discount_percent: number
+  total_ex_gst: number
   stripe_session_id: string
 }) {
-  const totalExGst  = (data.price_per_lead * data.quantity).toFixed(2)
-  const totalIncGst = (data.price_per_lead * data.quantity * 1.1).toFixed(2)
+  const totalExGst  = data.total_ex_gst.toFixed(2)
+  const totalIncGst = (data.total_ex_gst * 1.1).toFixed(2)
   const locationDetail = data.location_type === 'statewide'
     ? `${data.area_city} - State Wide`
     : data.location_type === 'postcodes'
     ? `Postcodes - ${data.postcode_list || '(none)'}`
     : data.service_areas_summary
-    ? `${data.area_city} - ${data.service_areas_summary}`
+    ? data.service_areas_summary
     : `${data.area_city} - ${data.radius_km}km radius`
 
   const subject = `🛒 Checkout started - ${data.company} (${data.email})`
@@ -76,7 +54,6 @@ async function notifyCheckoutStarted(data: {
       <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(data.niche)}${data.sub_niche ? ' › ' + data.sub_niche : ''}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${data.quantity} leads</strong></td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${data.price_per_lead.toFixed(2)} AUD</td></tr>
       ${data.discount_percent > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Volume discount</td><td>${data.discount_percent}% off</td></tr>` : ''}
       <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666">Total (inc GST)</td><td>$${totalIncGst} AUD</td></tr>
@@ -102,9 +79,12 @@ serve(async (req) => {
   try {
     // Pay-per-lead orders can be paused from platform_settings.ppl_orders_paused.
     // Nothing is created and nobody is charged while they are.
+    const body = await req.json()
     const { data: settings } = await supabase
       .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
-    if (settings?.ppl_orders_paused === true) {
+    // A dry run prices the order and creates nothing, so it is allowed while
+    // orders are paused (the order form uses it to show per-area prices).
+    if (settings?.ppl_orders_paused === true && body?.dry_run !== true) {
       return new Response(
         JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -124,52 +104,52 @@ serve(async (req) => {
       postcode_list,
       quantity,
       service_areas,
-    } = await req.json()
+      dry_run,
+    } = body
+    // quantity is per area: each suburb (or the postcode list, or the state)
+    // becomes its own order with that many leads.
 
-    // Several suburbs, each with its own radius (radius orders only). The
-    // order's radius_km becomes the largest of them so every existing reader
-    // of that column still sees a sensible single value.
-    const areas = location_type === 'radius' || !location_type ? cleanServiceAreas(service_areas) : []
-    const areasSummary = summariseServiceAreas(areas)
-    const radiusKm = areas.length ? Math.max(...areas.map(a => a.radius_km)) : radius_km
+    const normNiche    = String(niche || '').toLowerCase().trim().replace(/-/g, '_')
+    const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
+    if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
+
+    // Signing up is a first order, so the trial minimum applies to each area.
+    let areas: PplArea[]
+    try {
+      areas = await buildPplAreas(supabase, {
+        niche: normNiche, subNiche: normSubNiche, areaCity: area_city,
+        locationType: location_type || 'radius', radiusKm: radius_km, postcodeList: postcode_list,
+        serviceAreas: service_areas, quantity: Number(quantity), minQuantity: PPL_TRIAL_MIN,
+      })
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const totalQty   = areas.reduce((n, a) => n + a.quantity, 0)
+    const totalExGst = Math.round(areas.reduce((n, a) => n + a.total_amount, 0) * 100) / 100
+
+    if (dry_run === true) {
+      return new Response(JSON.stringify({
+        areas: areas.map((a) => ({
+          label: a.label, city: a.city, quantity: a.quantity, price_per_lead: a.price_per_lead,
+          discount_percent: a.discount_percent, total_amount: a.total_amount, postcode_count: a.postcodes.length,
+        })),
+        total_quantity: totalQty, total_ex_gst: totalExGst,
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     if (!first_name || !last_name || !email || !phone || !company || !niche || !area_city || !quantity) {
       throw new Error('Missing required fields')
     }
-    // Signing up is a first order, so the trial minimum applies.
-    if (Number(quantity) < PPL_TRIAL_MIN) {
-      throw new Error(`Your first order (a trial) is a minimum of ${PPL_TRIAL_MIN} leads`)
-    }
 
-    const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
-    const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
-    if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
+    const nicheDisplay = [normNiche, normSubNiche]
+      .filter(Boolean)
+      .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
+      .join(' › ')
+    const areasSummary = summarisePplAreas(areas)
 
-    // Validate price from DB - never trust client
-    const pricing = await resolvePrice(normNiche, normSubNiche, area_city)
-    if (!pricing) throw new Error(`No pricing configured for niche: ${normNiche}`)
-
-    const validatedPrice = pricing.price_per_lead
-
-    // Enforce per-order volume limit for this niche/area (null = unlimited, ceiling 100)
-    const orderCap = Math.min(pricing.max_order_qty ?? 100, 100)
-    if (Number(quantity) > orderCap) {
-      throw new Error(`Maximum order for this area is ${orderCap} leads`)
-    }
-
-    // Derive discount server-side - never trust a client-supplied value
-    const { data: tierRows } = await supabase
-      .from('volume_discount_tiers')
-      .select('min_quantity, discount_percent')
-      .eq('active', true)
-      .lte('min_quantity', quantity)
-      .order('min_quantity', { ascending: false })
-      .limit(1)
-
-    const discountPercent = tierRows?.[0]?.discount_percent ?? 0
-    const totalCents = Math.round(validatedPrice * quantity * (1 - discountPercent / 100) * 100)
-
-    // Capture signup attempt before redirecting
+    // Capture signup attempt before redirecting. areas carries the priced
+    // per-area breakdown the webhook turns into one order per area.
     const { data: attempt } = await supabase
       .from('signup_attempts')
       .insert({
@@ -178,43 +158,30 @@ serve(async (req) => {
         niche: normNiche,
         sub_niche: normSubNiche,
         area_city,
-        quantity,
-        price_per_lead: validatedPrice,
+        quantity: totalQty,
+        price_per_lead: areas[0].price_per_lead,
         status: 'pending',
-        ...(areas.length > 0 && { service_areas: areas }),
+        areas,
       })
       .select('id')
       .single()
-
-    const locationDesc = location_type === 'statewide'
-      ? `${area_city} - State Wide coverage`
-      : location_type === 'postcodes'
-      ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
-      : areasSummary
-      ? `${area_city} - ${areasSummary}`.slice(0, 300)
-      : `${area_city} - ${radius_km ?? 50}km radius`
-
-    const nicheDisplay = [normNiche, normSubNiche]
-      .filter(Boolean)
-      .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
-      .join(' › ')
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       customer_email: email,
-      line_items: [{
+      line_items: areas.map((a) => ({
         price_data: {
           currency: 'aud',
-          unit_amount: totalCents,
+          unit_amount: Math.round(a.total_amount * 100),
           product_data: {
-            name: `${quantity} ${nicheDisplay} leads`,
-            description: `${locationDesc}. Exclusive leads delivered in real-time to your pipeline.`,
+            name: `${a.quantity} ${nicheDisplay} leads - ${a.label}`.slice(0, 250),
+            description: `Priced at the ${a.city} rate${a.discount_percent ? `, ${a.discount_percent}% volume discount` : ''}. Exclusive leads delivered in real-time to your pipeline.`,
           },
         },
         quantity: 1,
         tax_rates: [Deno.env.get('STRIPE_TAX_RATE_GST')!],
-      }],
+      })),
       metadata: {
         type:          'ppl_signup',
         first_name,
@@ -226,13 +193,14 @@ serve(async (req) => {
         sub_niche:     normSubNiche || '',
         area_city,
         location_type: location_type || 'radius',
-        radius_km:     String(radiusKm ?? 50),
-        postcode_list: postcode_list || '',
-        // Readable fallback; the full list (with coordinates) is on signup_attempts.
+        radius_km:     String(radius_km ?? 50),
+        postcode_list: (postcode_list || '').slice(0, 500),
+        // Readable fallback; the full per-area breakdown is on signup_attempts.
         service_areas_summary: areasSummary.slice(0, 500),
-        quantity:         String(quantity),
-        price_per_lead:   String(validatedPrice),
-        discount_percent: String(discountPercent),
+        quantity:         String(totalQty),
+        price_per_lead:   String(areas[0].price_per_lead),
+        discount_percent: String(areas[0].discount_percent),
+        areas_count:      String(areas.length),
       },
       success_url: 'https://quoteleads.com.au/welcome?session_id={CHECKOUT_SESSION_ID}&type=ppl',
       cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',
@@ -248,12 +216,13 @@ serve(async (req) => {
       niche: normNiche, sub_niche: normSubNiche,
       area_city,
       location_type: location_type || 'radius',
-      radius_km: radiusKm ?? 50,
+      radius_km: Number(radius_km) || 50,
       postcode_list: postcode_list || '',
-      service_areas_summary: areasSummary,
-      quantity,
-      price_per_lead: validatedPrice,
-      discount_percent: discountPercent,
+      service_areas_summary: areas.map((a) => `${a.label}: ${a.quantity} leads at $${a.price_per_lead.toFixed(2)} (${a.city})`).join('; '),
+      quantity: totalQty,
+      price_per_lead: areas[0].price_per_lead,
+      discount_percent: areas[0].discount_percent,
+      total_ex_gst: totalExGst,
       stripe_session_id: session.id,
     })
 

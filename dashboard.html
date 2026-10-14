@@ -2058,7 +2058,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
                     <textarea id="buyLeadsPostcodes" rows="4"
                       placeholder="Paste postcodes here, one per line or comma-separated&#10;e.g. 4000, 4001, 4005, 4006"
                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:13px;resize:vertical;line-height:1.6"></textarea>
-                    <p style="font-size:12px;color:var(--muted);margin-top:6px">Use the link above to find all postcodes within a radius, then paste them here.</p>
+                    <p style="font-size:12px;color:var(--muted);margin-top:6px">Use the link above to find all postcodes within a radius, then paste them here. A postcode list is one area of up to 100 leads.</p>
                   </div>
 
                   <div id="locStatewidePanel" style="display:none">
@@ -2074,7 +2074,8 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
 
                 <!-- Step 5: Quantity -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">5. Select Quantity</label>
+                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">5. Leads per area</label>
+                  <p style="font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.5">Each suburb is its own order with this many leads (5 suburbs at 100 is 500 leads). Up to 100 per suburb or postcode list, 300 state wide.</p>
                   <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
                   <div id="buyLeadsCapNote" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)"></div>
                   <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
@@ -2095,13 +2096,14 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
                     <div style="display:flex;justify-content:space-between"><span>Coverage</span><span id="buyLeadsSumCoverage" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Quantity</span><span id="buyLeadsSumQty" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Price per lead</span><span id="buyLeadsSumPPL" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div id="buyLeadsSumAreas" style="display:none;margin:4px 0;padding:8px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);line-height:1.9"></div>
                     <div id="buyLeadsSumDiscountRow" style="display:none;justify-content:space-between"><span>Volume discount</span><span id="buyLeadsSumDiscount" style="color:#22c55e;font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Total (ex GST)</span><span id="buyLeadsSumTotal">-</span></div>
                   </div>
                   <p id="buyLeadsPausedNote" style="display:none;margin:16px 0 0;padding:12px 14px;border-radius:10px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);font-size:13px;line-height:1.5">Lead pack orders are paused right now. Your existing orders and leads are not affected.</p>
                   <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Purchase Leads →</button>
                   <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">
-                    Leads delivered in real-time over 7-14 days. By purchasing you agree to the
+                    Leads are delivered in real time as they come in, which can take up to 90 days depending on the market. By purchasing you agree to the
                     <a href="https://quoteleads.com.au/pay-per-lead-terms" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:underline">Pay-Per-Lead Terms</a>.
                   </p>
                 </div>

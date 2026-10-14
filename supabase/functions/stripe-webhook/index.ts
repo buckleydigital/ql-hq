@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
 import { summariseServiceAreas, type ServiceArea } from '../_shared/service-areas.ts'
+import type { PplArea } from '../_shared/ppl-areas.ts'
 import '../_shared/no-em-dash.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
@@ -207,6 +208,9 @@ async function syncPplOrderToMc(params: {
   radiusKm:        number
   postcodeList:    string
   qlHqOrderId:     string
+  // The company's open area postcodes, when every active order is split into
+  // areas; Mission Control routes on these. Omitted otherwise.
+  postcodes?:      string[] | null
 }) {
   if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
     console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured - skipping ql-mc sync')
@@ -236,6 +240,7 @@ async function syncPplOrderToMc(params: {
         radius_km:        params.radiusKm,
         postcode_list:    params.postcodeList,
         ql_hq_order_id:   params.qlHqOrderId,
+        ...(params.postcodes ? { postcodes: params.postcodes } : {}),
       }),
     })
 
@@ -251,41 +256,63 @@ async function syncPplOrderToMc(params: {
   }
 }
 
+// The postcodes a company's open area orders deliver to, for Mission Control's
+// routing. null while an older, unsplit order is still active: then the
+// postcodes set by hand in Mission Control are left as they are.
+async function openAreaPostcodes(companyId: string): Promise<string[] | null> {
+  const { data } = await supabase
+    .from('ppl_lead_orders').select('postcodes, quantity, delivered_count')
+    .eq('company_id', companyId).eq('status', 'active')
+  if (!data?.length || data.some((o) => !o.postcodes)) return null
+  return [...new Set(data.filter((o) => o.delivered_count < o.quantity).flatMap((o) => o.postcodes as string[]))].sort()
+}
+
+type AreaOrderRow = {
+  id: string; location_type: string | null; postcode_list: string | null; service_areas: ServiceArea[] | null
+  area: string | null; area_city: string | null; quantity: number; price_per_lead: number; total_amount: number | null
+  radius_km: number | null
+}
+
+function areaRowsHtml(rows: AreaOrderRow[]): string {
+  return rows.map((o) => `<tr><td style="padding:4px 12px 4px 0;color:#666">Area</td><td>${o.area_city || o.area || '-'}: <strong>${o.quantity} leads</strong> at $${Number(o.price_per_lead).toFixed(2)}${o.area && o.area !== o.area_city ? ` (${o.area} rate)` : ''}</td></tr>`).join('')
+}
+
 // ── PPL payment (existing company buying more leads) ─────────────────────────
 async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
-  console.log('PPL payment for order:', m.order_id)
+  // One order per area: order_ids lists them all; order_id alone is an order
+  // placed before areas were split out.
+  const ids = (m.order_ids || m.order_id || '').split(',').map((x) => x.trim()).filter(Boolean)
+  console.log('PPL payment for orders:', ids.join(', '))
   try {
     const { data: activated, error: activateErr } = await supabase
       .from('ppl_lead_orders')
       .update({ status: 'active', stripe_payment_intent_id: session.payment_intent as string })
-      .eq('id', m.order_id)
+      .in('id', ids)
       .select('id')
-    // Paid but not activated: alert, then still record and sync the order so
-    // fulfilment isn't held up while someone fixes the order row.
-    if (activateErr || !activated?.length) {
-      const reason = activateErr ? activateErr.message : 'order row not found'
-      console.error('ppl_lead_orders activate failed:', m.order_id, reason)
+    // Paid but not activated: alert, then still record and sync the orders so
+    // fulfilment isn't held up while someone fixes the order rows.
+    if (activateErr || (activated?.length ?? 0) < ids.length) {
+      const reason = activateErr ? activateErr.message : `${activated?.length ?? 0} of ${ids.length} order rows found`
+      console.error('ppl_lead_orders activate failed:', ids.join(','), reason)
       await sendInternalEmail(
-        `⚠️ PPL order paid but not activated - order ${m.order_id}`,
-        `<p>Reason: ${reason}</p><p>Order ID: ${m.order_id}</p><p>Company ID: ${m.company_id}</p><p>Stripe session: ${session.id}</p>`
+        `⚠️ PPL order paid but not activated - ${ids.length} area order(s)`,
+        `<p>Reason: ${reason}</p><p>Order IDs: ${ids.join(', ')}</p><p>Company ID: ${m.company_id}</p><p>Stripe session: ${session.id}</p>`
       )
     }
 
-    // Sync postcodes to company service areas if postcode-targeted
-    const { data: orderData } = await supabase
+    const { data: orderRows } = await supabase
       .from('ppl_lead_orders')
-      .select('location_type, postcode_list, service_areas')
-      .eq('id', m.order_id)
-      .maybeSingle()
-    const areasSummary = summariseServiceAreas(orderData?.service_areas as ServiceArea[] | null)
-      || m.service_areas_summary || ''
+      .select('id, location_type, postcode_list, service_areas, area, area_city, quantity, price_per_lead, total_amount, radius_km')
+      .in('id', ids)
+    const orders = (orderRows || []) as AreaOrderRow[]
 
-    if (orderData?.location_type === 'postcodes' && orderData?.postcode_list) {
-      const newPostcodes = orderData.postcode_list
-        .split(/[\s,\n]+/).map((p: string) => p.trim()).filter(Boolean)
+    // Postcode-list areas also go onto the company's agreed postcodes.
+    const listed = orders.filter((o) => o.location_type === 'postcodes' && o.postcode_list)
+      .flatMap((o) => String(o.postcode_list).split(/[\s,\n]+/).map((p) => p.trim()).filter(Boolean))
+    if (listed.length) {
       const { data: companyData } = await supabase
         .from('companies').select('ppl_agreed_postcodes').eq('id', m.company_id).maybeSingle()
-      const merged = [...new Set([...(companyData?.ppl_agreed_postcodes || []), ...newPostcodes])]
+      const merged = [...new Set([...(companyData?.ppl_agreed_postcodes || []), ...listed])]
       await supabase.from('companies').update({ ppl_agreed_postcodes: merged }).eq('id', m.company_id)
     }
 
@@ -294,44 +321,44 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
     // the client left it. Only a PPL signup switches the AI on.
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
-    const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
-      company_id:  m.company_id,
-      total_leads: parseInt(m.quantity),
-      due_date:    dueDate.toISOString().split('T')[0],
-      status:      'active',
-      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${m.area_city}`,
-    })
-    if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
+    for (const o of orders) {
+      const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
+        company_id:  m.company_id,
+        total_leads: o.quantity,
+        due_date:    dueDate.toISOString().split('T')[0],
+        status:      'active',
+        notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${o.area_city || o.area || m.area_city}`,
+      })
+      if (pplOrderError) console.error('ppl_orders insert error:', pplOrderError.message)
+    }
 
     const { data: company } = await supabase
       .from('companies').select('name, email, phone').eq('id', m.company_id).maybeSingle()
 
-    // Sync reorder to ql-mc
-    await syncPplOrderToMc({
-      companyId:       m.company_id,
-      companyName:     company?.name || '',
-      contactName:     '',
-      email:           company?.email || '',
-      phone:           company?.phone || '',
-      quantity:        parseInt(m.quantity),
-      pricePerLead:    parseFloat(m.price_per_lead),
-      niche:           m.niche,
-      subNiche:        m.sub_niche || null,
-      areaCity:        areasSummary ? `${m.area_city} - ${areasSummary}` : m.area_city,
-      locationTypeVal: m.location_type || 'radius',
-      radiusKm:        parseFloat(m.radius_km || '50'),
-      postcodeList:    m.postcode_list || '',
-      qlHqOrderId:     m.order_id,
-    })
+    // Sync each area to ql-mc as its own order, with the routing postcodes.
+    const postcodes = await openAreaPostcodes(m.company_id)
+    for (const o of orders) {
+      await syncPplOrderToMc({
+        companyId:       m.company_id,
+        companyName:     company?.name || '',
+        contactName:     '',
+        email:           company?.email || '',
+        phone:           company?.phone || '',
+        quantity:        o.quantity,
+        pricePerLead:    Number(o.price_per_lead),
+        niche:           m.niche,
+        subNiche:        m.sub_niche || null,
+        areaCity:        o.area_city || o.area || m.area_city,
+        locationTypeVal: o.location_type || 'radius',
+        radiusKm:        Number(o.radius_km || 50),
+        postcodeList:    o.postcode_list || '',
+        qlHqOrderId:     o.id,
+        postcodes,
+      })
+    }
 
-    const totalExGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
-    const locationDetail = m.location_type === 'statewide'
-      ? `${m.area_city} - State Wide`
-      : m.location_type === 'postcodes'
-      ? `Postcodes - ${m.postcode_list || '(none)'}`
-      : areasSummary
-      ? `${m.area_city} - ${areasSummary}`
-      : `${m.area_city} - ${m.radius_km || 50}km radius`
+    const totalQty = orders.reduce((n, o) => n + o.quantity, 0)
+    const totalExGst = orders.reduce((n, o) => n + Number(o.total_amount ?? Number(o.price_per_lead) * o.quantity), 0).toFixed(2)
 
     await sendInternalEmail(
       `💰 PPL reorder - ${company?.name}`,
@@ -341,19 +368,18 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
          <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${company?.email}">${company?.email}</a></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${company?.phone || '-'}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(m.niche)}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
+         ${areaRowsHtml(orders)}
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Total leads</td><td><strong>${totalQty}</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Stripe session</td><td><a href="https://dashboard.stripe.com/payments/${session.payment_intent}">${session.id}</a></td></tr>
        </table>`
     )
-    console.log('PPL order activated:', m.order_id)
+    console.log('PPL orders activated:', ids.join(', '))
   } catch (err) {
     console.error('handlePplPayment error:', err)
     await sendInternalEmail(
-      `⚠️ PPL payment processing failed - order ${m.order_id}`,
-      `<p>Error: ${String(err)}</p><p>Order ID: ${m.order_id}</p><p>Company ID: ${m.company_id}</p>`
+      `⚠️ PPL payment processing failed - ${ids.length} area order(s)`,
+      `<p>Error: ${String(err)}</p><p>Order IDs: ${ids.join(', ')}</p><p>Company ID: ${m.company_id}</p>`
     )
   }
 }
@@ -362,13 +388,15 @@ async function handlePplPayment(session: Stripe.Checkout.Session, m: Record<stri
 async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('PPL signup for:', m.email)
   try {
-    // Suburbs chosen at checkout (radius orders). The full list waits on the
-    // signup attempt for this session; the metadata only has a readable summary.
+    // The order, split into priced areas at checkout, waits on the signup
+    // attempt for this session (the metadata only has a readable summary).
+    // Attempts from before areas were split carry service_areas instead.
+    const { data: att } = await supabase
+      .from('signup_attempts').select('service_areas, areas')
+      .eq('stripe_session_id', session.id).maybeSingle()
+    const pricedAreas = Array.isArray(att?.areas) ? att.areas as PplArea[] : []
     let serviceAreas: ServiceArea[] = []
-    if (m.location_type !== 'postcodes' && m.location_type !== 'statewide') {
-      const { data: att } = await supabase
-        .from('signup_attempts').select('service_areas')
-        .eq('stripe_session_id', session.id).maybeSingle()
+    if (!pricedAreas.length && m.location_type !== 'postcodes' && m.location_type !== 'statewide') {
       if (Array.isArray(att?.service_areas)) serviceAreas = att.service_areas as ServiceArea[]
     }
     const areasSummary = summariseServiceAreas(serviceAreas) || m.service_areas_summary || ''
@@ -434,67 +462,89 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
       is_active:  true,
     })
 
-    const { data: order, error: orderError } = await supabase
+    // One order per area (or, for an attempt from before areas were split,
+    // the single order it describes).
+    const rows = pricedAreas.length
+      ? pricedAreas.map((a) => ({
+          company_id:     companyId,
+          niche:          m.niche,
+          sub_niche:      m.sub_niche || null,
+          area:           a.city,
+          area_city:      a.label,
+          location_type:  a.location_type,
+          radius_km:      a.radius_km,
+          postcode_list:  a.postcode_list,
+          ...(a.service_area && { service_areas: [a.service_area] }),
+          postcodes:      a.postcodes,
+          quantity:       a.quantity,
+          price_per_lead: a.price_per_lead,
+          total_amount:   a.total_amount,
+          status:         'active',
+          stripe_session_id:        session.id,
+          stripe_payment_intent_id: session.payment_intent as string,
+        }))
+      : [{
+          company_id:     companyId,
+          niche:          m.niche,
+          sub_niche:      m.sub_niche || null,
+          area:           m.area_city,
+          area_city:      m.area_city,
+          location_type:  m.location_type || 'radius',
+          radius_km:      (m.location_type === 'postcodes' || m.location_type === 'statewide') ? null : parseFloat(m.radius_km || '50'),
+          postcode_list:  m.location_type === 'postcodes' ? m.postcode_list : null,
+          ...(serviceAreas.length && { service_areas: serviceAreas }),
+          quantity:       parseInt(m.quantity),
+          price_per_lead: parseFloat(m.price_per_lead),
+          total_amount:   parseFloat(m.price_per_lead) * parseInt(m.quantity),
+          status:         'active',
+          stripe_session_id:        session.id,
+          stripe_payment_intent_id: session.payment_intent as string,
+        }]
+    const { data: created, error: orderError } = await supabase
       .from('ppl_lead_orders')
-      .insert({
-        company_id:     companyId,
-        niche:          m.niche,
-        sub_niche:      m.sub_niche || null,
-        area:           m.area_city,
-        area_city:      m.area_city,
-        location_type:  m.location_type || 'radius',
-        radius_km:      (m.location_type === 'postcodes' || m.location_type === 'statewide') ? null : parseFloat(m.radius_km || '50'),
-        postcode_list:  m.location_type === 'postcodes' ? m.postcode_list : null,
-        quantity:       parseInt(m.quantity),
-        price_per_lead: parseFloat(m.price_per_lead),
-        total_amount:   parseFloat(m.price_per_lead) * parseInt(m.quantity),
-        status:         'active',
-        stripe_session_id:        session.id,
-        stripe_payment_intent_id: session.payment_intent as string,
-      })
-      .select('id')
-      .single()
+      .insert(rows)
+      .select('id, location_type, postcode_list, service_areas, area, area_city, quantity, price_per_lead, total_amount, radius_km')
     if (orderError) throw new Error(`ppl_lead_orders insert: ${orderError.message}`)
-
-    if (order && serviceAreas.length) {
-      const { error: areasErr } = await supabase
-        .from('ppl_lead_orders').update({ service_areas: serviceAreas }).eq('id', order.id)
-      if (areasErr) console.error('service_areas not saved (non-fatal):', areasErr.message)
-    }
+    const orders = (created || []) as AreaOrderRow[]
 
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
-    const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
-      company_id:  companyId,
-      total_leads: parseInt(m.quantity),
-      due_date:    dueDate.toISOString().split('T')[0],
-      status:      'active',
-      notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${m.area_city}`,
-    })
-    if (pplOrderError) throw new Error(`ppl_orders insert: ${pplOrderError.message}`)
-
-    await provisionTwilio(companyId)
-    if (order) {
-      await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).eq('id', order.id)
+    for (const o of orders) {
+      const { error: pplOrderError } = await supabase.from('ppl_orders').insert({
+        company_id:  companyId,
+        total_leads: o.quantity,
+        due_date:    dueDate.toISOString().split('T')[0],
+        status:      'active',
+        notes:       `${m.niche}${m.sub_niche ? ' › ' + m.sub_niche : ''} - ${o.area_city || o.area || m.area_city}`,
+      })
+      if (pplOrderError) throw new Error(`ppl_orders insert: ${pplOrderError.message}`)
     }
 
-    // Sync to ql-mc - creates the client as active_client immediately
-    if (order) {
+    await provisionTwilio(companyId)
+    if (orders.length) {
+      await supabase.from('ppl_lead_orders').update({ twilio_provisioned: true }).in('id', orders.map((o) => o.id))
+    }
+
+    // Sync to ql-mc - creates the client as active_client immediately, then
+    // one ql-mc order per area.
+    const postcodes = await openAreaPostcodes(companyId)
+    for (const o of orders) {
       await syncPplOrderToMc({
         companyId:       companyId,
         companyName:     m.company,
         contactName:     `${m.first_name} ${m.last_name}`,
         email:           m.email,
         phone:           m.phone,
-        quantity:        parseInt(m.quantity),
-        pricePerLead:    parseFloat(m.price_per_lead),
+        quantity:        o.quantity,
+        pricePerLead:    Number(o.price_per_lead),
         niche:           m.niche,
         subNiche:        m.sub_niche || null,
-        areaCity:        areasSummary ? `${m.area_city} - ${areasSummary}` : m.area_city,
-        locationTypeVal: m.location_type || 'radius',
-        radiusKm:        parseFloat(m.radius_km || '50'),
-        postcodeList:    m.postcode_list || '',
-        qlHqOrderId:     order.id,
+        areaCity:        pricedAreas.length ? (o.area_city || m.area_city) : (areasSummary ? `${m.area_city} - ${areasSummary}` : m.area_city),
+        locationTypeVal: o.location_type || 'radius',
+        radiusKm:        Number(o.radius_km || 50),
+        postcodeList:    o.postcode_list || '',
+        qlHqOrderId:     o.id,
+        postcodes,
       })
     }
 
@@ -509,8 +559,9 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
     await sendPplWelcomeEmail(m.email, m.first_name, m.company, m.niche, m.area_city, m.quantity, magicLink)
 
     // ── Full-detail internal notification ─────────────────────────────────────
-    const totalExGst  = (parseFloat(m.price_per_lead) * parseInt(m.quantity)).toFixed(2)
-    const totalIncGst = (parseFloat(m.price_per_lead) * parseInt(m.quantity) * 1.1).toFixed(2)
+    const totalExGstNum = orders.reduce((n, o) => n + Number(o.total_amount ?? Number(o.price_per_lead) * o.quantity), 0)
+    const totalExGst  = totalExGstNum.toFixed(2)
+    const totalIncGst = (totalExGstNum * 1.1).toFixed(2)
     const discountPct = parseFloat(m.discount_percent || '0')
     const locationDetail = m.location_type === 'statewide'
       ? `${m.area_city} - State Wide`
@@ -529,9 +580,9 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
          <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${m.email}">${m.email}</a></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${m.phone}</td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(m.niche)}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+         ${pricedAreas.length ? areaRowsHtml(orders) : `<tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+         <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>`}
          <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${m.quantity} leads</strong></td></tr>
-         <tr><td style="padding:4px 12px 4px 0;color:#666">Price/lead</td><td>$${parseFloat(m.price_per_lead).toFixed(2)} AUD</td></tr>
          ${discountPct > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Volume discount</td><td>${discountPct}% off</td></tr>` : ''}
          <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
          <tr><td style="padding:4px 12px 4px 0;color:#666">Total (inc GST)</td><td>$${totalIncGst} AUD</td></tr>
@@ -762,7 +813,7 @@ async function sendPplWelcomeEmail(
           <div style="padding:36px">
             <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">Your leads are on their way, ${firstName}.</h1>
             <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
-              Your ${company} workspace is live and your first batch of ${quantity} ${niche === 'solar_battery' ? 'Solar + Battery' : niche} leads for ${city} will start arriving within 7–14 days.
+              Your ${company} workspace is live. Your ${quantity} ${niche === 'solar_battery' ? 'Solar + Battery' : niche} leads (${city}) will start arriving within 24-48 hours and keep coming in as they're generated.
             </p>
             <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
               Access My Dashboard →
