@@ -813,7 +813,7 @@ async function sendPplWelcomeEmail(
           <div style="padding:36px">
             <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">Your leads are on their way, ${firstName}.</h1>
             <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
-              Your ${company} workspace is live. Your ${quantity} ${niche === 'solar_battery' ? 'Solar + Battery' : niche} leads (${city}) will start arriving within 24-48 hours and keep coming in as they're generated.
+              Your ${company} workspace is live. Your ${quantity} ${niche === 'solar_battery' ? 'Solar + Battery' : niche} leads (${city}) should start arriving within 24-48 hours. It can occasionally take a little longer, as every lead is generated in real time and we wait on genuine demand in your area.
             </p>
             <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
               Access My Dashboard →
