@@ -195,21 +195,16 @@ textarea{min-height:100px;resize:vertical}
 .auth::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.4;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
   background-size:200px}
-.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden;position:relative;z-index:1;
+.auth-card{width:min(720px,92vw);height:min(720px,88vh);display:flex;flex-direction:column;overflow:visible;position:relative;z-index:2;
   background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.015)) !important;
   border:1px solid rgba(255,255,255,.07) !important;border-radius:24px;
   box-shadow:0 30px 90px rgba(0,0,0,.55),0 0 60px rgba(71,151,255,.06) !important}
-.auth-side{padding:44px 40px;background:transparent;color:#F2F2F2;border-right:1px solid rgba(255,255,255,.07);
-  display:flex;flex-direction:column;justify-content:space-between;gap:24px}
-[data-theme=dark] .auth-side{background:transparent}
-.auth-side .ah h1{font-size:clamp(1.5rem,2.4vw,2rem);font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#fff}
-.auth-side .ah h1::before{content:'Secure Access';display:block;font-size:.62rem;font-weight:600;letter-spacing:.14em;
-  text-transform:uppercase;color:#4797FF;margin-bottom:16px}
-.auth-side p,.auth-side li{color:#71717A;font-size:.86rem;line-height:1.7}
-.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:12px;
-  padding-top:22px;border-top:1px solid rgba(255,255,255,.07)}
-.auth-side li{display:flex;gap:10px;align-items:flex-start;color:#CACAD0}
-.auth-side li::before{content:'';flex-shrink:0;width:5px;height:5px;border-radius:50%;background:#4797FF;margin-top:.55em}
+.auth-side{display:none}
+/* login card (left) logo — always the white logo on the dark panel */
+.auth-main .brand-logo{height:30px;width:auto}
+.auth-main .brand-logo.logo-light{display:none !important}
+.auth-main .brand-logo.logo-dark{display:block !important}
+.auth-main .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
 .auth-main{padding:44px 40px}
 .auth-main .ah h1{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;color:#fff}
 .auth-form{display:flex;flex-direction:column;gap:16px}
@@ -241,9 +236,27 @@ textarea{min-height:100px;resize:vertical}
 [data-theme=dark] .auth-side .brand-logo.logo-light{display:none !important}
 [data-theme=dark] .auth-side .brand-logo.logo-dark{display:block !important}
 .auth-side .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
+.auth-preview-wrap{position:absolute;top:50%;right:0;transform:translateY(-50%);width:min(600px,42vw);height:min(720px,88vh);z-index:1;pointer-events:auto}
+.auth-preview{position:relative;height:100%;background:linear-gradient(145deg,#0a0a0f,#05050a);border-left:1px solid rgba(255,255,255,.06);border-top-left-radius:44px;border-top-right-radius:44px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.auth-preview::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#4797FF,#2F82F0,#6FADFF);z-index:12;pointer-events:none}
+.auth-preview-inner{padding:30px 34px;position:relative;z-index:1;height:100%;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.preview-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.preview-brand{display:flex;align-items:center;gap:10px}
+.preview-logo{width:28px;height:auto;display:block}
+.preview-title{font-weight:600;letter-spacing:.02em;color:#fff;font-size:15px}
+.preview-nav{font-size:12px;color:#8a8a8a;letter-spacing:.02em}
+.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;overflow-y:auto;margin-top:8px}
+.preview-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.stat-card .preview-k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8a8a8a;font-weight:600}
+.stat-card .preview-v{font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em}
+.stat-card .preview-delta{font-size:11.5px;color:#4ade80}
+.chart-card .preview-bar-wrap{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.preview-bar{height:6px;border-radius:4px;background:linear-gradient(90deg,#4797FF,#2F82F0)}
+.preview-footer{font-size:11px;color:#6b6b6b;margin-top:10px;letter-spacing:.04em;text-transform:uppercase}
 @media(max-width:900px){
-  .auth-side{border-right:none;border-bottom:1px solid rgba(255,255,255,.07);padding:34px 26px}
-  .auth-main{padding:34px 26px}
+  .auth-card{width:min(92vw,100%);height:auto;min-height:fit-content}
+  .auth-main{padding:30px 24px}
+  .auth-preview-wrap{display:none}
 }
 
 /* ── Toasts ─────────────────────────────────────── */
@@ -592,20 +605,12 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
 <!-- ── Auth ──────────────────────────────────────────────────────────────── -->
 <div id="authView" class="auth">
   <div class="auth-card panel">
-    <section class="auth-side">
-      <div>
-        <div class="brand">
-          <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
-        </div>
-        <div class="ah" style="padding:36px 0 0"><h1>Protected access for your team and lead data</h1><p>This workspace is only available to users with an account. Log in to manage company details, pipeline stages, and lead capture.</p></div>
-      </div>
-      <ul>
-        <li>Manage leads, quotes, and appointments in one place.</li>
-        <li>AI-powered SMS agent to qualify and follow up.</li>
-        <li>Pipeline tracking from first contact to closed deal.</li>
-      </ul>
-    </section>
+    <!-- Left: login form -->
     <section class="auth-main">
+      <div class="brand">
+        <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
+      </div>
+      <div class="ah"><h1>Welcome back</h1><p>Log in to manage your leads, pipeline, quotes, and appointments.</p></div>
       <form id="loginForm" class="auth-form">
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
@@ -614,13 +619,31 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
-        <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
+        <div class="ah"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
         <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Send Reset Link</button>
         <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>
     </section>
+  </div>
+  <!-- Right: software preview breaking out to the right edge -->
+  <div class="auth-preview-wrap">
+    <div class="auth-preview">
+      <div class="auth-preview-inner">
+        <div class="preview-top">
+          <div class="preview-brand"><img class="preview-logo" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"><span class="preview-title">QuoteLeadsHQ</span></div>
+          <div class="preview-nav">Dashboard&nbsp;&middot;&nbsp;Pipeline&nbsp;&middot;&nbsp;Leads&nbsp;&middot;&nbsp;Settings</div>
+        </div>
+        <div class="preview-grid">
+          <div class="preview-card stat-card"><div class="preview-k">Leads this month</div><div class="preview-v">1,204</div><div class="preview-delta">+12% vs last month</div></div>
+          <div class="preview-card stat-card"><div class="preview-k">Quotes sent</div><div class="preview-v">86</div><div class="preview-delta">+8% vs last month</div></div>
+          <div class="preview-card stat-card"><div class="preview-k">AI messages sent</div><div class="preview-v">342</div><div class="preview-delta">+21% vs last month</div></div>
+          <div class="preview-card chart-card"><div class="preview-k">Pipeline value</div><div class="preview-v">$42,800</div><div class="preview-bar-wrap"><div class="preview-bar" style="width:62%"></div><div class="preview-bar" style="width:48%"></div><div class="preview-bar" style="width:71%"></div><div class="preview-bar" style="width:39%"></div><div class="preview-bar" style="width:55%"></div></div></div>
+        </div>
+        <div class="preview-footer">Preview — software interface (dark mode)</div>
+      </div>
+    </div>
   </div>
 </div>
 
