@@ -185,27 +185,34 @@ textarea{min-height:100px;resize:vertical}
 .form-note{font-size:12px;color:var(--muted);line-height:1.5}
 .field-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:2px}
 
-/* ── Auth ── */
-.auth{min-height:100vh;position:relative;overflow:hidden;background:#04040A;color:#F2F2F2;font-family:'Inter',"Poppins",system-ui,sans-serif}
+/* ── Auth (matched to the quoteleads.com.au marketing site) ── */
+.auth{min-height:100vh;display:grid;place-items:center;padding:20px;position:relative;overflow:hidden;
+  background:#04040A;color:#F2F2F2;
+  font-family:'Inter',"Poppins",system-ui,sans-serif}
 .auth::before{content:'';position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(115% 62% at 50% -6%,rgba(71,151,255,.16),rgba(71,151,255,.05) 38%,transparent 64%),
              radial-gradient(70% 48% at 50% 104%,rgba(71,151,255,.08),transparent 72%)}
 .auth::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.4;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
   background-size:200px}
-.auth-card{width:min(1200px,96vw);height:min(800px,94vh);margin:32px auto 0 auto;display:flex;flex-direction:row;overflow:hidden;position:relative;z-index:2;
-  background:linear-gradient(145deg,rgba(255,255,255,.05),rgba(255,255,255,.015)) !important;
-  border:1px solid rgba(255,255,255,.08) !important;border-radius:30px;
-  box-shadow:0 34px 100px rgba(0,0,0,.6),0 0 70px rgba(71,151,255,.08) !important}
-.auth-main{width:min(350px,38vw);padding:56px 48px;display:flex;flex-direction:column;gap:26px;flex-shrink:0;background:transparent}
-.auth-side{display:none}
-.auth-main .brand-logo{height:30px;width:auto}
-.auth-main .brand-logo.logo-light{display:none !important}
-.auth-main .brand-logo.logo-dark{display:block !important}
-.auth-main .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
-.auth-main .ah h1{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;color:#fff;margin:0}
-.auth-main .ah p{color:#CACAD0;font-size:.95rem;line-height:1.75;margin:0}
-.auth-form{display:flex;flex-direction:column;gap:16px;margin-top:6px}
+.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden;position:relative;z-index:1;
+  background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.015)) !important;
+  border:1px solid rgba(255,255,255,.07) !important;border-radius:24px;
+  box-shadow:0 30px 90px rgba(0,0,0,.55),0 0 60px rgba(71,151,255,.06) !important}
+.auth-side{padding:44px 40px;background:transparent;color:#F2F2F2;border-right:1px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;justify-content:space-between;gap:24px}
+[data-theme=dark] .auth-side{background:transparent}
+.auth-side .ah h1{font-size:clamp(1.5rem,2.4vw,2rem);font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#fff}
+.auth-side .ah h1::before{content:'Secure Access';display:block;font-size:.62rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:#4797FF;margin-bottom:16px}
+.auth-side p,.auth-side li{color:#71717A;font-size:.86rem;line-height:1.7}
+.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:12px;
+  padding-top:22px;border-top:1px solid rgba(255,255,255,.07)}
+.auth-side li{display:flex;gap:10px;align-items:flex-start;color:#CACAD0}
+.auth-side li::before{content:'';flex-shrink:0;width:5px;height:5px;border-radius:50%;background:#4797FF;margin-top:.55em}
+.auth-main{padding:44px 40px}
+.auth-main .ah h1{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;color:#fff}
+.auth-form{display:flex;flex-direction:column;gap:16px}
 .auth-form .field label{display:block;font-size:.74rem;font-weight:600;letter-spacing:.03em;
   text-transform:uppercase;color:#CACAD0;margin-bottom:9px}
 .auth-form input{width:100%;min-height:48px;border-radius:12px;padding:12px 14px;
@@ -227,67 +234,18 @@ textarea{min-height:100px;resize:vertical}
              0 14px 34px rgba(71,151,255,.44),0 0 0 7px rgba(71,151,255,.14),0 0 52px rgba(71,151,255,.30)}
 .auth-form .btn2:active{transform:translateY(0)}
 .auth-form button[id$="Link"],.auth-form #backToLogin{color:#4797FF !important;font-weight:500}
-/* Right preview breakout — matches real dashboard dark UI, floating glass */
-.auth-preview{flex:1;background:#05050a;border-left:1px solid rgba(255,255,255,.07);border-top-left-radius:46px;overflow:hidden;position:relative}
-.auth-preview-glass{position:absolute;inset:-5px;z-index:0;pointer-events:none;
-  background:rgba(255,255,255,.015);
-  backdrop-filter:blur(14px) saturate(1.2);
-  -webkit-backdrop-filter:blur(14px) saturate(1.2);
-  border:0.5px solid rgba(255,255,255,.2);
-  border-top-left-radius:55px;
-  border-top-right-radius:14px;
-  border-bottom-left-radius:14px;
-  border-bottom-right-radius:14px;
-  box-shadow:0 30px 80px rgba(0,0,0,.7),0 0 50px rgba(71,151,255,.15)}
-.auth-card{border-width:0 !important}
-.auth-preview::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#4797FF,#2F82F0,#6FADFF);z-index:12;pointer-events:none}
-.auth-preview-inner{position:relative;z-index:2;padding:38px 46px;display:flex;flex-direction:column;gap:16px;height:100%;overflow-y:auto}
-/* Top bar like real app .top */
-.preview-topbar{height:48px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 6px}
-.preview-topbar-left{display:flex;align-items:center;gap:8px}
-.preview-topbar-left .icon{width:16px;height:16px;stroke-width:1.6}
-.preview-topbar-title{font-weight:600;color:#fff;font-size:15px;letter-spacing:-.01em}
-.preview-search{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04)}
-.preview-search .icon{width:14px;height:14px;color:#8a8a8a;stroke-width:1.4}
-.preview-search-input{border:none;background:transparent;color:#fff;outline:none;font-size:12px;width:140px}
-.preview-search-input::placeholder{color:#6b6b6b}
-/* Sidebar like real app sidebar */
-.preview-body{display:flex;flex:1;overflow:hidden;gap:0;margin-top:12px}
-.preview-sidebar{width:min(150px,17vw);flex-shrink:0;display:flex;flex-direction:column;gap:6px;padding-right:6px}
-.preview-nav-item{font-size:12px;color:#9a9a9a;padding:8px 12px;border-radius:10px;cursor:default;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
-.preview-nav-item .icon{width:14px;height:14px;stroke-width:1.5;flex-shrink:0}
-.preview-nav-item.active{color:#fff;background:rgba(71,151,255,.10);border-right:3px solid #4797FF}
-.preview-content{flex:1;min-width:0;overflow-y:auto;padding-left:6px}
-/* Stat cards like real app .card */
-.preview-stat-row{display:flex;flex-wrap:wrap;gap:12px}
-.preview-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;min-width:130px;flex:1;display:flex;flex-direction:column;gap:8px}
-.preview-stat-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.preview-stat-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#8a8a8a;font-weight:600}
-.preview-stat-top .icon{width:14px;height:14px;color:#8a8a8a;stroke-width:1.4;flex-shrink:0}
-.preview-stat-val{font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em}
-.preview-chip{font-size:11px;color:#4ade80;align-self:flex-start;letter-spacing:.01em}
-/* Panel like real app .panel */
-.preview-panel{margin-top:4px;display:flex;flex-direction:column;gap:8px}
-.preview-panel-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.preview-panel-title{font-size:14px;font-weight:500;color:#fff}
-.preview-panel-sub{font-size:11px;color:#8a8a8a}
-.preview-kanban-wrap{overflow-x:auto;min-width:0}
-.preview-kanban{display:flex;gap:12px;overflow-x:auto;min-width:0}
-.preview-kcol{min-width:150px;display:flex;flex-direction:column;gap:7px}
-.preview-kh{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8a8a8a;font-weight:600;padding-bottom:3px}
-.preview-kcards{display:flex;flex-direction:column;gap:6px}
-.preview-kcard{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 10px;font-size:12px;color:#d1d1d1}
-.preview-footer{font-size:10px;color:#6b6b6b;letter-spacing:.04em;text-transform:uppercase;margin-top:auto}
+/* the auth panel is dark in both themes, so always use the white logo */
+.auth-side .brand-logo{height:30px;width:auto}
+.auth-side .brand-logo.logo-light{display:none !important}
+.auth-side .brand-logo.logo-dark{display:block !important}
+[data-theme=dark] .auth-side .brand-logo.logo-light{display:none !important}
+[data-theme=dark] .auth-side .brand-logo.logo-dark{display:block !important}
+.auth-side .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
 @media(max-width:900px){
-  .auth-card{width:min(92vw,100%);height:auto;min-height:fit-content;margin:20px 0;flex-direction:column}
-  .auth-main{width:100%;padding:34px 26px}
-  .auth-preview{border-radius:0;border-top-left-radius:24px;border-top-right-radius:24px}
-  .auth-preview-glass{border-top-left-radius:30px;border-top-right-radius:30px}
-  .auth-preview-inner{padding:26px 24px}
-  .preview-body{flex-direction:column}
-  .preview-sidebar{width:100%;padding-right:0;flex-direction:row;overflow-x:auto;padding-bottom:8px}
-  .preview-content{padding-left:0}
+  .auth-side{border-right:none;border-bottom:1px solid rgba(255,255,255,.07);padding:34px 26px}
+  .auth-main{padding:34px 26px}
 }
+
 /* ── Toasts ─────────────────────────────────────── */
 .toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
 .toast{min-width:260px;max-width:340px;padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-size:12px}
@@ -633,13 +591,21 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
 
 <!-- ── Auth ──────────────────────────────────────────────────────────────── -->
 <div id="authView" class="auth">
-  <div class="auth-card">
-    <!-- Left: login form -->
-    <section class="auth-main">
-      <div class="brand">
-        <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
+  <div class="auth-card panel">
+    <section class="auth-side">
+      <div>
+        <div class="brand">
+          <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
+        </div>
+        <div class="ah" style="padding:36px 0 0"><h1>Protected access for your team and lead data</h1><p>This workspace is only available to users with an account. Log in to manage company details, pipeline stages, and lead capture.</p></div>
       </div>
-      <div class="ah"><h1>Welcome back</h1><p>Log in to manage your leads, pipeline, quotes, and appointments.</p></div>
+      <ul>
+        <li>Manage leads, quotes, and appointments in one place.</li>
+        <li>AI-powered SMS agent to qualify and follow up.</li>
+        <li>Pipeline tracking from first contact to closed deal.</li>
+      </ul>
+    </section>
+    <section class="auth-main">
       <form id="loginForm" class="auth-form">
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
@@ -648,55 +614,12 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
-        <div class="ah"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
+        <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
         <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email"></div>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
         <button class="btn2" type="submit">Send Reset Link</button>
         <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>
-    </section>
-    <!-- Right: software preview breakout — matches real dashboard dark UI -->
-    <section class="auth-preview">
-      <div class="auth-preview-glass"></div>
-      <div class="auth-preview-inner">
-        <!-- Top bar like the real app -->
-        <div class="preview-topbar">
-          <div class="preview-topbar-left">
-            <span class="icon" data-icon="dashboard"></span><span class="preview-topbar-title">Dashboard</span>
-          </div>
-          <div class="preview-search"><span class="icon" data-icon="search"></span><input class="preview-search-input" type="search" placeholder="Search leads, email, phone, postcode"></div>
-        </div>
-        <div class="preview-body">
-          <aside class="preview-sidebar">
-            <div class="preview-nav-item active"><span class="icon" data-icon="dashboard"></span><span class="preview-nav-text">Dashboard</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="kanban"></span><span class="preview-nav-text">Pipeline</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="users"></span><span class="preview-nav-text">Leads</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="file"></span><span class="preview-nav-text">Quotes</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="calendar"></span><span class="preview-nav-text">Appointments</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="folder"></span><span class="preview-nav-text">Files</span></div>
-            <div class="preview-nav-item"><span class="icon" data-icon="settings"></span><span class="preview-nav-text">Settings</span></div>
-          </aside>
-          <div class="preview-content">
-            <div class="preview-stat-row">
-              <div class="preview-card"><div class="preview-stat-top"><span class="preview-stat-label">Total Leads</span><span class="icon" data-icon="users"></span></div><div class="preview-stat-val">1,204</div><span class="preview-chip">+12%</span></div>
-              <div class="preview-card"><div class="preview-stat-top"><span class="preview-stat-label">Open Pipeline</span><span class="icon" data-icon="kanban"></span></div><div class="preview-stat-val">$18,400</div><span class="preview-chip">+8%</span></div>
-              <div class="preview-card"><div class="preview-stat-top"><span class="preview-stat-label">Quotes Sent</span><span class="icon" data-icon="file"></span></div><div class="preview-stat-val">86</div><span class="preview-chip">+21%</span></div>
-              <div class="preview-card"><div class="preview-stat-top"><span class="preview-stat-label">AI Messages</span><span class="icon" data-icon="spark"></span></div><div class="preview-stat-val">342</div><span class="preview-chip">+5%</span></div>
-            </div>
-            <div class="preview-panel">
-              <div class="preview-panel-h"><div><span class="preview-panel-title">Pipeline Board</span><span class="preview-panel-sub">Drag cards between columns to update lead status.</span></div></div>
-              <div class="preview-kanban-wrap">
-                <div class="preview-kanban">
-                  <div class="preview-kcol"><div class="preview-kh">New Lead</div><div class="preview-kcards"><div class="preview-kcard">Website enquiry</div><div class="preview-kcard">Inbound SMS</div></div></div>
-                  <div class="preview-kcol"><div class="preview-kh">Quote in Progress</div><div class="preview-kcards"><div class="preview-kcard">Quote draft ready</div></div></div>
-                  <div class="preview-kcol"><div class="preview-kh">Closed Won</div><div class="preview-kcards"><div class="preview-kcard">Job booked</div></div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-      </div>
     </section>
   </div>
 </div>
