@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com ; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com ; font-src 'self' https://fonts.gstatic.com ; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co; frame-src https://challenges.cloudflare.com ; object-src 'none'; base-uri 'self';">
-<title>QuoteLeadsHQ - The Quote Conversion Machine</title>
+<title>QuoteLeadsHQ</title>
 <meta name="description" content="QuoteLeadsHQ runs the entire backend - instant reply, qualification, quote draft, send, and follow-up - until the job is won.">
 <link rel="preconnect" href="https://fonts.googleapis.com "/>
 <link rel="preconnect" href="https://fonts.gstatic.com " crossorigin/>
@@ -154,7 +154,6 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
     margin-top: 8px; border-bottom: none !important;
 }
 
-/* -- HERO -- */
 .hero {
     min-height: 100vh; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -178,13 +177,7 @@ h1,h2,h3,h4,h5,h6 { font-weight: 500; }
 .hero-orb-1 { width: 200px; height: 200px; background: rgba(71,151,255,0.08); top: 20%; right: 15%; animation-delay: 0s; }
 .hero-orb-2 { width: 150px; height: 150px; background: rgba(100,120,255,0.06); bottom: 25%; left: 12%; animation-delay: -3s; }
 @keyframes orbFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
-.hero-logo {
-    width: 108px; height: 108px; object-fit: contain;
-    margin-bottom: 28px; position: relative; z-index: 1;
-    animation: heroLogoIn .8s cubic-bezier(.16,1,.3,1) both;
-    display: block;
-}
-@keyframes heroLogoIn { from{opacity:0;transform:scale(.7) translateY(16px)} to{opacity:1;transform:none} }
+
 .badge {
     display: inline-flex; align-items: center; gap: 8px;
     background: var(--bg-card); border: 1px solid var(--border-mid);
@@ -854,7 +847,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
     <div class="hero-glow"></div>
     <div class="hero-orb hero-orb-1"></div>
     <div class="hero-orb hero-orb-2"></div>
-    <img class="hero-logo" src="product-logo.png" alt="QuoteLeadsHQ" onerror="this.style.display='none'"/>
+    
     <div class="badge"><span class="badge-dot"></span><strong>Live</strong> - now onboarding trade businesses</div>
     <h1>Turn every lead into a<br/><em>signed quote.</em></h1>
     <p class="hero-sub">Your AI-powered sales engine that responds in seconds, qualifies leads, drafts quotes, follows up, and closes deals - 24/7, with zero admin.</p>
