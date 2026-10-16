@@ -265,6 +265,7 @@ textarea{min-height:100px;resize:vertical}
 .preview-kcards{display:flex;flex-direction:column;gap:6px}
 .preview-kcard{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 10px;font-size:12px;color:#d1d1d1;display:flex;align-items:center;gap:8px}
 .preview-kicon{font-size:14px;flex-shrink:0}
+.preview-dot{width:8px;height:8px;border-radius:50%;background:#4797FF;display:inline-block;flex-shrink:0}
 .preview-footer{font-size:10px;color:#6b6b6b;letter-spacing:.04em;text-transform:uppercase;margin-top:auto}
 @media(max-width:900px){
   .auth-card{width:min(92vw,100%);height:auto;min-height:fit-content;margin:20px 0;flex-direction:column}
@@ -673,20 +674,20 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
                 <div class="preview-kcol">
                   <div class="preview-kh">New</div>
                   <div class="preview-kcards">
-                    <div class="preview-kcard"><span class="preview-kicon">📄</span> Website enquiry</div>
-                    <div class="preview-kcard"><span class="preview-kicon">📱</span> Inbound SMS</div>
+                    <div class="preview-kcard"><span class="preview-kicon preview-dot"></span> Website enquiry</div>
+                    <div class="preview-kcard"><span class="preview-kicon preview-dot"></span> Inbound SMS</div>
                   </div>
                 </div>
                 <div class="preview-kcol">
                   <div class="preview-kh">Quoting</div>
                   <div class="preview-kcards">
-                    <div class="preview-kcard"><span class="preview-kicon">💰</span> Quote draft ready</div>
+                    <div class="preview-kcard"><span class="preview-kicon preview-dot"></span> Quote draft ready</div>
                   </div>
                 </div>
                 <div class="preview-kcol">
                   <div class="preview-kh">Won</div>
                   <div class="preview-kcards">
-                    <div class="preview-kcard"><span class="preview-kicon">✅</span> Job booked</div>
+                    <div class="preview-kcard"><span class="preview-kicon preview-dot"></span> Job booked</div>
                   </div>
                 </div>
               </div>
