@@ -6816,7 +6816,7 @@ let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per or
 // state up to 300. Each suburb is its own order (create-ppl-checkout).
 const BL_HARD_MAX    = 100;
 const BL_STATE_MAX   = 300;
-// Minimum per order: a first order is a 25-lead trial, re-orders are 25+.
+// Minimum leads per area per order (first orders and re-orders alike).
 // The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
 const BL_TRIAL_MIN   = 25;
 const BL_REORDER_MIN = 25;
@@ -6866,9 +6866,7 @@ async function loadBuyLeads() {
   _blStatewide = false; _blCovMode = 'radius';
   _blQty = _blDiscountTiers[0]?.min_quantity ?? _blMinQty;
   const minNote = document.getElementById('buyLeadsMinNote');
-  if (minNote) minNote.textContent = paidBefore
-    ? `Re-orders are a minimum of ${BL_REORDER_MIN} leads.`
-    : `Your first order is a trial of at least ${BL_TRIAL_MIN} leads.`;
+  if (minNote) minNote.textContent = `Minimum ${_blMinQty} leads per area.`;
   const customMin = document.getElementById('buyLeadsCustomMin');
   if (customMin) customMin.textContent = `leads (min. ${_blMinQty})`;
   _blDiscount = 0;
@@ -7649,7 +7647,7 @@ async function startPplCheckout() {
   const cap = blActiveMax();
   if (_blQty > cap) { toast(`Up to ${cap} leads per area per order. Please lower the quantity.`, true); return; }
   if (_blQty < _blMinQty) {
-    toast(_blMinQty === BL_REORDER_MIN ? `Re-orders are a minimum of ${BL_REORDER_MIN} leads.` : `Your first order is a minimum of ${BL_TRIAL_MIN} leads.`, true); return;
+    toast(`The minimum is ${_blMinQty} leads per area.`, true); return;
   }
   if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
   if (_blLocType === 'radius') {

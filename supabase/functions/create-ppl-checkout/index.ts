@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
-import { isPplNiche, pplMinQuantity, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
+import { isPplNiche, pplMinQuantity } from '../_shared/ppl-niches.ts'
 import { buildPplAreas, summarisePplAreas, type PplArea } from '../_shared/ppl-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
@@ -83,10 +83,7 @@ serve(async (req) => {
       })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const hint = Number(quantity) < minQty
-        ? (minQty === PPL_TRIAL_MIN ? ` Your first order (a trial) is a minimum of ${minQty} leads per area.` : ` Re-orders are a minimum of ${minQty} leads per area.`)
-        : ''
-      return new Response(JSON.stringify({ error: msg + hint }),
+      return new Response(JSON.stringify({ error: msg }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
