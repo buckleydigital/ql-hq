@@ -6910,7 +6910,7 @@ function renderBuyLeadsNiches() {
       return `<button type="button" disabled
         id="nicheCard-${niche}"
         style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-        ${label} - <span style="color:#f87171">Sold out</span>
+        ${label} - <span style="color:#f87171">Unavailable</span>
       </button>`;
     }
     const price = _blCityPrices[niche];
@@ -6948,7 +6948,7 @@ function renderBuyLeadsSubNiches(niche) {
       return `<button type="button" disabled
         id="subNicheCard-${s.id}"
         style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-        ${s.label} - <span style="color:#f87171">Sold out</span>
+        ${s.label} - <span style="color:#f87171">Unavailable</span>
       </button>`;
     }
     const cached    = _blCitySubPrices[niche + ':' + s.id];
@@ -7644,7 +7644,7 @@ async function startPplCheckout() {
 
   if (!_blNiche || !_blCity) { toast('Please select a niche and city.', true); return; }
   if (_blSoldOut[_blNiche] || (_blSubNiche && _blSoldOut[_blNiche + ':' + _blSubNiche])) {
-    toast('That trade is sold out in this area. Please choose another.', true); return;
+    toast('That trade is unavailable in this area. Please choose another.', true); return;
   }
   const cap = blActiveMax();
   if (_blQty > cap) { toast(`Up to ${cap} leads per area per order. Please lower the quantity.`, true); return; }

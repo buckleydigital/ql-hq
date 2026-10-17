@@ -148,7 +148,7 @@ export async function buildPplAreas(db: any, input: PplAreaInput): Promise<PplAr
     if (!d.postcodes.length) throw new Error(`No postcodes found for ${d.label}. Try a different suburb or a wider radius.`)
     const pricing = await resolvePplPrice(db, input.niche, input.subNiche, d.city)
     if (!pricing) throw new Error(`No price is set for ${d.city}`)
-    if (pricing.sold_out === true) throw new Error(`${d.city} is sold out for this trade at the moment`)
+    if (pricing.sold_out === true) throw new Error(`${d.city} is unavailable for this trade at the moment`)
     const typeCap = PPL_AREA_CAP[d.location_type]
     const cap = Math.min(pricing.max_order_qty ?? typeCap, typeCap)
     if (qty > cap) throw new Error(`Up to ${cap} leads per order for ${d.label}`)
