@@ -6816,10 +6816,10 @@ let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per or
 // state up to 300. Each suburb is its own order (create-ppl-checkout).
 const BL_HARD_MAX    = 100;
 const BL_STATE_MAX   = 300;
-// Minimum per order: a first order is a 50-lead trial, re-orders are 100+.
+// Minimum per order: a first order is a 25-lead trial, re-orders are 25+.
 // The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
-const BL_TRIAL_MIN   = 50;
-const BL_REORDER_MIN = 100;
+const BL_TRIAL_MIN   = 25;
+const BL_REORDER_MIN = 25;
 let _blMinQty        = BL_TRIAL_MIN;
 const _pplOrdersCache = new Map();
 

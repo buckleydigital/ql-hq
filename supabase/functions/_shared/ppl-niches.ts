@@ -7,11 +7,11 @@ export function isPplNiche(niche: string | null | undefined): boolean {
   return PPL_NICHES.includes(niche ?? '')
 }
 
-// Order minimums. A first order is a trial of at least 50 leads; anyone who
-// has paid for leads before re-orders at least 100, per area. The cap per
+// Order minimums. A first order is a trial of at least 25 leads; anyone who
+// has paid for leads before re-orders at least 25, per area. The cap per
 // area is separate (ppl-areas.ts: 100, or 300 state wide, and max_order_qty).
-export const PPL_TRIAL_MIN = 50
-export const PPL_REORDER_MIN = 100
+export const PPL_TRIAL_MIN = 25
+export const PPL_REORDER_MIN = 25
 
 // deno-lint-ignore no-explicit-any
 export async function pplMinQuantity(db: any, companyId: string | null | undefined): Promise<number> {
