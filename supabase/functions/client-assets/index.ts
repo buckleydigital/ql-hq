@@ -24,6 +24,7 @@ import "../_shared/no-em-dash.ts";
 import {
   deleteObject, headObject, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, MEDIA_TYPES, mediaConfigured, uploadUrl, viewUrl,
 } from "../_shared/r2.ts";
+import { claimUpload, inFlight, reserveUpload } from "../_shared/upload-ledger.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,13 +143,20 @@ async function startUpload(ctx: Ctx, b: Row) {
   const max = type.kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
   if (bytes <= 0 || bytes > max) return json({ error: `Files can be up to ${Math.round(max / 1048576)} MB` }, 400);
   if (kind !== "logo") {
+    // Uploads still in flight count too, so the cap can't be beaten by
+    // starting many at once.
     const { count } = await ctx.admin.from("company_assets").select("id", { count: "exact", head: true })
       .eq("company_id", ctx.companyId).eq("kind", kind).eq("source", "client");
     const cap = kind === "video" ? MAX_VIDEOS : MAX_PHOTOS;
-    if ((count ?? 0) >= cap) return json({ error: `That's the most ${kind}s we can take (${cap}). Remove one to add another.` }, 400);
+    if ((count ?? 0) + await inFlight(ctx.admin, ctx.companyId, kind) >= cap) {
+      return json({ error: `That's the most ${kind}s we can take (${cap}). Remove one to add another.` }, 400);
+    }
   }
   const key = `${ctx.companyId}/client/${crypto.randomUUID()}.${type.ext}`;
-  return json({ ok: true, key, upload_url: await uploadUrl(key) });
+  const contentType = String(b.content_type);
+  const refused = await reserveUpload(ctx.admin, { key, companyId: ctx.companyId, kind, bytes, contentType, userId: ctx.actor.id });
+  if (refused) return json({ error: refused }, 429);
+  return json({ ok: true, key, upload_url: await uploadUrl(key, contentType, bytes) });
 }
 
 async function finishUpload(ctx: Ctx, b: Row) {
@@ -158,11 +166,14 @@ async function finishUpload(ctx: Ctx, b: Row) {
   if (!kind || !new RegExp(`^${ctx.companyId}/client/[0-9a-f-]{36}\\.(jpg|png|webp|mp4|mov)$`).test(key)) {
     return json({ error: "Unknown upload" }, 400);
   }
+  // Only an upload we handed a link out for, finished once.
+  const ledger = await claimUpload(ctx.admin, key, ctx.companyId);
+  if (!ledger || ledger.kind !== kind) return json({ error: "Unknown upload" }, 400);
   const head = await headObject(key);
   if (!head) return json({ error: "The file didn't arrive. Please try again." }, 400);
-  const type = MEDIA_TYPES[head.contentType.split(";")[0]] ?? MEDIA_TYPES[String(b.content_type || "")];
+  const type = MEDIA_TYPES[head.contentType.split(";")[0]];
   const max = type?.kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-  if (!type || head.bytes > max || (kind === "video") !== (type.kind === "video")) {
+  if (!type || head.bytes > max || head.bytes !== Number(ledger.bytes) || (kind === "video") !== (type.kind === "video")) {
     await deleteObject(key);
     return json({ error: "That file is the wrong type or too big" }, 400);
   }

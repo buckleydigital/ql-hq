@@ -30,17 +30,23 @@ export const mediaConfigured = () => config() !== null;
 const objectUrl = (base: string, key: string) =>
   `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
-async function presign(method: "GET" | "PUT", key: string, seconds: number): Promise<string> {
+async function presign(method: "GET" | "PUT", key: string, seconds: number, headers?: Record<string, string>): Promise<string> {
   const c = config();
   if (!c) throw new Error("Media storage is not set up yet (R2 secrets missing).");
   const url = new URL(objectUrl(c.base, key));
   url.searchParams.set("X-Amz-Expires", String(seconds));
-  const signed = await c.client.sign(url.toString(), { method, aws: { signQuery: true } });
+  // allHeaders signs the headers given, which aws4fetch otherwise leaves out.
+  const signed = await c.client.sign(url.toString(), { method, headers, aws: { signQuery: true, allHeaders: !!headers } });
   return signed.url;
 }
 
-/** A URL the browser can PUT the file to, valid for an hour. */
-export const uploadUrl = (key: string) => presign("PUT", key, 3600);
+/**
+ * A URL the browser can PUT one file to, valid for an hour. Its type and exact
+ * size are part of the signature, so R2 itself refuses a bigger or different
+ * file than the one we agreed to take: limits hold even if the browser lies.
+ */
+export const uploadUrl = (key: string, contentType: string, bytes: number) =>
+  presign("PUT", key, 3600, { "content-type": contentType, "content-length": String(bytes) });
 
 /** A URL to view or download the file, valid for six hours. */
 export const viewUrl = (key: string) => presign("GET", key, 6 * 3600);

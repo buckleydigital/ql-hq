@@ -60,6 +60,7 @@ import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0/helpers/zod";
 import {
   deleteObject, headObject, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, MEDIA_TYPES, mediaConfigured, uploadUrl, viewUrl,
 } from "../_shared/r2.ts";
+import { claimUpload, reserveUpload } from "../_shared/upload-ledger.ts";
 
 const MODEL = "claude-opus-5-5";
 
@@ -492,15 +493,20 @@ async function stockAction(admin: Ctx["admin"], action: string, b: Record<string
     const max = type.kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
     if (bytes <= 0 || bytes > max) return json({ error: `Files can be up to ${Math.round(max / 1048576)} MB` }, 400);
     const key = `stock/${crypto.randomUUID()}.${type.ext}`;
-    return json({ ok: true, key, upload_url: await uploadUrl(key) });
+    const contentType = String(b.content_type);
+    const refused = await reserveUpload(admin, { key, companyId: null, kind: type.kind === "video" ? "video" : "photo", bytes, contentType, userId });
+    if (refused) return json({ error: refused }, 429);
+    return json({ ok: true, key, upload_url: await uploadUrl(key, contentType, bytes) });
   }
   if (action === "stock_finish_upload") {
     const key = String(b.key || "");
     if (!/^stock\/[0-9a-f-]{36}\.(jpg|png|webp|mp4|mov)$/.test(key)) return json({ error: "Unknown upload" }, 400);
+    const ledger = await claimUpload(admin, key, null);
+    if (!ledger) return json({ error: "Unknown upload" }, 400);
     const head = await headObject(key);
     if (!head) return json({ error: "The file didn't arrive. Try again." }, 400);
-    const type = MEDIA_TYPES[head.contentType.split(";")[0]] ?? MEDIA_TYPES[String(b.content_type || "")];
-    if (!type) { await deleteObject(key); return json({ error: "Unsupported file type" }, 400); }
+    const type = MEDIA_TYPES[head.contentType.split(";")[0]];
+    if (!type || head.bytes !== Number(ledger.bytes)) { await deleteObject(key); return json({ error: "That file is the wrong type or size" }, 400); }
     const dim = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
     const { data, error } = await admin.from("stock_assets").insert({
       trades: cleanTrades(b.trades), kind: type.kind === "video" ? "video" : "photo", path: key,

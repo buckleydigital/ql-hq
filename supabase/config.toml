@@ -195,3 +195,7 @@ verify_jwt = false
 # itself and takes the company from their profile.
 [functions.client-assets]
 verify_jwt = false
+
+# Nightly R2 tidy-up, called by pg_cron with the vault's media_cleanup_secret.
+[functions.media-cleanup]
+verify_jwt = false
