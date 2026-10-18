@@ -48,6 +48,10 @@
 // The client never reaches this - the tables it writes are hard-locked and it
 // requires a team JWT.
 //
+// The autopilot (creative-rounds, on a schedule) calls generate_ad_copy,
+// write_creative_copy, policy_check and use_stock for a client with the
+// x-autopilot-secret header instead of a login; it acts as "Automation".
+//
 // REQUIRED SECRETS
 //   ANTHROPIC_API_KEY  - the Claude API key (the SDK reads this name itself)
 // Checked at the point of use and reported as a clear message rather than a
@@ -57,15 +61,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
 import { z } from "npm:zod@4";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0/helpers/zod";
+import { FALLBACK_BETA, MODEL } from "../_shared/claude.ts";
+import { briefFacts } from "../_shared/brief.ts";
+import { type Line, runPolicy, type Where } from "../_shared/ad-policy.ts";
 import {
   deleteObject, headObject, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, MEDIA_TYPES, mediaConfigured, uploadUrl, viewUrl,
 } from "../_shared/r2.ts";
 import { claimUpload, reserveUpload } from "../_shared/upload-ledger.ts";
-
-const MODEL = "claude-opus-5-5";
-// The refusal fallback is a beta: `fallbacks` is only accepted with this
-// header. messages.parse doesn't send a `betas` list, so it goes on the request.
-const FALLBACK_BETA = { headers: { "anthropic-beta": "server-side-fallback-2026-07-01" } };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,41 +101,52 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Missing Authorization header" }, 401);
-
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       { auth: { persistSession: false } },
     );
-
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const { data: { user: caller } } = await userClient.auth.getUser(token);
-    if (!caller) return json({ error: "Not authenticated" }, 401);
-
-    const { data: me } = await admin
-      .from("profiles").select("is_team, is_admin, full_name, team_role")
-      .eq("id", caller.id).maybeSingle();
-
-    const isTeam = me?.is_team === true;
-    const isAdmin = me?.is_admin === true;
-    const isOps = isTeam && me?.team_role === "ops_manager";
-    if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
-
-    const actorName = (me?.full_name as string) || "Internal Team";
     const body = await req.json().catch(() => ({}));
     const { action, company_id: companyId } = body as { action?: string; company_id?: string };
+
+    // The autopilot: a fixed set of actions, as "Automation", for any client.
+    const autopilotSecret = req.headers.get("x-autopilot-secret") || "";
+    let caller: { id: string | null } | null = null;
+    let isAdmin = false, isOps = false, actorName = "Automation";
+    if (autopilotSecret) {
+      const { data: ok } = await admin.rpc("autopilot_secret_ok", { p: autopilotSecret });
+      if (ok !== true) return json({ error: "unauthorized" }, 401);
+      if (!["generate_ad_copy", "write_creative_copy", "policy_check", "use_stock"].includes(String(action))) {
+        return json({ error: "Not an autopilot action" }, 403);
+      }
+      caller = { id: null };
+      isOps = true;
+    } else {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) return json({ error: "Missing Authorization header" }, 401);
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
+      const token = authHeader.replace(/^Bearer\s+/i, "");
+      const { data: { user } } = await userClient.auth.getUser(token);
+      if (!user) return json({ error: "Not authenticated" }, 401);
+      const { data: me } = await admin
+        .from("profiles").select("is_team, is_admin, full_name, team_role")
+        .eq("id", user.id).maybeSingle();
+      const isTeam = me?.is_team === true;
+      isAdmin = me?.is_admin === true;
+      isOps = isTeam && me?.team_role === "ops_manager";
+      if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
+      caller = { id: user.id };
+      actorName = (me?.full_name as string) || "Internal Team";
+    }
 
     // The stock library belongs to no one client.
     if (action && action.startsWith("stock_")) {
       if (!(isAdmin || isOps)) return json({ error: "Only an admin or ops manager can change the stock library" }, 403);
-      return await stockAction(admin, action, body as Record<string, unknown>, caller.id);
+      return await stockAction(admin, action, body as Record<string, unknown>, caller.id!);
     }
     if (!companyId) return json({ error: "company_id is required" }, 400);
 
@@ -179,40 +192,10 @@ type Ctx = {
   admin: ReturnType<typeof createClient>;
   companyId: string;
   company: Record<string, unknown>;
-  actor: { id: string; name: string };
+  actor: { id: string | null; name: string };
   isAdmin: boolean;
   isOps: boolean;
 };
-
-// Everything we actually know, and nothing invented. The onboarding form is
-// the source: if a field is blank we leave it out rather than filling it with
-// a plausible guess, because a guess reads as fact in finished ad copy.
-function briefFacts(ctx: Ctx): string[] {
-  const c = ctx.company;
-  const profile = (c.dfy_profile || {}) as Record<string, unknown>;
-  const pick = (...keys: string[]) => {
-    for (const k of keys) {
-      const v = profile[k];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-    return null;
-  };
-  const facts: string[] = [];
-  const add = (label: string, v: unknown) => {
-    if (v != null && String(v).trim()) facts.push(`${label}: ${String(v).trim().slice(0, 1200)}`);
-  };
-  add("Business name", c.name);
-  add("Industry", c.niche || pick("industry"));
-  add("Service area", c.service_area || pick("service_location"));
-  add("Service radius", pick("service_radius"));
-  add("Website", c.website_url);
-  add("Current offers or promotions", pick("special_offers"));
-  add("Products and brands they install", pick("products_brands"));
-  add("Anything else they told us", pick("additional_info"));
-  add("Reviews and testimonials they gave us (quote only these, word for word)", c.client_testimonials);
-  add("Max daily ad spend", c.max_daily_ad_spend);
-  return facts;
-}
 
 // ─── Step 4: ad copy ─────────────────────────────────────────────────────────
 async function generateAdCopy(ctx: Ctx) {
@@ -221,7 +204,7 @@ async function generateAdCopy(ctx: Ctx) {
     return json({ error: "ANTHROPIC_API_KEY is not set on this project, so ad copy cannot be generated yet." }, 503);
   }
 
-  const facts = briefFacts(ctx);
+  const facts = briefFacts(ctx.company);
   const client = new Anthropic({ apiKey });
 
   const system = [
@@ -604,7 +587,7 @@ async function writeCreativeCopy(ctx: Ctx, b: Record<string, unknown>) {
   // saved or not.
   const note = String(b.creative_note ?? ctx.company.creative_note ?? "").trim().slice(0, 2000);
   const { prompt: direction } = await creativePrompt(ctx);
-  const facts = briefFacts(ctx);
+  const facts = briefFacts(ctx.company);
   const meta = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
 
   const system = [
@@ -691,37 +674,10 @@ async function saveCreative(ctx: Ctx, b: Record<string, unknown>) {
 }
 
 // ─── The ad-rules check ──────────────────────────────────────────────────────
-// Every line that will run, read against the rules that get ads rejected or
-// accounts restricted. Lines that must change are rewritten in place (within
-// their length limit, and re-checked here before they are used); judgement
-// calls are flagged for a person and left alone. The result is kept on the
-// company so the studio shows it after a reload.
+// The check itself lives in _shared/ad-policy.ts, shared with the preview
+// rounds (creative-rounds).
 
-// Where a line lives, and the most characters it may have there.
-const LIMITS: Record<string, number> = {
-  meta_headline: 40, meta_primary_text: 600, meta_description: 200,
-  image_headline: 45, image_subline: 70, image_cta: 22,
-  google_headline: 30, google_long_headline: 90, google_description: 90,
-};
-type Where = keyof typeof LIMITS;
-type Line = { where: Where; index: number; text: string };
-
-const PolicySchema = z.object({
-  issues: z.array(z.object({
-    where: z.enum(["meta_headline", "meta_primary_text", "meta_description", "image_headline", "image_subline",
-      "image_cta", "google_headline", "google_long_headline", "google_description"]),
-    index: z.number().describe("The line's index exactly as given in the list"),
-    severity: z.enum(["must_fix", "check"]).describe("must_fix: would be rejected or is untrue or unsupported by the brief. check: a judgement call for a person"),
-    rule: z.string().describe("The rule, in a few words"),
-    reason: z.string().describe("One sentence on what is wrong"),
-    rewrite: z.string().describe("A compliant replacement within the same character limit, or empty if a person has to decide"),
-  })),
-  special_ad_category: z.enum(["none", "financial_products_and_services"])
-    .describe("financial_products_and_services if any line promotes finance, payment plans, $0 deposit or interest free"),
-  summary: z.string().describe("Two sentences for the team: is this pack safe to send, and what needs a person"),
-});
-
-// The copy as numbered lines, in the order the client will see it.
+// The studio's copy as numbered lines, in the order the client will see it.
 function copyLines(ctx: Ctx): Line[] {
   const meta = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
   const cc = (ctx.company.creative_copy || {}) as Record<string, unknown>;
@@ -743,152 +699,52 @@ function copyLines(ctx: Ctx): Line[] {
   return out;
 }
 
-// Checks that need no judgement, so they are never left to the model.
-function mechanicalIssues(lines: Line[]) {
-  const out: Record<string, unknown>[] = [];
-  for (const l of lines) {
-    const max = LIMITS[l.where];
-    if (l.text.length > max) out.push({ ...l, severity: "must_fix", rule: "Length limit", reason: `${l.text.length} characters, the limit is ${max}.`, rewrite: "" });
-    if (/[\u2013\u2014\u2015]/.test(l.text)) out.push({ ...l, severity: "must_fix", rule: "House style", reason: "Contains a dash we never use.", rewrite: "" });
-    if (l.where.startsWith("google") && /!/.test(l.text) && l.where !== "google_description") {
-      out.push({ ...l, severity: "must_fix", rule: "Google punctuation", reason: "Google rejects an exclamation mark in a headline.", rewrite: "" });
-    }
-  }
-  return out;
-}
-
-// A rewrite is only used if it is itself clean.
-const usableRewrite = (where: Where, t: string) =>
-  !!t.trim() && t.length <= LIMITS[where] && !/[\u2013\u2014\u2015]/.test(t) &&
-  !(where.startsWith("google") && where !== "google_description" && t.includes("!"));
-
-function setLine(meta: Record<string, unknown>, cc: Record<string, unknown>, l: { where: Where; index: number }, text: string) {
-  const at = (arr: unknown) => { if (Array.isArray(arr) && l.index < arr.length) { arr[l.index] = text; return true; } return false; };
+function setLine(meta: Record<string, unknown>, cc: Record<string, unknown>, where: Where, index: number, text: string) {
+  const at = (arr: unknown) => { if (Array.isArray(arr) && index < arr.length) arr[index] = text; };
   const g = (cc.google || {}) as Record<string, unknown>;
-  switch (l.where) {
+  switch (where) {
     case "meta_headline": return at(meta.headlines);
     case "meta_primary_text": return at(meta.primary_texts);
     case "meta_description": return at(meta.descriptions);
     case "google_headline": return at(g.headlines);
     case "google_description": return at(g.descriptions);
-    case "google_long_headline": g.long_headline = text; return true;
+    case "google_long_headline": g.long_headline = text; return;
     default: {
-      const v = ((cc.variants || []) as Record<string, unknown>[])[l.index];
-      if (!v) return false;
-      v[l.where.replace("image_", "")] = text;
-      return true;
+      const v = ((cc.variants || []) as Record<string, unknown>[])[index];
+      if (v) v[where.replace("image_", "")] = text;
     }
   }
 }
 
+// The ad rules check (_shared/ad-policy.ts) over the studio's copy, with what
+// must change rewritten in place. The result is kept on the company so the
+// studio shows it after a reload.
 async function policyCheck(ctx: Ctx, b: Record<string, unknown>) {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY is not set on this project, so the copy cannot be checked yet." }, 503);
   const lines = copyLines(ctx);
   if (!lines.length) return json({ error: "There is no copy to check yet. Write the ad copy and the image copy first." }, 400);
-  const apply = b.apply !== false;
-
-  const system = [
-    "You check ad copy for Australian home services businesses (solar, batteries, air conditioning, trades) before it runs on Meta and Google.",
-    "Flag a line only when it breaks one of these. Most lines will be fine; do not flag style preferences.",
-    "",
-    "MUST FIX (would be rejected, or is untrue):",
-    "- States a fact that is not in the brief: a price, saving, rebate amount, discount, guarantee, timeframe, rating, review count, years in business, accreditation or award.",
-    "- Meta personal attributes: asserts or implies the reader's personal characteristics, such as their finances, debt, health or age ('Are you struggling to pay your bills?', 'Behind on payments?'). Talking about the product is fine ('Lower your power bills').",
-    "- Implies a government endorsement or that the business is a government program, or names a rebate or scheme that the brief does not mention.",
-    "- Unrealistic or absolute outcomes ('never pay for power again', 'eliminate your bill', 'guaranteed savings'), or claims of being best, cheapest or number one.",
-    "- 'Free' or 'no cost' unless the brief says so. Invented urgency or scarcity ('only 3 left', 'ends tonight').",
-    "- Google editorial: an exclamation mark in a headline, repeated punctuation, gimmicky capitals, a phone number or 'click here'.",
-    "- Any em dash or en dash.",
-    "",
-    "CHECK (a person decides; leave rewrite empty unless a clearly better line exists):",
-    "- Savings or rebate wording that is true to the brief but may need the conditions stated.",
-    "- Finance, payment plans, $0 deposit or interest free: also set special_ad_category, because Meta then limits targeting.",
-    "- Anything else that could reasonably be questioned by Meta's review.",
-    "",
-    "A rewrite keeps the line's angle and meaning, keeps to its character limit, uses Australian English and sentence case, and invents nothing.",
-    "Refer to a line by its where and index exactly as given.",
-  ].join("\n");
-
-  const user = [
-    "BRIEF (everything we know about this business; anything not here is unsupported):",
-    briefFacts(ctx).map((f) => `  - ${f}`).join("\n") || "  - (No onboarding detail captured yet)",
-    "",
-    "LINES TO CHECK (where, index, character limit, text):",
-    lines.map((l) => `  - ${l.where} ${l.index} (max ${LIMITS[l.where]}): ${JSON.stringify(l.text)}`).join("\n"),
-  ].join("\n");
-
-  let parsed: z.infer<typeof PolicySchema> | null = null;
+  let result;
   try {
-    const client = new Anthropic({ apiKey });
-    const res = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 16000,
-      system,
-      messages: [{ role: "user", content: user }],
-      output_config: { format: zodOutputFormat(PolicySchema), effort: "high" },
-      fallbacks: "default",
-    } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
-    if (res.stop_reason === "refusal") {
-      return json({ error: `The model declined this request: ${res.stop_details?.explanation || "no reason given"}` }, 422);
-    }
-    parsed = res.parsed_output as z.infer<typeof PolicySchema> | null;
+    result = await runPolicy(ctx.company, lines, { apply: b.apply !== false, actor: ctx.actor.name });
   } catch (e) {
     const msg = (e as Error).message || "The request failed";
     console.error("policy_check failed:", msg);
     return json({ error: `The ad rules check failed: ${msg}` }, 502);
   }
-  if (!parsed) return json({ error: "The check returned nothing usable. Try again." }, 502);
-
-  // Only issues that point at a real line count; the model's and the
-  // mechanical ones are merged, one entry per line and rule.
-  const known = new Map(lines.map((l) => [`${l.where}:${l.index}`, l]));
-  const issues = [
-    ...parsed.issues.filter((i) => known.has(`${i.where}:${i.index}`))
-      .map((i) => ({ ...i, text: known.get(`${i.where}:${i.index}`)!.text })),
-    ...mechanicalIssues(lines),
-  ] as (Record<string, unknown> & { where: Where; index: number; severity: string; rewrite: string; text: string })[];
-
-  // A mechanical issue on a line the model rewrote is fixed by that rewrite.
   const meta = structuredClone(ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
   const cc = structuredClone(ctx.company.creative_copy || {}) as Record<string, unknown>;
-  const rewritten = new Map<string, string>();
-  if (apply) {
-    for (const i of issues) {
-      const key = `${i.where}:${i.index}`;
-      if (i.severity !== "must_fix" || rewritten.has(key) || !usableRewrite(i.where, String(i.rewrite || ""))) continue;
-      if (setLine(meta, cc, i, i.rewrite)) rewritten.set(key, i.rewrite);
-    }
+  for (const [key, text] of result.rewrites) {
+    const [where, index] = key.split(":");
+    setLine(meta, cc, where as Where, Number(index), text);
   }
-  const final = issues.map((i) => {
-    const key = `${i.where}:${i.index}`;
-    const applied = rewritten.has(key) && i.severity === "must_fix";
-    return { ...i, applied, now: rewritten.get(key) ?? i.text };
-  });
-  const open = final.filter((i) => i.severity === "must_fix" && !i.applied).length;
-  const toCheck = final.filter((i) => i.severity === "check").length;
-
-  const record = {
-    checked_at: new Date().toISOString(),
-    checked_by: ctx.actor.name,
-    model: MODEL,
-    lines_checked: lines.length,
-    summary: parsed.summary,
-    special_ad_category: parsed.special_ad_category,
-    issues: final,
-    fixed: rewritten.size,
-    must_fix_open: open,
-    to_check: toCheck,
-  };
-  const patch: Record<string, unknown> = { ad_policy_check: record };
-  if (rewritten.size) {
+  const patch: Record<string, unknown> = { ad_policy_check: result.record };
+  if (result.rewrites.size) {
     if (ctx.company.generated_ad_copy) patch.generated_ad_copy = meta;
     if (ctx.company.creative_copy) patch.creative_copy = cc;
   }
   const { error } = await ctx.admin.from("companies").update(patch).eq("id", ctx.companyId);
   if (error) return json({ error: error.message }, 500);
   return json({
-    ok: true, ad_policy_check: record,
+    ok: true, ad_policy_check: result.record,
     creative_copy: patch.creative_copy ?? ctx.company.creative_copy ?? null,
     ad_copy: patch.generated_ad_copy ?? ctx.company.generated_ad_copy ?? null,
   });

@@ -199,3 +199,12 @@ verify_jwt = false
 # Nightly R2 tidy-up, called by pg_cron with the vault's media_cleanup_secret.
 [functions.media-cleanup]
 verify_jwt = false
+
+# Phase 3: preview rounds. creative-rounds checks team logins itself, or the
+# autopilot's vault secret; creative-approval is the client's public page,
+# keyed by their approval token.
+[functions.creative-rounds]
+verify_jwt = false
+
+[functions.creative-approval]
+verify_jwt = false

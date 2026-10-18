@@ -443,6 +443,14 @@ select{cursor:pointer}
 .st-iss .sev.done{background:rgba(16,185,129,.14);color:#0a7a55}
 .st-iss .sev.chk{background:rgba(234,179,8,.16);color:#a16207}
 .st-iss s{color:var(--ink3)}
+.st-round{border:1px solid var(--bd2);border-radius:var(--r);padding:12px 14px;background:var(--s2);font-size:13px}
+.st-pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;margin-top:12px}
+.st-pv{border:1px solid var(--bd);border-radius:var(--r);padding:10px;background:var(--s1,#fff)}
+.st-pv iframe{border:0;max-width:100%;background:#fff;display:block;margin:0 auto}
+.st-pv-tabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.st-pv-tabs .st-chip{flex-direction:row;padding:4px 8px}
+.st-pv-edit{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:11.5px;color:var(--ink2)}
+.st-pv-edit label{display:flex;flex-direction:column;gap:3px}
 .st-stock{margin-top:14px}
 .st-stock summary{cursor:pointer;font-size:12.5px;color:var(--ink2)}
 .st-stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
@@ -881,10 +889,13 @@ select{cursor:pointer}
 
   // fulfilment-ai is its own function because ad copy and creative rendering call
   // third parties and can take tens of seconds; team-api stays fast round trips.
-  async function aiApi(body) {
+  const aiApi = (body) => fnApi('fulfilment-ai', body);
+  // Preview rounds: build, review in Meta's own previews, send (creative-rounds).
+  const roundsApi = (body) => fnApi('creative-rounds', body);
+  async function fnApi(fn, body) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; throw new Error('no session'); }
-    const res = await fetch(SUPABASE_URL + '/functions/v1/fulfilment-ai', {
+    const res = await fetch(SUPABASE_URL + '/functions/v1/' + fn, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token, 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify(body),
@@ -1219,6 +1230,7 @@ select{cursor:pointer}
       count: 3, results: [],
     };
     renderStudio();
+    loadRounds();
   }
 
   const studioLogo = () => (_studio.assets || []).find(a => a.kind === 'logo') || null;
@@ -1319,6 +1331,8 @@ select{cursor:pointer}
 
         ${policyHtml(st.ad_policy_check)}
 
+        <div id="stRounds"></div>
+
         ${st.results.length ? `<div class="st-h" style="margin-top:16px">Made just now <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· also added to the preview links</span></div>
           <div class="st-results">${st.results.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" download><img src="${esc(r.url)}" alt=""><span>${r.w}×${r.h}</span></a>`).join('')}</div>` : ''}
 
@@ -1328,6 +1342,7 @@ select{cursor:pointer}
         </details>` : ''}
       </div>`;
     wireStudio();
+    renderRounds();
     if (st.can_manage_stock && _stock.open) renderStock();
   }
 
@@ -1536,10 +1551,7 @@ select{cursor:pointer}
   // single request open for minutes, and a failure says which step failed.
   async function buildPack() {
     const st = _studio, cid = st.companyId;
-    const sizes = st.sizes.filter(z => z.on);
-    if (!sizes.length) return alert('Tick at least one size.');
-    const n = st.count * sizes.length;
-    if (!confirm(`Build a fresh preview pack for ${st.business.name || 'this client'}?\n\nThis rewrites the Meta ad copy and the image copy, checks every line against the ad rules, and makes ${st.count} variant${st.count === 1 ? '' : 's'} in ${sizes.length} size${sizes.length === 1 ? '' : 's'} (${n} image${n === 1 ? '' : 's'}).`)) return;
+    if (!confirm(`Build a fresh preview pack for ${st.business.name || 'this client'}?\n\nThis rewrites the Meta ad copy and the image copy, checks every line against the ad rules, draws ${st.count} ad${st.count === 1 ? '' : 's'} in Meta's feed (4:5) and Stories (9:16) sizes, and shows you Meta's own previews to check before anything goes to the client.`)) return;
     const btns = [$('stPack'), $('stGo'), $('stRemake')].filter(Boolean);
     btns.forEach(b => (b.disabled = true));
     const fail = (what, r) => { studioStatus(''); alert(`${what}: ${(r.data && r.data.error) || 'that did not work'}`); };
@@ -1572,15 +1584,190 @@ select{cursor:pointer}
       const p = st.ad_policy_check;
       if (p.must_fix_open > 0) {
         renderStudio();
-        if (!confirm(`${p.must_fix_open} line${p.must_fix_open === 1 ? '' : 's'} still break${p.must_fix_open === 1 ? 's' : ''} an ad rule and couldn't be rewritten automatically (listed under "Ad rules check").\n\nMake the images anyway? You can fix the copy and press Remake after.`)) return;
+        if (!confirm(`${p.must_fix_open} line${p.must_fix_open === 1 ? '' : 's'} still break${p.must_fix_open === 1 ? 's' : ''} an ad rule and couldn't be rewritten automatically (listed under "Ad rules check").\n\nDraw the ads anyway? You'll see them in Meta's previews before anything is sent, and can build again after fixing the copy.`)) return;
       }
-      await makeCreatives(false, {
-        sizes, pack: true,
-        note: `Preview pack. Ad rules: ${p.fixed} line${p.fixed === 1 ? '' : 's'} rewritten, ${p.must_fix_open} still to fix, ${p.to_check} to check`,
-      });
+      studioStatus('Setting up the round…');
+      r = await roundsApi({ action: 'start', company_id: cid });
+      if (!r.ok) return fail('Preview round', r);
+      await finishRound(r.data.round);
     } finally {
       // The studio may have re-rendered, so look the buttons up again.
       [$('stPack'), $('stGo'), $('stRemake')].forEach(b => b && (b.disabled = false));
+    }
+  }
+
+  // ── Preview rounds ──
+  // What the client will see, as Meta renders it. A round is drawn here (a
+  // browser does it in a moment), put into the client's ad account, checked by
+  // the team in Meta's previews, then sent. The autopilot builds rounds too:
+  // the first one once access and media are in, and each revision after the
+  // client's comments. Those arrive here as "ready to finish".
+  const ROUND_STATUS = {
+    building: 'Being written automatically', drawing: 'Ready to finish', team_review: 'Ready to check and send',
+    preparing: 'Sent, waiting on Meta to process a video', sent: 'With the client', approved: 'Approved by the client',
+    changes_requested: 'Client asked for changes',
+  };
+  const STAGE_LABEL = { stock: 'picking stock', ad_copy: 'writing the Meta copy', image_copy: 'writing the image copy', check: 'checking the ad rules', revise: 'revising from their comments', recheck: 'checking the revision' };
+
+  async function loadRounds() {
+    if (!_studio) return;
+    const cid = _studio.companyId;
+    const { ok, data } = await roundsApi({ action: 'state', company_id: cid });
+    if (!_studio || _studio.companyId !== cid) return;
+    _studio.rounds = ok ? data : { rounds: [], error: data.error };
+    _studio.roundPreviews = null;
+    renderRounds();
+    const latest = (_studio.rounds.rounds || [])[0];
+    if (latest && ['team_review', 'sent', 'preparing'].includes(latest.status)) loadRoundPreviews(latest.id);
+  }
+
+  async function loadRoundPreviews(roundId) {
+    const cid = _studio.companyId;
+    const { ok, data } = await roundsApi({ action: 'previews', company_id: cid, round_id: roundId });
+    if (!_studio || _studio.companyId !== cid) return;
+    _studio.roundPreviews = ok ? { roundId, ads: data.ads } : { roundId, error: data.error };
+    renderRounds();
+  }
+
+  function renderRounds() {
+    const host = $('stRounds');
+    if (!host || !_studio) return;
+    const rs = _studio.rounds;
+    if (!rs) { host.innerHTML = '<div class="st-h" style="margin-top:16px">Preview rounds</div><div class="muted" style="font-size:12px">Loading…</div>'; return; }
+    const list = rs.rounds || [];
+    const latest = list[0];
+    const date = (d) => d ? new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    let body = '';
+    if (rs.error) body = `<div class="muted">${esc(rs.error)}</div>`;
+    else if (!latest) body = `<div class="muted" style="font-size:12.5px">No rounds yet. <b>Build preview pack</b> makes the first, or the autopilot will once their Meta access and media are both in.</div>`;
+    else {
+      const fb = latest.feedback || {};
+      const changes = latest.changes || {};
+      body = `<div class="st-round">
+        <div><b>Round ${latest.round}</b> · ${esc(ROUND_STATUS[latest.status] || latest.status)}${latest.status === 'building' && latest.build_stage ? ` <span class="muted">(${esc(STAGE_LABEL[latest.build_stage] || latest.build_stage)})</span>` : ''}
+          ${latest.sent_at ? `<span class="muted"> · sent ${esc(date(latest.sent_at))}${latest.sent_by_name ? ` by ${esc(latest.sent_by_name)}` : ''}</span>` : ''}
+          ${latest.decided_at ? `<span class="muted"> · answered ${esc(date(latest.decided_at))}</span>` : ''}</div>
+        ${latest.error ? `<div class="st-iss"><span class="sev fix">Error</span>${esc(latest.error)}</div>` : ''}
+        ${changes.team ? `<div class="muted" style="font-size:12px;margin-top:4px">${esc(changes.team)}</div>` : ''}
+        ${changes.needs_person ? `<div class="st-iss"><span class="sev chk">Needs you</span>${esc(changes.needs_person)}</div>` : ''}
+        ${fb.ads ? `<div style="margin-top:8px;font-size:12.5px">${Object.entries(fb.ads).map(([k, v]) => `<div>${v.decision === 'approve' ? '👍' : '✏️'} <b>${esc(k)}</b>${v.comment ? `: ${esc(v.comment)}` : ''}</div>`).join('')}${fb.general ? `<div>💬 ${esc(fb.general)}</div>` : ''}</div>` : ''}
+        <div class="st-actions" style="margin-top:10px">
+          ${latest.status === 'drawing' ? '<button class="btn btn-p" id="rdFinish" type="button">Finish pack</button>' : ''}
+          ${latest.status === 'team_review' ? '<button class="btn btn-p" id="rdSend" type="button">Send to client</button>' : ''}
+          ${['drawing', 'team_review'].includes(latest.status) ? '<button class="btn" id="rdDiscard" type="button">Discard round</button>' : ''}
+          ${rs.approval_url ? `<button class="btn btn-sm" id="rdLink" type="button">Copy client link</button>` : ''}
+          ${!rs.meta_ready ? '<span class="muted" style="font-size:12px">Their ad account and Page aren\'t connected yet, so Meta previews can\'t be made.</span>' : ''}
+        </div>
+        ${roundPreviewsHtml(latest)}
+      </div>`;
+    }
+    const older = list.slice(1, 6);
+    host.innerHTML = `<div class="st-h" style="margin-top:16px">Preview rounds</div>${body}
+      ${older.length ? `<div class="muted" style="font-size:12px;margin-top:10px">${older.map(r => `Round ${r.round}: ${esc(ROUND_STATUS[r.status] || r.status)}${r.decided_at ? ` (${esc(date(r.decided_at))})` : ''}`).join(' · ')}</div>` : ''}`;
+    wireRounds(latest);
+  }
+
+  function roundPreviewsHtml(round) {
+    if (!['team_review', 'sent', 'preparing'].includes(round.status)) return '';
+    const pv = _studio.roundPreviews;
+    if (!pv || pv.roundId !== round.id) return '<div class="muted" style="font-size:12px;margin-top:10px">Loading Meta\'s previews…</div>';
+    if (pv.error) return `<div class="st-iss"><span class="sev fix">Previews</span>${esc(pv.error)}</div>`;
+    const editable = round.status === 'team_review';
+    _studio.pvTab = _studio.pvTab || {};
+    return `<div class="st-pv-grid">${pv.ads.map(a => {
+      const ad = (round.ads || []).find(x => x.key === a.key) || {};
+      const i = _studio.pvTab[a.key] || 0;
+      const p = a.placements[i];
+      return `<div class="st-pv" data-pv="${esc(a.key)}">
+        <div class="st-h" style="margin:0 0 6px">${esc(a.key)}${a.kind === 'video' ? ' · video' : ''}</div>
+        ${a.placements.length ? `<div class="st-pv-tabs">${a.placements.map((pl, j) => `<button type="button" class="st-chip${j === i ? ' on' : ''}" data-pv-tab="${j}">${esc(pl.label)}</button>`).join('')}</div>
+          <iframe src="${esc(p.url)}" width="${p.w || 340}" height="${p.h || 640}" scrolling="no" loading="lazy"></iframe>` : `<div class="muted" style="font-size:12px">${esc(a.pending || 'No preview')}</div>`}
+        ${editable ? `<div class="st-pv-edit">
+          <label>Primary text<textarea rows="3" data-pv-f="message">${esc(ad.message || '')}</textarea></label>
+          <label>Headline<input type="text" maxlength="40" data-pv-f="headline" value="${esc(ad.headline || '')}"></label>
+          <label>Description<input type="text" maxlength="200" data-pv-f="description" value="${esc(ad.description || '')}"></label>
+          <button class="btn btn-sm" type="button" data-pv-save>Save &amp; refresh preview</button>
+        </div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+  }
+
+  function wireRounds(latest) {
+    if (!latest) return;
+    const cid = _studio.companyId;
+    const btn = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
+    btn('rdFinish', () => finishRound(latest));
+    btn('rdSend', async () => {
+      if (!confirm(`Send round ${latest.round} to ${_studio.business.name}? They'll get an email with a link to these previews.`)) return;
+      $('rdSend').disabled = true;
+      const { ok, data } = await roundsApi({ action: 'send', company_id: cid, round_id: latest.id });
+      if (!ok) { alert(data.error || 'Could not send it.'); $('rdSend').disabled = false; return; }
+      if (data.status === 'preparing') alert("Meta is still processing a video. The round will go to the client on its own as soon as it's ready.");
+      loadRounds();
+      loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
+    });
+    btn('rdDiscard', async () => {
+      if (!confirm('Discard this round? The client never saw it.')) return;
+      const { ok, data } = await roundsApi({ action: 'discard', company_id: cid, round_id: latest.id });
+      if (!ok) return alert(data.error || 'Could not discard it.');
+      loadRounds();
+    });
+    btn('rdLink', async () => {
+      try { await navigator.clipboard.writeText(_studio.rounds.approval_url); alert('Link copied. It opens their latest ads.'); }
+      catch { prompt('Their link:', _studio.rounds.approval_url); }
+    });
+    document.querySelectorAll('#stRounds [data-pv]').forEach(card => {
+      const key = card.dataset.pv;
+      card.querySelectorAll('[data-pv-tab]').forEach(t => t.addEventListener('click', () => { _studio.pvTab[key] = +t.dataset.pvTab; renderRounds(); }));
+      const save = card.querySelector('[data-pv-save]');
+      if (save) save.addEventListener('click', async () => {
+        save.disabled = true; save.textContent = 'Saving…';
+        const f = (k) => card.querySelector(`[data-pv-f="${k}"]`).value;
+        const { ok, data } = await roundsApi({ action: 'edit_ad', company_id: cid, round_id: latest.id, ad_key: key, message: f('message'), headline: f('headline'), description: f('description') });
+        if (!ok) { alert(data.error || 'Could not save it.'); save.disabled = false; save.textContent = 'Save & refresh preview'; return; }
+        const ad = latest.ads.find(x => x.key === key);
+        if (ad) Object.assign(ad, { message: f('message'), headline: f('headline'), description: f('description') });
+        loadRoundPreviews(latest.id);
+      });
+    });
+  }
+
+  // Draw every image ad in Meta's feed (4:5) and Stories (9:16) sizes, from the
+  // round's own words and photo, then put the round into the ad account.
+  async function finishRound(round) {
+    const st = _studio, cid = st.companyId;
+    const b = $('rdFinish'); if (b) b.disabled = true;
+    try {
+      studioStatus('Loading fonts and photos…');
+      await loadStudioFonts();
+      const logoA = studioLogo();
+      const logo = logoA ? await studioBitmap(logoA.url).catch(() => null) : null;
+      const imageAds = (round.ads || []).filter(a => a.kind === 'image');
+      const total = imageAds.length * 2;
+      let n = 0;
+      for (let i = 0; i < imageAds.length; i++) {
+        const ad = imageAds[i];
+        const pa = ad.photo_asset_id && (st.assets || []).find(a => a.id === ad.photo_asset_id);
+        const photo = pa ? await studioBitmap(pa.url).catch(() => null) : null;
+        const layout = photo ? (i % 2 ? 'split' : 'overlay') : 'band';
+        const t = ad.image_text || {};
+        for (const [shape, W, H] of [['feed', 1080, 1350], ['story', 1080, 1920]]) {
+          studioStatus(`Drawing ${++n} of ${total}…`);
+          const canvas = drawCreative({ W, H, layout, headline: t.headline, subline: t.subline, cta: t.cta, brand: st.brand_color || '#1063d6', photo, logo });
+          const r = await roundsApi({ action: 'attach', company_id: cid, round_id: round.id, ad_key: ad.key, shape, data: canvas.toDataURL('image/jpeg', 0.92) });
+          if (!r.ok) throw new Error(r.data.error || 'saving an image failed');
+        }
+      }
+      studioStatus("Adding them to the client's ad account…");
+      const r = await roundsApi({ action: 'finish', company_id: cid, round_id: round.id });
+      if (!r.ok) throw new Error(r.data.error || 'could not finish the round');
+      studioStatus('');
+      await loadRounds();
+      loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
+    } catch (e) {
+      studioStatus('');
+      alert(`Finishing the pack failed: ${e.message || e}`);
+      loadRounds();
     }
   }
 
