@@ -63,6 +63,9 @@ import {
 import { claimUpload, reserveUpload } from "../_shared/upload-ledger.ts";
 
 const MODEL = "claude-opus-5-5";
+// The refusal fallback is a beta: `fallbacks` is only accepted with this
+// header. messages.parse doesn't send a `betas` list, so it goes on the request.
+const FALLBACK_BETA = { headers: { "anthropic-beta": "server-side-fallback-2026-07-01" } };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -256,9 +259,8 @@ async function generateAdCopy(ctx: Ctx) {
       // Ad copy for a real client should not silently come back empty because a
       // classifier declined; on a decline the API re-runs on the fallback model
       // inside the same call.
-      betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-    } as Parameters<typeof client.messages.parse>[0]);
+    } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
 
     // A refusal is an HTTP 200, so it has to be checked explicitly or it reads
     // as a successful empty generation.
@@ -639,9 +641,8 @@ async function writeCreativeCopy(ctx: Ctx, b: Record<string, unknown>) {
       system,
       messages: [{ role: "user", content: user }],
       output_config: { format: zodOutputFormat(CreativeCopySchema), effort: "high" },
-      betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-    } as Parameters<typeof client.messages.parse>[0]);
+    } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
     if (res.stop_reason === "refusal") {
       return json({ error: `The model declined this request: ${res.stop_details?.explanation || "no reason given"}` }, 422);
     }
@@ -826,9 +827,8 @@ async function policyCheck(ctx: Ctx, b: Record<string, unknown>) {
       system,
       messages: [{ role: "user", content: user }],
       output_config: { format: zodOutputFormat(PolicySchema), effort: "high" },
-      betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-    } as Parameters<typeof client.messages.parse>[0]);
+    } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
     if (res.stop_reason === "refusal") {
       return json({ error: `The model declined this request: ${res.stop_details?.explanation || "no reason given"}` }, 422);
     }
