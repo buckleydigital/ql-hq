@@ -12,7 +12,9 @@
 //               by hand. Only our own automation login is added to an account
 //               the client already chose to share; nothing in their account
 //               changes and nothing is spent. If Meta refuses, the step is still
-//               ticked and the team is told to assign it by hand.
+//               ticked and the team is told to assign it by hand. The people in
+//               META_AUTO_ASSIGN_USERS (Jack Buckley by default) are given the
+//               same access, so the account shows up for them in Ads Manager.
 //   3. TICK     Mark the step done with what was found: account status,
 //               currency, whether a payment method is on file.
 //
@@ -32,6 +34,7 @@
 // do without writing or sending anything.
 //
 // Env: META_ACCESS_TOKEN (system user), META_BUSINESS_ID, META_GRAPH_VERSION,
+//      META_AUTO_ASSIGN_USERS (comma-separated business user IDs),
 //      RESEND_API_KEY, QL_MC_API_URL, QL_MC_API_SECRET.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -43,6 +46,10 @@ const GRAPH = `https://graph.facebook.com/${Deno.env.get("META_GRAPH_VERSION") |
 const CHASE_FROM = Date.parse("2026-10-19T00:00:00Z");
 const DAY = 86_400_000;
 const STEP = "ad_access_granted";
+// People in the QuoteLeads Business Manager given access alongside the system
+// user. 1087487287498416 is Jack Buckley.
+const PEOPLE = (Deno.env.get("META_AUTO_ASSIGN_USERS") || "1087487287498416")
+  .split(",").map((v) => v.replace(/\D/g, "")).filter(Boolean);
 const ACCOUNT_STATUS: Record<number, string> = {
   1: "active", 2: "disabled", 3: "unsettled", 7: "pending risk review",
   8: "pending settlement", 9: "in grace period", 100: "pending closure", 101: "closed",
@@ -96,16 +103,17 @@ async function graphList(path: string, token: string): Promise<{ data: Row[]; er
   return { data: out };
 }
 
-// Give our system user access to an ad account or Page, unless it has it.
+// Give a user (our system user, or a person in the business) access to an ad
+// account or Page, unless they have it.
 async function connect(
-  kind: "ad_account" | "page", id: string, systemUserId: string, token: string, dryRun: boolean,
+  kind: "ad_account" | "page", id: string, userId: string, token: string, dryRun: boolean,
 ): Promise<{ ok: boolean; already?: boolean; error?: string }> {
   const node = kind === "ad_account" ? `act_${id}` : id;
   const { body: cur, error: readErr } = await graph(`${node}/assigned_users?business=${BUSINESS_ID}&fields=id`, token);
-  if (!readErr && ((cur.data as Row[]) ?? []).some((u) => String(u.id) === systemUserId)) return { ok: true, already: true };
+  if (!readErr && ((cur.data as Row[]) ?? []).some((u) => String(u.id) === userId)) return { ok: true, already: true };
   if (dryRun) return { ok: true, already: false };
   const tasks = kind === "ad_account" ? ["MANAGE", "ADVERTISE", "ANALYZE"] : ["ADVERTISE", "ANALYZE", "CREATE_CONTENT", "MODERATE"];
-  const form = new URLSearchParams({ user: systemUserId, tasks: JSON.stringify(tasks), business: BUSINESS_ID });
+  const form = new URLSearchParams({ user: userId, tasks: JSON.stringify(tasks), business: BUSINESS_ID });
   const { error } = await graph(`${node}/assigned_users`, token, {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
   });
@@ -257,6 +265,17 @@ Deno.serve(async (req: Request) => {
       // ── 2. Connect ────────────────────────────────────────────────────────
       const accConn = await connect("ad_account", accId, systemUserId, token, dryRun);
       const pageConn = page ? await connect("page", String(page.id), systemUserId, token, dryRun) : null;
+      // The same for the people who work on the account, so it shows up in
+      // their Ads Manager. A refusal here only asks the team to do it by hand.
+      const peopleErrors: string[] = [];
+      for (const person of PEOPLE) {
+        const a = await connect("ad_account", accId, person, token, dryRun);
+        if (!a.ok) peopleErrors.push(`ad account for user ${person}: ${a.error}`);
+        if (page) {
+          const p = await connect("page", String(page.id), person, token, dryRun);
+          if (!p.ok) peopleErrors.push(`Page for user ${person}: ${p.error}`);
+        }
+      }
 
       // ── 3. Tick ───────────────────────────────────────────────────────────
       const note = [
@@ -266,6 +285,7 @@ Deno.serve(async (req: Request) => {
         accConn.ok ? (accConn.already ? "System user already connected" : "System user connected automatically")
           : `Connect the system user by hand: ${accConn.error}`,
         pageConn && !pageConn.ok ? `Connect the Page by hand: ${pageConn.error}` : "",
+        PEOPLE.length ? (peopleErrors.length ? `Assign people by hand: ${peopleErrors.join("; ")}` : "Team assigned") : "",
       ].filter(Boolean).join(". ");
 
       actions.push({ company: c.name, action: "access_granted", note, problems });
@@ -274,12 +294,12 @@ Deno.serve(async (req: Request) => {
         await admin.from("companies").update({
           dfy_profile: { ...profile, meta_access: { ad_account_id: accId, page_id: page?.id ?? null, detected_at: new Date().toISOString(), connected: accConn.ok } },
         }).eq("id", cid);
-        const needsHand = !accConn.ok || (pageConn && !pageConn.ok);
+        const needsHand = !accConn.ok || (pageConn && !pageConn.ok) || peopleErrors.length > 0;
         await opsEmail(
           `${problems.length || needsHand ? "⚠️" : "✅"} Meta access received - ${c.name}`,
           `<p><strong>${c.name}</strong> shared their ad account <strong>${acc.name}</strong> (${accId}).</p><p>${note}.</p>` +
             (problems.length ? `<p style="color:#b42318"><strong>Needs attention:</strong> ${problems.join("; ")}.</p>` : "") +
-            (needsHand ? `<p style="color:#b42318">Assign it to the system user in Business Settings → Users → System users → Assign assets.</p>` : ""),
+            (needsHand ? `<p style="color:#b42318">Assign it by hand in Business Settings (Users → System users or People → Assign assets).</p>` : ""),
         );
       }
       continue;
