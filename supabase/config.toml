@@ -211,3 +211,6 @@ verify_jwt = false
 
 [functions.campaign-build]
 verify_jwt = false
+
+[functions.meta-leads]
+verify_jwt = false

@@ -899,6 +899,8 @@ select{cursor:pointer}
   const roundsApi = (body) => fnApi('creative-rounds', body);
   // The approved ads as a paused campaign, and its settings (campaign-build).
   const campaignApi = (body) => fnApi('campaign-build', body);
+  // How a client's leads arrive: through Make, or straight in from Meta (meta-leads).
+  const leadsApi = (body) => fnApi('meta-leads', body);
   async function fnApi(fn, body) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; throw new Error('no session'); }
@@ -1790,9 +1792,13 @@ select{cursor:pointer}
   async function loadCampaign() {
     if (!_studio) return;
     const cid = _studio.companyId;
-    const { ok, data } = await campaignApi({ action: 'state', company_id: cid });
+    const [{ ok, data }, leads] = await Promise.all([
+      campaignApi({ action: 'state', company_id: cid }),
+      leadsApi({ action: 'state', company_id: cid }),
+    ]);
     if (!_studio || _studio.companyId !== cid) return;
     _studio.campaign = ok ? data : { error: data.error || 'Could not load the campaign.' };
+    _studio.leads = leads.ok ? leads.data : null;
     // The area being edited starts from what's saved, else what onboarding gave.
     const c = _studio.campaign;
     _studio.campaignEdit = {
@@ -1823,7 +1829,7 @@ select{cursor:pointer}
 
     host.innerHTML = `${head}<div class="st-round">
       <div class="st-iss" style="border-top:0;padding-top:0">${status}</div>
-      ${built && b.meta.form_id ? `<div class="st-iss"><span class="sev chk">Make</span>Connect the form <b>${esc(b.meta.form_name || '')}</b> (${esc(b.meta.form_id)}) in Make before launch, so its leads reach their integrations.</div>` : ''}
+      ${built && b.meta.form_id && !(_studio.leads && _studio.leads.delivery === 'direct') ? `<div class="st-iss"><span class="sev chk">Make</span>Connect the form <b>${esc(b.meta.form_name || '')}</b> (${esc(b.meta.form_id)}) in Make before launch, so its leads reach their integrations.</div>` : ''}
       ${formats ? `<div class="st-iss"><span class="sev chk">Check</span>${formats} ad(s) couldn't carry the Stories image, so Meta crops the feed image there.</div>` : ''}
       ${(c.problems || []).map(p => `<div class="st-iss"><span class="sev fix">Missing</span>${esc(p)}</div>`).join('')}
       ${(st.unplaced || []).length ? `<div class="st-iss"><span class="sev chk">Check</span>Couldn't find on Meta, so not targeted: ${esc(st.unplaced.join(', '))}. Add them below if they matter.</div>` : ''}
@@ -1833,8 +1839,9 @@ select{cursor:pointer}
       <div class="st-camp-row"><span>Area</span>${ed.locations.map((p, i) => `<span class="st-place">${esc(p.name)}${p.type === 'city' ? ` +<input type="number" min="10" max="80" data-cp-radius="${i}" value="${esc(p.radius_km || 25)}">km` : ''}<button type="button" data-cp-drop="${i}" title="Remove">×</button></span>`).join('') || '<span class="muted">none yet</span>'}</div>
       <div class="st-camp-row"><input type="text" id="cpFind" placeholder="Add a town or postcode" style="width:200px"><button class="btn btn-sm" type="button" id="cpFindBtn">Find</button>
         ${ed.results.map((p, i) => `<button class="btn btn-sm" type="button" data-cp-add="${i}">+ ${esc(p.name)} <span class="muted">(${esc(p.type)})</span></button>`).join('')}</div>
+      ${leadsRowHtml()}
       <div class="st-camp-row"><label>Privacy policy link <input type="text" id="cpPrivacy" style="width:280px" value="${esc(saved.privacy_url || '')}" placeholder="${esc(st.privacy_url || '')}"></label></div>
-      <div class="muted" style="font-size:11.5px;margin-top:6px">Ages ${esc(st.age_min || 25)}+ with Advantage+ audience and placements. Instant form: name, phone, email, postcode and the job, set for higher intent. Make picks up its leads: connect the form in Make before launch.</div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">Ages ${esc(st.age_min || 25)}+ with Advantage+ audience and placements. Instant form: name, phone, email, postcode and the job, set for higher intent. Leads go through Make unless switched to straight in below.</div>
       <div class="st-actions" style="margin-top:10px">
         <button class="btn" type="button" id="cpSave">Save settings</button>
         ${!b || ['needs_team', 'failed'].includes(b.status) ? `<button class="btn btn-p" type="button" id="cpBuild"${c.approved_round ? '' : ' disabled title="Waiting on the client to approve their ads"'}>${b ? 'Carry on building' : 'Build campaign'}</button>` : ''}
@@ -1843,6 +1850,17 @@ select{cursor:pointer}
       </div>
     </div>`;
     wireCampaign();
+  }
+
+  function leadsRowHtml() {
+    const l = _studio.leads;
+    if (!l) return '';
+    const n = l.last_30_days || {};
+    return `<div class="st-camp-row"><label>Leads <select id="cpDelivery">
+        <option value="make"${l.delivery === 'make' ? ' selected' : ''}>Through Make</option>
+        <option value="direct"${l.delivery === 'direct' ? ' selected' : ''}>Straight in from Meta (instant)</option>
+      </select></label>
+      <span class="muted">${n.received ? `${n.received} received from Meta in 30 days${l.delivery === 'direct' ? `, ${n.delivered_direct} delivered${n.failed ? `, <b>${n.failed} failed</b>` : ''}` : ''}` : 'none received from Meta yet'}</span></div>`;
   }
 
   function wireCampaign() {
@@ -1888,6 +1906,15 @@ select{cursor:pointer}
       await loadCampaign();
       loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
     };
+    const dl = $('cpDelivery');
+    if (dl) dl.addEventListener('change', async () => {
+      const want = dl.value;
+      if (want === 'direct' && !confirm("Deliver this client's leads straight in from Meta? Turn their Make scenario for this form off first, or every lead arrives twice.")) { dl.value = 'make'; return; }
+      const { ok, data } = await leadsApi({ action: 'set_delivery', company_id: cid, delivery: want });
+      if (!ok) { alert(data.error || 'Could not change it.'); dl.value = want === 'direct' ? 'make' : 'direct'; return; }
+      _studio.leads = data;
+      renderCampaign();
+    });
     const bb = $('cpBuild'); if (bb) bb.addEventListener('click', () => build(false));
     const rb = $('cpRebuild'); if (rb) rb.addEventListener('click', () => build(true));
   }
