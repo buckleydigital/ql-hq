@@ -38,6 +38,23 @@ const MANAGEMENT_CENTS = 69_000
 // to a second checkout would double-charge them.
 const LIVE_STATUSES = ['active', 'trialing', 'past_due']
 
+// Days of management included with the build, counted from the day ads go live
+// (companies.management_included_from). Must match MGMT_INCLUDED_DAYS in the
+// dashboard.
+const INCLUDED_DAYS = 30
+
+/** Unix seconds for the end of the included period, or null if it is over or unknown. */
+function includedTrialEnd(includedFrom: string | null): number | null {
+  if (!includedFrom) return null
+  const start = Date.parse(includedFrom)
+  if (Number.isNaN(start)) return null
+  const end = start + INCLUDED_DAYS * 86_400_000
+  const now = Date.now()
+  if (end <= now) return null
+  const earliest = now + 49 * 3_600_000
+  return Math.floor(Math.max(end, earliest) / 1000)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -55,7 +72,7 @@ serve(async (req) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('id, name, email, stripe_customer_id, management_status, management_subscription_id, management_fee_cents')
+      .select('id, name, email, stripe_customer_id, management_status, management_subscription_id, management_fee_cents, management_included_from')
       .eq('id', profile.company_id)
       .maybeSingle()
     if (!company) return new Response('Company not found', { status: 404 })
@@ -112,6 +129,15 @@ serve(async (req) => {
       )
     }
 
+    // The first 30 days after going live are included with the build, and the
+    // dashboard tells the client management "starts when the included period
+    // ends". Without a trial the subscription billed on the spot, inside the
+    // period they had already paid for. Stripe needs a trial end at least 48
+    // hours out, so one ending sooner is pushed to that: a day or two free, never
+    // a day charged twice. No anchor (not live yet, or a client from before the
+    // date was recorded) bills now, as before.
+    const trialEnd = includedTrialEnd(company.management_included_from)
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -140,6 +166,7 @@ serve(async (req) => {
           type:       'management',
           company_id: company.id,
         },
+        ...(trialEnd && { trial_end: trialEnd }),
       },
       success_url: 'https://quoteleadshq.com/dashboard?page=billing&management_started=true',
       cancel_url:  'https://quoteleadshq.com/dashboard?page=billing',

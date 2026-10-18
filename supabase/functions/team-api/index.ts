@@ -1658,13 +1658,18 @@ Deno.serve(async (req) => {
             .update({ intro_email_sent: done, intro_email_sent_at: done ? new Date().toISOString() : null })
             .eq("id", cid);
         }
-        // Same for the ads-live date the billing panel shows.
+        // Same for the ads-live date the billing panel shows, and the start of
+        // the included 30 days of management, which runs from going live. Both
+        // are set once: re-ticking the step must not restart the clock.
         if (b.step_key === "ads_live" && b.status === "done") {
           const { data: co } = await adminClient
-            .from("companies").select("ads_live_date").eq("id", cid).maybeSingle();
-          if (!co?.ads_live_date) {
-            await adminClient.from("companies")
-              .update({ ads_live_date: new Date().toISOString().slice(0, 10) }).eq("id", cid);
+            .from("companies").select("ads_live_date, management_included_from").eq("id", cid).maybeSingle();
+          const today = new Date().toISOString().slice(0, 10);
+          const patch: Record<string, string> = {};
+          if (!co?.ads_live_date) patch.ads_live_date = today;
+          if (!co?.management_included_from) patch.management_included_from = co?.ads_live_date || today;
+          if (Object.keys(patch).length) {
+            await adminClient.from("companies").update(patch).eq("id", cid);
           }
         }
         return json({ ok: true, step: res.step });
@@ -1989,6 +1994,10 @@ Deno.serve(async (req) => {
         company_id: companyId, action: "intro_email.sent",
         step_key: "intro_email_sent", detail: { subject: String(subject).slice(0, 200) },
       });
+      // The checklist step is the same fact. Without this the send left the
+      // step pending and someone had to tick it by hand afterwards.
+      const stepRes = await setStep(companyId, "intro_email_sent", "done", `Sent to ${to}`);
+      if (!stepRes.ok) console.warn("intro_email_sent step not recorded:", stepRes.error);
       return json({ ok: true, to, reply_to: replyTo || null });
     }
 

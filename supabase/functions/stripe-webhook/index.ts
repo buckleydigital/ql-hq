@@ -630,6 +630,21 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     if (profileFetchError) throw new Error(`Profile fetch: ${profileFetchError.message}`)
     const companyId = profileData.company_id
 
+    // What they told /buy-system before paying. The service area goes on the
+    // company; the rest is kept under dfy_profile.purchase so the team (and the
+    // onboarding form, which keeps this key) can see it instead of asking again.
+    const { data: prior } = await supabase
+      .from('companies').select('dfy_profile, service_area').eq('id', companyId).maybeSingle()
+    const purchaseAnswers = {
+      plan:              m.plan || null,
+      service_location:  m.service_location || null,
+      monthly_lead_goal: m.monthly_lead_goal || null,
+      multi_campaign:    m.multi_campaign || null,
+      google_too:        m.google_too || null,
+      source:            m.source || null,
+      stripe_session:    session.id,
+    }
+
     const { error: companyError } = await supabase
       .from('companies')
       .update({
@@ -638,8 +653,12 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
         phone:              m.phone || null,
         plan:               'managed',
         status:             'active',
-        stripe_customer_id: session.customer as string,
+        // A payment-mode session only carries a customer when one was created;
+        // never overwrite a customer we already hold with null.
+        ...(session.customer && { stripe_customer_id: session.customer as string }),
         niche:              m.niche || null,
+        ...(m.service_location && !prior?.service_area && { service_area: m.service_location }),
+        dfy_profile:        { ...((prior?.dfy_profile as Record<string, unknown>) || {}), purchase: purchaseAnswers },
         // The monthly fee agreed with the build, for when they switch on
         // ongoing management. The standard build leaves it unset so it follows
         // the list price in create-management-subscription.
@@ -661,25 +680,41 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     // Welcome the buyer with a dashboard magic link.
     let magicLink = 'https://quoteleadshq.com/dashboard?page=onboarding'
     try { magicLink = await createMagicLink(m.email, 'onboarding') } catch (e) { console.error('managed magic link:', e) }
-    const welcomed = await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink)
+    // The onboarding form (service area, budget, jobs wanted) lives on the
+    // public site. Nothing pointed a buyer at it, so it goes in the welcome
+    // email, pre-filled with what they gave at checkout.
+    const formLink = 'https://quoteleads.com.au/growth-onboarding?' + new URLSearchParams({
+      first_name: firstName === 'there' ? '' : firstName, last_name: lastName,
+      company: m.company || '', phone: m.phone || '', email: m.email,
+    }).toString()
+    const welcomed = await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink, formLink)
       .then(() => true)
       .catch((e) => { console.error('managed welcome email:', e); return false })
 
     // The Team Panel checklist starts from what this purchase already did:
     // paying is the spam gate, and the account and welcome email exist.
-    const buildFee = Number(m.amount_charged) || 0
+    // What Stripe actually took, ex GST: after any promo code, before tax. The
+    // list price in metadata is kept for the notes so a discount is visible.
+    const listFee  = Number(m.amount_charged) || 0
+    const paidCents = typeof session.amount_total === 'number'
+      ? session.amount_total - (session.total_details?.amount_tax ?? 0)
+      : null
+    const buildFee = paidCents !== null ? Math.max(0, paidCents) / 100 : listFee
+    const discounted = buildFee < listFee
+    const feeText  = `$${buildFee.toLocaleString('en-AU')} + GST` +
+      (discounted ? ` (list $${listFee.toLocaleString('en-AU')}, discount applied)` : '')
     const monthly  = Number(m.management_fee) || 0
     const label    = m.plan_label || 'Branded Lead Gen System'
     await markFulfilment(companyId, [
-      ['paid_signed',     `Paid online: ${label}, $${buildFee.toLocaleString('en-AU')} + GST`],
-      ['signup_verified', 'Paid by card'],
+      ['paid_signed',     `Paid online: ${label}, ${feeText}`],
+      ['signup_verified', buildFee > 0 ? 'Paid by card' : 'Checkout completed with a 100% discount'],
       ['account_created', null],
       ...(welcomed ? [['welcome_email_sent', null] as [string, string | null]] : []),
     ])
 
     // Mission Control: the lead to Closed Won, a managed client in Onboarding
     // and the build fee logged, then the checklist summary on that client.
-    await syncManagedPurchaseToMc({
+    const mcSync = await syncManagedPurchaseToMc({
       ql_hq_company_id: companyId,
       name:             `${firstName} ${lastName}`.trim(),
       company_name:     m.company || '',
@@ -695,7 +730,8 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     // Notify ops that a DFY system was purchased.
     await sendInternalEmail(
       `🚀 New system purchase - ${m.company || m.email} (${label})`,
-      `<p><strong>${m.company || '(no company)'}</strong> just bought the ${label}: $${buildFee.toLocaleString('en-AU')} + GST, then $${monthly.toLocaleString('en-AU')}/mo + GST if they keep management after the first 30 days.</p>
+      `${mcSync.ok ? '' : `<p style="color:#b42318"><strong>Mission Control was NOT updated:</strong> ${mcSync.error}. Add the client there by hand.</p>`}
+       <p><strong>${m.company || '(no company)'}</strong> just bought the ${label}: ${feeText}, then $${monthly.toLocaleString('en-AU')}/mo + GST if they keep management after the first 30 days.</p>
        <table style="border-collapse:collapse;font-size:14px">
          <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
@@ -703,6 +739,7 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
          <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${m.phone || '-'}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${m.monthly_lead_goal || '-'}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${m.service_location || '-'}</td></tr>
        </table>
        <p style="margin-top:14px">Account provisioned as <strong>managed</strong> and active. Time to build their system.</p>`
     )
@@ -753,10 +790,10 @@ async function markFulfilment(companyId: string, steps: Array<[string, string | 
 // Record an online system purchase in ql-mc, then push the checklist summary
 // onto the client it creates. Best effort, like syncPplOrderToMc: the account
 // is already provisioned, and a failure here is in the logs and the ops email.
-async function syncManagedPurchaseToMc(purchase: Record<string, unknown>) {
+async function syncManagedPurchaseToMc(purchase: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
   if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
     console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured - skipping ql-mc sync')
-    return
+    return { ok: false, error: 'the ql-mc link is not configured' }
   }
   const post = (body: Record<string, unknown>) => fetch(`${QL_MC_API_URL}/sync-from-hq`, {
     method: 'POST',
@@ -765,14 +802,20 @@ async function syncManagedPurchaseToMc(purchase: Record<string, unknown>) {
   })
   try {
     const res = await post({ action: 'upsert_managed_purchase', ...purchase })
-    if (!res.ok) { console.error(`ql-mc upsert_managed_purchase returned ${res.status}: ${await res.text()}`); return }
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`ql-mc upsert_managed_purchase returned ${res.status}: ${text}`)
+      return { ok: false, error: `ql-mc answered ${res.status}: ${text.slice(0, 300)}` }
+    }
     const { data: sum } = await supabase
       .from('company_fulfilment_summary')
       .select('stage, stage_at, active_status, steps_done, steps_settled, steps_total, blocked_count, next_step_key, next_step_due')
       .eq('company_id', purchase.ql_hq_company_id).maybeSingle()
     if (sum) await post({ action: 'upsert_fulfilment', hq_company_id: purchase.ql_hq_company_id, summary: sum })
+    return { ok: true }
   } catch (err) {
     console.error('syncManagedPurchaseToMc HTTP error:', err)
+    return { ok: false, error: String(err) }
   }
 }
 
@@ -830,7 +873,12 @@ async function handleManagementSubscriptionChange(
       ? `$${(cents / 100).toLocaleString('en-AU', { maximumFractionDigits: 2 })}/mo + GST`
       : 'their monthly fee'
 
-    if (status === 'active' && was !== 'active') {
+    if (status === 'trialing' && was !== 'trialing') {
+      await sendInternalEmail(
+        `💰 Management booked - ${who}`,
+        `<p><strong>${who}</strong> switched on ongoing management at ${fee}. Their included period runs until ${endsOn}, when the first payment is taken.</p>`
+      )
+    } else if (status === 'active' && was !== 'active') {
       await sendInternalEmail(
         `💰 Management subscription started - ${who}`,
         `<p><strong>${who}</strong> just switched on ongoing management at ${fee}.</p>
@@ -939,7 +987,7 @@ async function sendPplWelcomeEmail(
   }
 }
 
-async function sendManagedWelcomeEmail(to: string, firstName: string, company: string, magicLink: string) {
+async function sendManagedWelcomeEmail(to: string, firstName: string, company: string, magicLink: string, formLink: string) {
   const emailRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
@@ -957,7 +1005,17 @@ async function sendManagedWelcomeEmail(to: string, firstName: string, company: s
             <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
               Thanks for coming on board${company ? ` with ${company}` : ''}. Your Branded Lead Gen System is locked in and we're getting the build underway. You'll receive your previews within 24-48 hours, and you'll shortly hear from your account manager to walk you through everything.
             </p>
-            <a href="${magicLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
+            <p style="font-size:14px;font-weight:600;color:#0a0b0f;margin:0 0 10px">Two things from you to get started:</p>
+            <p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 12px">
+              <strong>1.</strong> Tell us about your business: service area, budget and the jobs you want (about 5 minutes).
+            </p>
+            <a href="${formLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:20px">
+              Fill In the Onboarding Form →
+            </a>
+            <p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 12px">
+              <strong>2.</strong> Give us access to your Facebook Page and ad account. Your dashboard walks you through it.
+            </p>
+            <a href="${magicLink}" style="display:inline-block;background:#0a0b0f;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
               Access My Dashboard →
             </a>
             <div style="background:#f8f9fb;border-radius:8px;padding:18px;margin-bottom:24px">

@@ -95,6 +95,10 @@ serve(async (req) => {
         tax_rates: [Deno.env.get('STRIPE_TAX_RATE_GST')!],
       }],
       customer_email: formData.email,
+      // A Stripe customer for the buyer, so the billing portal and the later
+      // management subscription hang off the same record. Payment mode does not
+      // make one unless asked.
+      customer_creation: 'always',
       metadata,
       success_url: `https://quoteleads.com.au/payment-success?session_id={CHECKOUT_SESSION_ID}&plan=${planKey}`,
       cancel_url: `https://quoteleads.com.au/buy-system?tier=${planKey}&cancelled=true`,

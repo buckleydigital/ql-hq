@@ -363,7 +363,11 @@ export async function provisionAccount(
     if (Number.isFinite(n) && n > 0) patch.max_daily_ad_spend = n;
   }
   // The full form, so nothing captured is stranded in the submissions table.
-  patch.dfy_profile = sub.payload ?? {};
+  // An online buyer's checkout answers (dfy_profile.purchase, written by
+  // stripe-webhook) are kept: the form replaces the rest, not those.
+  const { data: existing } = await admin.from("companies").select("dfy_profile").eq("id", companyId).maybeSingle();
+  const purchase = (existing?.dfy_profile as Record<string, unknown> | null)?.purchase;
+  patch.dfy_profile = { ...((sub.payload ?? {}) as Record<string, unknown>), ...(purchase ? { purchase } : {}) };
   await admin.from("companies").update(patch).eq("id", companyId);
 
   // Lead notifications: step 4 of the form asks how they want leads delivered
