@@ -122,7 +122,7 @@ async function submit(admin: ReturnType<typeof createClient>, company: Row, b: R
       `Round ${round.round} approved by the client${general ? `: "${general.slice(0, 300)}"` : ""}`, client);
     await opsEmail(`✅ ${company.name} approved their ads`,
       `<p><strong>${company.name}</strong> approved round ${round.round} of their ads${general ? `, and said: "${general.replace(/</g, "&lt;")}"` : ""}.</p>` +
-      `<p>Next: build the campaign in Meta.</p>`);
+      `<p>Next: their campaign builds itself in Meta, paused, within a few minutes. You'll get an email when it's ready to check and launch.</p>`);
   } else {
     const n = Object.values(clean).filter((d) => d.decision === "change").length;
     await opsEmail(`✏️ ${company.name} asked for changes`,

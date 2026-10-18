@@ -45,6 +45,11 @@ const MAX_ATTEMPTS = 3;
 const DEFAULT_RADIUS_KM = 25;
 const DEFAULT_AGE_MIN = 25;
 const MIN_DAILY_BUDGET = 5;
+// The ad rules check's special category, as Meta names it.
+const SPECIAL_CATEGORY: Record<string, string> = {
+  financial_products_and_services: "FINANCIAL_PRODUCTS_SERVICES",
+  housing: "HOUSING", employment: "EMPLOYMENT", credit: "CREDIT",
+};
 // Meta labels for the two image shapes in one ad.
 const FEED = "ql_feed", STORY = "ql_story";
 
@@ -201,14 +206,15 @@ async function resolveSettings(company: Row): Promise<Settings> {
   }
 
   const age = num(s.age_min);
-  const special = String(((company.ad_policy_check || {}) as Row).special_ad_category || "none").toUpperCase();
+  // The ad rules check names it (finance, payment plans, $0 deposit); Meta needs it on the campaign.
+  const special = SPECIAL_CATEGORY[String(((company.ad_policy_check || {}) as Row).special_ad_category || "none").toLowerCase()];
   return {
     daily_budget, locations, unplaced,
     // Meta's Advantage+ audience lets us suggest an age but caps the minimum at 25.
     age_min: Math.min(25, Math.max(18, age ?? DEFAULT_AGE_MIN)),
     privacy_url: String(s.privacy_url || "").trim() || `${SITE}/privacy.html`,
     website: siteUrl(company),
-    special: ["HOUSING", "CREDIT", "EMPLOYMENT"].includes(special) ? [special] : [],
+    special: special ? [special] : [],
     sources,
   };
 }
@@ -218,6 +224,9 @@ function settingsProblems(st: Settings): string[] {
   if (!st.daily_budget) out.push("No daily ad budget. Their onboarding form didn't give one.");
   else if (st.daily_budget < MIN_DAILY_BUDGET) out.push(`A daily budget of $${st.daily_budget} is too low to run.`);
   if (!st.locations.length) out.push(st.unplaced.length ? `Couldn't find their area on Meta: ${st.unplaced.join(", ")}.` : "No service area to target.");
+  else if (st.special.length && !st.locations.some((p) => p.type !== "zip")) {
+    out.push("Their ads mention finance, and Meta won't target postcodes for that. Add the towns they cover.");
+  }
   return out;
 }
 
@@ -427,16 +436,23 @@ const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt
 
 const usable = (a: Ad) => a.kind === "video" ? !!(a.meta?.video_id && a.meta?.video_ready) : !!a.meta?.feed_hash;
 
+// A special category (finance offers) is targeted as Meta allows it: everyone
+// 18 and over, towns at 25km or more, and no postcodes.
+const SPECIAL_MIN_RADIUS_KM = 25;
+
 function targeting(st: Settings) {
-  const cities = st.locations.filter((p) => p.type === "city").map((p) => ({ key: p.key, radius: p.radius_km ?? DEFAULT_RADIUS_KM, distance_unit: "kilometer" }));
-  const zips = st.locations.filter((p) => p.type === "zip").map((p) => ({ key: p.key }));
+  const special = st.special.length > 0;
+  const cities = st.locations.filter((p) => p.type === "city").map((p) => ({
+    key: p.key, radius: Math.max(special ? SPECIAL_MIN_RADIUS_KM : 0, p.radius_km ?? DEFAULT_RADIUS_KM), distance_unit: "kilometer",
+  }));
+  const zips = special ? [] : st.locations.filter((p) => p.type === "zip").map((p) => ({ key: p.key }));
   const regions = st.locations.filter((p) => p.type === "region").map((p) => ({ key: p.key }));
   return {
     geo_locations: {
       ...(cities.length ? { cities } : {}), ...(zips.length ? { zips } : {}), ...(regions.length ? { regions } : {}),
       location_types: ["home", "recent"],
     },
-    age_min: st.age_min, age_max: 65,
+    age_min: special ? 18 : st.age_min, age_max: 65,
     targeting_automation: { advantage_audience: 1 },
   };
 }
@@ -592,7 +608,7 @@ async function announce(admin: Admin, company: Row, build: Row, st: Settings, ac
     `<ul><li>Budget: $${st.daily_budget} a day (${st.sources.daily_budget || ""})</li>` +
     `<li>Area: ${esc(where)} (${esc(st.sources.locations || "")})</li>` +
     (st.unplaced.length ? `<li><strong>Not targeted, couldn't find on Meta:</strong> ${esc(st.unplaced.join(", "))}</li>` : "") +
-    `<li>Ages ${st.age_min}+, Advantage+ audience and placements</li>` +
+    `<li>Ages ${st.special.length ? 18 : st.age_min}+, Advantage+ audience and placements${st.special.length ? ". Finance ads: Meta's special category, so no postcodes and towns at 25km or more" : ""}</li>` +
     `<li>${ads.length} ads with our instant form (name, phone, email, postcode, the job). Leads go straight into their CRM.</li>` +
     (cropped ? `<li>${cropped} ad(s) couldn't carry the Stories image, so Meta will crop the feed image there.</li>` : "") +
     `</ul><p><a href="${adsManager(account, meta.campaign_id)}">Open it in Ads Manager</a></p>`);
