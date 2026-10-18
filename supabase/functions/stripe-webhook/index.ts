@@ -605,7 +605,7 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
   }
 }
 
-// ── Managed / DFY system signup (Branded Lead Gen System, bought from /get-started) ──
+// ── Managed / DFY system signup (Branded Lead Gen System, bought on /buy-system) ──
 async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
   console.log('Managed/DFY signup for:', m.email)
   try {
