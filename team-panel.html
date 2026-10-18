@@ -1823,6 +1823,7 @@ select{cursor:pointer}
 
     host.innerHTML = `${head}<div class="st-round">
       <div class="st-iss" style="border-top:0;padding-top:0">${status}</div>
+      ${built && b.meta.form_id ? `<div class="st-iss"><span class="sev chk">Make</span>Connect the form <b>${esc(b.meta.form_name || '')}</b> (${esc(b.meta.form_id)}) in Make before launch, so its leads reach their integrations.</div>` : ''}
       ${formats ? `<div class="st-iss"><span class="sev chk">Check</span>${formats} ad(s) couldn't carry the Stories image, so Meta crops the feed image there.</div>` : ''}
       ${(c.problems || []).map(p => `<div class="st-iss"><span class="sev fix">Missing</span>${esc(p)}</div>`).join('')}
       ${(st.unplaced || []).length ? `<div class="st-iss"><span class="sev chk">Check</span>Couldn't find on Meta, so not targeted: ${esc(st.unplaced.join(', '))}. Add them below if they matter.</div>` : ''}
@@ -1833,7 +1834,7 @@ select{cursor:pointer}
       <div class="st-camp-row"><input type="text" id="cpFind" placeholder="Add a town or postcode" style="width:200px"><button class="btn btn-sm" type="button" id="cpFindBtn">Find</button>
         ${ed.results.map((p, i) => `<button class="btn btn-sm" type="button" data-cp-add="${i}">+ ${esc(p.name)} <span class="muted">(${esc(p.type)})</span></button>`).join('')}</div>
       <div class="st-camp-row"><label>Privacy policy link <input type="text" id="cpPrivacy" style="width:280px" value="${esc(saved.privacy_url || '')}" placeholder="${esc(st.privacy_url || '')}"></label></div>
-      <div class="muted" style="font-size:11.5px;margin-top:6px">Ages ${esc(st.age_min || 25)}+ with Advantage+ audience and placements. Instant form: name, phone, email, postcode and the job, set for higher intent. Leads go straight into their CRM.</div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">Ages ${esc(st.age_min || 25)}+ with Advantage+ audience and placements. Instant form: name, phone, email, postcode and the job, set for higher intent. Make picks up its leads: connect the form in Make before launch.</div>
       <div class="st-actions" style="margin-top:10px">
         <button class="btn" type="button" id="cpSave">Save settings</button>
         ${!b || ['needs_team', 'failed'].includes(b.status) ? `<button class="btn btn-p" type="button" id="cpBuild"${c.approved_round ? '' : ' disabled title="Waiting on the client to approve their ads"'}>${b ? 'Carry on building' : 'Build campaign'}</button>` : ''}

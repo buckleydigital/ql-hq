@@ -1,6 +1,5 @@
 // =============================================================================
-// campaign-build - the approved ads become a paused campaign, and its leads
-// come into the CRM
+// campaign-build - the approved ads become a paused campaign
 // =============================================================================
 // Once a client approves a round (creative-approval), the autopilot builds, in
 // the client's own ad account:
@@ -14,15 +13,16 @@
 //             and Reels, as they saw it in the previews
 //
 // then ticks "Campaign built", tells Mission Control, and emails the team to
-// check it and launch. Nothing here ever spends: everything is made paused, and
-// switching it on stays a person's job.
+// check it, connect the form in Make and launch. Nothing here ever spends:
+// everything is made paused, and switching it on stays a person's job.
 //
 // A build moves one stage at a time and saves what it made after every call to
 // Meta, so a retry carries on rather than building twice (and each stage looks
 // for what it was about to make, by name, before making it).
 //
-// The same autopilot picks up new leads from our forms and delivers each once
-// through intake-lead, exactly as any other lead arrives.
+// Leads are not collected here: Make picks them up from the form (instantly,
+// through Meta's webhooks) and runs each client's integrations, as for every
+// other client. Collecting them here too would deliver every lead twice.
 //
 // Team actions (team login, scoped as in creative-rounds): state,
 // save_settings, geo_search, build. self_test (ops and admins): makes a form,
@@ -63,9 +63,9 @@ type Settings = {
   sources: Record<string, string>;
 };
 type BuildMeta = {
-  page_name?: string; form_id?: string; campaign_id?: string; adset_id?: string;
+  page_name?: string; form_id?: string; form_name?: string; campaign_id?: string; adset_id?: string;
   ads?: Record<string, { creative_id?: string; ad_id?: string; format?: string }>;
-  registered?: boolean; leads_after?: number; notes?: string[];
+  registered?: boolean; notes?: string[];
 };
 
 function json(data: unknown, status = 200) {
@@ -336,6 +336,7 @@ async function advance(admin: Admin, build: Row, actor: Actor): Promise<string> 
     if (stage === "form") {
       meta.page_name = pageToken.name;
       if (!meta.form_id) meta.form_id = await ensureForm(ids.page, pageToken.token, name, settings, pageToken.name);
+      meta.form_name = name;
       await save({ stage: "campaign", meta });
       return `form for ${company.name}`;
     }
@@ -598,7 +599,7 @@ async function announce(admin: Admin, company: Row, build: Row, st: Settings, ac
   const cropped = ads.filter((a) => a.format?.startsWith("feed image only")).length;
   const where = st.locations.map((p) => p.radius_km ? `${p.name} (+${p.radius_km}km)` : p.name).join("; ");
   const notes = [
-    `Campaign ${meta.campaign_id}, ${ads.length} ads, $${st.daily_budget}/day, ${where}. Paused.`,
+    `Campaign ${meta.campaign_id}, ${ads.length} ads, $${st.daily_budget}/day, ${where}. Paused. Connect form ${meta.form_id} in Make before launch.`,
     cropped ? `${cropped} ad(s) use the feed image everywhere.` : "",
     st.unplaced.length ? `Not targeted (couldn't place): ${st.unplaced.join(", ")}.` : "",
   ].filter(Boolean).join(" ");
@@ -609,7 +610,8 @@ async function announce(admin: Admin, company: Row, build: Row, st: Settings, ac
     `<li>Area: ${esc(where)} (${esc(st.sources.locations || "")})</li>` +
     (st.unplaced.length ? `<li><strong>Not targeted, couldn't find on Meta:</strong> ${esc(st.unplaced.join(", "))}</li>` : "") +
     `<li>Ages ${st.special.length ? 18 : st.age_min}+, Advantage+ audience and placements${st.special.length ? ". Finance ads: Meta's special category, so no postcodes and towns at 25km or more" : ""}</li>` +
-    `<li>${ads.length} ads with our instant form (name, phone, email, postcode, the job). Leads go straight into their CRM.</li>` +
+    `<li>${ads.length} ads with our instant form (name, phone, email, postcode, the job)</li>` +
+    `<li><strong>Before launch, connect the form in Make:</strong> "${esc(String(meta.form_name || ""))}" (form ${meta.form_id}) on their Page${meta.page_name ? ` ${esc(meta.page_name)}` : ""}</li>` +
     (cropped ? `<li>${cropped} ad(s) couldn't carry the Stories image, so Meta will crop the feed image there.</li>` : "") +
     `</ul><p><a href="${adsManager(account, meta.campaign_id)}">Open it in Ads Manager</a></p>`);
 }
@@ -630,8 +632,7 @@ async function autopilot(admin: Admin) {
     if (did.startsWith("failed")) failed.add(String(build.id));
     done.push(did);
   }
-  const leads = await pickUpLeads(admin, started);
-  return { ok: true, done, leads };
+  return { ok: true, done };
 }
 
 /** Approved, managed, never built: queue a build. Clients built by hand are left alone. */
@@ -653,82 +654,6 @@ async function queueApproved(admin: Admin): Promise<string[]> {
     if (!error) out.push(`queued ${cid}`);
   }
   return out;
-}
-
-// ── Leads from our forms ────────────────────────────────────────────────────────
-
-async function pickUpLeads(admin: Admin, started: number) {
-  let found = 0, delivered = 0;
-  const { data: builds } = await admin.from("campaign_builds").select("id, company_id, meta").in("status", ["built", "replaced"])
-    .not("meta->>form_id", "is", null);
-  const tokens = new Map<string, string>();
-  for (const b of (builds ?? []) as Row[]) {
-    if (Date.now() - started > 100_000) break;
-    const meta = b.meta as BuildMeta;
-    try {
-      const { data: co } = await admin.from("companies").select("dfy_profile").eq("id", b.company_id).maybeSingle();
-      const ids = co ? metaIds(co as Row) : null;
-      if (!ids) continue;
-      if (!tokens.has(ids.page)) tokens.set(ids.page, (await pageAccess(ids.page)).token);
-      const since = Math.max(0, Number(meta.leads_after || 0) - 3600);
-      const filter = since ? `&filtering=${encodeURIComponent(JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]))}` : "";
-      const out = await graph(`${meta.form_id}/leads?fields=id,created_time,ad_id,field_data&limit=100${filter}`, { token: tokens.get(ids.page) });
-      const rows = ((out.data || []) as Row[]).map((l) => ({
-        leadgen_id: String(l.id), company_id: b.company_id, build_id: b.id, form_id: meta.form_id,
-        ad_id: l.ad_id ? String(l.ad_id) : null, meta_created_at: l.created_time,
-        fields: Object.fromEntries(((l.field_data || []) as { name: string; values: string[] }[]).map((f) => [f.name, (f.values || []).join(", ")])),
-      }));
-      if (rows.length) {
-        const { data: fresh } = await admin.from("meta_leads").upsert(rows, { onConflict: "leadgen_id", ignoreDuplicates: true }).select("leadgen_id");
-        found += (fresh ?? []).length;
-        const newest = Math.max(...rows.map((r) => Date.parse(String(r.meta_created_at)) / 1000).filter(Number.isFinite));
-        if (newest > Number(meta.leads_after || 0)) {
-          await admin.from("campaign_builds").update({ meta: { ...meta, leads_after: Math.floor(newest) } }).eq("id", b.id);
-        }
-      }
-    } catch (e) {
-      console.warn("lead pickup failed for", b.id, (e as Error).message);
-    }
-  }
-
-  // Deliver what hasn't been, new or retried.
-  const { data: waiting } = await admin.from("meta_leads").select("*").is("lead_id", null).lt("attempts", 5).order("created_at").limit(50);
-  for (const l of (waiting ?? []) as Row[]) {
-    if (Date.now() - started > 130_000) break;
-    if (await deliver(admin, l)) delivered++;
-  }
-  return { found, delivered };
-}
-
-async function deliver(admin: Admin, l: Row): Promise<boolean> {
-  const f = (l.fields || {}) as Record<string, string>;
-  const { full_name, first_name, last_name, phone_number, email, post_code, zip_code, job_details, ...rest } = f;
-  const payload = {
-    company_id: l.company_id,
-    name: full_name || [first_name, last_name].filter(Boolean).join(" ") || "Facebook lead",
-    phone: phone_number || undefined, email: email || undefined, postcode: post_code || zip_code || undefined,
-    source: "Facebook Lead Ad",
-    ...(job_details ? { job_details } : {}), ...rest,
-    meta_lead_id: l.leadgen_id, meta_form_id: l.form_id, ...(l.ad_id ? { meta_ad_id: l.ad_id } : {}),
-  };
-  let leadId: string | null = null, error: string | null = null;
-  try {
-    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/intake-lead`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-      body: JSON.stringify(payload),
-    });
-    const out = await res.json().catch(() => ({})) as Row;
-    if (res.ok && out.lead_id) leadId = String(out.lead_id);
-    else error = String(out.error || `HTTP ${res.status}`);
-  } catch (e) {
-    error = (e as Error).message;
-  }
-  await admin.from("meta_leads").update({ lead_id: leadId, error, attempts: Number(l.attempts || 0) + 1 }).eq("leadgen_id", l.leadgen_id);
-  if (leadId && !(await stepDone(admin, String(l.company_id), ["first_lead"]))) {
-    await setStep(admin, String(l.company_id), "first_lead", "done", "First lead from their Facebook instant form.", { id: null, name: "Automation" });
-  }
-  return !!leadId;
 }
 
 // ── Self-test: make everything once in the client's account, then remove it ─────
