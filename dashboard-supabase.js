@@ -6837,7 +6837,6 @@ function blActiveMax() {
 const NICHE_SUB_NICHES = {
   hvac: [
     { id: 'split_ducted',              label: 'Installations (Split & Ducted)' },
-    { id: 'installations_maintenance', label: 'Installations & Maintenance'    },
   ],
 };
 
