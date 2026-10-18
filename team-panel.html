@@ -1294,7 +1294,7 @@ select{cursor:pointer}
         </details>
 
         <div class="st-actions">
-          <button class="btn btn-p" id="stPack" type="button" title="Meta ad copy, image copy, the ad rules check and every image size, in one go">Build preview pack</button>
+          <button class="btn btn-p" id="stPack" type="button" title="Meta ad copy, image copy, the ad rules check and the ticked sizes, in one go">Build preview pack</button>
           <button class="btn" id="stGo" type="button">Write copy &amp; make creatives</button>
           ${variants.length ? '<button class="btn" id="stRemake" type="button">Remake with this copy</button>' : ''}
           <span class="muted" id="stStatus" style="font-size:12px"></span>
@@ -1531,15 +1531,15 @@ select{cursor:pointer}
   // ── The preview pack ──
   // One click: stock if the client chose it (or there is nothing else to draw
   // on), their colour from the logo if none is set, fresh Meta copy and image
-  // copy, the ad rules check (which rewrites what must change), then every
-  // standard size. Each step is its own call, so a slow model never holds a
+  // copy, the ad rules check (which rewrites what must change), then the sizes
+  // ticked above. Each step is its own call, so a slow model never holds a
   // single request open for minutes, and a failure says which step failed.
   async function buildPack() {
     const st = _studio, cid = st.companyId;
-    const sizes = [...STUDIO_SIZES.map(z => ({ ...z })),
-      ...st.sizes.filter(z => z.on && !STUDIO_SIZES.some(d => d.w === z.w && d.h === z.h))];
+    const sizes = st.sizes.filter(z => z.on);
+    if (!sizes.length) return alert('Tick at least one size.');
     const n = st.count * sizes.length;
-    if (!confirm(`Build a fresh preview pack for ${st.business.name || 'this client'}?\n\nThis rewrites the Meta ad copy and the image copy, checks every line against the ad rules, and makes ${st.count} variant${st.count === 1 ? '' : 's'} in ${sizes.length} sizes (${n} images).`)) return;
+    if (!confirm(`Build a fresh preview pack for ${st.business.name || 'this client'}?\n\nThis rewrites the Meta ad copy and the image copy, checks every line against the ad rules, and makes ${st.count} variant${st.count === 1 ? '' : 's'} in ${sizes.length} size${sizes.length === 1 ? '' : 's'} (${n} image${n === 1 ? '' : 's'}).`)) return;
     const btns = [$('stPack'), $('stGo'), $('stRemake')].filter(Boolean);
     btns.forEach(b => (b.disabled = true));
     const fail = (what, r) => { studioStatus(''); alert(`${what}: ${(r.data && r.data.error) || 'that did not work'}`); };
