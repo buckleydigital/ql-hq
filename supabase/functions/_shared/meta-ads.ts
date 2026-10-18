@@ -10,23 +10,34 @@ const GRAPH = `https://graph.facebook.com/${Deno.env.get("META_GRAPH_VERSION") |
 
 type Json = Record<string, unknown>;
 
-async function graph(path: string, init?: { method?: string; form?: Record<string, string> }): Promise<Json> {
-  const token = Deno.env.get("META_ACCESS_TOKEN");
+/**
+ * One Graph call as the system user (or as a Page, with its token). Form
+ * values that aren't strings are sent as JSON, which is how Graph takes
+ * nested fields like targeting.
+ */
+export async function graph(path: string, init?: { method?: string; form?: Record<string, unknown>; token?: string }): Promise<Json> {
+  const token = init?.token || Deno.env.get("META_ACCESS_TOKEN");
   if (!token) throw new Error("META_ACCESS_TOKEN is not set");
   let res: Response;
   if (init?.form) {
-    const body = new URLSearchParams({ ...init.form, access_token: token });
+    const body = new URLSearchParams({ access_token: token });
+    for (const [k, v] of Object.entries(init.form)) {
+      if (v !== undefined && v !== null) body.set(k, typeof v === "string" ? v : JSON.stringify(v));
+    }
     res = await fetch(`${GRAPH}/${path}`, { method: init.method || "POST", body });
   } else {
     res = await fetch(`${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`, { method: init?.method || "GET" });
   }
   const body = await res.json().catch(() => ({})) as Json;
-  const err = body.error as { message?: string } | undefined;
-  if (!res.ok || err) throw new Error(`Meta: ${err?.message || `HTTP ${res.status}`}`);
+  const err = body.error as { message?: string; error_user_title?: string; error_user_msg?: string } | undefined;
+  if (!res.ok || err) {
+    const detail = [err?.error_user_title, err?.error_user_msg].filter(Boolean).join(": ");
+    throw new Error(`Meta: ${err?.message || `HTTP ${res.status}`}${detail ? ` (${detail})` : ""}`);
+  }
   return body;
 }
 
-const act = (accountId: string) => `act_${String(accountId).replace(/\D/g, "")}`;
+export const act = (accountId: string) => `act_${String(accountId).replace(/\D/g, "")}`;
 
 /** Add an image (by URL) to the ad account's library; returns its hash. */
 export async function uploadImage(accountId: string, imageUrl: string): Promise<string> {

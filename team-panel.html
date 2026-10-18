@@ -449,6 +449,11 @@ select{cursor:pointer}
 .st-pv iframe{border:0;max-width:100%;background:#fff;display:block;margin:0 auto}
 .st-pv-tabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
 .st-pv-tabs .st-chip{flex-direction:row;padding:4px 8px}
+.st-camp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;font-size:12.5px}
+.st-camp-row input[type=text],.st-camp-row input[type=number]{padding:5px 8px;border:1px solid var(--bd2);border-radius:6px;font:inherit;font-size:12.5px;background:var(--s1,#fff);color:inherit}
+.st-place{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bd2);border-radius:999px;padding:3px 6px 3px 10px;background:var(--s1,#fff);font-size:12px}
+.st-place input{width:52px;padding:2px 4px!important}
+.st-place button{border:0;background:none;cursor:pointer;color:var(--ink3);font-size:14px;line-height:1}
 .st-pv-edit{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:11.5px;color:var(--ink2)}
 .st-pv-edit label{display:flex;flex-direction:column;gap:3px}
 .st-stock{margin-top:14px}
@@ -892,6 +897,8 @@ select{cursor:pointer}
   const aiApi = (body) => fnApi('fulfilment-ai', body);
   // Preview rounds: build, review in Meta's own previews, send (creative-rounds).
   const roundsApi = (body) => fnApi('creative-rounds', body);
+  // The approved ads as a paused campaign, and its settings (campaign-build).
+  const campaignApi = (body) => fnApi('campaign-build', body);
   async function fnApi(fn, body) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; throw new Error('no session'); }
@@ -1231,6 +1238,7 @@ select{cursor:pointer}
     };
     renderStudio();
     loadRounds();
+    loadCampaign();
   }
 
   const studioLogo = () => (_studio.assets || []).find(a => a.kind === 'logo') || null;
@@ -1332,6 +1340,7 @@ select{cursor:pointer}
         ${policyHtml(st.ad_policy_check)}
 
         <div id="stRounds"></div>
+        <div id="stCampaign"></div>
 
         ${st.results.length ? `<div class="st-h" style="margin-top:16px">Made just now <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· also added to the preview links</span></div>
           <div class="st-results">${st.results.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" download><img src="${esc(r.url)}" alt=""><span>${r.w}×${r.h}</span></a>`).join('')}</div>` : ''}
@@ -1343,6 +1352,7 @@ select{cursor:pointer}
       </div>`;
     wireStudio();
     renderRounds();
+    renderCampaign();
     if (st.can_manage_stock && _stock.open) renderStock();
   }
 
@@ -1769,6 +1779,116 @@ select{cursor:pointer}
       alert(`Finishing the pack failed: ${e.message || e}`);
       loadRounds();
     }
+  }
+
+  // ─── Campaign (Phase 4) ─────────────────────────────────────────────────────
+  // Once the client approves, campaign-build makes the campaign in their ad
+  // account, paused. Here the team sees what it will use (or used), fixes what
+  // it couldn't work out, and builds or rebuilds. Launching stays in Ads Manager.
+  const BUILD_STAGE = { settings: 'checking the settings', form: 'making the instant form', campaign: 'making the campaign', adset: 'making the ad set', ads: 'adding the ads', register: 'telling Mission Control' };
+
+  async function loadCampaign() {
+    if (!_studio) return;
+    const cid = _studio.companyId;
+    const { ok, data } = await campaignApi({ action: 'state', company_id: cid });
+    if (!_studio || _studio.companyId !== cid) return;
+    _studio.campaign = ok ? data : { error: data.error || 'Could not load the campaign.' };
+    // The area being edited starts from what's saved, else what onboarding gave.
+    const c = _studio.campaign;
+    _studio.campaignEdit = {
+      locations: ((c.saved && c.saved.locations && c.saved.locations.length ? c.saved.locations : (c.settings && c.settings.locations)) || []).map(p => ({ ...p })),
+      results: [],
+    };
+    renderCampaign();
+  }
+
+  function renderCampaign() {
+    const host = $('stCampaign');
+    if (!host || !_studio) return;
+    const c = _studio.campaign;
+    const head = '<div class="st-h" style="margin-top:16px">Campaign</div>';
+    if (!c) { host.innerHTML = head + '<div class="muted" style="font-size:12px">Loading…</div>'; return; }
+    if (c.error) { host.innerHTML = head + `<div class="muted" style="font-size:12px">${esc(c.error)}</div>`; return; }
+    if (!c.meta) { host.innerHTML = head + '<div class="muted" style="font-size:12.5px">Their ad account and Facebook Page aren\'t connected yet.</div>'; return; }
+    const b = c.build, st = c.settings || {}, saved = c.saved || {}, ed = _studio.campaignEdit;
+    const date = (d) => d ? new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    const built = b && b.status === 'built';
+    let status;
+    if (!b) status = c.approved_round ? `Round ${c.approved_round.round} is approved. The campaign builds itself within a few minutes, or build it now.` : 'Builds itself, paused, as soon as the client approves their ads.';
+    else if (b.status === 'queued' || b.status === 'building') status = `Building: ${esc(BUILD_STAGE[b.stage] || b.stage)}…${b.error ? ` <span class="muted">(retrying: ${esc(b.error)})</span>` : ''}`;
+    else if (b.status === 'needs_team') status = `<span class="sev chk">Needs you</span>${esc(b.error || '')}`;
+    else if (b.status === 'failed') status = `<span class="sev fix">Stopped</span>${esc(b.error || '')}`;
+    else status = `<b>Built and paused</b> · ${esc(date(b.built_at))} · ${Object.keys((b.meta || {}).ads || {}).length} ads${b.started_by_name ? ` · by ${esc(b.started_by_name)}` : ''} · <a href="${esc(c.meta.ads_manager)}" target="_blank" rel="noopener">Open in Ads Manager</a>`;
+    const formats = built ? Object.values(b.meta.ads || {}).filter(a => (a.format || '').startsWith('feed image only')).length : 0;
+
+    host.innerHTML = `${head}<div class="st-round">
+      <div class="st-iss" style="border-top:0;padding-top:0">${status}</div>
+      ${formats ? `<div class="st-iss"><span class="sev chk">Check</span>${formats} ad(s) couldn't carry the Stories image, so Meta crops the feed image there.</div>` : ''}
+      ${(c.problems || []).map(p => `<div class="st-iss"><span class="sev fix">Missing</span>${esc(p)}</div>`).join('')}
+      ${(st.unplaced || []).length ? `<div class="st-iss"><span class="sev chk">Check</span>Couldn't find on Meta, so not targeted: ${esc(st.unplaced.join(', '))}. Add them below if they matter.</div>` : ''}
+      ${built ? '<div class="muted" style="font-size:12px;margin-top:6px">Built with the settings below. Changing them affects a rebuild, not the campaign already made.</div>' : ''}
+      <div class="st-camp-row"><label>Daily budget $ <input type="number" min="5" step="1" id="cpBudget" style="width:80px" value="${esc(saved.daily_budget || '')}" placeholder="${esc(st.daily_budget || '')}"></label>
+        <span class="muted">${esc((st.sources || {}).daily_budget || 'none from onboarding')}</span></div>
+      <div class="st-camp-row"><span>Area</span>${ed.locations.map((p, i) => `<span class="st-place">${esc(p.name)}${p.type === 'city' ? ` +<input type="number" min="10" max="80" data-cp-radius="${i}" value="${esc(p.radius_km || 25)}">km` : ''}<button type="button" data-cp-drop="${i}" title="Remove">×</button></span>`).join('') || '<span class="muted">none yet</span>'}</div>
+      <div class="st-camp-row"><input type="text" id="cpFind" placeholder="Add a town or postcode" style="width:200px"><button class="btn btn-sm" type="button" id="cpFindBtn">Find</button>
+        ${ed.results.map((p, i) => `<button class="btn btn-sm" type="button" data-cp-add="${i}">+ ${esc(p.name)} <span class="muted">(${esc(p.type)})</span></button>`).join('')}</div>
+      <div class="st-camp-row"><label>Privacy policy link <input type="text" id="cpPrivacy" style="width:280px" value="${esc(saved.privacy_url || '')}" placeholder="${esc(st.privacy_url || '')}"></label></div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">Ages ${esc(st.age_min || 25)}+ with Advantage+ audience and placements. Instant form: name, phone, email, postcode and the job, set for higher intent. Leads go straight into their CRM.</div>
+      <div class="st-actions" style="margin-top:10px">
+        <button class="btn" type="button" id="cpSave">Save settings</button>
+        ${!b || ['needs_team', 'failed'].includes(b.status) ? `<button class="btn btn-p" type="button" id="cpBuild"${c.approved_round ? '' : ' disabled title="Waiting on the client to approve their ads"'}>${b ? 'Carry on building' : 'Build campaign'}</button>` : ''}
+        ${built ? '<button class="btn" type="button" id="cpRebuild">Rebuild</button>' : ''}
+        <span class="muted" style="font-size:12px" id="cpMsg"></span>
+      </div>
+    </div>`;
+    wireCampaign();
+  }
+
+  function wireCampaign() {
+    const cid = _studio.companyId, ed = _studio.campaignEdit;
+    const msg = (t) => { const m = $('cpMsg'); if (m) m.textContent = t; };
+    document.querySelectorAll('#stCampaign [data-cp-radius]').forEach(inp => inp.addEventListener('change', () => { ed.locations[+inp.dataset.cpRadius].radius_km = +inp.value || 25; }));
+    document.querySelectorAll('#stCampaign [data-cp-drop]').forEach(x => x.addEventListener('click', () => { ed.locations.splice(+x.dataset.cpDrop, 1); renderCampaign(); }));
+    document.querySelectorAll('#stCampaign [data-cp-add]').forEach(x => x.addEventListener('click', () => {
+      const p = ed.results[+x.dataset.cpAdd];
+      if (p && !ed.locations.some(l => l.key === p.key)) ed.locations.push(p.type === 'city' ? { ...p, radius_km: 25 } : p);
+      ed.results = [];
+      renderCampaign();
+    }));
+    const find = async () => {
+      const q = ($('cpFind').value || '').trim();
+      if (!q) return;
+      msg('Searching Meta…');
+      const { ok, data } = await campaignApi({ action: 'geo_search', company_id: cid, q });
+      ed.results = ok ? (data.places || []) : [];
+      renderCampaign();
+      if (!ok) msg(data.error || 'Search failed.');
+      else if (!ed.results.length) msg('Meta has no place by that name.');
+    };
+    const fb = $('cpFindBtn'); if (fb) fb.addEventListener('click', find);
+    const fi = $('cpFind'); if (fi) fi.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } });
+    const save = async () => {
+      const { ok, data } = await campaignApi({
+        action: 'save_settings', company_id: cid,
+        daily_budget: $('cpBudget').value, privacy_url: $('cpPrivacy').value, locations: ed.locations,
+      });
+      if (!ok) { msg(data.error || 'Could not save.'); return false; }
+      return true;
+    };
+    const sv = $('cpSave'); if (sv) sv.addEventListener('click', async () => { msg('Saving…'); if (await save()) { await loadCampaign(); msg('Saved.'); } });
+    const build = async (rebuild) => {
+      if (rebuild && !confirm('Make a new campaign from their approved ads? The current one stays in Ads Manager, paused, until you delete it.')) return;
+      msg('Saving…');
+      if (!(await save())) return;
+      msg('Building in their ad account. This takes up to a minute…');
+      document.querySelectorAll('#stCampaign button').forEach(x => { x.disabled = true; });
+      const { ok, data } = await campaignApi({ action: 'build', company_id: cid, rebuild: !!rebuild });
+      if (!ok) alert(data.error || 'The build failed.');
+      await loadCampaign();
+      loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
+    };
+    const bb = $('cpBuild'); if (bb) bb.addEventListener('click', () => build(false));
+    const rb = $('cpRebuild'); if (rb) rb.addEventListener('click', () => build(true));
   }
 
   const POLICY_WHERE = {

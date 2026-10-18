@@ -208,3 +208,6 @@ verify_jwt = false
 
 [functions.creative-approval]
 verify_jwt = false
+
+[functions.campaign-build]
+verify_jwt = false
