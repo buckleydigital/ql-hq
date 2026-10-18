@@ -187,3 +187,6 @@ verify_jwt = true
 
 [functions.create-management-subscription]
 verify_jwt = true
+
+[functions.meta-access-watch]
+verify_jwt = false
