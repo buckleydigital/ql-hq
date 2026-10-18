@@ -886,7 +886,7 @@ async function sendManagedWelcomeEmail(to: string, firstName: string, company: s
   }
 }
 
-// Internal ops emails show solar_battery as solar_and_battery
+// Internal ops emails show solar_and_battery (older orders say solar_battery)
 function emailNiche(niche: string | null | undefined): string {
   return niche === 'solar_battery' ? 'solar_and_battery' : (niche || '')
 }

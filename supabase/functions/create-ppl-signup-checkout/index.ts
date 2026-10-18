@@ -4,7 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
-import { isPplNiche, PPL_TRIAL_MIN, pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
+import { isPplNiche, normalisePplNiche, PPL_TRIAL_MIN, pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
 import { buildPplAreas, summarisePplAreas, type PplArea } from '../_shared/ppl-areas.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
@@ -19,7 +19,7 @@ const corsHeaders = {
 }
 
 // Fire internal notification via the notify-internal edge function
-// Internal ops emails show solar_battery as solar_and_battery
+// Internal ops emails show solar_and_battery (older orders say solar_battery)
 function emailNiche(niche: string | null | undefined): string {
   return niche === 'solar_battery' ? 'solar_and_battery' : (niche || '')
 }
@@ -109,7 +109,7 @@ serve(async (req) => {
     // quantity is per area: each suburb (or the postcode list, or the state)
     // becomes its own order with that many leads.
 
-    const normNiche    = String(niche || '').toLowerCase().trim().replace(/-/g, '_')
+    const normNiche    = normalisePplNiche(niche)
     const normSubNiche = pplSubNiche(normNiche, sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null)
     if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
 

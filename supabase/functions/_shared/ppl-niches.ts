@@ -1,7 +1,15 @@
 // The niches Pay Per Lead sells. Pricing and both checkouts refuse anything
 // else, whatever rows ppl_pricing still holds. Niches are normalised the way
 // the functions do it: lower case, hyphens as underscores.
-export const PPL_NICHES = ['solar_battery', 'battery_retrofit', 'hvac']
+export const PPL_NICHES = ['solar_and_battery', 'battery_retrofit', 'hvac']
+
+// A niche as the functions compare it: lower case, underscores. solar_battery
+// was the old name for solar_and_battery and is still accepted from a page
+// that was loaded before the rename.
+export function normalisePplNiche(raw: unknown): string {
+  const n = String(raw ?? '').toLowerCase().trim().replace(/-/g, '_')
+  return n === 'solar_battery' ? 'solar_and_battery' : n
+}
 
 export function isPplNiche(niche: string | null | undefined): boolean {
   return PPL_NICHES.includes(niche ?? '')
@@ -37,8 +45,8 @@ export function pplSubNiche(niche: string, subNiche: string | null): string | nu
 // How a niche (and sub-niche) reads to a client: on the Stripe receipt and in
 // emails.
 const PPL_LABELS: Record<string, string> = {
-  solar_battery: 'Solar + Battery',
   solar_and_battery: 'Solar + Battery',
+  solar_battery: 'Solar + Battery',
   battery_retrofit: 'Battery Retrofit',
   hvac: 'HVAC',
   split_ducted: 'Split & Ducted',

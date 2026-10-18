@@ -36,6 +36,7 @@ const esc = (v: unknown) =>
 // the system labels them so this email reads like every other notice.
 const NICHE_LABELS: Record<string, string> = {
   solar:            'All Solar',
+  solar_and_battery: 'Solar + Battery',
   solar_battery:    'Solar + Battery',
   battery_retrofit: 'Battery Retrofit',
   commercial_solar: 'Commercial Solar',

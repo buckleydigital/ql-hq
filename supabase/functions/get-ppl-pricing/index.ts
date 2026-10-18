@@ -6,7 +6,7 @@
 // the dashboard and the checkout functions all read.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { isPplNiche, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
+import { isPplNiche, normalisePplNiche, PPL_TRIAL_MIN } from '../_shared/ppl-niches.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -34,7 +34,7 @@ serve(async (req) => {
     )
   }
 
-  const niche    = url.searchParams.get('niche')?.toLowerCase().trim().replace(/-/g, '_')
+  const niche    = url.searchParams.get('niche') ? normalisePplNiche(url.searchParams.get('niche')) : null
   const subNiche = url.searchParams.get('sub_niche')?.toLowerCase().trim().replace(/-/g, '_') || null
   const area     = url.searchParams.get('area')?.toLowerCase().trim() || null
 

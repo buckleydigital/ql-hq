@@ -11,7 +11,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
-import { pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
+import { normalisePplNiche, pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -73,7 +73,7 @@ serve(async (req) => {
     if (!Number.isFinite(qty) || qty < 1) throw new Error('quantity must be a positive number')
     if (!Number.isFinite(price) || price <= 0) throw new Error('price_per_lead must be a positive number')
 
-    const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
+    const normNiche    = normalisePplNiche(niche)
     const normSubNiche = pplSubNiche(normNiche, sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null)
 
     const totalCents = Math.round(price * qty * (1 - discountPct / 100) * 100)
