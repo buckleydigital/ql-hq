@@ -19,6 +19,17 @@
 //   save_creative       the panel draws each image on a canvas (sizes are the
 //                       team's choice) and sends it here; it lands in
 //                       preview_links like a hand-made Canva upload.
+//   stock_*             the stock library (admins and ops managers): list,
+//                       upload (straight to R2), retag, retire, delete.
+//   use_stock           put stock items into a client's library; with
+//                       auto: true, picks the best for their trade.
+//   policy_check        Claude reads every line of the Meta copy, the image
+//                       text and the Google copy against Meta's and Google's
+//                       ad rules and Australian consumer law, rewrites what
+//                       must change, and leaves the judgement calls flagged.
+//
+// The panel's "Build preview pack" button runs generate_ad_copy,
+// write_creative_copy, policy_check and the drawing in one go.
 //
 // Why the panel draws the images rather than this function: a photo creative
 // at story size takes over a second of CPU to render in wasm, and an edge
@@ -46,6 +57,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
 import { z } from "npm:zod@4";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0/helpers/zod";
+import {
+  deleteObject, headObject, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, MEDIA_TYPES, mediaConfigured, uploadUrl, viewUrl,
+} from "../_shared/r2.ts";
+
+const MODEL = "claude-opus-5-5";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,6 +125,12 @@ Deno.serve(async (req: Request) => {
     const actorName = (me?.full_name as string) || "Internal Team";
     const body = await req.json().catch(() => ({}));
     const { action, company_id: companyId } = body as { action?: string; company_id?: string };
+
+    // The stock library belongs to no one client.
+    if (action && action.startsWith("stock_")) {
+      if (!(isAdmin || isOps)) return json({ error: "Only an admin or ops manager can change the stock library" }, 403);
+      return await stockAction(admin, action, body as Record<string, unknown>, caller.id);
+    }
     if (!companyId) return json({ error: "company_id is required" }, 400);
 
     // Scope: a member only reaches their own assignments.
@@ -121,11 +143,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: company } = await admin
       .from("companies")
-      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend, brand_color, creative_note, creative_copy")
+      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend, brand_color, creative_note, creative_copy, client_testimonials, ad_policy_check, creative_source")
       .eq("id", companyId).maybeSingle();
     if (!company) return json({ error: "Client not found" }, 404);
 
-    const ctx = { admin, companyId, company, actor: { id: caller.id, name: actorName }, isAdmin };
+    const ctx = { admin, companyId, company, actor: { id: caller.id, name: actorName }, isAdmin, isOps };
 
     if (action === "get_ad_copy") {
       return json({ ad_copy: company.generated_ad_copy ?? null });
@@ -139,6 +161,8 @@ Deno.serve(async (req: Request) => {
     if (action === "save_creative_prompt")   return await saveCreativePrompt(ctx, b);
     if (action === "write_creative_copy")    return await writeCreativeCopy(ctx, b);
     if (action === "save_creative")          return await saveCreative(ctx, b);
+    if (action === "policy_check")           return await policyCheck(ctx, b);
+    if (action === "use_stock")              return await useStock(ctx, b);
 
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
@@ -153,6 +177,7 @@ type Ctx = {
   company: Record<string, unknown>;
   actor: { id: string; name: string };
   isAdmin: boolean;
+  isOps: boolean;
 };
 
 // Everything we actually know, and nothing invented. The onboarding form is
@@ -180,6 +205,7 @@ function briefFacts(ctx: Ctx): string[] {
   add("Current offers or promotions", pick("special_offers"));
   add("Products and brands they install", pick("products_brands"));
   add("Anything else they told us", pick("additional_info"));
+  add("Reviews and testimonials they gave us (quote only these, word for word)", c.client_testimonials);
   add("Max daily ad spend", c.max_daily_ad_spend);
   return facts;
 }
@@ -221,11 +247,11 @@ async function generateAdCopy(ctx: Ctx) {
 
   try {
     const res = await client.messages.parse({
-      model: "claude-opus-5",
+      model: MODEL,
       max_tokens: 16000,
       system,
       messages: [{ role: "user", content: prompt }],
-      output_config: { format: zodOutputFormat(AdCopySchema) },
+      output_config: { format: zodOutputFormat(AdCopySchema), effort: "high" },
       // Ad copy for a real client should not silently come back empty because a
       // classifier declined; on a decline the API re-runs on the fallback model
       // inside the same call.
@@ -262,7 +288,7 @@ async function generateAdCopy(ctx: Ctx) {
     ...parsed,
     generated_at: new Date().toISOString(),
     generated_by: ctx.actor.name,
-    model: "claude-opus-5",
+    model: MODEL,
   };
 
   const { error: upErr } = await ctx.admin
@@ -319,21 +345,47 @@ async function creativePrompt(ctx: Ctx): Promise<{ prompt: string; custom: boole
   return { prompt: custom || DEFAULT_CREATIVE_PROMPT, custom: !!custom };
 }
 
+const ASSET_COLS = "id, kind, url, path, storage, source, content_type, bytes, width, height, label, stock_asset_id, created_at";
+
+// A browser-usable URL for a library item: R2 files are signed on the way out.
+async function withUrl(a: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const url = a.storage === "r2" ? await viewUrl(a.path as string).catch(() => null) : a.url;
+  const { path: _p, ...rest } = a;
+  return { ...rest, url };
+}
+
+// Removing a library item: a file the client or team uploaded goes with it; a
+// stock item only leaves this client's library.
+async function dropAssets(ctx: Ctx, rows: Record<string, unknown>[]) {
+  for (const o of rows) {
+    if (o.source === "stock") continue;
+    if (o.storage === "r2") await deleteObject(o.path as string);
+    else await ctx.admin.storage.from(BUCKET).remove([o.path as string]);
+  }
+  if (rows.length) await ctx.admin.from("company_assets").delete().in("id", rows.map((o) => o.id as string));
+}
+
 async function creativeState(ctx: Ctx) {
   const [{ data: assets }, p] = await Promise.all([
-    ctx.admin.from("company_assets").select("id, kind, url, width, height, label, created_at")
+    ctx.admin.from("company_assets").select(ASSET_COLS)
       .eq("company_id", ctx.companyId).order("created_at", { ascending: true }),
     creativePrompt(ctx),
   ]);
   return json({
-    assets: assets ?? [],
+    assets: await Promise.all(((assets ?? []) as Record<string, unknown>[]).map(withUrl)),
+    creative_source: ctx.company.creative_source ?? null,
+    trades: tradesOf(ctx.company),
+    media_ready: mediaConfigured(),
     brand_color: ctx.company.brand_color ?? null,
     creative_note: ctx.company.creative_note ?? "",
     creative_copy: ctx.company.creative_copy ?? null,
+    ad_policy_check: ctx.company.ad_policy_check ?? null,
+    client_testimonials: ctx.company.client_testimonials ?? "",
     prompt: p.prompt,
     prompt_is_default: !p.custom,
     default_prompt: DEFAULT_CREATIVE_PROMPT,
     can_edit_prompt: ctx.isAdmin,
+    can_manage_stock: ctx.isAdmin || ctx.isOps,
     business: { name: ctx.company.name ?? "", area: ctx.company.service_area ?? "" },
   });
 }
@@ -376,31 +428,138 @@ async function uploadAsset(ctx: Ctx, b: Record<string, unknown>) {
   }
   // One logo per client: a new one replaces the old.
   if (kind === "logo") {
-    const { data: old } = await ctx.admin.from("company_assets").select("id, path")
+    const { data: old } = await ctx.admin.from("company_assets").select("id, path, storage, source")
       .eq("company_id", ctx.companyId).eq("kind", "logo");
-    if (old?.length) {
-      await ctx.admin.storage.from(BUCKET).remove(old.map((o) => o.path as string));
-      await ctx.admin.from("company_assets").delete().in("id", old.map((o) => o.id as string));
-    }
+    await dropAssets(ctx, (old ?? []) as Record<string, unknown>[]);
   }
   const dim = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
   const { data, error } = await ctx.admin.from("company_assets").insert({
     company_id: ctx.companyId, kind, url: stored.url, path: stored.path,
     width: dim(b.width), height: dim(b.height),
     label: String(b.filename || "").trim().slice(0, 200) || null,
-    created_by: ctx.actor.id,
-  }).select("id, kind, url, width, height, label, created_at").single();
+    created_by: ctx.actor.id, source: "team",
+  }).select(ASSET_COLS).single();
   if (error) return json({ error: error.message }, 500);
-  return json({ ok: true, asset: data });
+  return json({ ok: true, asset: await withUrl(data as Record<string, unknown>) });
 }
 
 async function deleteAsset(ctx: Ctx, b: Record<string, unknown>) {
-  const { data: row } = await ctx.admin.from("company_assets").select("id, path")
+  const { data: row } = await ctx.admin.from("company_assets").select("id, path, storage, source")
     .eq("id", String(b.asset_id || "")).eq("company_id", ctx.companyId).maybeSingle();
   if (!row) return json({ error: "No such asset for this client" }, 404);
-  await ctx.admin.storage.from(BUCKET).remove([row.path as string]);
-  await ctx.admin.from("company_assets").delete().eq("id", row.id);
+  await dropAssets(ctx, [row as Record<string, unknown>]);
   return json({ ok: true });
+}
+
+// ─── The stock library ───────────────────────────────────────────────────────
+// Photos and videos the team keeps for clients who have none of their own,
+// tagged by trade. Files live in R2 under stock/; a client's library points at
+// them (company_assets.source = 'stock') rather than copying them.
+
+const TRADES = ["solar", "battery", "hvac", "renovations", "roofing", "painting", "other"] as const;
+
+// Which trades a client is in, read from the free-text niche and what they
+// told us in onboarding ("Solar, Battery Retrofit", "Solar/Aircon", ...).
+function tradesOf(company: Record<string, unknown>): string[] {
+  const profile = (company.dfy_profile || {}) as Record<string, unknown>;
+  const text = `${company.niche ?? ""} ${profile.industry ?? ""}`.toLowerCase();
+  const out = new Set<string>();
+  if (/solar|pv\b/.test(text)) out.add("solar");
+  if (/batter/.test(text)) out.add("battery");
+  if (/hvac|air ?con|aircon|heat(ing)? pump|cooling|split system/.test(text)) out.add("hvac");
+  if (/renovat|kitchen|bathroom|extension|builder|building/.test(text)) out.add("renovations");
+  if (/roof|gutter/.test(text)) out.add("roofing");
+  if (/paint/.test(text)) out.add("painting");
+  if (!out.size) out.add("other");
+  return [...out];
+}
+
+const STOCK_COLS = "id, trades, kind, path, content_type, width, height, bytes, label, active, created_at";
+
+async function stockAction(admin: Ctx["admin"], action: string, b: Record<string, unknown>, userId: string) {
+  const signed = async (r: Record<string, unknown>) => ({ ...r, url: await viewUrl(r.path as string).catch(() => null) });
+  const cleanTrades = (v: unknown) => (Array.isArray(v) ? v : []).map(String).filter((t) => (TRADES as readonly string[]).includes(t));
+
+  if (action === "stock_list") {
+    const { data } = await admin.from("stock_assets").select(STOCK_COLS).order("created_at", { ascending: false });
+    return json({ items: await Promise.all(((data ?? []) as Record<string, unknown>[]).map(signed)), trades: TRADES, media_ready: mediaConfigured() });
+  }
+  if (action === "stock_start_upload") {
+    if (!mediaConfigured()) return json({ error: "Media storage (R2) isn't set up yet" }, 503);
+    const type = MEDIA_TYPES[String(b.content_type || "")];
+    const bytes = Number(b.bytes) || 0;
+    if (!type) return json({ error: "Photos must be JPG, PNG or WebP, and videos MP4 or MOV" }, 400);
+    const max = type.kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    if (bytes <= 0 || bytes > max) return json({ error: `Files can be up to ${Math.round(max / 1048576)} MB` }, 400);
+    const key = `stock/${crypto.randomUUID()}.${type.ext}`;
+    return json({ ok: true, key, upload_url: await uploadUrl(key) });
+  }
+  if (action === "stock_finish_upload") {
+    const key = String(b.key || "");
+    if (!/^stock\/[0-9a-f-]{36}\.(jpg|png|webp|mp4|mov)$/.test(key)) return json({ error: "Unknown upload" }, 400);
+    const head = await headObject(key);
+    if (!head) return json({ error: "The file didn't arrive. Try again." }, 400);
+    const type = MEDIA_TYPES[head.contentType.split(";")[0]] ?? MEDIA_TYPES[String(b.content_type || "")];
+    if (!type) { await deleteObject(key); return json({ error: "Unsupported file type" }, 400); }
+    const dim = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
+    const { data, error } = await admin.from("stock_assets").insert({
+      trades: cleanTrades(b.trades), kind: type.kind === "video" ? "video" : "photo", path: key,
+      content_type: head.contentType || null, bytes: head.bytes, width: dim(b.width), height: dim(b.height),
+      label: String(b.label || "").trim().slice(0, 200) || null, created_by: userId,
+    }).select(STOCK_COLS).single();
+    if (error) { await deleteObject(key); return json({ error: error.message }, 500); }
+    return json({ ok: true, item: await signed(data as Record<string, unknown>) });
+  }
+  if (action === "stock_update") {
+    const patch: Record<string, unknown> = {};
+    if ("trades" in b) patch.trades = cleanTrades(b.trades);
+    if ("active" in b) patch.active = b.active === true;
+    if ("label" in b) patch.label = String(b.label || "").trim().slice(0, 200) || null;
+    const { error } = await admin.from("stock_assets").update(patch).eq("id", String(b.id || ""));
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true });
+  }
+  if (action === "stock_delete") {
+    // Also leaves every client library it was in (on delete cascade).
+    const { data: row } = await admin.from("stock_assets").select("id, path").eq("id", String(b.id || "")).maybeSingle();
+    if (!row) return json({ error: "No such stock item" }, 404);
+    await deleteObject(row.path as string);
+    await admin.from("stock_assets").delete().eq("id", row.id);
+    return json({ ok: true });
+  }
+  return json({ error: `Unknown action: ${action}` }, 400);
+}
+
+// Stock into one client's library: the items named, or with auto: true the
+// best matches for their trade that they don't already have.
+async function useStock(ctx: Ctx, b: Record<string, unknown>) {
+  const { data: have } = await ctx.admin.from("company_assets").select("stock_asset_id")
+    .eq("company_id", ctx.companyId).not("stock_asset_id", "is", null);
+  const already = new Set(((have ?? []) as Record<string, unknown>[]).map((r) => r.stock_asset_id as string));
+  let picks: Record<string, unknown>[] = [];
+  if (b.auto === true) {
+    const trades = tradesOf(ctx.company);
+    const { data } = await ctx.admin.from("stock_assets").select(STOCK_COLS)
+      .eq("active", true).overlaps("trades", trades).order("created_at", { ascending: false }).limit(100);
+    const fresh = ((data ?? []) as Record<string, unknown>[]).filter((r) => !already.has(r.id as string));
+    const photos = Math.min(Math.max(Number(b.photos) || 6, 0), 20);
+    const videos = Math.min(Math.max(Number(b.videos) || 2, 0), 10);
+    picks = [...fresh.filter((r) => r.kind === "photo").slice(0, photos), ...fresh.filter((r) => r.kind === "video").slice(0, videos)];
+  } else {
+    const ids = (Array.isArray(b.stock_ids) ? b.stock_ids : []).map(String).filter((id) => !already.has(id)).slice(0, 40);
+    if (ids.length) {
+      const { data } = await ctx.admin.from("stock_assets").select(STOCK_COLS).in("id", ids).eq("active", true);
+      picks = (data ?? []) as Record<string, unknown>[];
+    }
+  }
+  if (!picks.length) return json({ ok: true, added: [] });
+  const { data, error } = await ctx.admin.from("company_assets").insert(picks.map((r) => ({
+    company_id: ctx.companyId, kind: r.kind, url: null, path: r.path, storage: "r2", source: "stock",
+    stock_asset_id: r.id, content_type: r.content_type, bytes: r.bytes, width: r.width, height: r.height,
+    label: r.label, created_by: ctx.actor.id,
+  }))).select(ASSET_COLS);
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, added: await Promise.all(((data ?? []) as Record<string, unknown>[]).map(withUrl)) });
 }
 
 async function saveCreativeSettings(ctx: Ctx, b: Record<string, unknown>) {
@@ -469,11 +628,11 @@ async function writeCreativeCopy(ctx: Ctx, b: Record<string, unknown>) {
   try {
     const client = new Anthropic({ apiKey });
     const res = await client.messages.parse({
-      model: "claude-opus-5",
-      max_tokens: 8000,
+      model: MODEL,
+      max_tokens: 16000,
       system,
       messages: [{ role: "user", content: user }],
-      output_config: { format: zodOutputFormat(CreativeCopySchema) },
+      output_config: { format: zodOutputFormat(CreativeCopySchema), effort: "high" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
     } as Parameters<typeof client.messages.parse>[0]);
@@ -517,9 +676,216 @@ async function saveCreative(ctx: Ctx, b: Record<string, unknown>) {
   if (error) return json({ error: error.message }, 500);
   if (b.last) {
     const n = Number(b.batch_count) || 1;
-    await setStep(ctx, "creatives_generated", "done", `${n} creative${n === 1 ? "" : "s"} made in the creative studio`);
+    const extra = String(b.note || "").trim().slice(0, 500);
+    await setStep(ctx, "creatives_generated", "done",
+      `${n} creative${n === 1 ? "" : "s"} made in the creative studio${extra ? `. ${extra}` : ""}`);
   }
   return json({ ok: true, url: stored.url });
+}
+
+// ─── The ad-rules check ──────────────────────────────────────────────────────
+// Every line that will run, read against the rules that get ads rejected or
+// accounts restricted. Lines that must change are rewritten in place (within
+// their length limit, and re-checked here before they are used); judgement
+// calls are flagged for a person and left alone. The result is kept on the
+// company so the studio shows it after a reload.
+
+// Where a line lives, and the most characters it may have there.
+const LIMITS: Record<string, number> = {
+  meta_headline: 40, meta_primary_text: 600, meta_description: 200,
+  image_headline: 45, image_subline: 70, image_cta: 22,
+  google_headline: 30, google_long_headline: 90, google_description: 90,
+};
+type Where = keyof typeof LIMITS;
+type Line = { where: Where; index: number; text: string };
+
+const PolicySchema = z.object({
+  issues: z.array(z.object({
+    where: z.enum(["meta_headline", "meta_primary_text", "meta_description", "image_headline", "image_subline",
+      "image_cta", "google_headline", "google_long_headline", "google_description"]),
+    index: z.number().describe("The line's index exactly as given in the list"),
+    severity: z.enum(["must_fix", "check"]).describe("must_fix: would be rejected or is untrue or unsupported by the brief. check: a judgement call for a person"),
+    rule: z.string().describe("The rule, in a few words"),
+    reason: z.string().describe("One sentence on what is wrong"),
+    rewrite: z.string().describe("A compliant replacement within the same character limit, or empty if a person has to decide"),
+  })),
+  special_ad_category: z.enum(["none", "financial_products_and_services"])
+    .describe("financial_products_and_services if any line promotes finance, payment plans, $0 deposit or interest free"),
+  summary: z.string().describe("Two sentences for the team: is this pack safe to send, and what needs a person"),
+});
+
+// The copy as numbered lines, in the order the client will see it.
+function copyLines(ctx: Ctx): Line[] {
+  const meta = (ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
+  const cc = (ctx.company.creative_copy || {}) as Record<string, unknown>;
+  const g = (cc.google || {}) as Record<string, unknown>;
+  const out: Line[] = [];
+  const list = (where: Where, v: unknown) =>
+    (Array.isArray(v) ? v : []).forEach((t, i) => { if (typeof t === "string" && t.trim()) out.push({ where, index: i, text: t }); });
+  list("meta_headline", meta.headlines);
+  list("meta_primary_text", meta.primary_texts);
+  list("meta_description", meta.descriptions);
+  ((cc.variants || []) as Record<string, unknown>[]).forEach((v, i) => {
+    for (const [k, where] of [["headline", "image_headline"], ["subline", "image_subline"], ["cta", "image_cta"]] as const) {
+      if (typeof v[k] === "string" && (v[k] as string).trim()) out.push({ where, index: i, text: v[k] as string });
+    }
+  });
+  list("google_headline", g.headlines);
+  if (typeof g.long_headline === "string" && g.long_headline.trim()) out.push({ where: "google_long_headline", index: 0, text: g.long_headline });
+  list("google_description", g.descriptions);
+  return out;
+}
+
+// Checks that need no judgement, so they are never left to the model.
+function mechanicalIssues(lines: Line[]) {
+  const out: Record<string, unknown>[] = [];
+  for (const l of lines) {
+    const max = LIMITS[l.where];
+    if (l.text.length > max) out.push({ ...l, severity: "must_fix", rule: "Length limit", reason: `${l.text.length} characters, the limit is ${max}.`, rewrite: "" });
+    if (/[\u2013\u2014\u2015]/.test(l.text)) out.push({ ...l, severity: "must_fix", rule: "House style", reason: "Contains a dash we never use.", rewrite: "" });
+    if (l.where.startsWith("google") && /!/.test(l.text) && l.where !== "google_description") {
+      out.push({ ...l, severity: "must_fix", rule: "Google punctuation", reason: "Google rejects an exclamation mark in a headline.", rewrite: "" });
+    }
+  }
+  return out;
+}
+
+// A rewrite is only used if it is itself clean.
+const usableRewrite = (where: Where, t: string) =>
+  !!t.trim() && t.length <= LIMITS[where] && !/[\u2013\u2014\u2015]/.test(t) &&
+  !(where.startsWith("google") && where !== "google_description" && t.includes("!"));
+
+function setLine(meta: Record<string, unknown>, cc: Record<string, unknown>, l: { where: Where; index: number }, text: string) {
+  const at = (arr: unknown) => { if (Array.isArray(arr) && l.index < arr.length) { arr[l.index] = text; return true; } return false; };
+  const g = (cc.google || {}) as Record<string, unknown>;
+  switch (l.where) {
+    case "meta_headline": return at(meta.headlines);
+    case "meta_primary_text": return at(meta.primary_texts);
+    case "meta_description": return at(meta.descriptions);
+    case "google_headline": return at(g.headlines);
+    case "google_description": return at(g.descriptions);
+    case "google_long_headline": g.long_headline = text; return true;
+    default: {
+      const v = ((cc.variants || []) as Record<string, unknown>[])[l.index];
+      if (!v) return false;
+      v[l.where.replace("image_", "")] = text;
+      return true;
+    }
+  }
+}
+
+async function policyCheck(ctx: Ctx, b: Record<string, unknown>) {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY is not set on this project, so the copy cannot be checked yet." }, 503);
+  const lines = copyLines(ctx);
+  if (!lines.length) return json({ error: "There is no copy to check yet. Write the ad copy and the image copy first." }, 400);
+  const apply = b.apply !== false;
+
+  const system = [
+    "You check ad copy for Australian home services businesses (solar, batteries, air conditioning, trades) before it runs on Meta and Google.",
+    "Flag a line only when it breaks one of these. Most lines will be fine; do not flag style preferences.",
+    "",
+    "MUST FIX (would be rejected, or is untrue):",
+    "- States a fact that is not in the brief: a price, saving, rebate amount, discount, guarantee, timeframe, rating, review count, years in business, accreditation or award.",
+    "- Meta personal attributes: asserts or implies the reader's personal characteristics, such as their finances, debt, health or age ('Are you struggling to pay your bills?', 'Behind on payments?'). Talking about the product is fine ('Lower your power bills').",
+    "- Implies a government endorsement or that the business is a government program, or names a rebate or scheme that the brief does not mention.",
+    "- Unrealistic or absolute outcomes ('never pay for power again', 'eliminate your bill', 'guaranteed savings'), or claims of being best, cheapest or number one.",
+    "- 'Free' or 'no cost' unless the brief says so. Invented urgency or scarcity ('only 3 left', 'ends tonight').",
+    "- Google editorial: an exclamation mark in a headline, repeated punctuation, gimmicky capitals, a phone number or 'click here'.",
+    "- Any em dash or en dash.",
+    "",
+    "CHECK (a person decides; leave rewrite empty unless a clearly better line exists):",
+    "- Savings or rebate wording that is true to the brief but may need the conditions stated.",
+    "- Finance, payment plans, $0 deposit or interest free: also set special_ad_category, because Meta then limits targeting.",
+    "- Anything else that could reasonably be questioned by Meta's review.",
+    "",
+    "A rewrite keeps the line's angle and meaning, keeps to its character limit, uses Australian English and sentence case, and invents nothing.",
+    "Refer to a line by its where and index exactly as given.",
+  ].join("\n");
+
+  const user = [
+    "BRIEF (everything we know about this business; anything not here is unsupported):",
+    briefFacts(ctx).map((f) => `  - ${f}`).join("\n") || "  - (No onboarding detail captured yet)",
+    "",
+    "LINES TO CHECK (where, index, character limit, text):",
+    lines.map((l) => `  - ${l.where} ${l.index} (max ${LIMITS[l.where]}): ${JSON.stringify(l.text)}`).join("\n"),
+  ].join("\n");
+
+  let parsed: z.infer<typeof PolicySchema> | null = null;
+  try {
+    const client = new Anthropic({ apiKey });
+    const res = await client.messages.parse({
+      model: MODEL,
+      max_tokens: 16000,
+      system,
+      messages: [{ role: "user", content: user }],
+      output_config: { format: zodOutputFormat(PolicySchema), effort: "high" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    } as Parameters<typeof client.messages.parse>[0]);
+    if (res.stop_reason === "refusal") {
+      return json({ error: `The model declined this request: ${res.stop_details?.explanation || "no reason given"}` }, 422);
+    }
+    parsed = res.parsed_output as z.infer<typeof PolicySchema> | null;
+  } catch (e) {
+    const msg = (e as Error).message || "The request failed";
+    console.error("policy_check failed:", msg);
+    return json({ error: `The ad rules check failed: ${msg}` }, 502);
+  }
+  if (!parsed) return json({ error: "The check returned nothing usable. Try again." }, 502);
+
+  // Only issues that point at a real line count; the model's and the
+  // mechanical ones are merged, one entry per line and rule.
+  const known = new Map(lines.map((l) => [`${l.where}:${l.index}`, l]));
+  const issues = [
+    ...parsed.issues.filter((i) => known.has(`${i.where}:${i.index}`))
+      .map((i) => ({ ...i, text: known.get(`${i.where}:${i.index}`)!.text })),
+    ...mechanicalIssues(lines),
+  ] as (Record<string, unknown> & { where: Where; index: number; severity: string; rewrite: string; text: string })[];
+
+  // A mechanical issue on a line the model rewrote is fixed by that rewrite.
+  const meta = structuredClone(ctx.company.generated_ad_copy || {}) as Record<string, unknown>;
+  const cc = structuredClone(ctx.company.creative_copy || {}) as Record<string, unknown>;
+  const rewritten = new Map<string, string>();
+  if (apply) {
+    for (const i of issues) {
+      const key = `${i.where}:${i.index}`;
+      if (i.severity !== "must_fix" || rewritten.has(key) || !usableRewrite(i.where, String(i.rewrite || ""))) continue;
+      if (setLine(meta, cc, i, i.rewrite)) rewritten.set(key, i.rewrite);
+    }
+  }
+  const final = issues.map((i) => {
+    const key = `${i.where}:${i.index}`;
+    const applied = rewritten.has(key) && i.severity === "must_fix";
+    return { ...i, applied, now: rewritten.get(key) ?? i.text };
+  });
+  const open = final.filter((i) => i.severity === "must_fix" && !i.applied).length;
+  const toCheck = final.filter((i) => i.severity === "check").length;
+
+  const record = {
+    checked_at: new Date().toISOString(),
+    checked_by: ctx.actor.name,
+    model: MODEL,
+    lines_checked: lines.length,
+    summary: parsed.summary,
+    special_ad_category: parsed.special_ad_category,
+    issues: final,
+    fixed: rewritten.size,
+    must_fix_open: open,
+    to_check: toCheck,
+  };
+  const patch: Record<string, unknown> = { ad_policy_check: record };
+  if (rewritten.size) {
+    if (ctx.company.generated_ad_copy) patch.generated_ad_copy = meta;
+    if (ctx.company.creative_copy) patch.creative_copy = cc;
+  }
+  const { error } = await ctx.admin.from("companies").update(patch).eq("id", ctx.companyId);
+  if (error) return json({ error: error.message }, 500);
+  return json({
+    ok: true, ad_policy_check: record,
+    creative_copy: patch.creative_copy ?? ctx.company.creative_copy ?? null,
+    ad_copy: patch.generated_ad_copy ?? ctx.company.generated_ad_copy ?? null,
+  });
 }
 
 // ─── Shared: move a step and log it ──────────────────────────────────────────

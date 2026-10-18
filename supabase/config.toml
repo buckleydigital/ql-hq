@@ -190,3 +190,8 @@ verify_jwt = true
 
 [functions.meta-access-watch]
 verify_jwt = false
+
+# Client dashboard: media uploads in onboarding. Checks the client's own JWT
+# itself and takes the company from their profile.
+[functions.client-assets]
+verify_jwt = false

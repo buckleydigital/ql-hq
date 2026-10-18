@@ -1168,6 +1168,7 @@ function navigateTo(page) {
     "reviews":          loadReviews,
     "billing":          loadBilling,
     "buy-leads":        loadBuyLeads,
+    "onboarding":       loadOnboardingMedia,
   };
   loaders[page]?.();
 }
@@ -7935,3 +7936,186 @@ function maybeShowInstallPrompt(userId, alreadyDismissed) {
   });
 }
 
+
+
+// ─── Onboarding: logo, photos and videos ─────────────────────────────────────
+// Managed clients give us what we build their ads from: their own photos and
+// videos, or our stock library, plus their logo and colours. Files go straight
+// from the browser to storage on a signed URL (client-assets hands it out), so
+// a large video never has to fit through a function.
+let _md = null;
+const mdAttr = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+async function loadOnboardingMedia() {
+  const panel = document.getElementById("obMedia");
+  if (!panel) return;
+  if (currentCompanyPlan !== "managed") { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  try {
+    _md = await edgeFn("client-assets", { action: "state" });
+    renderOnboardingMedia();
+  } catch (e) {
+    document.getElementById("mdBody").innerHTML = `<div style="font-size:13px;color:var(--muted)">${esc(e.message)}</div>`;
+  }
+}
+
+function renderOnboardingMedia(progressHtml = "") {
+  const body = document.getElementById("mdBody");
+  if (!body || !_md) return;
+  const src = _md.creative_source;
+  const logo = _md.assets.find(a => a.kind === "logo");
+  const media = _md.assets.filter(a => a.kind !== "logo" && a.source === "client");
+  const colour = _md.brand_color || "#1f6fff";
+  const tile = (a) => `<div class="md-item">
+      ${a.kind === "video"
+        ? `<video src="${mdAttr(a.url)}" muted playsinline preload="metadata"></video><span class="md-tag">Video</span>`
+        : `<img src="${mdAttr(a.url)}" alt="" loading="lazy">`}
+      <button type="button" data-md-del="${mdAttr(a.id)}" title="Remove">×</button></div>`;
+
+  body.innerHTML = `
+    <div class="md-choice">
+      <label class="md-opt${src === "custom" ? " on" : ""}"><input type="radio" name="mdSource" value="custom"${src === "custom" ? " checked" : ""}>
+        <div><b>Use my own photos and videos</b><span>Real jobs, your team, your vans. These almost always get the cheapest leads.</span></div></label>
+      <label class="md-opt${src === "stock" ? " on" : ""}"><input type="radio" name="mdSource" value="stock"${src === "stock" ? " checked" : ""}>
+        <div><b>Use QuoteLeads stock</b><span>Don't have good ones yet? We use professional photos and videos for your trade, with your logo and colours.</span></div></label>
+    </div>
+
+    <div class="md-row">
+      <div>
+        <div class="md-h">Logo</div>
+        <div class="md-logo">${logo ? `<img src="${mdAttr(logo.url)}" alt="Your logo">` : "<span>No logo yet</span>"}</div>
+        <label class="btn" style="cursor:pointer">${logo ? "Replace logo" : "Upload logo"}<input type="file" accept="image/png,image/jpeg,image/webp" data-md-up="logo" hidden></label>
+      </div>
+      <div>
+        <div class="md-h">Brand colour <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></div>
+        <div class="md-colour">
+          <input type="color" id="mdColour" value="${mdAttr(colour)}">
+          <input type="text" id="mdHex" value="${mdAttr(_md.brand_color || "")}" placeholder="#1f6fff" maxlength="7" spellcheck="false">
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:6px;max-width:260px">Leave it and we'll take it from your logo.</p>
+      </div>
+    </div>
+
+    ${src === "custom" ? `
+      <div class="md-h">Photos and videos</div>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Finished jobs, before and after, you or your team at work. Phone photos and videos are perfect. Videos up to ${Math.round(_md.limits.video_mb / 1024)} GB each.</p>
+      <div class="md-grid">
+        ${media.map(tile).join("")}
+        <label class="md-item md-add">+ Add photos or videos<span style="font-size:11px">JPG, PNG, MP4, MOV</span>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,video/mp4,video/quicktime" multiple data-md-up="media" hidden></label>
+      </div>` : ""}
+    <div id="mdProgress">${progressHtml}</div>
+
+    <div class="md-h">Reviews or testimonials <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></div>
+    <textarea id="mdTestimonials" placeholder="Paste a few real reviews from Google or happy customers. We'll only quote them word for word.">${esc(_md.client_testimonials || "")}</textarea>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px">
+      <button class="btn2" id="mdDone" type="button">${_md.done ? "Update" : "That's everything"}</button>
+      <span id="mdMsg" style="font-size:12.5px;color:var(--muted)"></span>
+    </div>
+    ${_md.done ? `<div class="md-done">Thanks, we've got everything we need. You can still add more any time.</div>` : ""}
+    ${_md.uploads_ready ? "" : `<p style="font-size:12px;color:var(--muted);margin-top:12px">Uploads are being switched on. Until then, email your logo and photos to <a href="mailto:contact@quoteleads.com.au">contact@quoteleads.com.au</a>.</p>`}`;
+
+  body.querySelectorAll('input[name="mdSource"]').forEach(r => r.addEventListener("change", async () => {
+    _md.creative_source = r.value;
+    renderOnboardingMedia();
+    try { await edgeFn("client-assets", { action: "save", creative_source: r.value }); }
+    catch (e) { toast(e.message, true); }
+  }));
+  const saveColour = async (v) => {
+    if (v && !/^#[0-9a-f]{6}$/i.test(v)) return toast("Use a colour code like #1f6fff", true);
+    _md.brand_color = v || null;
+    try { await edgeFn("client-assets", { action: "save", brand_color: v || "" }); } catch (e) { toast(e.message, true); }
+  };
+  document.getElementById("mdColour").addEventListener("change", (e) => { document.getElementById("mdHex").value = e.target.value; saveColour(e.target.value); });
+  document.getElementById("mdHex").addEventListener("change", (e) => {
+    let v = e.target.value.trim(); if (v && !v.startsWith("#")) v = "#" + v; saveColour(v.toLowerCase());
+  });
+  body.querySelectorAll("[data-md-up]").forEach(inp => inp.addEventListener("change", () => {
+    const files = [...inp.files];
+    inp.value = "";
+    mdUpload(inp.dataset.mdUp, files);
+  }));
+  body.querySelectorAll("[data-md-del]").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("Remove this file?")) return;
+    try {
+      await edgeFn("client-assets", { action: "delete", asset_id: b.dataset.mdDel });
+      _md.assets = _md.assets.filter(a => a.id !== b.dataset.mdDel);
+      renderOnboardingMedia();
+    } catch (e) { toast(e.message, true); }
+  }));
+  document.getElementById("mdDone").addEventListener("click", async (e) => {
+    const btn = e.currentTarget, msg = document.getElementById("mdMsg");
+    btn.disabled = true; msg.textContent = "Saving…";
+    try {
+      const testimonials = document.getElementById("mdTestimonials").value;
+      await edgeFn("client-assets", { action: "done", client_testimonials: testimonials });
+      _md.client_testimonials = testimonials; _md.done = true;
+      renderOnboardingMedia();
+      toast("Thanks! We'll start on your ads.");
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally { btn.disabled = false; }
+  });
+}
+
+// Size and, for an image the browser can't send as is (HEIC from an iPhone),
+// a JPEG copy. Videos go up untouched.
+async function mdPrepare(file) {
+  if (file.type.startsWith("video/")) {
+    const dims = await new Promise((resolve) => {
+      const v = document.createElement("video");
+      v.preload = "metadata"; v.muted = true;
+      v.onloadedmetadata = () => { resolve({ w: v.videoWidth, h: v.videoHeight }); URL.revokeObjectURL(v.src); };
+      v.onerror = () => resolve({ w: null, h: null });
+      v.src = URL.createObjectURL(file);
+    });
+    const type = file.type === "video/quicktime" ? "video/quicktime" : "video/mp4";
+    return { blob: file, type, ...dims };
+  }
+  const bmp = await createImageBitmap(file);
+  if (/^image\/(jpeg|png|webp)$/.test(file.type)) return { blob: file, type: file.type, w: bmp.width, h: bmp.height };
+  const k = Math.min(1, 4096 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+  return { blob, type: "image/jpeg", w: c.width, h: c.height };
+}
+
+function mdPut(url, blob, type, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("PUT", url);
+    x.setRequestHeader("Content-Type", type);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new Error(`upload failed (${x.status})`)));
+    x.onerror = () => reject(new Error("upload failed, check your connection"));
+    x.send(blob);
+  });
+}
+
+async function mdUpload(which, files) {
+  const failed = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const label = files.length > 1 ? `Uploading ${i + 1} of ${files.length}: ${esc(f.name)}` : `Uploading ${esc(f.name)}`;
+    const show = (p) => {
+      const el = document.getElementById("mdProgress");
+      if (el) el.innerHTML = `<div class="md-prog">${label} (${Math.round(p * 100)}%)<div class="bar"><i style="width:${Math.round(p * 100)}%"></i></div></div>`;
+    };
+    show(0);
+    try {
+      const prep = await mdPrepare(f);
+      const kind = which === "logo" ? "logo" : prep.type.startsWith("video/") ? "video" : "photo";
+      const start = await edgeFn("client-assets", { action: "start_upload", kind, content_type: prep.type, bytes: prep.blob.size });
+      await mdPut(start.upload_url, prep.blob, prep.type, show);
+      const fin = await edgeFn("client-assets", { action: "finish_upload", kind, key: start.key, content_type: prep.type, width: prep.w, height: prep.h, filename: f.name });
+      if (kind === "logo") _md.assets = _md.assets.filter(a => a.kind !== "logo");
+      _md.assets.push(fin.asset);
+    } catch (e) {
+      failed.push(`${f.name}: ${e.message}`);
+    }
+  }
+  renderOnboardingMedia(failed.length ? `<div class="md-prog" style="color:#c53535">${failed.map(esc).join("<br>")}</div>` : "");
+}

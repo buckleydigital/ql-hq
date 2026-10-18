@@ -431,6 +431,30 @@ select{cursor:pointer}
 .st-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
 .st-results a{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--ink3);font-size:11px}
 .st-results img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--s2);border-radius:var(--r);border:1px solid var(--bd)}
+.st-ph video{width:100%;height:100%;object-fit:cover;display:block}
+.st-tag{position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;padding:1px 5px}
+.st-src{font-size:12px;color:var(--ink2);margin:-2px 0 8px}
+.st-pol{margin-top:16px;border:1px solid var(--bd2);border-radius:var(--r);padding:12px 14px;background:var(--s2)}
+.st-pol.bad{border-color:var(--red)}
+.st-pol-sum{font-size:12.5px;line-height:1.6;margin-bottom:8px}
+.st-iss{font-size:12px;line-height:1.55;padding:7px 0;border-top:1px solid var(--bd)}
+.st-iss .sev{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;border-radius:4px;padding:1px 6px;margin-right:6px}
+.st-iss .sev.fix{background:rgba(220,38,38,.14);color:var(--red)}
+.st-iss .sev.done{background:rgba(16,185,129,.14);color:#0a7a55}
+.st-iss .sev.chk{background:rgba(234,179,8,.16);color:#a16207}
+.st-iss s{color:var(--ink3)}
+.st-stock{margin-top:14px}
+.st-stock summary{cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.st-stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.st-si{border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden;background:var(--s2);font-size:11px}
+.st-si.off{opacity:.45}
+.st-si .med{aspect-ratio:4/3;background:#000}
+.st-si .med img,.st-si .med video{width:100%;height:100%;object-fit:cover;display:block}
+.st-si .tr{display:flex;flex-wrap:wrap;gap:3px;padding:6px}
+.st-si .tr label{display:inline-flex;gap:2px;align-items:center;border:1px solid var(--bd2);border-radius:10px;padding:1px 6px;cursor:pointer}
+.st-si .tr label.on{border-color:var(--acc);color:var(--acc)}
+.st-si .tr input{display:none}
+.st-si .act{display:flex;gap:6px;padding:0 6px 6px}
 
 /* ═══ FULFILMENT ═══ */
 .step{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--bd);
@@ -1199,11 +1223,12 @@ select{cursor:pointer}
 
   const studioLogo = () => (_studio.assets || []).find(a => a.kind === 'logo') || null;
   const studioPhotos = () => (_studio.assets || []).filter(a => a.kind === 'photo');
+  const studioVideos = () => (_studio.assets || []).filter(a => a.kind === 'video');
 
   function renderStudio() {
     const host = $('studioHost');
     if (!host || !_studio) return;
-    const st = _studio, logo = studioLogo(), photos = studioPhotos();
+    const st = _studio, logo = studioLogo(), photos = studioPhotos(), videos = studioVideos();
     const brand = st.brand_color || '#1063d6';
     const copy = st.creative_copy;
     const sizeChips = st.sizes.map((s, i) => `
@@ -1232,11 +1257,17 @@ select{cursor:pointer}
           </div>
         </div>
 
-        <div class="st-h">Photos <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· their own job photos work best; stock if they have none</span></div>
+        <div class="st-h">Photos and videos <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· their own job photos work best; stock if they have none</span></div>
+        <div class="st-src">${st.creative_source === 'stock' ? 'The client chose <b>our stock library</b>.' : st.creative_source === 'custom' ? 'The client is giving <b>their own</b> photos and videos.' : 'The client hasn\'t chosen own media or stock yet.'}</div>
         <div class="st-photos">
-          ${photos.map(p => `<div class="st-ph"><img src="${esc(p.url)}" alt=""><button type="button" data-st-del="${esc(p.id)}" title="Remove">×</button></div>`).join('')}
+          ${[...photos, ...videos].map(p => `<div class="st-ph">${p.kind === 'video'
+            ? `<video src="${esc(p.url)}" muted playsinline preload="metadata"></video>`
+            : `<img src="${esc(p.url)}" alt="">`}
+            ${p.source !== 'team' || p.kind === 'video' ? `<span class="st-tag">${[p.source === 'client' ? 'Client' : p.source === 'stock' ? 'Stock' : '', p.kind === 'video' ? 'Video' : ''].filter(Boolean).join(' · ')}</span>` : ''}
+            <button type="button" data-st-del="${esc(p.id)}" title="Remove">×</button></div>`).join('')}
           <label class="st-ph st-add">+ Add photos<input type="file" accept="image/png,image/jpeg,image/webp" multiple data-st-up="photo" hidden></label>
         </div>
+        ${st.media_ready ? `<div style="margin-top:8px"><button class="btn btn-sm" id="stAddStock" type="button">Add stock for ${esc((st.trades || []).join(', ') || 'their trade')}</button></div>` : ''}
 
         <div class="st-h">Sizes</div>
         <div class="st-sizes">${sizeChips}
@@ -1263,7 +1294,8 @@ select{cursor:pointer}
         </details>
 
         <div class="st-actions">
-          <button class="btn btn-p" id="stGo" type="button">Write copy &amp; make creatives</button>
+          <button class="btn btn-p" id="stPack" type="button" title="Meta ad copy, image copy, the ad rules check and every image size, in one go">Build preview pack</button>
+          <button class="btn" id="stGo" type="button">Write copy &amp; make creatives</button>
           ${variants.length ? '<button class="btn" id="stRemake" type="button">Remake with this copy</button>' : ''}
           <span class="muted" id="stStatus" style="font-size:12px"></span>
         </div>
@@ -1285,10 +1317,18 @@ select{cursor:pointer}
             </div>` : ''}
           ${copy.notes_for_team ? `<div class="muted" style="font-size:12px;margin-top:8px"><b>Notes:</b> ${esc(copy.notes_for_team)}</div>` : ''}` : ''}
 
+        ${policyHtml(st.ad_policy_check)}
+
         ${st.results.length ? `<div class="st-h" style="margin-top:16px">Made just now <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· also added to the preview links</span></div>
           <div class="st-results">${st.results.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" download><img src="${esc(r.url)}" alt=""><span>${r.w}×${r.h}</span></a>`).join('')}</div>` : ''}
+
+        ${st.can_manage_stock ? `<details class="st-stock" id="stStock"${_stock.open ? ' open' : ''}>
+          <summary>Stock library <span class="muted">(every client, by trade)</span></summary>
+          <div id="stStockBody" class="muted" style="font-size:12px;margin-top:8px">Loading…</div>
+        </details>` : ''}
       </div>`;
     wireStudio();
+    if (st.can_manage_stock && _stock.open) renderStock();
   }
 
   function studioStatus(t) { const el = $('studioHost') && $('stStatus'); if (el) el.textContent = t || ''; }
@@ -1297,7 +1337,10 @@ select{cursor:pointer}
     const host = $('studioHost'), st = _studio, cid = st.companyId;
     host.querySelectorAll('[data-st-up]').forEach(inp => inp.addEventListener('change', () => studioUpload(inp.dataset.stUp, [...inp.files])));
     host.querySelectorAll('[data-st-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('Remove this photo from the library?')) return;
+      const item = (st.assets || []).find(a => a.id === b.dataset.stDel);
+      const what = item && item.source === 'client' ? 'This removes the file the client uploaded. Remove it?'
+        : item && item.source === 'stock' ? 'Take this stock item out of their library?' : 'Remove this photo from the library?';
+      if (!confirm(what)) return;
       const { ok, data } = await aiApi({ action: 'delete_asset', company_id: cid, asset_id: b.dataset.stDel });
       if (!ok) return alert(data.error || 'Could not remove it.');
       st.assets = st.assets.filter(a => a.id !== b.dataset.stDel); renderStudio();
@@ -1340,6 +1383,10 @@ select{cursor:pointer}
       $('stResetPrompt').addEventListener('click', () => { if (confirm('Go back to the default creative direction?')) saveStudioPrompt(''); });
     }
     $('stGo').addEventListener('click', () => makeCreatives(true));
+    $('stPack').addEventListener('click', buildPack);
+    if ($('stAddStock')) $('stAddStock').addEventListener('click', addStockAuto);
+    const sd = $('stStock');
+    if (sd) sd.addEventListener('toggle', () => { _stock.open = sd.open; if (sd.open) renderStock(); });
     if ($('stRemake')) $('stRemake').addEventListener('click', () => makeCreatives(false));
   }
 
@@ -1416,12 +1463,13 @@ select{cursor:pointer}
     return '#' + [best.r, best.g, best.b].map(v => Math.round(v / best.n).toString(16).padStart(2, '0')).join('');
   }
 
-  async function makeCreatives(writeCopy) {
+  // opts.sizes overrides the chosen sizes; opts.pack skips the big-batch
+  // question (the pack already asked) and opts.note goes on the checklist step.
+  async function makeCreatives(writeCopy, opts = {}) {
     const st = _studio, cid = st.companyId;
-    const sizes = st.sizes.filter(s => s.on);
+    const sizes = opts.sizes || st.sizes.filter(s => s.on);
     if (!sizes.length) return alert('Pick at least one size.');
-    const go = $('stGo'), again = $('stRemake');
-    [go, again].forEach(b => b && (b.disabled = true));
+    [$('stGo'), $('stRemake'), $('stPack')].forEach(b => b && (b.disabled = true));
     try {
       st.creative_note = $('stNote').value;
       if (writeCopy) {
@@ -1434,7 +1482,7 @@ select{cursor:pointer}
       if (!variants.length) { alert('There is no copy yet.'); return; }
       const jobs = [];
       variants.forEach((v, i) => sizes.forEach(s => jobs.push({ v, i, s })));
-      if (jobs.length > 36 && !confirm(`That is ${jobs.length} images. Make them all?`)) return;
+      if (!opts.pack && jobs.length > 36 && !confirm(`That is ${jobs.length} images. Make them all?`)) return;
 
       studioStatus('Loading fonts and photos…');
       await loadStudioFonts();
@@ -1461,7 +1509,7 @@ select{cursor:pointer}
           action: 'save_creative', company_id: cid, content_type: 'image/jpeg',
           data: canvas.toDataURL('image/jpeg', 0.92),
           label: `Creative ${i + 1} · ${s.w}×${s.h} · ${v.headline}`.slice(0, 300),
-          last: n === jobs.length - 1, batch_count: jobs.length,
+          last: n === jobs.length - 1, batch_count: jobs.length, note: opts.note || '',
         });
         if (!ok) { alert(`Saving image ${n + 1} failed: ${data.error || 'unknown error'}`); break; }
         st.results.push({ url: data.url, w: s.w, h: s.h });
@@ -1475,9 +1523,209 @@ select{cursor:pointer}
       const fh = $('fulfilHost');
       if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); }
     } finally {
-      [$('stGo'), $('stRemake')].forEach(b => b && (b.disabled = false));
+      [$('stGo'), $('stRemake'), $('stPack')].forEach(b => b && (b.disabled = false));
       if ($('stStatus') && /^(Writing|Loading|Making)/.test($('stStatus').textContent)) studioStatus('');
     }
+  }
+
+  // ── The preview pack ──
+  // One click: stock if the client chose it (or there is nothing else to draw
+  // on), their colour from the logo if none is set, fresh Meta copy and image
+  // copy, the ad rules check (which rewrites what must change), then every
+  // standard size. Each step is its own call, so a slow model never holds a
+  // single request open for minutes, and a failure says which step failed.
+  async function buildPack() {
+    const st = _studio, cid = st.companyId;
+    const sizes = [...STUDIO_SIZES.map(z => ({ ...z })),
+      ...st.sizes.filter(z => z.on && !STUDIO_SIZES.some(d => d.w === z.w && d.h === z.h))];
+    const n = st.count * sizes.length;
+    if (!confirm(`Build a fresh preview pack for ${st.business.name || 'this client'}?\n\nThis rewrites the Meta ad copy and the image copy, checks every line against the ad rules, and makes ${st.count} variant${st.count === 1 ? '' : 's'} in ${sizes.length} sizes (${n} images).`)) return;
+    const btns = [$('stPack'), $('stGo'), $('stRemake')].filter(Boolean);
+    btns.forEach(b => (b.disabled = true));
+    const fail = (what, r) => { studioStatus(''); alert(`${what}: ${(r.data && r.data.error) || 'that did not work'}`); };
+    try {
+      st.creative_note = $('stNote').value;
+      if (st.media_ready && (st.creative_source === 'stock' || !studioPhotos().length)) {
+        studioStatus('Picking stock for their trade…');
+        const r = await aiApi({ action: 'use_stock', company_id: cid, auto: true });
+        if (r.ok && r.data.added && r.data.added.length) st.assets.push(...r.data.added);
+      }
+      const logo = studioLogo();
+      if (!st.brand_color && logo) {
+        try {
+          const col = logoColour(await studioBitmap(logo.url));
+          if (col) { st.brand_color = col; await aiApi({ action: 'save_creative_settings', company_id: cid, brand_color: col }); }
+        } catch { /* the default colour stands */ }
+      }
+      studioStatus('Writing the Meta ad copy…');
+      let r = await aiApi({ action: 'generate_ad_copy', company_id: cid });
+      if (!r.ok) return fail('Meta ad copy', r);
+      studioStatus('Writing the image copy…');
+      r = await aiApi({ action: 'write_creative_copy', company_id: cid, count: st.count, creative_note: st.creative_note });
+      if (!r.ok) return fail('Image copy', r);
+      st.creative_copy = r.data.creative_copy;
+      studioStatus('Checking every line against the ad rules…');
+      r = await aiApi({ action: 'policy_check', company_id: cid, apply: true });
+      if (!r.ok) return fail('Ad rules check', r);
+      st.creative_copy = r.data.creative_copy || st.creative_copy;
+      st.ad_policy_check = r.data.ad_policy_check;
+      const p = st.ad_policy_check;
+      if (p.must_fix_open > 0) {
+        renderStudio();
+        if (!confirm(`${p.must_fix_open} line${p.must_fix_open === 1 ? '' : 's'} still break${p.must_fix_open === 1 ? 's' : ''} an ad rule and couldn't be rewritten automatically (listed under "Ad rules check").\n\nMake the images anyway? You can fix the copy and press Remake after.`)) return;
+      }
+      await makeCreatives(false, {
+        sizes, pack: true,
+        note: `Preview pack. Ad rules: ${p.fixed} line${p.fixed === 1 ? '' : 's'} rewritten, ${p.must_fix_open} still to fix, ${p.to_check} to check`,
+      });
+    } finally {
+      // The studio may have re-rendered, so look the buttons up again.
+      [$('stPack'), $('stGo'), $('stRemake')].forEach(b => b && (b.disabled = false));
+    }
+  }
+
+  const POLICY_WHERE = {
+    meta_headline: 'Meta headline', meta_primary_text: 'Meta primary text', meta_description: 'Meta description',
+    image_headline: 'Image headline', image_subline: 'Image line', image_cta: 'Image button',
+    google_headline: 'Google headline', google_long_headline: 'Google long headline', google_description: 'Google description',
+  };
+  function policyHtml(p) {
+    if (!p) return '';
+    const issues = p.issues || [];
+    const tag = (i) => i.severity === 'check' ? '<span class="sev chk">Check</span>'
+      : i.applied ? '<span class="sev done">Fixed</span>' : '<span class="sev fix">Must fix</span>';
+    return `<div class="st-pol${p.must_fix_open > 0 ? ' bad' : ''}">
+      <div class="st-h" style="margin-top:0">Ad rules check <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· ${esc(fmtDate(p.checked_at))}</span></div>
+      <div class="st-pol-sum">${esc(p.summary || '')}
+        <div class="muted">${p.lines_checked} lines checked · ${p.fixed} rewritten · ${p.must_fix_open} still must change · ${p.to_check} to look at</div>
+        ${p.special_ad_category === 'financial_products_and_services' ? '<div><b>Finance offer in the copy:</b> run it under Meta\'s "Financial products and services" special ad category.</div>' : ''}
+      </div>
+      ${issues.map(i => `<div class="st-iss">${tag(i)}<b>${esc(POLICY_WHERE[i.where] || i.where)} ${Number(i.index) + 1}</b> · ${esc(i.rule)}: ${esc(i.reason)}<br>
+        ${i.applied ? `<s>${esc(i.text)}</s> → ${esc(i.now)}` : `"${esc(i.text)}"${i.rewrite ? ` <span class="muted">Suggested: ${esc(i.rewrite)}</span>` : ''}`}</div>`).join('')}
+    </div>`;
+  }
+
+  // ── Stock ──
+  async function addStockAuto() {
+    const st = _studio;
+    const btn = $('stAddStock'); if (btn) btn.disabled = true;
+    try {
+      const { ok, data } = await aiApi({ action: 'use_stock', company_id: st.companyId, auto: true });
+      if (!ok) return alert(data.error || 'Could not add stock.');
+      if (!data.added.length) return alert(`There's no more stock for ${(st.trades || []).join(', ')}. Add some in the stock library at the bottom of the studio.`);
+      st.assets.push(...data.added);
+      renderStudio();
+    } finally { if ($('stAddStock')) $('stAddStock').disabled = false; }
+  }
+
+  let _stock = { open: false, items: null, trades: [], ready: false };
+
+  // The library every client shares. Files go straight to storage on a signed
+  // URL, like a client's own uploads.
+  async function renderStock() {
+    const body = $('stStockBody');
+    if (!body) return;
+    if (!_stock.items) {
+      const { ok, data } = await aiApi({ action: 'stock_list' });
+      if (!ok) { body.textContent = data.error || 'Could not load the stock library.'; return; }
+      Object.assign(_stock, { items: data.items, trades: data.trades, ready: data.media_ready });
+    }
+    const st = _studio;
+    const inLib = new Set((st.assets || []).map(a => a.stock_asset_id).filter(Boolean));
+    body.innerHTML = `${_stock.ready
+        ? `<label class="btn btn-sm">+ Upload stock<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple id="stStockUp" hidden></label>
+           <span>New uploads are tagged <b>${esc((st.trades || []).join(', '))}</b>. Change the tags on each below.</span>`
+        : 'Media storage (Cloudflare R2) isn\'t set up yet, so stock can\'t be uploaded.'}
+      <div id="stStockMsg" style="margin-top:6px"></div>
+      <div class="st-stock-grid">${_stock.items.map(it => `<div class="st-si${it.active ? '' : ' off'}">
+        <div class="med">${it.kind === 'video'
+          ? `<video src="${esc(it.url)}" muted playsinline preload="metadata" controls></video>`
+          : `<img src="${esc(it.url)}" alt="" loading="lazy">`}</div>
+        <div class="tr">${_stock.trades.map(t => `<label class="${it.trades.includes(t) ? 'on' : ''}"><input type="checkbox" data-sk-tr="${esc(it.id)}" value="${esc(t)}"${it.trades.includes(t) ? ' checked' : ''}>${esc(t)}</label>`).join('')}</div>
+        <div class="act">
+          <button class="btn btn-sm" type="button" data-sk-use="${esc(it.id)}"${inLib.has(it.id) || !it.active ? ' disabled' : ''}>${inLib.has(it.id) ? 'In their library' : 'Use for this client'}</button>
+          <button class="btn btn-sm" type="button" data-sk-act="${esc(it.id)}">${it.active ? 'Retire' : 'Restore'}</button>
+          <button class="btn btn-sm" type="button" data-sk-del="${esc(it.id)}" title="Delete for every client">×</button>
+        </div></div>`).join('') || '<div class="muted">No stock yet.</div>'}</div>`;
+
+    const up = $('stStockUp');
+    if (up) up.addEventListener('change', () => { const f = [...up.files]; up.value = ''; uploadStock(f); });
+    body.querySelectorAll('[data-sk-tr]').forEach(cb => cb.addEventListener('change', async () => {
+      const it = _stock.items.find(x => x.id === cb.dataset.skTr);
+      it.trades = cb.checked ? [...new Set([...it.trades, cb.value])] : it.trades.filter(t => t !== cb.value);
+      cb.closest('label').classList.toggle('on', cb.checked);
+      const { ok, data } = await aiApi({ action: 'stock_update', id: it.id, trades: it.trades });
+      if (!ok) alert(data.error || 'Could not save the tags.');
+    }));
+    body.querySelectorAll('[data-sk-use]').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      const { ok, data } = await aiApi({ action: 'use_stock', company_id: st.companyId, stock_ids: [b.dataset.skUse] });
+      if (!ok) { b.disabled = false; return alert(data.error || 'Could not add it.'); }
+      st.assets.push(...data.added);
+      renderStudio();
+    }));
+    body.querySelectorAll('[data-sk-act]').forEach(b => b.addEventListener('click', async () => {
+      const it = _stock.items.find(x => x.id === b.dataset.skAct);
+      const { ok, data } = await aiApi({ action: 'stock_update', id: it.id, active: !it.active });
+      if (!ok) return alert(data.error || 'Could not change it.');
+      it.active = !it.active; renderStock();
+    }));
+    body.querySelectorAll('[data-sk-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete this from the stock library for good? It also leaves every client library it is in.')) return;
+      const { ok, data } = await aiApi({ action: 'stock_delete', id: b.dataset.skDel });
+      if (!ok) return alert(data.error || 'Could not delete it.');
+      _stock.items = _stock.items.filter(x => x.id !== b.dataset.skDel);
+      st.assets = st.assets.filter(a => a.stock_asset_id !== b.dataset.skDel);
+      renderStudio();
+    }));
+  }
+
+  async function mediaInfo(file) {
+    if (file.type.startsWith('video/')) {
+      return new Promise((resolve) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata'; v.muted = true;
+        v.onloadedmetadata = () => { resolve({ w: v.videoWidth, h: v.videoHeight }); URL.revokeObjectURL(v.src); };
+        v.onerror = () => resolve({ w: null, h: null });
+        v.src = URL.createObjectURL(file);
+      });
+    }
+    const bmp = await createImageBitmap(file);
+    return { w: bmp.width, h: bmp.height };
+  }
+
+  function putFile(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('PUT', url);
+      x.setRequestHeader('Content-Type', file.type);
+      x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new Error(`upload failed (${x.status})`)));
+      x.onerror = () => reject(new Error('upload failed'));
+      x.send(file);
+    });
+  }
+
+  async function uploadStock(files) {
+    const msg = () => $('stStockMsg');
+    const trades = (_studio.trades || []).length ? _studio.trades : ['other'];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const show = (p) => { if (msg()) msg().textContent = `Uploading ${i + 1} of ${files.length}: ${f.name} (${Math.round(p * 100)}%)`; };
+      show(0);
+      try {
+        const dims = await mediaInfo(f);
+        const start = await aiApi({ action: 'stock_start_upload', content_type: f.type, bytes: f.size });
+        if (!start.ok) throw new Error(start.data.error || 'could not start');
+        await putFile(start.data.upload_url, f, show);
+        const fin = await aiApi({ action: 'stock_finish_upload', key: start.data.key, content_type: f.type, trades, width: dims.w, height: dims.h, label: f.name });
+        if (!fin.ok) throw new Error(fin.data.error || 'could not save');
+        _stock.items.unshift(fin.data.item);
+      } catch (e) {
+        alert(`${f.name}: ${e.message || e}`);
+      }
+    }
+    renderStock();
   }
 
   // ── Drawing ──
