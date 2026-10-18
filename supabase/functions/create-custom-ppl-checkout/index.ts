@@ -11,6 +11,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14'
+import { pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
 const supabase = createClient(
@@ -73,7 +74,7 @@ serve(async (req) => {
     if (!Number.isFinite(price) || price <= 0) throw new Error('price_per_lead must be a positive number')
 
     const normNiche    = (niche as string).toLowerCase().trim().replace(/-/g, '_')
-    const normSubNiche = sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null
+    const normSubNiche = pplSubNiche(normNiche, sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null)
 
     const totalCents = Math.round(price * qty * (1 - discountPct / 100) * 100)
     if (totalCents < 1) throw new Error('Computed total is zero')
@@ -91,10 +92,7 @@ serve(async (req) => {
       ? `Postcodes: ${(postcode_list || '').replace(/\s+/g, ', ').slice(0, 200)}`
       : `${area_city} - ${radius_km ?? 50}km radius`
 
-    const nicheDisplay = [normNiche, normSubNiche]
-      .filter(Boolean)
-      .map(s => s!.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
-      .join(' › ')
+    const nicheDisplay = pplNicheDisplay(normNiche, normSubNiche)
 
     // Pending order at the CUSTOM price.
     const { data: order, error: orderErr } = await supabase

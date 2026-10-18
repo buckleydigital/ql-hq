@@ -24,3 +24,28 @@ export async function pplMinQuantity(db: any, companyId: string | null | undefin
   ])
   return (current.count ?? 0) + (legacy.count ?? 0) > 0 ? PPL_REORDER_MIN : PPL_TRIAL_MIN
 }
+
+// HVAC is sold as one lead type, split & ducted installs. Every HVAC order
+// carries that sub-niche whatever the page sent, so the order, the receipt,
+// the emails and Mission Control all say what the client is getting.
+const PPL_FIXED_SUB_NICHE: Record<string, string> = { hvac: 'split_ducted' }
+
+export function pplSubNiche(niche: string, subNiche: string | null): string | null {
+  return PPL_FIXED_SUB_NICHE[niche] ?? subNiche
+}
+
+// How a niche (and sub-niche) reads to a client: on the Stripe receipt and in
+// emails.
+const PPL_LABELS: Record<string, string> = {
+  solar_battery: 'Solar + Battery',
+  solar_and_battery: 'Solar + Battery',
+  battery_retrofit: 'Battery Retrofit',
+  hvac: 'HVAC',
+  split_ducted: 'Split & Ducted',
+}
+
+export function pplNicheDisplay(niche: string | null | undefined, subNiche?: string | null): string {
+  const label = (s: string) => PPL_LABELS[s] ?? s.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  if (!niche) return ''
+  return subNiche ? `${label(niche)} (${label(subNiche)})` : label(niche)
+}

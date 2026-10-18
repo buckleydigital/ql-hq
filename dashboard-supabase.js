@@ -6791,6 +6791,7 @@ async function skipReviewRequest(requestId) {
 function nicheLabel(niche) {
   if (niche === 'solar_battery' || niche === 'solar-battery') return 'Solar + Battery';
   if (niche === 'battery_retrofit' || niche === 'battery-retrofit') return 'Battery Retrofit';
+  if (niche === 'hvac') return 'HVAC (Split & Ducted)';
   return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
 
@@ -6836,9 +6837,13 @@ function blActiveMax() {
 // Sub-niche definitions per parent niche
 const NICHE_SUB_NICHES = {
   hvac: [
-    { id: 'split_ducted',              label: 'Installations (Split & Ducted)' },
+    { id: 'split_ducted',              label: 'Split & Ducted' },
   ],
 };
+
+// HVAC is sold as one lead type, split & ducted installs, so it is chosen
+// automatically and the lead type step is never shown.
+const BL_FIXED_SUB_NICHE = { hvac: 'split_ducted' };
 
 function subNicheLabel(subNiche) {
   for (const subs of Object.values(NICHE_SUB_NICHES)) {
@@ -6927,7 +6932,7 @@ function renderBuyLeadsSubNiches(niche) {
   const field = document.getElementById('buyLeadsSubNicheField');
   const el    = document.getElementById('buyLeadsSubNicheCards');
   const subs  = NICHE_SUB_NICHES[niche];
-  if (!field || !el || !subs) { if (field) field.style.display = 'none'; return; }
+  if (!field || !el || !subs || BL_FIXED_SUB_NICHE[niche]) { if (field) field.style.display = 'none'; return; }
 
   const parentPPL = _blCityPrices[niche] ?? null;
   const anyNote   = parentPPL != null ? ` - $${parentPPL}/lead` : '';
@@ -7049,6 +7054,11 @@ function buyLeadsSelectNiche(niche) {
   document.getElementById('buyLeadsLocationField').style.display = 'none';
   document.getElementById('buyLeadsQtyField').style.display = 'none';
   document.getElementById('buyLeadsSummary').style.display = 'none';
+
+  if (BL_FIXED_SUB_NICHE[niche]) {
+    buyLeadsSelectSubNiche(BL_FIXED_SUB_NICHE[niche]);
+    return;
+  }
 
   const hasSubs = !!NICHE_SUB_NICHES[niche];
   if (hasSubs) {
