@@ -612,14 +612,18 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     const firstName = m.first_name || (m.name ? m.name.trim().split(/\s+/)[0] : '') || 'there'
     const lastName  = m.last_name  || (m.name ? m.name.trim().split(/\s+/).slice(1).join(' ') : '')
 
-    // createUser triggers handle_new_user() which auto-creates a company + profile
+    // createUser triggers handle_new_user() which auto-creates a company + profile.
+    // Someone we already made an account for (a pipeline lead converted in
+    // ql-mc, say) keeps it: buying must not fail on "already registered".
+    let userId: string | null = null
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: m.email,
       email_confirm: true,
       user_metadata: { full_name: `${firstName} ${lastName}`.trim() },
     })
-    if (authError) throw new Error(`Auth: ${authError.message}`)
-    const userId = authData.user.id
+    if (authData?.user) userId = authData.user.id
+    else if (authError && /already|registered|exists/i.test(authError.message)) userId = await findUserIdByEmail(m.email)
+    if (!userId) throw new Error(`Auth: ${authError?.message || 'no user'}`)
 
     const { data: profileData, error: profileFetchError } = await supabase
       .from('profiles').select('company_id').eq('id', userId).single()
@@ -636,6 +640,11 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
         status:             'active',
         stripe_customer_id: session.customer as string,
         niche:              m.niche || null,
+        // The monthly fee agreed with the build, for when they switch on
+        // ongoing management. The standard build leaves it unset so it follows
+        // the list price in create-management-subscription.
+        ...(m.plan && m.plan !== 'standard' && Number(m.management_fee) > 0
+          && { management_fee_cents: Math.round(Number(m.management_fee) * 100) }),
       })
       .eq('id', companyId)
     if (companyError) throw new Error(`Company: ${companyError.message}`)
@@ -652,13 +661,41 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
     // Welcome the buyer with a dashboard magic link.
     let magicLink = 'https://quoteleadshq.com/dashboard?page=onboarding'
     try { magicLink = await createMagicLink(m.email, 'onboarding') } catch (e) { console.error('managed magic link:', e) }
-    await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink)
-      .catch(e => console.error('managed welcome email:', e))
+    const welcomed = await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink)
+      .then(() => true)
+      .catch((e) => { console.error('managed welcome email:', e); return false })
+
+    // The Team Panel checklist starts from what this purchase already did:
+    // paying is the spam gate, and the account and welcome email exist.
+    const buildFee = Number(m.amount_charged) || 0
+    const monthly  = Number(m.management_fee) || 0
+    const label    = m.plan_label || 'Branded Lead Gen System'
+    await markFulfilment(companyId, [
+      ['paid_signed',     `Paid online: ${label}, $${buildFee.toLocaleString('en-AU')} + GST`],
+      ['signup_verified', 'Paid by card'],
+      ['account_created', null],
+      ...(welcomed ? [['welcome_email_sent', null] as [string, string | null]] : []),
+    ])
+
+    // Mission Control: the lead to Closed Won, a managed client in Onboarding
+    // and the build fee logged, then the checklist summary on that client.
+    await syncManagedPurchaseToMc({
+      ql_hq_company_id: companyId,
+      name:             `${firstName} ${lastName}`.trim(),
+      company_name:     m.company || '',
+      email:            m.email,
+      phone:            m.phone || '',
+      niche:            m.niche || m.trade || '',
+      tier_label:       label,
+      build_fee:        buildFee,
+      management_fee:   monthly,
+      goal:             m.monthly_lead_goal || '',
+    })
 
     // Notify ops that a DFY system was purchased.
     await sendInternalEmail(
-      `🚀 New DFY system purchase - ${m.company || m.email}`,
-      `<p><strong>${m.company || '(no company)'}</strong> just bought the Branded Lead Gen System${m.amount_charged ? ` ($${m.amount_charged} activation)` : ''}.</p>
+      `🚀 New system purchase - ${m.company || m.email} (${label})`,
+      `<p><strong>${m.company || '(no company)'}</strong> just bought the ${label}: $${buildFee.toLocaleString('en-AU')} + GST, then $${monthly.toLocaleString('en-AU')}/mo + GST if they keep management after the first 30 days.</p>
        <table style="border-collapse:collapse;font-size:14px">
          <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
@@ -676,6 +713,66 @@ async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: R
       `⚠️ DFY purchase provisioning failed - ${m.email}`,
       `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
     )
+  }
+}
+
+// An existing auth user's id by email, for a buyer who already has an account.
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  const want = email.trim().toLowerCase()
+  for (let page = 1; page <= 10; page++) {
+    const { data } = await supabase.auth.admin.listUsers({ page, perPage: 1000 })
+    const hit = (data?.users || []).find((u) => (u.email || '').toLowerCase() === want)
+    if (hit) return hit.id
+    if (!data?.users?.length || data.users.length < 1000) break
+  }
+  return null
+}
+
+// Mark checklist steps done, the way growth-onboarding's setStep does: the
+// step row plus a log line, attributed to Automation. A step already settled
+// is left as it is.
+async function markFulfilment(companyId: string, steps: Array<[string, string | null]>) {
+  for (const [stepKey, notes] of steps) {
+    const { data: prev } = await supabase
+      .from('company_fulfilment').select('status')
+      .eq('company_id', companyId).eq('step_key', stepKey).maybeSingle()
+    if (prev?.status === 'done' || prev?.status === 'skipped') continue
+    const { error } = await supabase.from('company_fulfilment').upsert({
+      company_id: companyId, step_key: stepKey, status: 'done',
+      notes: notes ? notes.slice(0, 2000) : null, completed_by_name: 'Automation',
+    }, { onConflict: 'company_id,step_key' })
+    if (error) { console.warn('markFulfilment failed:', stepKey, error.message); continue }
+    await supabase.from('fulfilment_log').insert({
+      company_id: companyId, actor_name: 'Automation', action: 'fulfilment.step_set',
+      step_key: stepKey, from_status: prev?.status ?? 'pending', to_status: 'done',
+      detail: notes ? { notes: notes.slice(0, 500) } : {},
+    })
+  }
+}
+
+// Record an online system purchase in ql-mc, then push the checklist summary
+// onto the client it creates. Best effort, like syncPplOrderToMc: the account
+// is already provisioned, and a failure here is in the logs and the ops email.
+async function syncManagedPurchaseToMc(purchase: Record<string, unknown>) {
+  if (!QL_MC_API_URL || !QL_MC_API_SECRET) {
+    console.warn('QL_MC_API_URL or QL_MC_API_SECRET not configured - skipping ql-mc sync')
+    return
+  }
+  const post = (body: Record<string, unknown>) => fetch(`${QL_MC_API_URL}/sync-from-hq`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-secret': QL_MC_API_SECRET },
+    body: JSON.stringify(body),
+  })
+  try {
+    const res = await post({ action: 'upsert_managed_purchase', ...purchase })
+    if (!res.ok) { console.error(`ql-mc upsert_managed_purchase returned ${res.status}: ${await res.text()}`); return }
+    const { data: sum } = await supabase
+      .from('company_fulfilment_summary')
+      .select('stage, stage_at, active_status, steps_done, steps_settled, steps_total, blocked_count, next_step_key, next_step_due')
+      .eq('company_id', purchase.ql_hq_company_id).maybeSingle()
+    if (sum) await post({ action: 'upsert_fulfilment', hq_company_id: purchase.ql_hq_company_id, summary: sum })
+  } catch (err) {
+    console.error('syncManagedPurchaseToMc HTTP error:', err)
   }
 }
 
