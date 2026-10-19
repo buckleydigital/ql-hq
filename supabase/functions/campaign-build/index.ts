@@ -573,7 +573,7 @@ function placementSpec(pageId: string, ad: Ad, formId: string) {
   };
 }
 
-/** Mission Control learns the campaign, so its spend checks and switch see it. */
+/** Mission Control records it in its managed campaigns list (never pay-per-lead's), for launch and the watch. */
 async function registerInMc(company: Row, account: string, campaignId: string, name: string): Promise<boolean> {
   const url = Deno.env.get("QL_MC_API_URL"), secret = Deno.env.get("QL_MC_API_SECRET");
   if (!url || !secret) return false;
