@@ -515,7 +515,7 @@ Deno.serve(async (req: Request) => {
       const completedAt = liveDate ? new Date(liveDate).toISOString() : new Date().toISOString()
 
       const { data: company } = await supabase
-        .from('companies').select('id, ads_live_date').eq('id', companyId).maybeSingle()
+        .from('companies').select('id, ads_live_date, management_included_from').eq('id', companyId).maybeSingle()
       if (!company) return json({ error: 'company not found' }, 404)
 
       const { data: defs, error: dErr } = await supabase
@@ -584,11 +584,15 @@ Deno.serve(async (req: Request) => {
       const { error: lErr } = await supabase.from('fulfilment_log').insert(logRows)
       if (lErr) console.warn('fulfilment_log write failed:', lErr.message)
 
-      // The billing panel reads this; team-api keeps it in step the same way.
-      if (!company.ads_live_date) {
-        await supabase.from('companies')
-          .update({ ads_live_date: liveDate || new Date().toISOString().slice(0, 10) })
-          .eq('id', companyId)
+      // The billing panel reads the live date, and the included 30 days of
+      // management run from management_included_from: without it a subscribe
+      // bills at once. Set once, as team-api does, so the clock never restarts.
+      const today = liveDate || new Date().toISOString().slice(0, 10)
+      const patch: Record<string, string> = {}
+      if (!company.ads_live_date) patch.ads_live_date = today
+      if (!company.management_included_from) patch.management_included_from = company.ads_live_date || today
+      if (Object.keys(patch).length) {
+        await supabase.from('companies').update(patch).eq('id', companyId)
       }
 
       // Send the recalculated summary straight back so ql-mc's mirror (progress,
