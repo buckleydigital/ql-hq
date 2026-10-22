@@ -58,15 +58,16 @@ async function syncAgentTwilioNumber(
         if (upErr) console.warn("syncAgentTwilioNumber update failed:", upErr.message);
       }
     } else {
-      // Mirror provision_sms_for_company() defaults: inactive until configured.
+      // Mirror provision_sms_for_company() defaults: AI on for a new company.
       const { error: insErr } = await adminClient
         .from("sms_agent_config")
         .insert({
           company_id: companyId,
           name: "Default SMS Agent",
-          auto_reply: false,
-          is_active: false,
-          lead_scoring_enabled: false,
+          auto_reply: true,
+          is_active: true,
+          callback_enabled: true,
+          lead_scoring_enabled: true,
           twilio_number: phoneNumber,
         });
       if (insErr) console.warn("syncAgentTwilioNumber insert failed:", insErr.message);

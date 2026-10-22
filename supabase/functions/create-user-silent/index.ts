@@ -179,9 +179,10 @@ async function provisionSmsAgentConfig(
         .insert({
           company_id: companyId,
           name: "Default SMS Agent",
-          auto_reply: false,
-          is_active: false,
-          lead_scoring_enabled: false,
+          auto_reply: true,
+          is_active: true,
+          callback_enabled: true,
+          lead_scoring_enabled: true,
           ...patch,
         });
       if (insErr) console.warn("provisionSmsAgentConfig insert failed:", insErr.message);
