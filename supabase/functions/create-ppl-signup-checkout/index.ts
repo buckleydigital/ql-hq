@@ -1,0 +1,237 @@
+// New-company PPL signup checkout.
+// Called from quoteleads.com.au - no auth required.
+// Company + user are created by the stripe-webhook on payment completion.
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import Stripe from 'https://esm.sh/stripe@14'
+import { isPplNiche, normalisePplNiche, PPL_TRIAL_MIN, pplNicheDisplay, pplSubNiche } from '../_shared/ppl-niches.ts'
+import { buildPplAreas, summarisePplAreas, type PplArea } from '../_shared/ppl-areas.ts'
+
+const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-04-10' })
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+)
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Fire internal notification via the notify-internal edge function
+// Internal ops emails show solar_and_battery (older orders say solar_battery)
+function emailNiche(niche: string | null | undefined): string {
+  return niche === 'solar_battery' ? 'solar_and_battery' : (niche || '')
+}
+
+async function notifyCheckoutStarted(data: {
+  first_name: string; last_name: string; email: string; phone: string
+  company: string; niche: string; sub_niche: string | null; area_city: string
+  location_type: string; radius_km: number; postcode_list: string
+  service_areas_summary: string
+  quantity: number; price_per_lead: number; discount_percent: number
+  total_ex_gst: number
+  stripe_session_id: string
+}) {
+  const totalExGst  = data.total_ex_gst.toFixed(2)
+  const totalIncGst = (data.total_ex_gst * 1.1).toFixed(2)
+  const locationDetail = data.location_type === 'statewide'
+    ? `${data.area_city} - State Wide`
+    : data.location_type === 'postcodes'
+    ? `Postcodes - ${data.postcode_list || '(none)'}`
+    : data.service_areas_summary
+    ? data.service_areas_summary
+    : `${data.area_city} - ${data.radius_km}km radius`
+
+  const subject = `🛒 Checkout started - ${data.company} (${data.email})`
+  const body = `
+    <h2 style="margin:0 0 16px">${data.company} started a PPL checkout - not yet paid.</h2>
+    <table style="border-collapse:collapse;font-size:14px">
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Company</td><td><strong>${data.company}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td>${data.first_name} ${data.last_name}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td><a href="mailto:${data.email}">${data.email}</a></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${data.phone}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Niche</td><td>${emailNiche(data.niche)}${data.sub_niche ? ' › ' + data.sub_niche : ''}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Location</td><td>${locationDetail}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Quantity</td><td><strong>${data.quantity} leads</strong></td></tr>
+      ${data.discount_percent > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Volume discount</td><td>${data.discount_percent}% off</td></tr>` : ''}
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Total (ex GST)</td><td><strong>$${totalExGst} AUD</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Total (inc GST)</td><td>$${totalIncGst} AUD</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Stripe session</td><td><code>${data.stripe_session_id}</code></td></tr>
+    </table>
+    <p style="margin:16px 0 0;font-size:12px;color:#888">Payment has not been received yet. A second notification will fire on completion.</p>
+  `
+
+  // Call the notify-internal edge function in the same Supabase project
+  await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-internal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+    },
+    body: JSON.stringify({ subject, body }),
+  }).catch(err => console.error('notifyCheckoutStarted error (non-fatal):', err))
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  try {
+    // Pay-per-lead orders can be paused from platform_settings.ppl_orders_paused.
+    // Nothing is created and nobody is charged while they are.
+    const body = await req.json()
+    const { data: settings } = await supabase
+      .from('platform_settings').select('ppl_orders_paused').eq('id', 1).maybeSingle()
+    // A dry run prices the order and creates nothing, so it is allowed while
+    // orders are paused (the order form uses it to show per-area prices).
+    if (settings?.ppl_orders_paused === true && body?.dry_run !== true) {
+      return new Response(
+        JSON.stringify({ error: 'Pay-per-lead orders are paused at the moment. Please contact us on contact@quoteleads.com.au.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      company,
+      niche,
+      sub_niche,
+      area_city,
+      location_type,
+      radius_km,
+      postcode_list,
+      quantity,
+      service_areas,
+      dry_run,
+    } = body
+    // quantity is per area: each suburb (or the postcode list, or the state)
+    // becomes its own order with that many leads.
+
+    const normNiche    = normalisePplNiche(niche)
+    const normSubNiche = pplSubNiche(normNiche, sub_niche ? (sub_niche as string).toLowerCase().trim().replace(/-/g, '_') : null)
+    if (!isPplNiche(normNiche)) throw new Error(`Pay per lead is not offered for: ${normNiche}`)
+
+    // Signing up is a first order, so the trial minimum applies to each area.
+    let areas: PplArea[]
+    try {
+      areas = await buildPplAreas(supabase, {
+        niche: normNiche, subNiche: normSubNiche, areaCity: area_city,
+        locationType: location_type || 'radius', radiusKm: radius_km, postcodeList: postcode_list,
+        serviceAreas: service_areas, quantity: Number(quantity), minQuantity: PPL_TRIAL_MIN,
+      })
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const totalQty   = areas.reduce((n, a) => n + a.quantity, 0)
+    const totalExGst = Math.round(areas.reduce((n, a) => n + a.total_amount, 0) * 100) / 100
+
+    if (dry_run === true) {
+      return new Response(JSON.stringify({
+        areas: areas.map((a) => ({
+          label: a.label, city: a.city, quantity: a.quantity, price_per_lead: a.price_per_lead,
+          discount_percent: a.discount_percent, total_amount: a.total_amount, postcode_count: a.postcodes.length,
+        })),
+        total_quantity: totalQty, total_ex_gst: totalExGst,
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    if (!first_name || !last_name || !email || !phone || !company || !niche || !area_city || !quantity) {
+      throw new Error('Missing required fields')
+    }
+
+    const nicheDisplay = pplNicheDisplay(normNiche, normSubNiche)
+    const areasSummary = summarisePplAreas(areas)
+
+    // Capture signup attempt before redirecting. areas carries the priced
+    // per-area breakdown the webhook turns into one order per area.
+    const { data: attempt } = await supabase
+      .from('signup_attempts')
+      .insert({
+        type: 'ppl_signup',
+        first_name, last_name, email, phone, company,
+        niche: normNiche,
+        sub_niche: normSubNiche,
+        area_city,
+        quantity: totalQty,
+        price_per_lead: areas[0].price_per_lead,
+        status: 'pending',
+        areas,
+      })
+      .select('id')
+      .single()
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      customer_email: email,
+      line_items: areas.map((a) => ({
+        price_data: {
+          currency: 'aud',
+          unit_amount: Math.round(a.total_amount * 100),
+          product_data: {
+            name: `${a.quantity} ${nicheDisplay} leads - ${a.label}`.slice(0, 250),
+            description: `Priced at the ${a.city} rate${a.discount_percent ? `, ${a.discount_percent}% volume discount` : ''}. Exclusive leads delivered in real-time to your pipeline.`,
+          },
+        },
+        quantity: 1,
+        tax_rates: [Deno.env.get('STRIPE_TAX_RATE_GST')!],
+      })),
+      metadata: {
+        type:          'ppl_signup',
+        first_name,
+        last_name,
+        email,
+        phone,
+        company,
+        niche:         normNiche,
+        sub_niche:     normSubNiche || '',
+        area_city,
+        location_type: location_type || 'radius',
+        radius_km:     String(radius_km ?? 50),
+        postcode_list: (postcode_list || '').slice(0, 500),
+        // Readable fallback; the full per-area breakdown is on signup_attempts.
+        service_areas_summary: areasSummary.slice(0, 500),
+        quantity:         String(totalQty),
+        price_per_lead:   String(areas[0].price_per_lead),
+        discount_percent: String(areas[0].discount_percent),
+        areas_count:      String(areas.length),
+      },
+      success_url: 'https://quoteleads.com.au/welcome?session_id={CHECKOUT_SESSION_ID}&type=ppl',
+      cancel_url:  'https://quoteleads.com.au/buy-leads?cancelled=true',
+    })
+
+    if (attempt?.id) {
+      await supabase.from('signup_attempts').update({ stripe_session_id: session.id }).eq('id', attempt.id)
+    }
+
+    // Fire-and-forget: notify the team that a checkout session has been created
+    notifyCheckoutStarted({
+      first_name, last_name, email, phone, company,
+      niche: normNiche, sub_niche: normSubNiche,
+      area_city,
+      location_type: location_type || 'radius',
+      radius_km: Number(radius_km) || 50,
+      postcode_list: postcode_list || '',
+      service_areas_summary: areas.map((a) => `${a.label}: ${a.quantity} leads at $${a.price_per_lead.toFixed(2)} (${a.city})`).join('; '),
+      quantity: totalQty,
+      price_per_lead: areas[0].price_per_lead,
+      discount_percent: areas[0].discount_percent,
+      total_ex_gst: totalExGst,
+      stripe_session_id: session.id,
+    })
+
+    return new Response(
+      JSON.stringify({ url: session.url }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (err) {
+    console.error('create-ppl-signup-checkout error:', err)
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
