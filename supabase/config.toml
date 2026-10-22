@@ -1,0 +1,216 @@
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+# ── Edge Functions ──────────────────────────────────────────────────
+# Gateway-level JWT verification is OFF for all functions (local dev).
+# IMPORTANT: Also turn OFF "Verify JWT" in the Supabase Dashboard UI
+# for each function — config.toml only applies locally.
+# Each function authenticates via auth.getUser(token) + admin fallback
+# internally, which is the Supabase-recommended approach.
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.invite-rep]
+verify_jwt = false
+
+[functions.voice-ai-provider]
+verify_jwt = false
+
+[functions.vapi-webhook]
+verify_jwt = false
+
+# Webhook / public functions — use alternative auth (Twilio signatures,
+# opaque quote tokens, or internal-only invocation) instead of JWT.
+[functions.quote-public]
+verify_jwt = false
+
+[functions.twilio-inbound-sms]
+verify_jwt = false
+
+[functions.quote-draft]
+verify_jwt = false
+
+[functions.resend-email]
+verify_jwt = false
+
+[functions.send-password-rest]
+verify_jwt = false
+
+[functions.complete-password-reset]
+verify_jwt = false
+
+[functions.verify-turnstile]
+verify_jwt = false
+
+[functions.signup]
+verify_jwt = false
+
+[functions.api]
+verify_jwt = false
+
+[functions.impersonate-user]
+verify_jwt = false
+
+[functions.create-user-silent]
+verify_jwt = false
+
+[functions.get-ppl-pricing]
+verify_jwt = false
+
+[functions.create-ppl-signup-checkout]
+verify_jwt = false
+
+[functions.create-advertising-checkout]
+verify_jwt = false
+
+[functions.get-magic-link]
+verify_jwt = false
+
+[functions.create-custom-ppl-checkout]
+verify_jwt = false
+# Super-admin-only. Verifies the caller's JWT + profiles.is_admin internally,
+# then creates a Stripe checkout link at an admin-set custom price.
+
+# Called by TFA Solar's Supabase (trigger on their leads table); authenticates
+# with the x-intake-secret header instead of a JWT.
+[functions.tfa-intake]
+verify_jwt = false
+
+# Called by the on_lead_created_notify DB trigger via pg_net (no user JWT).
+[functions.lead-notify]
+verify_jwt = false
+
+# /admin lead notification settings; checks the caller's JWT + is_admin itself.
+[functions.admin-lead-notify]
+verify_jwt = false
+
+# ── Everything below matches what is live (checked 2026-10-08) ─────
+# Deploy each function with the verify_jwt listed here: deploying one with
+# verify_jwt = true by mistake breaks webhooks and public endpoints.
+# Every function in supabase/functions/ must have an entry.
+
+# Webhooks and server-to-server calls (signature / shared-secret auth).
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.intake-lead]
+verify_jwt = false
+
+[functions.sync-from-mc]
+verify_jwt = false
+
+[functions.sync-delivery-config]
+verify_jwt = false
+
+[functions.twilio-call-status]
+verify_jwt = false
+
+[functions.twilio-team-sms]
+verify_jwt = false
+
+[functions.notify-internal]
+verify_jwt = false
+
+[functions.test-webhook]
+verify_jwt = false
+
+[functions.va-api]
+verify_jwt = false
+
+[functions.ai-learner]
+verify_jwt = false
+
+[functions.fulfilment-ai]
+verify_jwt = false
+
+# Public website forms.
+[functions.growth-onboarding]
+verify_jwt = false
+
+[functions.callback-request]
+verify_jwt = false
+
+[functions.demo-request]
+verify_jwt = false
+
+# Dashboard calls that check the caller's JWT themselves.
+[functions.create-ppl-checkout]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.create-sms-credits-checkout]
+verify_jwt = false
+
+[functions.billing-portal]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false
+
+[functions.dispute-lead]
+verify_jwt = false
+
+[functions.send-review-request]
+verify_jwt = false
+
+# Gateway JWT check left on (as live).
+[functions.provision-twilio]
+verify_jwt = true
+
+[functions.team-api]
+verify_jwt = true
+
+[functions.create-management-subscription]
+verify_jwt = true
+
+[functions.meta-access-watch]
+verify_jwt = false
+
+# Client dashboard: media uploads in onboarding. Checks the client's own JWT
+# itself and takes the company from their profile.
+[functions.client-assets]
+verify_jwt = false
+
+# Nightly R2 tidy-up, called by pg_cron with the vault's media_cleanup_secret.
+[functions.media-cleanup]
+verify_jwt = false
+
+# Phase 3: preview rounds. creative-rounds checks team logins itself, or the
+# autopilot's vault secret; creative-approval is the client's public page,
+# keyed by their approval token.
+[functions.creative-rounds]
+verify_jwt = false
+
+[functions.creative-approval]
+verify_jwt = false
+
+[functions.campaign-build]
+verify_jwt = false
+
+[functions.meta-leads]
+verify_jwt = false
