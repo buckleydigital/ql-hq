@@ -1,0 +1,95 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+)
+
+// Historical fallback if platform_settings hasn't been seeded and no env
+// override is set. Change the number in /admin (Twilio Numbers → PPL Shared
+// Number), not here - this is only a last-resort default.
+const DEFAULT_SHARED_NUMBER = '+61485016260'
+
+// Pay-per-lead (PPL) companies all share a single Twilio number instead of
+// each getting a dedicated one purchased from Twilio's inventory. The number
+// is admin-configurable (platform_settings.shared_ppl_twilio_number) so it
+// can be changed without a code deploy if it ever needs to be swapped out.
+// Conversation ownership for inbound replies is resolved per-message by
+// twilio-inbound-sms, matching the lead's phone number against each
+// company's own leads - never by which company "owns" the number.
+async function getSharedTwilioNumber(): Promise<string> {
+  const { data } = await supabase
+    .from('platform_settings')
+    .select('shared_ppl_twilio_number')
+    .eq('id', 1)
+    .maybeSingle()
+  return data?.shared_ppl_twilio_number || Deno.env.get('SHARED_TWILIO_NUMBER') || DEFAULT_SHARED_NUMBER
+}
+
+serve(async (req) => {
+  // Internal only: stripe-webhook calls this with the service role key. Any
+  // other caller (e.g. a signed-in client's JWT) could otherwise switch the AI
+  // agent on for any company_id.
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '')
+  if (!token || token !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    return new Response('Forbidden', { status: 403 })
+  }
+
+  const { company_id } = await req.json()
+  if (!company_id) return new Response('Missing company_id', { status: 400 })
+
+  try {
+    // Every company is given the shared number when it is created (see the
+    // auto_provision_sms_shared_number trigger), so the row is normally
+    // already there and this only switches the AI on. Still inserted here if
+    // missing, for any company that predates the trigger.
+    const { data: existing } = await supabase
+      .from('twilio_numbers')
+      .select('id, phone_number')
+      .eq('company_id', company_id)
+      .limit(1)
+      .maybeSingle()
+
+    let phoneNumber = existing?.phone_number as string | undefined
+    if (!phoneNumber) {
+      phoneNumber = await getSharedTwilioNumber()
+
+      // Assign the shared number - nothing to buy from Twilio, it's already
+      // purchased and wired to the inbound webhook. Deliberately no
+      // twilio_sid stored: admin's "delete number" action releases a number on
+      // Twilio when it has a sid, and this number must never be released while
+      // other companies are still assigned to it.
+      const { error: insertErr } = await supabase.from('twilio_numbers').insert({
+        company_id,
+        phone_number: phoneNumber,
+        friendly_name: 'QuoteLeads SMS (shared PPL number)',
+      })
+      if (insertErr) throw new Error(`twilio_numbers insert: ${insertErr.message}`)
+    }
+
+    // Enable AI agent
+    await supabase
+      .from('sms_agent_config')
+      .update({
+        twilio_number: phoneNumber,
+        is_active: true,
+        auto_reply: true,
+        auto_send_welcome: true,
+      })
+      .eq('company_id', company_id)
+
+    console.log('Provisioned shared number:', phoneNumber, 'for company:', company_id)
+
+    return new Response(
+      JSON.stringify({ success: true, phone_number: phoneNumber }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+  } catch (err) {
+    console.error('provision-twilio error:', err)
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+})
