@@ -30,7 +30,7 @@ const INSTALL_FEE_CENTS = 250_000
 const PLANS: Record<string, { cents: number; monthly: number; label: string; description: string }> = {
   standard: {
     cents: INSTALL_FEE_CENTS,
-    monthly: 690,
+    monthly: 600,
     label: 'Branded Lead Gen System - Standard build',
     description: 'One campaign, one service area, up to $100/day ad spend. Built and launched on your own accounts, with your first 30 days of management. Ad spend paid direct to Meta.',
   },
