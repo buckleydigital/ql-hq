@@ -261,6 +261,10 @@ textarea{min-height:100px;resize:vertical}
 .auth-form button[id$="Link"],.auth-form #backToLogin{color:#7CB9FF !important;font-weight:500}
 .auth-form button[id$="Link"]:hover,.auth-form #backToLogin:hover{color:#fff !important}
 
+.auth-legal{display:flex;justify-content:center;gap:10px;margin-top:28px;font-size:.78rem;color:#5A5A66}
+.auth-legal a{color:#8B8B96;text-decoration:none}
+.auth-legal a:hover{color:#fff}
+
 @media(max-width:900px){
   .auth{padding:12px}
   .auth .auth-card{grid-template-columns:minmax(0,1fr);min-height:0;padding:10px;border-radius:22px}
@@ -687,6 +691,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
         <button class="btn2" type="submit">Send Reset Link</button>
         <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>
+      <p class="auth-legal"><a href="/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="/terms.html">Terms</a></p>
     </section>
   </div>
 </div>
