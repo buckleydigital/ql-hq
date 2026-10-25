@@ -8,8 +8,9 @@ const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, { apiVersion: '2024-0
 // are never touched by changes here.
 //
 // One checkout in subscription mode: the $499 setup goes on the first invoice
-// as a one-off item next to the $49/mo plan. Both are ex GST, with GST added at
-// checkout. Must stay in step with the figures on /ad-ready.
+// as a one-off item, charged today, and the $49/mo plan starts after a 30-day
+// trial so the first monthly charge lands in month 2. Both are ex GST, with
+// GST added at checkout. Must stay in step with the figures on /ad-ready.
 //
 // metadata.type is 'ad_ready' on both the session and the subscription:
 // stripe-webhook has no case for it and only manages subscriptions typed
@@ -66,7 +67,7 @@ serve(async (req) => {
         type: 'text',
       }],
       metadata,
-      subscription_data: { metadata },
+      subscription_data: { metadata, trial_period_days: 30 },
       success_url: 'https://quoteleads.com.au/ad-ready?paid=1',
       cancel_url: 'https://quoteleads.com.au/ad-ready?cancelled=1',
       allow_promotion_codes: true,
