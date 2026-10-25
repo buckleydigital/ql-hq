@@ -242,6 +242,33 @@ let salesPage          = 0;
 document.addEventListener("DOMContentLoaded", async () => {
   renderIcons();
 
+  // ── Login page extras: password eye and rotating highlights ──────────
+  document.querySelectorAll("#authView .pw-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = btn.parentElement.querySelector("input");
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-pressed", String(show));
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+  });
+  const authSlides = document.querySelectorAll("#authView .auth-slide");
+  const authDots = document.querySelectorAll("#authView .auth-dots button");
+  let authSlide = 0, authSlideTimer = null;
+  function showAuthSlide(i) {
+    authSlide = i % authSlides.length;
+    authSlides.forEach((el, n) => el.classList.toggle("active", n === authSlide));
+    authDots.forEach((el, n) => el.classList.toggle("active", n === authSlide));
+  }
+  function startAuthSlides() {
+    clearInterval(authSlideTimer);
+    if (authSlides.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      authSlideTimer = setInterval(() => showAuthSlide(authSlide + 1), 5000);
+    }
+  }
+  authDots.forEach((dot, n) => dot.addEventListener("click", () => { showAuthSlide(n); startAuthSlides(); }));
+  startAuthSlides();
+
   try {
     await waitFor(() => window.supabase, 10000);
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -350,6 +377,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       _tsWidgets[formId] = turnstile.render(container, {
         sitekey: container.dataset.sitekey,
         theme: container.dataset.theme || 'auto',
+        // stays hidden unless Cloudflare needs the person to click something
+        appearance: 'interaction-only',
       });
     }
   }
@@ -369,7 +398,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const turnstileInput = loginForm.querySelector('[name="cf-turnstile-response"]');
     const cfToken = turnstileInput ? turnstileInput.value : "";
     if (!cfToken) {
-      toast("Please complete the CAPTCHA verification.", true);
+      toast("Still checking you're human. Please try again in a moment.", true);
       return;
     }
 

@@ -186,65 +186,89 @@ textarea{min-height:100px;resize:vertical}
 .field-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:2px}
 
 /* ── Auth (matched to the quoteleads.com.au marketing site) ── */
-.auth{min-height:100vh;display:grid;place-items:center;padding:20px;position:relative;overflow:hidden;
+.auth{min-height:100vh;display:grid;place-items:center;padding:24px;position:relative;overflow:hidden;
   background:#04040A;color:#F2F2F2;
   font-family:'Inter',"Poppins",system-ui,sans-serif}
 .auth::before{content:'';position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(115% 62% at 50% -6%,rgba(71,151,255,.16),rgba(71,151,255,.05) 38%,transparent 64%),
-             radial-gradient(70% 48% at 50% 104%,rgba(71,151,255,.08),transparent 72%)}
-.auth::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.4;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
+  background:radial-gradient(115% 62% at 50% -6%,rgba(71,151,255,.12),rgba(71,151,255,.04) 38%,transparent 64%)}
+.auth .auth-card{width:min(1120px,100%);min-height:min(680px,calc(100vh - 48px));display:grid;grid-template-columns:1.05fr 1fr;
+  gap:0;padding:12px;position:relative;z-index:1;overflow:hidden;
+  background:#0B0B14 !important;border:1px solid rgba(255,255,255,.07) !important;border-radius:28px;
+  box-shadow:0 30px 90px rgba(0,0,0,.55) !important}
+
+/* left: image panel. Set --auth-img to a photo to replace the gradient. */
+.auth-visual{position:relative;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;
+  padding:28px;min-height:520px;isolation:isolate;
+  background:
+    linear-gradient(180deg,rgba(4,4,10,0) 45%,rgba(4,4,10,.82) 100%),
+    var(--auth-img,
+      radial-gradient(70% 50% at 75% 15%,rgba(184,212,255,.45),transparent 70%),
+      linear-gradient(180deg,#4797FF 0%,#2F6FD6 40%,#14336E 75%,#0A1A3C 100%));
+  background-size:cover;background-position:center}
+.auth-visual::after{content:'';position:absolute;inset:0;z-index:-1;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E");
   background-size:200px}
-.auth-card{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;overflow:hidden;position:relative;z-index:1;
-  background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.015)) !important;
-  border:1px solid rgba(255,255,255,.07) !important;border-radius:24px;
-  box-shadow:0 30px 90px rgba(0,0,0,.55),0 0 60px rgba(71,151,255,.06) !important}
-.auth-side{padding:44px 40px;background:transparent;color:#F2F2F2;border-right:1px solid rgba(255,255,255,.07);
-  display:flex;flex-direction:column;justify-content:space-between;gap:24px}
-[data-theme=dark] .auth-side{background:transparent}
-.auth-side .ah h1{font-size:clamp(1.5rem,2.4vw,2rem);font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#fff}
-.auth-side .ah h1::before{content:'Secure Access';display:block;font-size:.62rem;font-weight:600;letter-spacing:.14em;
-  text-transform:uppercase;color:#4797FF;margin-bottom:16px}
-.auth-side p,.auth-side li{color:#71717A;font-size:.86rem;line-height:1.7}
-.auth-side ul{list-style:none;display:flex;flex-direction:column;gap:12px;
-  padding-top:22px;border-top:1px solid rgba(255,255,255,.07)}
-.auth-side li{display:flex;gap:10px;align-items:flex-start;color:#CACAD0}
-.auth-side li::before{content:'';flex-shrink:0;width:5px;height:5px;border-radius:50%;background:#4797FF;margin-top:.55em}
-.auth-main{padding:44px 40px}
-.auth-main .ah h1{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;color:#fff}
-.auth-form{display:flex;flex-direction:column;gap:16px}
-.auth-form .field label{display:block;font-size:.74rem;font-weight:600;letter-spacing:.03em;
-  text-transform:uppercase;color:#CACAD0;margin-bottom:9px}
-.auth-form input{width:100%;min-height:48px;border-radius:12px;padding:12px 14px;
-  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);color:#F2F2F2;
-  font-size:.92rem;outline:none;transition:border-color .2s,background .2s,box-shadow .2s}
-.auth-form input::placeholder{color:#3F3F46}
-.auth-form input:focus{border-color:rgba(71,151,255,.55);background:rgba(255,255,255,.06);
-  box-shadow:0 0 0 3px rgba(71,151,255,.12)}
-.auth-form input:-webkit-autofill{-webkit-text-fill-color:#F2F2F2;-webkit-box-shadow:0 0 0 40px #0C0C18 inset}
-.auth-form .btn2{width:100%;min-height:50px;margin-top:4px;border-radius:100px;
-  background:linear-gradient(180deg,#6FADFF 0%,#4797FF 46%,#2F82F0 100%) !important;
-  color:#fff !important;border:1px solid rgba(255,255,255,.16) !important;
+.auth-visual-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.auth-visual .brand-logo{height:36px;width:auto}
+.auth-visual .brand-logo.logo-light{display:none !important}
+.auth-visual .brand-logo.logo-dark{display:block !important}
+.auth-visual .mark{background:rgba(255,255,255,.14);color:#fff}
+.auth-back{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:100px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);color:#fff;text-decoration:none;
+  font-size:.82rem;font-weight:500;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .2s}
+.auth-back:hover{background:rgba(255,255,255,.2)}
+.auth-back svg{width:14px;height:14px}
+.auth-slides{text-align:center}
+.auth-slide{display:none;font-size:clamp(1.35rem,2.2vw,1.85rem);font-weight:500;letter-spacing:-.02em;line-height:1.25;
+  color:#fff;max-width:420px;margin:0 auto;text-wrap:balance}
+.auth-slide.active{display:block;animation:authFade .6s ease}
+@keyframes authFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.auth-dots{display:flex;justify-content:center;gap:8px;margin-top:26px}
+.auth-dots button{width:28px;height:4px;border-radius:4px;border:none;padding:0;background:rgba(255,255,255,.3);cursor:pointer;transition:width .3s,background .3s}
+.auth-dots button.active{width:44px;background:#fff}
+
+/* right: form */
+.auth .auth-main{display:flex;flex-direction:column;justify-content:center;padding:48px clamp(28px,5vw,72px)}
+.auth-main .ah h1{font-size:clamp(1.9rem,3.4vw,2.6rem);font-weight:600;letter-spacing:-.03em;line-height:1.1;color:#fff}
+.auth-main .ah p{font-size:.92rem;color:#8B8B96;line-height:1.6;margin-top:10px}
+.auth-form{display:flex;flex-direction:column;gap:14px}
+.auth-form .ah{padding:0 0 18px}
+.auth-form .field label{display:block;font-size:.82rem;font-weight:500;color:#CACAD0;margin-bottom:8px;text-transform:none;letter-spacing:0}
+.auth-form input{width:100%;min-height:52px;border-radius:12px;padding:14px 16px;
+  background:rgba(255,255,255,.05);border:1px solid transparent;color:#F2F2F2;
+  font-size:.95rem;outline:none;transition:border-color .2s,background .2s,box-shadow .2s}
+.auth-form input::placeholder{color:#5A5A66}
+.auth-form input:focus{border-color:rgba(71,151,255,.6);background:rgba(255,255,255,.07);
+  box-shadow:0 0 0 3px rgba(71,151,255,.14)}
+.auth-form input:-webkit-autofill{-webkit-text-fill-color:#F2F2F2;-webkit-box-shadow:0 0 0 40px #15151F inset}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:52px}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:10px;
+  display:grid;place-items:center;background:none;border:none;color:#8B8B96;cursor:pointer}
+.pw-toggle:hover{color:#fff}
+.pw-toggle svg{width:19px;height:19px}
+.pw-toggle .eye-off{display:none}
+.pw-toggle[aria-pressed="true"] .eye{display:none}
+.pw-toggle[aria-pressed="true"] .eye-off{display:block}
+.auth-form .cf-turnstile:empty{display:none}
+.auth-form .btn2{width:100%;min-height:52px;margin-top:8px;border-radius:12px;
+  background:#4797FF !important;color:#fff !important;border:none !important;
   font-size:.95rem;font-weight:600;letter-spacing:.01em;cursor:pointer;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -10px 20px rgba(0,0,0,.14),
-             0 8px 22px rgba(71,151,255,.34),0 0 0 6px rgba(71,151,255,.10),0 0 34px rgba(71,151,255,.20);
-  transition:transform .22s,box-shadow .3s,filter .22s}
-.auth-form .btn2:hover{transform:translateY(-2px);filter:saturate(1.06) brightness(1.05);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -10px 20px rgba(0,0,0,.14),
-             0 14px 34px rgba(71,151,255,.44),0 0 0 7px rgba(71,151,255,.14),0 0 52px rgba(71,151,255,.30)}
-.auth-form .btn2:active{transform:translateY(0)}
-.auth-form button[id$="Link"],.auth-form #backToLogin{color:#4797FF !important;font-weight:500}
-/* the auth panel is dark in both themes, so always use the white logo */
-.auth-side .brand-logo{height:30px;width:auto}
-.auth-side .brand-logo.logo-light{display:none !important}
-.auth-side .brand-logo.logo-dark{display:block !important}
-[data-theme=dark] .auth-side .brand-logo.logo-light{display:none !important}
-[data-theme=dark] .auth-side .brand-logo.logo-dark{display:block !important}
-.auth-side .mark{background:rgba(71,151,255,.14);color:#7CB9FF}
+  box-shadow:0 10px 28px rgba(71,151,255,.32);transition:background .2s,transform .2s,box-shadow .2s}
+.auth-form .btn2:hover{background:#5AA3FF !important;transform:translateY(-1px);box-shadow:0 14px 34px rgba(71,151,255,.42)}
+.auth-form .btn2:active{transform:none}
+.auth-form .btn2:disabled{opacity:.7;cursor:default;transform:none}
+.auth-form button[id$="Link"],.auth-form #backToLogin{color:#7CB9FF !important;font-weight:500}
+.auth-form button[id$="Link"]:hover,.auth-form #backToLogin:hover{color:#fff !important}
+
 @media(max-width:900px){
-  .auth-side{border-right:none;border-bottom:1px solid rgba(255,255,255,.07);padding:34px 26px}
-  .auth-main{padding:34px 26px}
+  .auth{padding:12px;place-items:start center}
+  .auth .auth-card{grid-template-columns:minmax(0,1fr);min-height:0;padding:10px;border-radius:22px}
+  .auth-visual{min-height:200px;padding:20px}
+  .auth-slides{display:none}
+  .auth .auth-main{padding:32px 18px 24px}
 }
+@media(prefers-reduced-motion:reduce){.auth-slide.active{animation:none}}
 
 /* ── Toasts ─────────────────────────────────────── */
 .toast-wrap{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:20}
@@ -413,7 +437,7 @@ textarea[readonly]{background:var(--surface);cursor:not-allowed}
   .app.collapsed .brand{justify-content:flex-start}
   .app.collapsed .top-side{justify-content:space-between}
   .app.collapsed .sub{display:flex!important}
-  .content,.top,.auth-main,.auth-side,.mb,.mh,.mf{padding-left:16px;padding-right:16px}
+  .content,.top,.mb,.mh,.mf{padding-left:16px;padding-right:16px}
   .top{position:static}
   .heading{width:100%}
   .actions{width:100%}
@@ -611,7 +635,7 @@ body.plan-ppl .ppl-only{display:revert !important}
 body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261013a"></script>
+<script defer src="./dashboard-supabase.js?v=20261025a"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -620,31 +644,35 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
 <!-- ── Auth ──────────────────────────────────────────────────────────────── -->
 <div id="authView" class="auth">
   <div class="auth-card panel">
-    <section class="auth-side">
-      <div>
+    <section class="auth-visual">
+      <div class="auth-visual-top">
         <div class="brand">
           <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
         </div>
-        <div class="ah" style="padding:36px 0 0"><h1>Protected access for your team and lead data</h1><p>This workspace is only available to users with an account. Log in to manage company details, pipeline stages, and lead capture.</p></div>
+        <a class="auth-back" href="https://quoteleads.com.au" target="_self">Back to website <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
       </div>
-      <ul>
-        <li>Manage leads, quotes, and appointments in one place.</li>
-        <li>AI-powered SMS agent to qualify and follow up.</li>
-        <li>Pipeline tracking from first contact to closed deal.</li>
-      </ul>
+      <div class="auth-slides" aria-live="polite">
+        <p class="auth-slide active">Every lead, quote and appointment in one place.</p>
+        <p class="auth-slide">An AI SMS agent that qualifies and follows up for you.</p>
+        <p class="auth-slide">Track every job from first contact to closed deal.</p>
+        <div class="auth-dots" role="tablist" aria-label="Highlights">
+          <button type="button" class="active" aria-label="Highlight 1"></button><button type="button" aria-label="Highlight 2"></button><button type="button" aria-label="Highlight 3"></button>
+        </div>
+      </div>
     </section>
     <section class="auth-main">
       <form id="loginForm" class="auth-form">
-        <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email"></div>
-        <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" required autocomplete="current-password"></div>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
+        <div class="ah"><h1>Welcome back</h1><p>Sign in to your QuoteLeads HQ workspace.</p></div>
+        <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" required autocomplete="email" placeholder="you@company.com.au"></div>
+        <div class="field"><label for="loginPassword">Password</label><div class="pw-wrap"><input id="loginPassword" name="password" type="password" required autocomplete="current-password" placeholder="Enter your password"><button type="button" class="pw-toggle" aria-label="Show password" aria-pressed="false"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.5 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg></button></div></div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="dark"></div>
         <button class="btn2" type="submit">Sign In</button>
         <button type="button" id="forgotPasswordLink" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Forgot your password?</button>
       </form>
       <form id="forgotPasswordForm" class="auth-form hidden">
-        <div class="ah" style="padding:0 0 16px"><h1>Reset password</h1><p style="font-size:13px;color:var(--muted);margin-top:8px">Enter your email and we'll send you a link to reset your password.</p></div>
-        <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email"></div>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="auto"></div>
+        <div class="ah"><h1>Reset password</h1><p>Enter your email and we'll send you a link to reset your password.</p></div>
+        <div class="field"><label for="forgotEmail">Email</label><input id="forgotEmail" name="email" type="email" required autocomplete="email" placeholder="you@company.com.au"></div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC0NesB-x2tZ3YhC" data-theme="dark"></div>
         <button class="btn2" type="submit">Send Reset Link</button>
         <button type="button" id="backToLogin" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:4px 0;text-align:center;margin-top:4px">Back to sign in</button>
       </form>
