@@ -196,15 +196,15 @@ textarea{min-height:100px;resize:vertical}
   background:#0B0B14 !important;border:1px solid rgba(255,255,255,.07) !important;border-radius:28px;
   box-shadow:0 30px 90px rgba(0,0,0,.55) !important}
 
-/* left: image panel. Set --auth-img to a photo to replace the gradient. */
-.auth-visual{position:relative;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;
+/* left: image panel. --auth-img is the photo; the gradient shows if it fails to load. */
+.auth-visual{--auth-img:url("assets/login-bg.webp");background-color:#0A1A3C;position:relative;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;
   padding:28px;min-height:520px;isolation:isolate;
   background:
-    linear-gradient(180deg,rgba(4,4,10,0) 45%,rgba(4,4,10,.82) 100%),
+    linear-gradient(180deg,rgba(4,4,10,0) 60%,rgba(4,4,10,.6) 100%),
     var(--auth-img,
       radial-gradient(70% 50% at 75% 15%,rgba(184,212,255,.45),transparent 70%),
       linear-gradient(180deg,#4797FF 0%,#2F6FD6 40%,#14336E 75%,#0A1A3C 100%));
-  background-size:cover;background-position:center}
+  background-size:cover;background-position:center bottom}
 .auth-visual::after{content:'';position:absolute;inset:0;z-index:-1;opacity:.5;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E");
   background-size:200px}
