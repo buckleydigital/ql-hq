@@ -159,8 +159,9 @@ async function insertSmsAgentConfig(companyId: string, m: Record<string, string>
   await supabase.from('sms_agent_config').insert({
     company_id:               companyId,
     model:                    'gpt-4o',
-    is_active:                false,
-    auto_reply:               false,
+    is_active:                true,
+    auto_reply:               true,
+    out_of_hours_only:        false,
     callback_enabled:         true,
     onsite_enabled:           false,
     quote_drafting_enabled:   false,
