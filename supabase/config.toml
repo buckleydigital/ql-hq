@@ -163,6 +163,9 @@ verify_jwt = false
 [functions.create-checkout]
 verify_jwt = false
 
+[functions.create-ad-ready-checkout]
+verify_jwt = false
+
 [functions.create-sms-credits-checkout]
 verify_jwt = false
 
