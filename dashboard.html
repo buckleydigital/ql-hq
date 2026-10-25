@@ -215,7 +215,7 @@ textarea{min-height:100px;resize:vertical}
 .auth-visual .mark{background:rgba(255,255,255,.14);color:#fff}
 .auth-back{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:100px;
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);color:#fff;text-decoration:none;
-  font-size:.82rem;font-weight:500;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .2s}
+  font-size:.82rem;font-weight:500;white-space:nowrap;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .2s}
 .auth-back:hover{background:rgba(255,255,255,.2)}
 .auth-back svg{width:14px;height:14px}
 .auth-slides{text-align:center}
@@ -262,11 +262,22 @@ textarea{min-height:100px;resize:vertical}
 .auth-form button[id$="Link"]:hover,.auth-form #backToLogin:hover{color:#fff !important}
 
 @media(max-width:900px){
-  .auth{padding:12px;place-items:start center}
+  .auth{padding:12px}
   .auth .auth-card{grid-template-columns:minmax(0,1fr);min-height:0;padding:10px;border-radius:22px}
-  .auth-visual{min-height:200px;padding:20px}
+  .auth-visual{min-height:180px;padding:18px;background-position:center 70%}
+  .auth-visual .brand-logo{height:30px}
   .auth-slides{display:none}
-  .auth .auth-main{padding:32px 18px 24px}
+  .auth .auth-main{padding:30px 18px 24px}
+  /* 16px stops iOS zooming in when a field is tapped */
+  .auth-form input{font-size:16px}
+}
+@media(max-width:374px){
+  .auth-back-long{display:none}
+  .auth-visual{min-height:150px}
+  .auth-main .ah h1{font-size:1.75rem}
+}
+@media(max-width:900px) and (max-height:500px){
+  .auth-visual{min-height:120px}
 }
 @media(prefers-reduced-motion:reduce){.auth-slide.active{animation:none}}
 
@@ -649,7 +660,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
         <div class="brand">
           <div class="brand-media"><img class="brand-logo logo-light" src="quoteleads-logo-black-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none'"><img class="brand-logo logo-dark" src="quoteleads-logo-white-hq.png" alt="QuoteLeadsHQ logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="mark">QL</div></div>
         </div>
-        <a class="auth-back" href="https://quoteleads.com.au" target="_self">Back to website <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+        <a class="auth-back" href="https://quoteleads.com.au" target="_self"><span>Back<span class="auth-back-long"> to website</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
       </div>
       <div class="auth-slides" aria-live="polite">
         <p class="auth-slide active">Every lead, quote and appointment in one place.</p>
