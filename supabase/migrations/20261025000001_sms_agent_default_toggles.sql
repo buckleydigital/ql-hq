@@ -1,9 +1,9 @@
 -- Default AI toggles for new companies: AI enabled, auto reply, phone callbacks
 -- and lead scoring on; out of hours only, on-site appointments and quote
--- drafting off. Nothing is texted until the company has a Twilio number
--- (intake-lead / send-sms skip configs without one), and the welcome SMS stays
--- behind auto_send_welcome, which provision-twilio turns on. Existing companies
--- keep their current settings.
+-- drafting off. Every company (PPL and managed) gets the one shared Twilio
+-- number at creation (assign_shared_number_to_company), so the AI is live from
+-- day one; the first outbound SMS to a lead stays behind auto_send_welcome,
+-- which provision-twilio turns on. Existing companies keep their settings.
 alter table public.sms_agent_config
   alter column is_active            set default true,
   alter column auto_reply           set default true,
