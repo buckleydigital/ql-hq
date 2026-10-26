@@ -1255,6 +1255,72 @@ function getDashRangeStart() {
   }
 }
 
+// This month's forecast on the Status page, from the leads already loaded:
+//   On pace for     leads so far + the daily rate x days left. The rate is this
+//                   month's, or the last 30 days' in the first 3 days so one
+//                   quiet morning doesn't project zero.
+//   vs last month   this month so far against the same point last month.
+//   Open pipeline   open leads x win rate x average won deal, once there are
+//                   at least 3 closed deals and a won deal with a value.
+function renderForecast(all) {
+  const set = (id, v, color) => { const el = document.getElementById(id); if (el) { el.textContent = v; el.style.color = color || ""; } };
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const elapsed = (now - monthStart) / 864e5;
+  const daysLeft = Math.max(0, (nextMonth - now) / 864e5);
+  const created = (l) => new Date(l.created_at);
+  const between = (from, to) => all.filter((l) => created(l) >= from && created(l) < to).length;
+
+  // On pace for
+  const mtd = between(monthStart, now);
+  const last30 = between(new Date(now - 30 * 864e5), now);
+  const useLast30 = elapsed < 3;
+  const rate = useLast30 ? last30 / 30 : mtd / elapsed;
+  const projected = Math.round(mtd + rate * daysLeft);
+  if (!projected) {
+    set("fcLeads", "-");
+    set("fcLeadsSub", "No leads yet this month.");
+  } else {
+    set("fcLeads", `${projected} lead${projected === 1 ? "" : "s"}`);
+    const perDay = rate >= 1 ? rate.toFixed(1) : rate.toFixed(2);
+    set("fcLeadsSub", `${mtd} so far · about ${perDay} a day${useLast30 ? " (last 30 days)" : ""} · ${Math.ceil(daysLeft)} days left`);
+  }
+
+  // vs last month, at the same point
+  const samePoint = new Date(Math.min(lastMonthStart.getTime() + (now - monthStart), monthStart.getTime()));
+  const lmToPoint = between(lastMonthStart, samePoint);
+  const lmTotal = between(lastMonthStart, monthStart);
+  const lmName = lastMonthStart.toLocaleDateString("en-AU", { month: "long" });
+  if (lmToPoint > 0) {
+    const pct = Math.round(((mtd - lmToPoint) / lmToPoint) * 100);
+    set("fcTrend", `${pct >= 0 ? "+" : ""}${pct}%`, pct >= 0 ? "#16a34a" : "#dc2626");
+    set("fcTrendSub", `${mtd} vs ${lmToPoint} at this point in ${lmName} · ${lmTotal} in ${lmName} in total`);
+  } else {
+    set("fcTrend", "-");
+    set("fcTrendSub", lmTotal ? `No leads at this point in ${lmName} · ${lmTotal} in total` : `No leads in ${lmName} to compare with.`);
+  }
+
+  // Expected from the open pipeline
+  const won = all.filter((l) => l.pipeline_stage === "closed_won");
+  const closedCount = won.length + all.filter((l) => l.pipeline_stage === "closed_lost").length;
+  const valued = won.filter((l) => Number(l.value) > 0);
+  const avgDeal = valued.length ? valued.reduce((s, l) => s + Number(l.value), 0) / valued.length : 0;
+  const open = all.filter((l) => !["closed_won", "closed_lost"].includes(l.pipeline_stage)).length;
+  if (!open) {
+    set("fcPipeline", "-");
+    set("fcPipelineSub", "No open leads right now.");
+  } else if (closedCount < 3 || !avgDeal) {
+    set("fcPipeline", "-");
+    set("fcPipelineSub", "Shows once you've closed a few deals (won or lost) and recorded a sale value.");
+  } else {
+    const winRate = won.length / closedCount;
+    set("fcPipeline", fmt(Math.round(open * winRate * avgDeal)));
+    set("fcPipelineSub", `${open} open lead${open === 1 ? "" : "s"} × ${Math.round(winRate * 100)}% win rate × ${fmt(Math.round(avgDeal))} average deal`);
+  }
+}
+
 async function loadDashboard() {
   if (!currentCompanyId) return;
 
@@ -1360,6 +1426,7 @@ async function loadDashboard() {
     const totalRevenue = all.filter(l => l.pipeline_stage === 'closed_won')
       .reduce((a, l) => a + (Number(l.value) || 0), 0);
     setText2("statusTotalRevenue", fmt(totalRevenue));
+    renderForecast(all);
 
     const aiChip = document.getElementById("statusAiChip");
     const aiNote = document.getElementById("statusAiNote");

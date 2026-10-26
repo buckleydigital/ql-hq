@@ -103,6 +103,9 @@ details.nav-group[open]>summary::after{transform:rotate(-90deg)}
 .card{padding:16px}
 .stat-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
 .stat-val{font-size:26px;font-weight:500}
+.forecast-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.fc-sub{margin-top:8px;font-size:12px;color:var(--muted);line-height:1.5}
+@media(max-width:900px){.forecast-grid{grid-template-columns:minmax(0,1fr)}}
 .muted{color:var(--muted);font-size:12px}
 .chip,.pill{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--border);background:var(--surface-2);display:inline-flex;align-items:center;gap:6px}
 
@@ -650,7 +653,7 @@ body.plan-ppl .ppl-only{display:revert !important}
 body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261026a"></script>
+<script defer src="./dashboard-supabase.js?v=20261026b"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -912,6 +915,23 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
             </div>
           </div>
         </div>
+
+        <!-- Forecast -->
+        <section class="panel" id="forecastPanel">
+          <div class="panel-h">
+            <div>
+              <h2>This month's forecast</h2>
+              <p>Based on your lead flow so far this month and your past results.</p>
+            </div>
+          </div>
+          <div class="panel-b">
+            <div class="forecast-grid">
+              <article class="card"><div class="stat-top"><span class="muted">On pace for</span><span class="icon" data-icon="chart"></span></div><div class="stat-val" id="fcLeads">-</div><div class="fc-sub" id="fcLeadsSub"></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">vs last month</span><span class="icon" data-icon="spark"></span></div><div class="stat-val" id="fcTrend">-</div><div class="fc-sub" id="fcTrendSub"></div></article>
+              <article class="card"><div class="stat-top"><span class="muted">Expected from open pipeline</span><span class="icon" data-icon="briefcase"></span></div><div class="stat-val" id="fcPipeline">-</div><div class="fc-sub" id="fcPipelineSub"></div></article>
+            </div>
+          </div>
+        </section>
 
         <!-- Active Lead Orders -->
         <section class="panel" id="activeOrdersPanel" style="display:none">
