@@ -48,8 +48,7 @@ $$;
 
 revoke all on function public.schedule_review_request_on_won() from public, anon, authenticated;
 
-drop trigger if exists schedule_review_request_on_won on public.leads;
-create trigger schedule_review_request_on_won
+create or replace trigger schedule_review_request_on_won
   after insert or update of pipeline_stage on public.leads
   for each row execute function public.schedule_review_request_on_won();
 
