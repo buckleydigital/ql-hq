@@ -2968,10 +2968,8 @@ async function handleSaleSave(e) {
     if (error) { toast(error.message, true); return; }
     toast(editId ? "Sale updated." : "Sale recorded.");
     closeModal("saleModal");
-    // Schedule a review request when recording a sale as closed_won
-    if (outcome === "closed_won") {
-      scheduleReviewRequest(leadId);
-    }
+    // A closed_won sale gets its review request from the database trigger
+    // (schedule_review_request_on_won), not from here.
     loadSales();
   } catch (err) {
     toast("Failed to save sale.", true);
@@ -3085,10 +3083,6 @@ async function kanbanDrop(event, newStage) {
       loadPipeline();
     } else {
       toast(`Moved to "${stageLabel(newStage)}"`);
-      // Schedule a review request when moving to closed_won
-      if (newStage === "closed_won") {
-        scheduleReviewRequest(leadId);
-      }
     }
   } catch (err) {
     toast("Failed to update status.", true);
@@ -5725,7 +5719,6 @@ async function openOpportunityModal(leadId) {
         toast('Lead updated.');
         const idx = allLeads.findIndex(l => l.id === leadId);
         if (idx > -1) allLeads[idx] = { ...allLeads[idx], ...payload };
-        if (payload.pipeline_stage === 'closed_won') scheduleReviewRequest(leadId);
       } catch (err) { toast('Failed to save.', true); }
       finally { newSave.disabled = false; newSave.textContent = 'Save changes'; }
     });
@@ -6729,73 +6722,9 @@ async function handleReviewSettingsSave(e) {
   }
 }
 
-async function scheduleReviewRequest(leadId) {
-  if (!currentCompanyId) return;
-  try {
-    // Check if reviews are enabled and configured
-    const { data: smsConfig } = await sb
-      .from("sms_agent_config")
-      .select("review_enabled, review_delay_days, review_auto_send, review_message, google_review_link, twilio_number, is_active")
-      .eq("company_id", currentCompanyId)
-      .maybeSingle();
-
-    if (!smsConfig?.review_enabled || !smsConfig.google_review_link) return;
-
-    // Get lead details for message interpolation
-    const { data: lead } = await sb
-      .from("leads")
-      .select("id, first_name, phone")
-      .eq("id", leadId)
-      .single();
-
-    if (!lead?.phone) return;
-
-    // Build the message body
-    const firstName = lead.first_name || "there";
-    const messageBody = (smsConfig.review_message || DEFAULT_REVIEW_MESSAGE)
-      .replace(/\{\{first_name\}\}/gi, firstName)
-      .replace(/\{\{review_link\}\}/gi, smsConfig.google_review_link);
-
-    const delayDays = smsConfig.review_delay_days ?? 7;
-    const scheduledAt = new Date();
-    scheduledAt.setDate(scheduledAt.getDate() + delayDays);
-
-    // Check if there's already a pending or sent review request for this lead
-    const { data: existing } = await sb
-      .from("review_requests")
-      .select("id")
-      .eq("lead_id", leadId)
-      .in("status", ["pending", "sent"])
-      .maybeSingle();
-
-    if (existing) return; // Already has a review request
-
-    // Create review request
-    const { data: created, error } = await sb
-      .from("review_requests")
-      .insert({
-        company_id:   currentCompanyId,
-        lead_id:      leadId,
-        status:       "pending",
-        scheduled_at: scheduledAt.toISOString(),
-        message_body: messageBody,
-      })
-      .select("id")
-      .single();
-
-    if (error) {
-      console.warn("Failed to schedule review request:", error.message);
-      return;
-    }
-
-    // If auto-send is enabled and delay is 0, send immediately
-    if (smsConfig.review_auto_send && delayDays === 0 && created) {
-      await sendReviewRequestSms(created.id, messageBody, lead.phone);
-    }
-  } catch (err) {
-    console.warn("scheduleReviewRequest error:", err);
-  }
-}
+// Review requests are scheduled by the database: when a lead becomes
+// closed_won by any route, schedule_review_request_on_won() queues one, and
+// send-review-request (pg_cron, every 15 minutes) texts it when it is due.
 
 async function sendReviewRequest(requestId) {
   try {
