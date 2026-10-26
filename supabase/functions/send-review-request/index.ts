@@ -2,7 +2,8 @@
 // QuoteLeadsHQ - Send Review Request (Scheduled)
 // =============================================================================
 // Processes pending review requests that are due for sending.
-// Called via cron job (pg_cron or external scheduler) or manually.
+// Called every 15 minutes by pg_cron (job send-review-requests, with the
+// x-autopilot-secret header), or with the service role key.
 // Sends review SMS via Twilio and updates request status.
 // =============================================================================
 
@@ -12,7 +13,7 @@ import "../_shared/no-em-dash.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-autopilot-secret",
 };
 
 function json(body: unknown, status = 200) {
@@ -31,7 +32,15 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // ── Auth: only the cron scheduler (service role) may invoke this ─────
+    const db = createClient(supabaseUrl, serviceKey);
+
+    // ── Auth: the cron scheduler (autopilot secret) or the service role ──
+    const secret = req.headers.get("x-autopilot-secret") || "";
+    let secretOk = false;
+    if (secret) {
+      const { data: ok } = await db.rpc("autopilot_secret_ok", { p: secret });
+      secretOk = ok === true;
+    }
     const authHeader = req.headers.get("authorization") || "";
     const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     // Constant-time comparison to prevent timing attacks
@@ -42,11 +51,16 @@ Deno.serve(async (req) => {
     for (let i = 0; i < len; i++) {
       if ((keyBytes[i] ?? 0) !== (expectedBytes[i] ?? 0)) isMatch = false;
     }
-    if (!isMatch) {
+    if (!isMatch && !secretOk) {
       return json({ error: "Unauthorized" }, 401);
     }
 
-    const db = createClient(supabaseUrl, serviceKey);
+    // Puts a claimed request back for a later run instead of leaving it stuck
+    // at "processing", which nothing would ever pick up again.
+    const retryLater = (id: string, hours: number) =>
+      db.from("review_requests")
+        .update({ status: "pending", scheduled_at: new Date(Date.now() + hours * 3600000).toISOString() })
+        .eq("id", id);
 
     // Find all pending review requests that are due
     const now = new Date().toISOString();
@@ -96,8 +110,10 @@ Deno.serve(async (req) => {
           .eq("is_active", true)
           .maybeSingle();
 
-        // Skip if auto-send is disabled or SMS is not configured
+        // Not sendable yet (auto-send off, AI inactive or no number): try again
+        // tomorrow, so it goes once the client switches it on.
         if (!smsConfig?.review_auto_send || !smsConfig.twilio_number) {
+          await retryLater(request.id, 24);
           continue;
         }
 
@@ -138,7 +154,8 @@ Deno.serve(async (req) => {
         });
         if (!creditOk) {
           console.warn(`No SMS credits for company ${request.company_id}`);
-          continue; // Don't fail - try again later when credits replenished
+          await retryLater(request.id, 1); // try again once credits are topped up
+          continue;
         }
 
         // Send via Twilio
