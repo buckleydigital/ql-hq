@@ -1,7 +1,8 @@
 // =============================================================================
 // meta-access-watch - notice when a client gives us Meta access, chase if not
 // =============================================================================
-// Run every 15 minutes by pg_cron. For every managed client whose
+// Run every 30 minutes by pg_cron, only while a real client is waiting on
+// access (the job checks first). For every managed client whose
 // "Meta/Google access granted" step is still open:
 //
 //   1. DETECT   Is their ad account among those shared with the QuoteLeads
@@ -135,7 +136,7 @@ async function handleLink(admin: Admin, b: Row): Promise<Response> {
     company_id: c, actor_id: null, actor_name: "Team (email link)", action: "meta_access.account_claimed",
     step_key: STEP, detail: { ad_account_id: acc },
   });
-  return json({ ok: true, message: `Linked to ${co!.name}. Within 15 minutes we connect to it and tick their access step.` });
+  return json({ ok: true, message: `Linked to ${co!.name}. Within half an hour we connect to it and tick their access step.` });
 }
 
 const digits = (v: unknown) => String(v ?? "").replace(/\D/g, "");
@@ -363,7 +364,7 @@ Deno.serve(async (req: Request) => {
       `<p>An ad account was just shared with QuoteLeads and isn't linked to any client: <strong>${esc(r.name)}</strong> (${acc})` +
       `${r.business_name ? `, from the business <strong>${esc(r.business_name)}</strong>` : ""}.</p>` +
       (items.length
-        ? `<p>Click the client it belongs to. Within 15 minutes we connect to it and tick their access step.</p><ul>${items.join("")}</ul>`
+        ? `<p>Click the client it belongs to. Within half an hour we connect to it and tick their access step.</p><ul>${items.join("")}</ul>`
         : "<p>No client is waiting on Meta access right now.</p>") +
       `<p><a href="${await link("ignore", "", acc, "", String(r.name ?? ""))}">It isn't a client's, ignore it</a></p>` +
       `<p style="color:#667284">Until it's linked or ignored, the "please give us access" reminder emails to waiting clients are paused, in case it's theirs.</p>`);
@@ -477,7 +478,7 @@ Deno.serve(async (req: Request) => {
           if (!dryRun) {
             await opsEmail(`Is this ${c.name}'s ad account?`,
               `<p>An ad account named <strong>${hit.name}</strong> (${digits(hit.account_id)}) is shared with QuoteLeads, and its name matches <strong>${c.name}</strong>, who didn't give their ad account ID.</p>` +
-              `<p><a href="${await link("claim", cid, digits(hit.account_id), c.name as string, String(hit.name ?? ""))}">Yes, it's theirs</a>: within 15 minutes we connect to it and tick their access step. Otherwise tick "Meta/Google access granted" by hand once you've checked.</p>`);
+              `<p><a href="${await link("claim", cid, digits(hit.account_id), c.name as string, String(hit.name ?? ""))}">Yes, it's theirs</a>: within half an hour we connect to it and tick their access step. Otherwise tick "Meta/Google access granted" by hand once you've checked.</p>`);
             await markSent(cid, kind, { account_id: digits(hit.account_id) });
           }
         }
