@@ -868,47 +868,6 @@ select{cursor:pointer}
   </div>
 </div>
 
-<div id="invModal" class="inv-overlay hidden">
-  <div class="inv-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h2 style="margin:0;font-size:17px" id="invModalTitle">New invoice</h2>
-      <button class="btn" id="invCloseBtn" type="button">✕</button>
-    </div>
-    <div class="inv-grid">
-      <label class="inv-lbl">Client name<input id="invClientName" type="text"></label>
-      <label class="inv-lbl">Client email<input id="invClientEmail" type="text"></label>
-      <label class="inv-lbl">Offer type
-        <select id="invOfferType"><option value="managed">Managed Advertising</option><option value="ppl">Pay-Per-Lead</option></select>
-      </label>
-      <label class="inv-lbl">Vertical<input id="invVertical" type="text" placeholder="e.g. Solar"></label>
-      <label class="inv-lbl">Invoice date<input id="invDate" type="date"></label>
-      <label class="inv-lbl">Due date<input id="invDue" type="date"></label>
-      <label class="inv-lbl">Delivery period start<input id="invPeriodStart" type="date"></label>
-      <label class="inv-lbl">Delivery period end<input id="invPeriodEnd" type="date"></label>
-    </div>
-    <div class="sec-title">Line items</div>
-    <div id="invLineItems"></div>
-    <button class="btn" id="invAddLineBtn" type="button" style="margin-top:6px">+ Add line</button>
-    <div class="inv-grid" style="margin-top:14px">
-      <label class="inv-lbl">GST treatment
-        <select id="invGstType"><option value="exclusive">Add GST (10%)</option><option value="inclusive">GST inclusive</option><option value="none">No GST</option></select>
-      </label>
-      <div></div>
-    </div>
-    <div style="text-align:right;margin-top:10px;font-size:14px" id="invTotals"></div>
-    <div class="sec-title">Payment details</div>
-    <textarea id="invPaymentDetails" placeholder="Leave blank to use the business bank details on file" style="min-height:60px"></textarea>
-    <div id="invBankRO" class="muted" style="font-size:12px;margin-top:6px"></div>
-    <div class="sec-title">Notes</div>
-    <textarea id="invNotes" style="min-height:50px"></textarea>
-    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-p" id="invSaveDownloadBtn" type="button">Save & download PDF</button>
-      <button class="btn" id="invSaveBtn" type="button">Save only</button>
-      <span class="muted" id="invStatus"></span>
-    </div>
-  </div>
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script>
   const SUPABASE_URL = 'https://wjadekgptkstfdootuol.supabase.co';
@@ -2647,7 +2606,6 @@ select{cursor:pointer}
     $('vaNewTplBtn').addEventListener('click', function () { openVaTpl(null); });
     $('vaCancelTplBtn').addEventListener('click', function () { $('vaTplEditor').classList.add('hidden'); });
     $('vaSaveTplBtn').addEventListener('click', saveVaTemplate);
-    $('invCloseBtn').addEventListener('click', closeInvModal);
     $('introCloseBtn').addEventListener('click', closeIntroModal);
     $('introCancelBtn').addEventListener('click', closeIntroModal);
     $('introSendBtn').addEventListener('click', sendIntroEmail);
@@ -2658,10 +2616,6 @@ select{cursor:pointer}
     $('mcSendClose').addEventListener('click', () => $('mcSendModal').classList.add('hidden'));
     $('mcSendCancel').addEventListener('click', () => $('mcSendModal').classList.add('hidden'));
     $('mcSendBtn').addEventListener('click', sendMcInvoice);
-    $('invAddLineBtn').addEventListener('click', function () { addLineItem(); });
-    $('invGstType').addEventListener('change', recalcInvTotals);
-    $('invSaveBtn').addEventListener('click', function () { submitInvoice(false); });
-    $('invSaveDownloadBtn').addEventListener('click', function () { submitInvoice(true); });
     $('clearAvailBtn').addEventListener('click', () => { _availSet.clear(); renderAvailGrid(); $('availStatus').textContent = 'Unsaved changes'; });
 
     const { data: me } = await sb.from('profiles').select('is_admin, is_team').eq('id', session.user.id).maybeSingle();
@@ -3006,7 +2960,6 @@ select{cursor:pointer}
     showList();
   }
 
-  let _bankRO = null;  // cached business/bank details (read-only for the team)
 
   // fromBoard: opened by clicking a row on the fulfilment board rather than
   // from the client list, so the nav stays on Fulfilment and Back returns to
@@ -3022,21 +2975,17 @@ select{cursor:pointer}
     const action = _isAdmin ? 'admin_get_client' : 'get_client';
     // Fulfilment is fetched with everything else rather than after the render,
     // so the checklist is not a second flash of "Loading…" inside a loaded page.
-    const [base, dfy, links, invs, bank] = await Promise.all([
+    const [base, dfy, links] = await Promise.all([
       teamApi({ action, company_id: companyId }),
       teamApi({ action: 'get_dfy', company_id: companyId }),
       teamApi({ action: 'list_preview_links', company_id: companyId }),
-      teamApi({ action: 'list_invoices', company_id: companyId }),
-      teamApi({ action: 'get_bank_details' }),
       loadFulfilment(companyId),
     ]);
     if (!base.ok) { $('detailBody').innerHTML = `<div class="card empty">${esc(base.data.error || 'Could not load client.')}</div>`; return; }
     const extra = {
       profile: (dfy.ok && dfy.data.profile) || {},
       links: (links.ok && links.data.links) || [],
-      invoices: (invs.ok && invs.data.invoices) || [],
     };
-    _bankRO = (bank.ok && bank.data.settings) || {};
     renderDetail(companyId, base.data, extra);
   }
 
@@ -3053,7 +3002,7 @@ select{cursor:pointer}
   }
 
   function renderDetail(companyId, d, extra) {
-    extra = extra || { profile: {}, links: [], invoices: [] };
+    extra = extra || { profile: {}, links: [] };
     const c = d.company || {};
     const cache = _clients.find(x => x.id === companyId) || {};
     const p = extra.profile || {};
@@ -3255,9 +3204,7 @@ select{cursor:pointer}
     }
 
     _detailLinks = extra.links;
-    _detailInvoices = extra.invoices;
     renderPreviewLinksVa(companyId);
-    renderInvoiceListVa(companyId, c);
   }
 
   // ─── Outbound calling ──────────────────────────────────────────────────────
@@ -3759,26 +3706,6 @@ select{cursor:pointer}
     dz.addEventListener('drop', e => { if (e.dataTransfer?.files?.length) uploadPreviewImages(companyId, e.dataTransfer.files); });
   }
 
-  // ── Invoice list ──
-  let _detailInvoices = [];
-  function renderInvoiceListVa(companyId, company) {
-    const host = $('invList');
-    if (!host) return;
-    if (!_detailInvoices.length) { host.innerHTML = '<div class="muted">No invoices raised yet.</div>'; return; }
-    host.innerHTML = _detailInvoices.map(inv => `
-      <div class="task" style="align-items:center">
-        <span class="tbody" style="font-family:monospace">${esc(inv.invoice_number || inv.id.slice(0, 8))}</span>
-        <span>${inv.total != null ? '$' + Number(inv.total).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '-'}</span>
-        <span class="badge ${inv.status || 'draft'}">${esc(inv.status || 'draft')}</span>
-        <span class="muted">${fmtDate(inv.invoice_date || inv.created_at)}</span>
-        <button class="btn" data-inv-pdf="${esc(inv.id)}" type="button">PDF</button>
-      </div>`).join('');
-    host.querySelectorAll('[data-inv-pdf]').forEach(b => b.addEventListener('click', () => {
-      const inv = _detailInvoices.find(x => x.id === b.getAttribute('data-inv-pdf'));
-      if (inv) downloadInvoicePDF(inv);
-    }));
-  }
-
   // ── Invoices from Mission Control ──
   // ql-mc makes and numbers every invoice (it drafts the monthly one 7 days
   // before each payment date). This card shows that client's ql-mc invoices,
@@ -3898,6 +3825,20 @@ select{cursor:pointer}
     og.drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
     _mcLogo = { data: o.toDataURL('image/jpeg', 0.95), ratio: o.width / o.height };
     return _mcLogo;
+  }
+
+  // jsPDF is only fetched the first time an invoice is drawn.
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script'); s.src = src;
+      s.onload = resolve; s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function ensureJsPDF() {
+    if (window.jspdf?.jsPDF) return;
+    await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+    if (!window.jspdf?.jsPDF) throw new Error('Could not load PDF library');
   }
 
   // A copy of ql-mc's downloadInvoicePDF (index.html). Keep the two in step:
@@ -4229,206 +4170,6 @@ select{cursor:pointer}
     const companyId = _introCompanyId;
     closeIntroModal();
     openClient(companyId, _cameFromBoard);
-  }
-
-  // ═══════════════════════════ INVOICE MODAL ═════════════════════════════════
-  let _invCompanyId = null;
-  function openInvModal(companyId, company) {
-    _invCompanyId = companyId;
-    $('invModalTitle').textContent = 'New invoice for ' + (company.name || 'client');
-    $('invClientName').value = company.name || '';
-    $('invClientEmail').value = company.email || '';
-    const cache = _clients.find(x => x.id === companyId) || {};
-    $('invOfferType').value = (company.plan === 'ppl') ? 'ppl' : 'managed';
-    $('invVertical').value = '';
-    const today = new Date().toISOString().slice(0, 10);
-    $('invDate').value = today;
-    const due = new Date(); due.setDate(due.getDate() + 7);
-    $('invDue').value = due.toISOString().slice(0, 10);
-    $('invPeriodStart').value = ''; $('invPeriodEnd').value = '';
-    $('invGstType').value = 'exclusive';
-    $('invPaymentDetails').value = '';
-    $('invNotes').value = '';
-    $('invStatus').textContent = '';
-    $('invLineItems').innerHTML = '';
-    addLineItem();
-    // Show which bank details will be used (read-only for the team).
-    const b = _bankRO || {};
-    const bankLine = (b.bsb || b.account_number)
-      ? `Invoice will use: ${esc(b.account_name || b.business_name || 'QuoteLeads')} · BSB ${esc(b.bsb || '-')} · Acct ${esc(b.account_number || '-')}`
-      : (b.payment_details ? esc(b.payment_details) : 'No bank details on file - ask your admin to set them.');
-    $('invBankRO').innerHTML = bankLine;
-    $('invModal').classList.remove('hidden');
-  }
-  function closeInvModal() { $('invModal').classList.add('hidden'); }
-  function addLineItem(li) {
-    li = li || { description: '', qty: 1, unit_price: 0 };
-    const row = document.createElement('div');
-    row.className = 'li-row';
-    row.innerHTML =
-      `<input type="text" data-li="description" placeholder="Description" value="${esc(li.description)}">` +
-      `<input type="text" data-li="qty" inputmode="decimal" value="${esc(li.qty)}">` +
-      `<input type="text" data-li="unit_price" inputmode="decimal" value="${esc(li.unit_price)}">` +
-      `<input type="text" data-li="line_total" readonly tabindex="-1" style="opacity:.7">` +
-      `<button class="btn" data-li-del type="button">✕</button>`;
-    $('invLineItems').appendChild(row);
-    row.querySelectorAll('[data-li="qty"],[data-li="unit_price"]').forEach(el => el.addEventListener('input', recalcInvTotals));
-    row.querySelector('[data-li-del]').addEventListener('click', () => { row.remove(); recalcInvTotals(); });
-    recalcInvTotals();
-  }
-  function readLineItems() {
-    return [...$('invLineItems').querySelectorAll('.li-row')].map(row => {
-      const g = (k) => row.querySelector(`[data-li="${k}"]`).value;
-      const qty = parseFloat(g('qty')) || 0;
-      const unit = parseFloat(g('unit_price')) || 0;
-      return { description: g('description'), qty, unit_price: unit, line_total: qty * unit };
-    });
-  }
-  function recalcInvTotals() {
-    let subtotal = 0;
-    $('invLineItems').querySelectorAll('.li-row').forEach(row => {
-      const qty = parseFloat(row.querySelector('[data-li="qty"]').value) || 0;
-      const unit = parseFloat(row.querySelector('[data-li="unit_price"]').value) || 0;
-      const lt = qty * unit;
-      row.querySelector('[data-li="line_total"]').value = '$' + lt.toFixed(2);
-      subtotal += lt;
-    });
-    const gstType = $('invGstType').value;
-    let gst = 0, total = subtotal;
-    if (gstType === 'exclusive') { gst = subtotal * 0.1; total = subtotal + gst; }
-    else if (gstType === 'inclusive') { gst = subtotal / 11; total = subtotal; }
-    $('invTotals').innerHTML = `Subtotal <b>$${subtotal.toFixed(2)}</b> &nbsp; GST <b>$${gst.toFixed(2)}</b> &nbsp; Total <b>$${total.toFixed(2)}</b>`;
-    return { subtotal, gst, total, gstType };
-  }
-  async function submitInvoice(andDownload) {
-    const items = readLineItems().filter(li => li.description || li.line_total);
-    if (!items.length) { $('invStatus').textContent = 'Add at least one line item.'; return; }
-    const t = recalcInvTotals();
-    const invoice = {
-      company_id: _invCompanyId,
-      client_name: $('invClientName').value.trim(),
-      client_email: $('invClientEmail').value.trim(),
-      offer_type: $('invOfferType').value,
-      vertical: $('invVertical').value.trim(),
-      invoice_date: $('invDate').value || null,
-      due_date: $('invDue').value || null,
-      delivery_period_start: $('invPeriodStart').value || null,
-      delivery_period_end: $('invPeriodEnd').value || null,
-      line_items: items,
-      subtotal: t.subtotal,
-      gst_type: t.gstType,
-      gst_amount: t.gst,
-      total: t.total,
-      payment_details: $('invPaymentDetails').value.trim(),
-      notes: $('invNotes').value.trim(),
-      status: 'sent',
-    };
-    const btn = andDownload ? $('invSaveDownloadBtn') : $('invSaveBtn');
-    btn.disabled = true; $('invStatus').textContent = 'Saving…';
-    const { ok, data } = await teamApi({ action: 'create_invoice', invoice });
-    btn.disabled = false;
-    if (!ok) { $('invStatus').textContent = 'Error: ' + (data.error || 'failed'); return; }
-    _detailInvoices = [data.invoice].concat(_detailInvoices || []);
-    renderInvoiceListVa(_invCompanyId, { name: invoice.client_name });
-    $('invStatus').textContent = 'Saved ✓';
-    if (andDownload) downloadInvoicePDF(data.invoice);
-    setTimeout(closeInvModal, andDownload ? 400 : 200);
-  }
-
-  // ── PDF (self-contained, mirrors ql-mc's invoice PDF) ──
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script'); s.src = src;
-      s.onload = resolve; s.onerror = () => reject(new Error('Failed to load ' + src));
-      document.head.appendChild(s);
-    });
-  }
-  async function ensureJsPDF() {
-    if (window.jspdf?.jsPDF) return;
-    await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-    await loadScript('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js');
-    if (!window.jspdf?.jsPDF) throw new Error('Could not load PDF library');
-  }
-  async function downloadInvoicePDF(inv) {
-    try {
-      const biz = _bankRO || {};
-      await ensureJsPDF();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-      const pw = 210, mx = 15;
-      let y = 0;
-      doc.setFillColor(15, 23, 42); doc.rect(0, 0, pw, 36, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(255, 255, 255);
-      doc.text(biz.business_name || 'QuoteLeads', mx, 23);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(160, 174, 192);
-      doc.text('TAX INVOICE', pw - mx, 16, { align: 'right' });
-      doc.setFontSize(14); doc.setTextColor(255, 255, 255);
-      doc.text(inv.invoice_number || '', pw - mx, 26, { align: 'right' });
-      y = 44;
-      doc.setFontSize(8); doc.setTextColor(120, 130, 140); doc.setFont('helvetica', 'normal');
-      doc.text('FROM', mx, y); doc.text('TO', pw / 2 + 5, y); y += 5;
-      doc.setFontSize(10); doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'bold');
-      doc.text(biz.business_name || 'QuoteLeads', mx, y); doc.text(inv.client_name || '-', pw / 2 + 5, y); y += 5;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-      if (biz.abn) { doc.text('ABN: ' + biz.abn, mx, y); }
-      let ry = y; if (inv.client_email) { doc.text(inv.client_email, pw / 2 + 5, ry); }
-      y += 8;
-      doc.setFillColor(245, 247, 250); doc.rect(mx, y, pw - mx * 2, 16, 'F');
-      doc.setFontSize(8); doc.setTextColor(100, 110, 120);
-      const detY = y + 5;
-      doc.text('Invoice Date', mx + 3, detY); doc.text('Due Date', mx + 48, detY); doc.text('Offer Type', mx + 93, detY);
-      if (inv.delivery_period_start) doc.text('Delivery Period', mx + 133, detY);
-      doc.setFontSize(9); doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'bold');
-      doc.text(String(inv.invoice_date || '-'), mx + 3, detY + 6);
-      doc.text(String(inv.due_date || '-'), mx + 48, detY + 6);
-      doc.text(inv.offer_type === 'managed' ? 'Managed Advertising' : 'Pay-Per-Lead', mx + 93, detY + 6);
-      if (inv.delivery_period_start) doc.text((inv.delivery_period_start || '') + ' to ' + (inv.delivery_period_end || ''), mx + 133, detY + 6);
-      doc.setFont('helvetica', 'normal'); y += 22;
-      const tableBody = (inv.line_items || []).map(li => [
-        String(li.description || '').replace(/[^\x20-\x7E]/g, ' '),
-        String(li.qty || 0), '$' + Number(li.unit_price || 0).toFixed(2), '$' + Number(li.line_total || 0).toFixed(2),
-      ]);
-      doc.autoTable({
-        startY: y, margin: { left: mx, right: mx },
-        head: [['Description', 'Qty', 'Unit Price', 'Line Total']], body: tableBody, theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 3 }, headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
-        columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 28, halign: 'right' }, 3: { cellWidth: 30, halign: 'right' } },
-      });
-      y = doc.lastAutoTable.finalY + 6;
-      const totX = pw - mx - 65;
-      doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-      doc.text('Subtotal', totX, y); doc.text('$' + Number(inv.subtotal || 0).toFixed(2), pw - mx, y, { align: 'right' }); y += 5;
-      doc.text('GST (10%) ' + (inv.gst_type === 'inclusive' ? '(incl.)' : ''), totX, y);
-      doc.text('$' + Number(inv.gst_amount || 0).toFixed(2), pw - mx, y, { align: 'right' }); y += 6;
-      doc.setFillColor(15, 23, 42); doc.rect(totX - 3, y - 4, pw - mx - totX + 3, 9, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
-      doc.text('TOTAL', totX, y + 2); doc.text('$' + Number(inv.total || 0).toFixed(2), pw - mx, y + 2, { align: 'right' });
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30); y += 16;
-      doc.setFontSize(9); doc.setTextColor(100, 110, 120); doc.text('PAYMENT DETAILS', mx, y); y += 6;
-      doc.setTextColor(30, 30, 30);
-      if (inv.payment_details) {
-        const safe = inv.payment_details.replace(/[^\x20-\x7E\n]/g, ' ');
-        const lines = doc.splitTextToSize(safe, pw - mx * 2); doc.text(lines, mx, y); y += lines.length * 4.5 + 4;
-      } else if (biz.bsb || biz.account_number) {
-        doc.setFont('helvetica', 'bold'); doc.text('Bank Transfer', mx, y); doc.setFont('helvetica', 'normal'); y += 5;
-        if (biz.account_name) { doc.text('Account Name: ' + biz.account_name, mx, y); y += 4; }
-        if (biz.bsb) { doc.text('BSB: ' + biz.bsb, mx, y); y += 4; }
-        if (biz.account_number) { doc.text('Account: ' + biz.account_number, mx, y); y += 4; }
-        if (biz.bank_name) { doc.text('Bank: ' + biz.bank_name, mx, y); y += 4; }
-      } else if (biz.payment_details) {
-        const lines = doc.splitTextToSize(String(biz.payment_details).replace(/[^\x20-\x7E\n]/g, ' '), pw - mx * 2);
-        doc.text(lines, mx, y); y += lines.length * 4.5 + 4;
-      }
-      if (inv.notes) {
-        y += 4; doc.setFontSize(8); doc.setTextColor(120, 130, 140); doc.text('NOTES', mx, y); y += 5;
-        doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-        const noteLines = doc.splitTextToSize(String(inv.notes).replace(/[^\x20-\x7E\n]/g, ' '), pw - mx * 2);
-        doc.text(noteLines, mx, y);
-      }
-      doc.save((inv.invoice_number || 'invoice') + '.pdf');
-    } catch (e) {
-      alert('PDF generation failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
   }
 
   window.addEventListener('DOMContentLoaded', () => {
