@@ -48,6 +48,20 @@ const MIN_DAILY_BUDGET = 5;
 // Meta takes a radius of 1 to 80 km around a point.
 const pinRadius = (v: unknown) => Math.min(80, Math.max(1, Math.round(Number(v)) || DEFAULT_RADIUS_KM));
 
+// Meta names a verified advertiser on every ad set delivered to Australia
+// (from October 2026; Ads Manager asks for it too). It is QuoteLeads, the
+// agency running the ads, unless a client has their own verified identity set
+// on their campaign settings. The ad itself still runs from the client's Page.
+const QL_ADVERTISER_ID = Deno.env.get("META_VERIFIED_ADVERTISER_ID") || "1065750507426304";
+function advertiser(company: Row) {
+  const own = String(((company.campaign_settings || {}) as Row).advertiser_id || "").replace(/\D/g, "");
+  const id = own || QL_ADVERTISER_ID;
+  return {
+    regional_regulated_categories: ["AUSTRALIA_UNIVERSAL"],
+    regional_regulation_identities: { universal_beneficiary: id, universal_payer: id },
+  };
+}
+
 // The ad rules check's special category, as Meta names it.
 const SPECIAL_CATEGORY: Record<string, string> = {
   financial_products_and_services: "FINANCIAL_PRODUCTS_SERVICES",
@@ -263,6 +277,9 @@ async function saveSettings(admin: Admin, company: Row, body: Row) {
     if (u && !/^https:\/\/\S+\.\S+/.test(u)) throw new Error("The privacy policy link must start with https://");
     next.privacy_url = u || null;
   }
+  // A client's own verified advertiser identity, when they have one; blank
+  // goes back to QuoteLeads.
+  if ("advertiser_id" in body) next.advertiser_id = String(body.advertiser_id || "").replace(/\D/g, "") || null;
   if ("locations" in body) {
     const list = Array.isArray(body.locations) ? body.locations as Row[] : [];
     next.locations = list.filter((p) => p?.key).slice(0, 50).map((p) => {
@@ -386,7 +403,7 @@ async function advance(admin: Admin, build: Row, actor: Actor): Promise<string> 
           daily_budget: Math.round(Number(settings.daily_budget) * 100),
           billing_event: "IMPRESSIONS", optimization_goal: "LEAD_GENERATION", bid_strategy: "LOWEST_COST_WITHOUT_CAP",
           destination_type: "ON_AD", promoted_object: { page_id: ids.page },
-          targeting: targeting(settings),
+          targeting: targeting(settings), ...advertiser(company),
         },
       })).id);
       await save({ stage: "ads", meta });
@@ -729,6 +746,7 @@ async function selfTest(company: Row) {
         name: tag, campaign_id: made.campaign, status: "PAUSED", daily_budget: 1000,
         billing_event: "IMPRESSIONS", optimization_goal: "LEAD_GENERATION", bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         destination_type: "ON_AD", promoted_object: { page_id: ids.page }, targeting: targeting(settings),
+        ...advertiser(company),
       },
     })).id)) : null;
     if (made.form && adset) {
