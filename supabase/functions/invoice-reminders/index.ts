@@ -11,6 +11,10 @@
 //      that client to go in, check the invoice and send it. Once per payment
 //      date (invoice_reminders_sent), however many times this runs.
 //
+// While it runs each morning it also chases anyone who paid for a system on
+// /buy-system but hasn't filled in the onboarding form (which is what creates
+// their account): one reminder to them, and a heads-up to the office.
+//
 // pg_cron calls it with the autopilot secret; nothing else can.
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -93,5 +97,35 @@ Deno.serve(async (req: Request) => {
     });
     told.push(`${co.name} (${names.join(", ") || "no VA assigned"})`);
   }
-  return json({ ok: true, synced, told });
+  const chased = await chaseUnonboarded(admin);
+  return json({ ok: true, synced, told, chased });
 });
+
+// Paid on /buy-system at least 20 hours ago, still no onboarding form. Told
+// once each; after that it is the office's call.
+async function chaseUnonboarded(admin: ReturnType<typeof createClient>): Promise<string[]> {
+  const { data: rows } = await admin.from("managed_purchases").select("stripe_session_id, email, metadata, created_at")
+    .is("claimed_at", null).is("reminded_at", null).lt("created_at", new Date(Date.now() - 20 * 3600_000).toISOString());
+  const out: string[] = [];
+  for (const r of (rows ?? []) as Row[]) {
+    const m = (r.metadata || {}) as Record<string, string>;
+    const form = "https://quoteleads.com.au/growth-onboarding?" + new URLSearchParams({
+      paid: "1", first_name: m.first_name || "", last_name: m.last_name || "", company: m.company || "",
+      phone: m.phone || "", email: String(r.email),
+    }).toString();
+    const first = (m.first_name || "").trim() || "there";
+    await sendEmail(String(r.email), "One last step to start your build",
+      `<div style="font-family:system-ui,sans-serif;font-size:15px;color:#1a1a20;line-height:1.65;max-width:560px">
+<p>Hi ${esc(first)},</p>
+<p>Thanks again for coming on board${m.company ? ` with ${esc(m.company)}` : ""}. Before we can start building your system we need a few details about your business: your service area, budget and the jobs you want. It takes about 5 minutes.</p>
+<p><a href="${form}" style="display:inline-block;background:#4797FF;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:500">Fill in the onboarding form</a></p>
+<p>As soon as it's in, your dashboard is set up and we get started.</p>
+<p>The QuoteLeads team</p></div>`);
+    await opsEmail(`Paid but not onboarded: ${m.company || r.email}`,
+      `<p><strong>${esc(m.company || "(no company)")}</strong> paid for the ${esc(m.plan_label || "Branded Lead Gen System")} on ${nice(String(r.created_at).slice(0, 10))} and hasn't filled in the onboarding form, so they have no account yet. They've just been sent a reminder.</p>` +
+      `<p>Email: ${esc(r.email)}<br>Phone: ${esc(m.phone || "-")}</p>`);
+    await admin.from("managed_purchases").update({ reminded_at: new Date().toISOString() }).eq("stripe_session_id", r.stripe_session_id);
+    out.push(String(m.company || r.email));
+  }
+  return out;
+}

@@ -218,7 +218,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 2. VERIFY (the spam gate) ───────────────────────────────────────────
-    const gate = await runSpamGate(email, phoneE164 || phone);
+    // Someone who has paid for a system on /buy-system is not spam: paying is
+    // the check. Payment sends them straight here, so they are let through
+    // without the pipeline lookup.
+    const { data: paid } = await admin.from("managed_purchases").select("stripe_session_id, metadata")
+      .eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const gate = paid
+      ? { pass: true, detail: { reason: `Paid online for the ${(paid.metadata as Record<string, string>)?.plan_label || "Branded Lead Gen System"}`, checked: true, paid: true } }
+      : await runSpamGate(email, phoneE164 || phone);
 
     await admin.from("onboarding_submissions").update({
       gate_status: gate.pass ? "matched" : "held",
@@ -427,7 +434,34 @@ export async function provisionAccount(
     await setStep(admin, companyId, "welcome_email_sent", "skipped", "Account already existed, not re-emailed");
   }
 
+  // A system bought on /buy-system is waiting for this account: apply it now
+  // (plan, build fee, "Paid & signed", the Mission Control client). That lives
+  // in stripe-webhook with the rest of the purchase handling.
+  await claimPurchase(admin, email);
+
   return { ok: true, company_id: companyId };
+}
+
+async function claimPurchase(admin: ReturnType<typeof createClient>, email: string) {
+  const { data: waiting } = await admin.from("managed_purchases").select("stripe_session_id")
+    .eq("email", email).is("claimed_at", null).limit(1).maybeSingle();
+  if (!waiting) return;
+  try {
+    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/stripe-webhook`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-claim-purchase": "1",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ email }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || `HTTP ${res.status}`);
+  } catch (e) {
+    await notifyInternal(admin, "Paid system not applied to the new account",
+      `${email} filled in the onboarding form and has an account, but their paid purchase could not be applied: ${(e as Error).message}. Tick Paid & signed and add them to Mission Control by hand.`);
+  }
 }
 
 // One writer for step state, mirroring team-api's setStep: the log line is part

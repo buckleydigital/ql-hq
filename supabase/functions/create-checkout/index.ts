@@ -101,7 +101,17 @@ serve(async (req) => {
       // make one unless asked.
       customer_creation: 'always',
       metadata,
-      success_url: `https://quoteleads.com.au/payment-success?session_id={CHECKOUT_SESSION_ID}&plan=${planKey}`,
+      // The payment page records the purchase for the ad pixel, then sends
+      // them straight on to the onboarding form, pre-filled with these. The
+      // form is what creates their account.
+      success_url: `https://quoteleads.com.au/payment-success?session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&` +
+        new URLSearchParams({
+          first_name: String(formData.first_name || '').slice(0, 80),
+          last_name: String(formData.last_name || '').slice(0, 80),
+          company: String(formData.company || '').slice(0, 120),
+          phone: String(formData.phone || '').slice(0, 40),
+          email: String(formData.email || '').slice(0, 200),
+        }).toString(),
       cancel_url: `https://quoteleads.com.au/buy-system?tier=${planKey}&cancelled=true`,
       allow_promotion_codes: true,
     })

@@ -18,6 +18,16 @@ const QL_MC_API_URL    = Deno.env.get('QL_MC_API_URL')    // https://<mc-project
 const QL_MC_API_SECRET = Deno.env.get('QL_MC_API_SECRET') // shared secret for ql-hq → ql-mc HTTP calls
 
 serve(async (req) => {
+  // growth-onboarding, once it has created a buyer's account: apply the system
+  // they paid for. Service-role only; a public caller gets nothing from it.
+  if (req.headers.get('x-claim-purchase')) {
+    const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '')
+    if (!bearer || bearer !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) return new Response('Forbidden', { status: 403 })
+    const { email } = await req.json().catch(() => ({})) as { email?: string }
+    const out = await claimManagedPurchase(String(email || ''))
+    return new Response(JSON.stringify(out), { status: out.ok ? 200 : 500, headers: { 'Content-Type': 'application/json' } })
+  }
+
   const sig  = req.headers.get('stripe-signature')!
   const body = await req.text()
 
@@ -607,151 +617,187 @@ async function handlePplSignupPayment(session: Stripe.Checkout.Session, m: Recor
 }
 
 // ── Managed / DFY system signup (Branded Lead Gen System, bought on /buy-system) ──
+// Paying does NOT create the account: the onboarding form does, as for every
+// other client, and the buyer is sent straight to it from the payment page.
+// The purchase waits in managed_purchases until the form claims it
+// (growth-onboarding calls back in with x-claim-purchase), and is applied to
+// the account then. Someone who already has an account (they filled in the
+// form first, or were converted in ql-mc) has it applied straight away.
+// Pay-per-lead first orders are different: they still get their account here.
+type ManagedPurchase = {
+  stripe_session_id: string; email: string; metadata: Record<string, string>
+  stripe_customer_id: string | null; paid_cents: number | null
+}
+
 async function handleManagedSignupPayment(session: Stripe.Checkout.Session, m: Record<string, string>) {
-  console.log('Managed/DFY signup for:', m.email)
+  console.log('Managed/DFY purchase for:', m.email)
   try {
-    const firstName = m.first_name || (m.name ? m.name.trim().split(/\s+/)[0] : '') || 'there'
-    const lastName  = m.last_name  || (m.name ? m.name.trim().split(/\s+/).slice(1).join(' ') : '')
+    const purchase: ManagedPurchase = {
+      stripe_session_id: session.id,
+      email: String(m.email || '').trim().toLowerCase(),
+      metadata: m,
+      stripe_customer_id: (session.customer as string | null) ?? null,
+      // What Stripe actually took, ex GST: after any promo code, before tax.
+      paid_cents: typeof session.amount_total === 'number'
+        ? session.amount_total - (session.total_details?.amount_tax ?? 0)
+        : null,
+    }
+    const { error: saveErr } = await supabase.from('managed_purchases').upsert(purchase, { onConflict: 'stripe_session_id', ignoreDuplicates: true })
+    if (saveErr) throw new Error(`Saving the purchase: ${saveErr.message}`)
 
-    // createUser triggers handle_new_user() which auto-creates a company + profile.
-    // Someone we already made an account for (a pipeline lead converted in
-    // ql-mc, say) keeps it: buying must not fail on "already registered".
-    let userId: string | null = null
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: m.email,
-      email_confirm: true,
-      user_metadata: { full_name: `${firstName} ${lastName}`.trim() },
-    })
-    if (authData?.user) userId = authData.user.id
-    else if (authError && /already|registered|exists/i.test(authError.message)) userId = await findUserIdByEmail(m.email)
-    if (!userId) throw new Error(`Auth: ${authError?.message || 'no user'}`)
-
-    const { data: profileData, error: profileFetchError } = await supabase
-      .from('profiles').select('company_id').eq('id', userId).single()
-    if (profileFetchError) throw new Error(`Profile fetch: ${profileFetchError.message}`)
-    const companyId = profileData.company_id
-
-    // What they told /buy-system before paying. The service area goes on the
-    // company; the rest is kept under dfy_profile.purchase so the team (and the
-    // onboarding form, which keeps this key) can see it instead of asking again.
-    const { data: prior } = await supabase
-      .from('companies').select('dfy_profile, service_area').eq('id', companyId).maybeSingle()
-    const purchaseAnswers = {
-      plan:              m.plan || null,
-      service_location:  m.service_location || null,
-      monthly_lead_goal: m.monthly_lead_goal || null,
-      multi_campaign:    m.multi_campaign || null,
-      google_too:        m.google_too || null,
-      source:            m.source || null,
-      stripe_session:    session.id,
+    const userId = await findUserIdByEmail(purchase.email)
+    if (userId) {
+      await applyManagedPurchase(purchase, userId)
+      return
     }
 
-    const { error: companyError } = await supabase
-      .from('companies')
-      .update({
-        name:               m.company || `${firstName}'s Company`,
-        email:              m.email,
-        phone:              m.phone || null,
-        plan:               'managed',
-        status:             'active',
-        // A payment-mode session only carries a customer when one was created;
-        // never overwrite a customer we already hold with null.
-        ...(session.customer && { stripe_customer_id: session.customer as string }),
-        niche:              m.niche || null,
-        ...(m.service_location && !prior?.service_area && { service_area: m.service_location }),
-        dfy_profile:        { ...((prior?.dfy_profile as Record<string, unknown>) || {}), purchase: purchaseAnswers },
-        // The monthly fee agreed with the build, for when they switch on
-        // ongoing management. The standard build leaves it unset so it follows
-        // the list price in create-management-subscription.
-        ...(m.plan && m.plan !== 'standard' && Number(m.management_fee) > 0
-          && { management_fee_cents: Math.round(Number(m.management_fee) * 100) }),
-      })
-      .eq('id', companyId)
-    if (companyError) throw new Error(`Company: ${companyError.message}`)
-
-    await supabase.from('profiles').upsert({
-      id:         userId,
-      company_id: companyId,
-      full_name:  `${firstName} ${lastName}`.trim(),
-      phone:      m.phone || null,
-      role:       'owner',
-      is_active:  true,
-    })
-
-    // Welcome the buyer with a dashboard magic link.
-    let magicLink = 'https://quoteleadshq.com/dashboard?page=onboarding'
-    try { magicLink = await createMagicLink(m.email, 'onboarding') } catch (e) { console.error('managed magic link:', e) }
-    // The onboarding form (service area, budget, jobs wanted) lives on the
-    // public site. Nothing pointed a buyer at it, so it goes in the welcome
-    // email, pre-filled with what they gave at checkout.
-    const formLink = 'https://quoteleads.com.au/growth-onboarding?' + new URLSearchParams({
-      first_name: firstName === 'there' ? '' : firstName, last_name: lastName,
-      company: m.company || '', phone: m.phone || '', email: m.email,
-    }).toString()
-    const welcomed = await sendManagedWelcomeEmail(m.email, firstName, m.company || '', magicLink, formLink)
-      .then(() => true)
-      .catch((e) => { console.error('managed welcome email:', e); return false })
-
-    // The Team Panel checklist starts from what this purchase already did:
-    // paying is the spam gate, and the account and welcome email exist.
-    // What Stripe actually took, ex GST: after any promo code, before tax. The
-    // list price in metadata is kept for the notes so a discount is visible.
-    const listFee  = Number(m.amount_charged) || 0
-    const paidCents = typeof session.amount_total === 'number'
-      ? session.amount_total - (session.total_details?.amount_tax ?? 0)
-      : null
-    const buildFee = paidCents !== null ? Math.max(0, paidCents) / 100 : listFee
-    const discounted = buildFee < listFee
-    const feeText  = `$${buildFee.toLocaleString('en-AU')} + GST` +
-      (discounted ? ` (list $${listFee.toLocaleString('en-AU')}, discount applied)` : '')
-    const monthly  = Number(m.management_fee) || 0
-    const label    = m.plan_label || 'Branded Lead Gen System'
-    await markFulfilment(companyId, [
-      ['paid_signed',     `Paid online: ${label}, ${feeText}`],
-      ['signup_verified', buildFee > 0 ? 'Paid by card' : 'Checkout completed with a 100% discount'],
-      ['account_created', null],
-      ...(welcomed ? [['welcome_email_sent', null] as [string, string | null]] : []),
-    ])
-
-    // Mission Control: the lead to Closed Won, a managed client in Onboarding
-    // and the build fee logged, then the checklist summary on that client.
-    const mcSync = await syncManagedPurchaseToMc({
-      ql_hq_company_id: companyId,
-      name:             `${firstName} ${lastName}`.trim(),
-      company_name:     m.company || '',
-      email:            m.email,
-      phone:            m.phone || '',
-      niche:            m.niche || m.trade || '',
-      tier_label:       label,
-      build_fee:        buildFee,
-      management_fee:   monthly,
-      goal:             m.monthly_lead_goal || '',
-    })
-
-    // Notify ops that a DFY system was purchased.
+    const label = m.plan_label || 'Branded Lead Gen System'
     await sendInternalEmail(
-      `🚀 New system purchase - ${m.company || m.email} (${label})`,
-      `${mcSync.ok ? '' : `<p style="color:#b42318"><strong>Mission Control was NOT updated:</strong> ${mcSync.error}. Add the client there by hand.</p>`}
-       <p><strong>${m.company || '(no company)'}</strong> just bought the ${label}: ${feeText}, then $${monthly.toLocaleString('en-AU')}/mo + GST if they keep management after the first 30 days.</p>
+      `💳 System paid - ${m.company || m.email} (${label}), waiting on onboarding`,
+      `<p><strong>${m.company || '(no company)'}</strong> just paid for the ${label}. They've been sent to the onboarding form; their account, the Team Panel checklist and the Mission Control client are set up when they submit it.</p>
        <table style="border-collapse:collapse;font-size:14px">
-         <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
-         <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
+         <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${[m.first_name, m.last_name].filter(Boolean).join(' ') || m.name || '-'}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${m.email}</td></tr>
          <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${m.phone || '-'}</td></tr>
-         <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}</td></tr>
-         <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${m.monthly_lead_goal || '-'}</td></tr>
-         <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${m.service_location || '-'}</td></tr>
        </table>
-       <p style="margin-top:14px">Account provisioned as <strong>managed</strong> and active. Time to build their system.</p>`
+       <p style="margin-top:14px">If they haven't filled it in by tomorrow morning you'll get a reminder.</p>`
     )
-    console.log('Managed/DFY provisioned:', companyId)
   } catch (err) {
     console.error('handleManagedSignupPayment error:', err)
     await sendInternalEmail(
-      `⚠️ DFY purchase provisioning failed - ${m.email}`,
+      `⚠️ DFY purchase could not be recorded - ${m.email}`,
       `<p><strong>Email:</strong> ${m.email}</p><p><strong>Stripe Session:</strong> ${session.id}</p><pre>${String(err)}</pre>`
     )
   }
+}
+
+// The onboarding form created the buyer's account: apply their paid purchase.
+async function claimManagedPurchase(email: string): Promise<{ ok: boolean; claimed: boolean; error?: string }> {
+  const want = String(email || '').trim().toLowerCase()
+  const { data: row } = await supabase.from('managed_purchases').select('*')
+    .eq('email', want).is('claimed_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (!row) return { ok: true, claimed: false }
+  const userId = await findUserIdByEmail(want)
+  if (!userId) return { ok: false, claimed: false, error: 'No account for that email yet' }
+  try {
+    await applyManagedPurchase(row as ManagedPurchase, userId)
+    return { ok: true, claimed: true }
+  } catch (e) {
+    return { ok: false, claimed: false, error: (e as Error).message }
+  }
+}
+
+// Put a paid system purchase on the buyer's account: the plan and what they
+// told checkout, "Paid & signed", the Mission Control client, and the team told.
+async function applyManagedPurchase(p: ManagedPurchase, userId: string) {
+  const m = p.metadata || {}
+  const firstName = m.first_name || (m.name ? m.name.trim().split(/\s+/)[0] : '') || 'there'
+  const lastName  = m.last_name  || (m.name ? m.name.trim().split(/\s+/).slice(1).join(' ') : '')
+
+  const { data: profileData, error: profileFetchError } = await supabase
+    .from('profiles').select('company_id').eq('id', userId).single()
+  if (profileFetchError) throw new Error(`Profile fetch: ${profileFetchError.message}`)
+  const companyId = profileData.company_id
+
+  // What they told /buy-system before paying. The service area goes on the
+  // company; the rest is kept under dfy_profile.purchase so the team (and the
+  // onboarding form, which keeps this key) can see it instead of asking again.
+  const { data: prior } = await supabase
+    .from('companies').select('dfy_profile, service_area').eq('id', companyId).maybeSingle()
+  const purchaseAnswers = {
+    plan:              m.plan || null,
+    service_location:  m.service_location || null,
+    monthly_lead_goal: m.monthly_lead_goal || null,
+    multi_campaign:    m.multi_campaign || null,
+    google_too:        m.google_too || null,
+    source:            m.source || null,
+    stripe_session:    p.stripe_session_id,
+  }
+
+  const { error: companyError } = await supabase
+    .from('companies')
+    .update({
+      name:               m.company || `${firstName}'s Company`,
+      email:              m.email,
+      phone:              m.phone || null,
+      plan:               'managed',
+      status:             'active',
+      // A payment-mode session only carries a customer when one was created;
+      // never overwrite a customer we already hold with null.
+      ...(p.stripe_customer_id && { stripe_customer_id: p.stripe_customer_id }),
+      niche:              m.niche || null,
+      ...(m.service_location && !prior?.service_area && { service_area: m.service_location }),
+      dfy_profile:        { ...((prior?.dfy_profile as Record<string, unknown>) || {}), purchase: purchaseAnswers },
+      // The monthly fee agreed with the build, for when they switch on
+      // ongoing management. The standard build leaves it unset so it follows
+      // the list price in create-management-subscription.
+      ...(m.plan && m.plan !== 'standard' && Number(m.management_fee) > 0
+        && { management_fee_cents: Math.round(Number(m.management_fee) * 100) }),
+    })
+    .eq('id', companyId)
+  if (companyError) throw new Error(`Company: ${companyError.message}`)
+
+  await supabase.from('profiles').upsert({
+    id:         userId,
+    company_id: companyId,
+    full_name:  `${firstName} ${lastName}`.trim(),
+    phone:      m.phone || null,
+    role:       'owner',
+    is_active:  true,
+  })
+
+  // The Team Panel checklist starts from what this purchase already did:
+  // paying is the spam gate. The account and the welcome email are the
+  // onboarding form's, so they are ticked there.
+  // What Stripe actually took, ex GST: after any promo code, before tax. The
+  // list price in metadata is kept for the notes so a discount is visible.
+  const listFee  = Number(m.amount_charged) || 0
+  const paidCents = typeof p.paid_cents === 'number' ? p.paid_cents : null
+  const buildFee = paidCents !== null ? Math.max(0, paidCents) / 100 : listFee
+  const discounted = buildFee < listFee
+  const feeText  = `$${buildFee.toLocaleString('en-AU')} + GST` +
+    (discounted ? ` (list $${listFee.toLocaleString('en-AU')}, discount applied)` : '')
+  const monthly  = Number(m.management_fee) || 0
+  const label    = m.plan_label || 'Branded Lead Gen System'
+  await markFulfilment(companyId, [
+    ['paid_signed',     `Paid online: ${label}, ${feeText}`],
+    ['signup_verified', buildFee > 0 ? 'Paid by card' : 'Checkout completed with a 100% discount'],
+  ])
+
+  // Mission Control: the lead to Closed Won, a managed client in Onboarding
+  // and the build fee logged, then the checklist summary on that client.
+  const mcSync = await syncManagedPurchaseToMc({
+    ql_hq_company_id: companyId,
+    name:             `${firstName} ${lastName}`.trim(),
+    company_name:     m.company || '',
+    email:            m.email,
+    phone:            m.phone || '',
+    niche:            m.niche || m.trade || '',
+    tier_label:       label,
+    build_fee:        buildFee,
+    management_fee:   monthly,
+    goal:             m.monthly_lead_goal || '',
+  })
+
+  // Notify ops that a DFY system was purchased.
+  await sendInternalEmail(
+    `🚀 New system purchase - ${m.company || m.email} (${label})`,
+    `${mcSync.ok ? '' : `<p style="color:#b42318"><strong>Mission Control was NOT updated:</strong> ${mcSync.error}. Add the client there by hand.</p>`}
+     <p><strong>${m.company || '(no company)'}</strong> just bought the ${label}: ${feeText}, then $${monthly.toLocaleString('en-AU')}/mo + GST if they keep management after the first 30 days.</p>
+     <table style="border-collapse:collapse;font-size:14px">
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Name</td><td>${firstName} ${lastName}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${m.email}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${m.phone || '-'}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${m.monthly_lead_goal || '-'}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${m.service_location || '-'}</td></tr>
+     </table>
+     <p style="margin-top:14px">Their account is set up as <strong>managed</strong> and they're in Mission Control. Time to build their system.</p>`
+  )
+  await supabase.from('managed_purchases').update({ company_id: companyId, claimed_at: new Date().toISOString() })
+    .eq('stripe_session_id', p.stripe_session_id)
+  console.log('Managed/DFY purchase applied:', companyId)
 }
 
 // An existing auth user's id by email, for a buyer who already has an account.
@@ -975,60 +1021,6 @@ async function sendPplWelcomeEmail(
             </div>
             <p style="font-size:12px;color:#999;margin:24px 0 0;line-height:1.6">
               Questions? Reply to this email or reach us on WhatsApp.<br>
-              This login link expires in 24 hours.
-            </p>
-          </div>
-        </div>
-      </body></html>`,
-    }),
-  })
-  if (!emailRes.ok) {
-    const errBody = await emailRes.text()
-    throw new Error(`Resend error ${emailRes.status}: ${errBody}`)
-  }
-}
-
-async function sendManagedWelcomeEmail(to: string, firstName: string, company: string, magicLink: string, formLink: string) {
-  const emailRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'QuoteLeads <onboarding@quoteleads.com.au>',
-      to,
-      subject: `You're in, ${firstName}. Let's build your system.`,
-      html: `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px">
-        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
-          <div style="background:#0a0b0f;padding:28px 36px">
-            <img src="https://quoteleads.com.au/quoteleads-logo-white.png" alt="QuoteLeads" style="height:30px">
-          </div>
-          <div style="padding:36px">
-            <h1 style="font-size:22px;font-weight:600;color:#0a0b0f;margin:0 0 8px">You're in, ${firstName}.</h1>
-            <p style="color:#666;font-size:15px;line-height:1.6;margin:0 0 28px">
-              Thanks for coming on board${company ? ` with ${company}` : ''}. Your Branded Lead Gen System is locked in and we're getting the build underway. You'll receive your previews within 24-48 hours, and you'll shortly hear from your account manager to walk you through everything.
-            </p>
-            <p style="font-size:14px;font-weight:600;color:#0a0b0f;margin:0 0 10px">Two things from you to get started:</p>
-            <p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 12px">
-              <strong>1.</strong> Tell us about your business: service area, budget and the jobs you want (about 5 minutes).
-            </p>
-            <a href="${formLink}" style="display:inline-block;background:#4797FF;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:20px">
-              Fill In the Onboarding Form →
-            </a>
-            <p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 12px">
-              <strong>2.</strong> Give us access to your Facebook Page and ad account. Your dashboard walks you through it.
-            </p>
-            <a href="${magicLink}" style="display:inline-block;background:#0a0b0f;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:500;margin-bottom:32px">
-              Access My Dashboard →
-            </a>
-            <div style="background:#f8f9fb;border-radius:8px;padding:18px;margin-bottom:24px">
-              <p style="font-size:13px;font-weight:600;color:#0a0b0f;margin:0 0 10px">What happens next:</p>
-              <ul style="font-size:13px;color:#555;line-height:1.9;margin:0;padding-left:18px">
-                <li>You'll receive your landing page &amp; campaign previews within 24-48 hours</li>
-                <li>Your account manager will be in touch shortly to kick off the build</li>
-                <li>AI follow-up and CRM pipeline get switched on</li>
-              </ul>
-            </div>
-            <p style="font-size:12px;color:#999;margin:24px 0 0;line-height:1.6">
-              Questions? Just reply to this email.<br>
               This login link expires in 24 hours.
             </p>
           </div>
