@@ -131,7 +131,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 td strong{display:block;font-size:13px;margin-bottom:3px;font-weight:500}
 
 /* ── Kanban ─────────────────────────────────────── */
-.kanban{display:grid;grid-template-columns:repeat(6,minmax(220px,1fr));gap:12px;overflow:auto}
+.kanban{display:grid;grid-template-columns:repeat(7,minmax(220px,1fr));gap:12px;overflow:auto}
 .col{background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:340px;transition:background .15s,border-color .15s}
 .col.drag-over{background:color-mix(in srgb,var(--accent) 8%,var(--surface-2));border-color:var(--accent)}
 .colhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -653,7 +653,7 @@ body.plan-ppl .ppl-only{display:revert !important}
 body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261026b"></script>
+<script defer src="./dashboard-supabase.js?v=20261028a"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -1038,6 +1038,30 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
           <div class="panel-h"><div><h2>Pipeline Board</h2><p>Drag cards between columns to update lead status.</p></div></div>
           <div class="panel-b"><div id="kanbanBoard" class="kanban"></div></div>
         </section>
+        <section class="panel" style="margin-top:20px">
+          <div class="panel-h"><div><h2>No-Answer Follow-Ups</h2><p>When you move a lead to No Answer, we text and email them on day 1, 3, 7 and 10 until you move them out, or they text back.</p></div></div>
+          <div class="panel-b">
+            <form id="noAnswerForm" class="stack">
+              <div class="settings-grid">
+                <div class="field settings-full">
+                  <label class="toggle-item"><input id="noAnswerEnabled" type="checkbox"><span class="toggle-label">Send no-answer follow-ups</span></label>
+                  <span class="field-hint">Off by default. Nobody who has opted out of texts is sent one, and a lead who replies isn't followed up again.</span>
+                </div>
+                <div class="field">
+                  <label class="toggle-item"><input id="noAnswerSms" type="checkbox"><span class="toggle-label">Texts</span></label>
+                  <span class="field-hint" id="noAnswerSmsHint"></span>
+                </div>
+                <div class="field">
+                  <label class="toggle-item"><input id="noAnswerEmail" type="checkbox"><span class="toggle-label">Emails</span></label>
+                  <span class="field-hint">Sent in your business's name. Replies come to you.</span>
+                </div>
+                <div class="field settings-full"><span class="field-hint">Use {{first_name}} for the lead's name and {{business_name}} for yours. Leave a message blank to skip it that day.</span></div>
+                <div id="noAnswerSteps" class="settings-full stack" style="gap:12px"></div>
+              </div>
+              <div class="actions"><button class="btn2" type="submit">Save No-Answer Follow-Ups</button></div>
+            </form>
+          </div>
+        </section>
       </div>
 
       <!-- Quotes -->
@@ -1133,6 +1157,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
                   <select id="bulkSmsStageFilter">
                     <option value="all">All Leads with Phone Numbers</option>
                     <option value="new_lead">New Lead</option>
+                    <option value="no_answer">No Answer</option>
                     <option value="follow_up">Qualifying</option>
                     <option value="quote_in_progress">Quote in Progress</option>
                     <option value="quoted">Quoted</option>
@@ -2298,7 +2323,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
           <div class="field"><label for="leadPostcode">Postcode</label><input id="leadPostcode" name="postcode" type="text"></div>
           <div class="full"><label for="leadAddress">Address</label><input id="leadAddress" name="address" type="text"></div>
           <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source"><option value="">Select source</option><option value="PPL">PPL</option><option value="QuoteLeads PPL">QuoteLeads PPL</option><option value="Google">Google</option><option value="Meta">Meta</option><option value="Website/Organic">Website/Organic</option><option value="Other">Other</option></select></div>
-          <div class="field"><label for="leadStatus">Opportunity Status</label><select id="leadStatus" name="status"><option>New Lead</option><option>Qualifying</option><option>Quote in Progress</option><option>Quoted</option><option>Closed Won</option><option>Closed Lost</option></select></div>
+          <div class="field"><label for="leadStatus">Opportunity Status</label><select id="leadStatus" name="status"><option>New Lead</option><option>No Answer</option><option>Qualifying</option><option>Quote in Progress</option><option>Quoted</option><option>Closed Won</option><option>Closed Lost</option></select></div>
           <div class="field"><label for="leadValue">Estimated Value</label><input id="leadValue" name="value" type="number" min="0" step="0.01"></div>
           <div class="full"><label for="leadNotes">Notes</label><textarea id="leadNotes" name="notes"></textarea></div>
         </div>
@@ -2532,6 +2557,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
             <label>Status</label>
             <select id="oppOverviewStatus">
               <option>New Lead</option>
+              <option>No Answer</option>
               <option>Qualifying</option>
               <option>Quote in Progress</option>
               <option>Quoted</option>

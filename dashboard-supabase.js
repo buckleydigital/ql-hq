@@ -80,6 +80,7 @@ function updateThemeIcon() {
 // ─── Pipeline stage labels ────────────────────────────────────────────────────
 const STAGE_LABELS = {
   new_lead:          "New Lead",
+  no_answer:         "No Answer",
   follow_up:         "Qualifying",
   quote_in_progress: "Quote in Progress",
   quoted:            "Quoted",
@@ -683,6 +684,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ── Reviews ──────────────────────────────────────────────────────────────
   document.getElementById("reviewSettingsForm")?.addEventListener("submit", handleReviewSettingsSave);
+  document.getElementById("noAnswerForm")?.addEventListener("submit", handleNoAnswerSave);
 
   // ── Conversations ─────────────────────────────────────────────────────────
   document.getElementById("convSendForm")?.addEventListener("submit", handleSendMessage);
@@ -1518,7 +1520,7 @@ function renderRecentLeads(leads) {
 function renderPipelineSnapshot(leads) {
   const el = document.getElementById("pipelineSnapshotPanel");
   if (!el) return;
-  const STAGES = ["new_lead","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
+  const STAGES = ["new_lead","no_answer","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
   if (!leads.length) {
     el.innerHTML = `<div class="empty"><p>No pipeline data yet.</p></div>`;
     return;
@@ -3043,11 +3045,84 @@ async function handleSaleSave(e) {
   }
 }
 
+// ─── No-answer follow-ups ─────────────────────────────────────────────────────
+// A lead moved to No Answer gets a text and an email on day 1, 3, 7 and 10,
+// when switched on here (no-answer-followups sends them each morning). The
+// defaults match the function's; a client can change every word.
+const NO_ANSWER_DAYS = [1, 3, 7, 10];
+const NO_ANSWER_DEFAULTS = {
+  1: { sms: "Hi {{first_name}}, it's {{business_name}}. We tried calling about your enquiry. When's a good time for a quick chat?",
+       subject: "Sorry we missed you, {{first_name}}",
+       email: "Hi {{first_name}},\n\nThanks for your enquiry. We tried giving you a call but couldn't catch you.\n\nWhat's a good time to chat? Just reply with a time that suits and we'll call you then.\n\n{{business_name}}" },
+  3: { sms: "Hi {{first_name}}, {{business_name}} here following up on your enquiry. Reply with a time that suits and we'll give you a call.",
+       subject: "Following up on your enquiry",
+       email: "Hi {{first_name}},\n\nJust following up on your enquiry. We've tried calling but haven't been able to reach you.\n\nIf you reply with a day and time that suits, we'll call you then.\n\n{{business_name}}" },
+  7: { sms: "Hi {{first_name}}, are you still after help with your enquiry? Reply YES and {{business_name}} will give you a call.",
+       subject: "Still need a hand, {{first_name}}?",
+       email: "Hi {{first_name}},\n\nWe didn't want your enquiry to slip through the cracks. Are you still looking for help?\n\nJust reply YES and we'll give you a call to sort out the details.\n\n{{business_name}}" },
+  10: { sms: "Hi {{first_name}}, last message from {{business_name}}. If you'd still like a quote, just reply and we'll be in touch.",
+        subject: "Should we close off your enquiry?",
+        email: "Hi {{first_name}},\n\nWe've tried to reach you a few times about your enquiry, so this will be our last email.\n\nIf you'd still like a quote, just reply and we'll call you whenever suits. Otherwise, all the best.\n\n{{business_name}}" },
+};
+function noAnswerDay(since) {
+  const d = (x) => new Date(x).toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+  return Math.round((Date.parse(d(Date.now())) - Date.parse(d(since))) / 86400000);
+}
+
+async function loadNoAnswerSettings() {
+  const box = document.getElementById("noAnswerSteps");
+  if (!box || !currentCompanyId) return;
+  const { data: cfg } = await sb.from("sms_agent_config")
+    .select("no_answer_enabled, no_answer_sms, no_answer_email, no_answer_messages, twilio_number")
+    .eq("company_id", currentCompanyId).maybeSingle();
+  setCheckboxValue("noAnswerEnabled", !!cfg?.no_answer_enabled);
+  setCheckboxValue("noAnswerSms", cfg ? cfg.no_answer_sms !== false : true);
+  setCheckboxValue("noAnswerEmail", cfg ? cfg.no_answer_email !== false : true);
+  const saved = Array.isArray(cfg?.no_answer_messages) ? cfg.no_answer_messages : [];
+  const hint = document.getElementById("noAnswerSmsHint");
+  if (hint) hint.textContent = cfg?.twilio_number ? `Texts go from ${cfg.twilio_number} and use your SMS credits.` : "Texts need an SMS number set up on your account.";
+  box.innerHTML = NO_ANSWER_DAYS.map((d) => {
+    const st = { ...NO_ANSWER_DEFAULTS[d], ...(saved.find((x) => Number(x.day) === d) || {}) };
+    return `<div class="field settings-full" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px">
+      <label style="font-weight:700">Day ${d}</label>
+      <label for="naSms${d}" style="margin-top:6px">Text</label>
+      <textarea id="naSms${d}" rows="2" maxlength="300">${esc(st.sms || "")}</textarea>
+      <label for="naSubject${d}" style="margin-top:6px">Email subject</label>
+      <input id="naSubject${d}" type="text" value="${esc(st.subject || "").replace(/"/g, "&quot;")}">
+      <label for="naEmail${d}" style="margin-top:6px">Email</label>
+      <textarea id="naEmail${d}" rows="5">${esc(st.email || "")}</textarea>
+    </div>`;
+  }).join("");
+}
+
+async function handleNoAnswerSave(e) {
+  e.preventDefault();
+  if (!currentCompanyId) return;
+  const messages = NO_ANSWER_DAYS.map((d) => ({
+    day: d,
+    sms: document.getElementById(`naSms${d}`)?.value.trim() || "",
+    subject: document.getElementById(`naSubject${d}`)?.value.trim() || "",
+    email: document.getElementById(`naEmail${d}`)?.value.trim() || "",
+  }));
+  const half = messages.find((m) => !!m.subject !== !!m.email);
+  if (half) { toast(`Day ${half.day}: give the email a subject and a message, or leave both blank.`, true); return; }
+  const { error } = await sb.from("sms_agent_config").upsert({
+    company_id: currentCompanyId,
+    no_answer_enabled: document.getElementById("noAnswerEnabled")?.checked ?? false,
+    no_answer_sms: document.getElementById("noAnswerSms")?.checked ?? true,
+    no_answer_email: document.getElementById("noAnswerEmail")?.checked ?? true,
+    no_answer_messages: messages,
+  }, { onConflict: "company_id" });
+  if (error) { toast(error.message, true); return; }
+  toast("No-answer follow-ups saved.");
+}
+
 // ─── Pipeline / Kanban ────────────────────────────────────────────────────────
-const KANBAN_STAGES = ["new_lead","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
+const KANBAN_STAGES = ["new_lead","no_answer","follow_up","quote_in_progress","quoted","closed_won","closed_lost"];
 
 async function loadPipeline() {
   if (!currentCompanyId) return;
+  loadNoAnswerSettings();
   try {
     const { data } = await sb
       .from("leads")
@@ -3098,6 +3173,7 @@ function buildKanban(leads) {
                   ${l.ai_score != null ? `<span class="chip ${aiStatusChipClass(l)}" style="font-size:10px">${aiScoreDisplay(l)}</span>` : '<span></span>'}
                   <span style="font-size:11px;color:${isOverdue ? '#c53535' : 'var(--muted)'}${isOverdue ? ';font-weight:600' : ''}">${ageLabel}</span>
                 </div>
+                ${l.pipeline_stage === 'no_answer' && l.pipeline_stage_changed_at ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Day ${noAnswerDay(l.pipeline_stage_changed_at)} in No Answer</div>` : ''}
               </div>`;
               }).join("")
             : `<div class="kanban-drop-hint">Drop leads here</div>`}

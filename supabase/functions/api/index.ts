@@ -527,7 +527,7 @@ async function handlePipeline(
   db: ReturnType<typeof createClient>,
   companyId: string,
 ) {
-  const stages = ["new_lead", "follow_up", "quote_in_progress", "quoted", "closed_won", "closed_lost"];
+  const stages = ["new_lead", "no_answer", "follow_up", "quote_in_progress", "quoted", "closed_won", "closed_lost"];
   const result: Record<string, number> = {};
 
   for (const stage of stages) {
