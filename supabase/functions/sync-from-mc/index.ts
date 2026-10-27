@@ -426,6 +426,21 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    // ── action: va_load ─────────────────────────────────────────────────────
+    // Each VA and the companies assigned to them, for ql-mc's clients-per-VA
+    // guardrail (ql-mc counts only the ones it has as active).
+    if (action === 'va_load') {
+      const { data: vas } = await supabase
+        .from('profiles').select('id, full_name').eq('is_team', true)
+      const { data: assigns } = await supabase.from('team_assignments').select('team_user_id, company_id')
+      return json({
+        vas: (vas || []).map((v: Record<string, unknown>) => ({
+          id: v.id, name: v.full_name || '',
+          company_ids: (assigns || []).filter((a: Record<string, unknown>) => a.team_user_id === v.id).map((a: Record<string, unknown>) => a.company_id),
+        })),
+      })
+    }
+
     // ── action: assign_va ───────────────────────────────────────────────────
     // Mirrors team-api's assign, including the "you have a new client" email, so
     // assigning from ql-mc behaves exactly like assigning from /admin.
