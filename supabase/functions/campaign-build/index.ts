@@ -83,7 +83,7 @@ type Settings = {
   sources: Record<string, string>;
 };
 type BuildMeta = {
-  page_name?: string; form_id?: string; form_name?: string; campaign_id?: string; adset_id?: string;
+  page_name?: string; instagram_id?: string | null; form_id?: string; form_name?: string; campaign_id?: string; adset_id?: string;
   ads?: Record<string, { creative_id?: string; ad_id?: string; format?: string }>;
   registered?: boolean; notes?: string[];
 };
@@ -379,6 +379,7 @@ async function advance(admin: Admin, build: Row, actor: Actor): Promise<string> 
 
     if (stage === "form") {
       meta.page_name = pageToken.name;
+      if (meta.instagram_id === undefined) meta.instagram_id = await instagramFor(company, ids.page, pageToken.token);
       if (!meta.form_id) meta.form_id = await ensureForm(ids.page, pageToken.token, name, settings, pageToken.name);
       meta.form_name = name;
       await save({ stage: "campaign", meta });
@@ -420,7 +421,7 @@ async function advance(admin: Admin, build: Row, actor: Actor): Promise<string> 
         const n = ads.indexOf(next) + 1;
         const done = meta.ads[next.key] || {};
         if (!done.creative_id) {
-          const made = await makeCreative(ids, next, meta.form_id!, settings, `${name} | Ad ${n}`);
+          const made = await makeCreative(ids, next, meta.form_id!, settings, `${name} | Ad ${n}`, meta.instagram_id ?? null);
           Object.assign(done, made);
           meta.ads[next.key] = done;
           await save({ meta });
@@ -513,6 +514,25 @@ async function pageAccess(pageId: string): Promise<{ token: string; name: string
   return { token: String(out.access_token), name: String(out.name || "") };
 }
 
+/**
+ * The Instagram account the ads run as, which Meta needs whenever ads can show
+ * on Instagram: one set on the client's campaign settings, else the one linked
+ * to their Page, else Meta's Page-backed account (made if there isn't one,
+ * which shows the Page's name and picture). Null if Meta gives none.
+ */
+async function instagramFor(company: Row, pageId: string, pageToken: string): Promise<string | null> {
+  const set = String(((company.campaign_settings || {}) as Row).instagram_user_id || "").replace(/\D/g, "");
+  if (set) return set;
+  const linked = await graph(`${pageId}?fields=instagram_business_account`, { token: pageToken }).catch(() => ({} as Row));
+  const ig = (linked.instagram_business_account as Row | undefined)?.id;
+  if (ig) return String(ig);
+  const backed = await graph(`${pageId}/page_backed_instagram_accounts?fields=id`, { token: pageToken }).catch(() => ({ data: [] } as Row));
+  const have = ((backed.data || []) as Row[])[0]?.id;
+  if (have) return String(have);
+  const made = await graph(`${pageId}/page_backed_instagram_accounts`, { token: pageToken, form: {} }).catch(() => ({} as Row));
+  return made.id ? String(made.id) : null;
+}
+
 async function findByName(edge: string, name: string, token?: string): Promise<string | null> {
   const filter = encodeURIComponent(JSON.stringify([{ field: "name", operator: "EQUAL", value: name }]));
   const out = await graph(`${edge}?fields=id,name&filtering=${filter}&limit=5`, { token }).catch(() => ({ data: [] }));
@@ -556,15 +576,16 @@ async function ensureForm(pageId: string, pageToken: string, name: string, st: S
  * Meta which goes where, so it runs as the client saw it; if Meta won't take
  * that, the 4:5 image alone, and the team is told.
  */
-async function makeCreative(ids: { account: string; page: string }, ad: Ad, formId: string, st: Settings, name: string): Promise<{ creative_id: string; format: string }> {
+async function makeCreative(ids: { account: string; page: string }, ad: Ad, formId: string, st: Settings, name: string, ig: string | null): Promise<{ creative_id: string; format: string }> {
   const cta = { type: "GET_QUOTE", value: { lead_gen_form_id: formId } };
   const m = ad.meta || {};
+  const igField = ig ? { instagram_user_id: ig } : {};
   if (ad.kind === "video") {
     const out = await graph(`${act(ids.account)}/adcreatives`, {
       form: {
         name,
         object_story_spec: {
-          page_id: ids.page,
+          page_id: ids.page, ...igField,
           video_data: { video_id: m.video_id, image_url: m.thumbnail, message: ad.message, title: ad.headline, link_description: ad.description, call_to_action: cta },
         },
       },
@@ -573,7 +594,7 @@ async function makeCreative(ids: { account: string; page: string }, ad: Ad, form
   }
   if (m.story_hash) {
     try {
-      const out = await graph(`${act(ids.account)}/adcreatives`, { form: { name, ...placementSpec(ids.page, ad, formId) } });
+      const out = await graph(`${act(ids.account)}/adcreatives`, { form: { name, ...placementSpec(ids.page, ad, formId, ig) } });
       return { creative_id: String(out.id), format: "feed + stories" };
     } catch (e) {
       console.warn("placement creative refused, using one image:", (e as Error).message);
@@ -583,7 +604,7 @@ async function makeCreative(ids: { account: string; page: string }, ad: Ad, form
     form: {
       name,
       object_story_spec: {
-        page_id: ids.page,
+        page_id: ids.page, ...igField,
         link_data: {
           image_hash: m.feed_hash, link: "http://fb.me/", message: ad.message, name: ad.headline,
           description: ad.description, call_to_action: cta,
@@ -594,10 +615,10 @@ async function makeCreative(ids: { account: string; page: string }, ad: Ad, form
   return { creative_id: String(out.id), format: m.story_hash ? "feed image only (Meta crops Stories)" : "feed image" };
 }
 
-function placementSpec(pageId: string, ad: Ad, formId: string) {
+function placementSpec(pageId: string, ad: Ad, formId: string, ig: string | null) {
   const m = ad.meta || {};
   return {
-    object_story_spec: { page_id: pageId },
+    object_story_spec: { page_id: pageId, ...(ig ? { instagram_user_id: ig } : {}) },
     asset_feed_spec: {
       images: [{ hash: m.feed_hash, adlabels: [{ name: FEED }] }, { hash: m.story_hash, adlabels: [{ name: STORY }] }],
       bodies: [{ text: ad.message }],
@@ -738,6 +759,7 @@ async function selfTest(company: Row) {
   if (page && images) {
     const pg = page as { token: string; name: string };
     made.form = await step("form", () => ensureForm(ids.page, pg.token, tag, settings, pg.name)) ?? undefined;
+    const ig = await step("instagram account", () => instagramFor(company, ids.page, pg.token));
     made.campaign = await step("campaign", async () => String((await graph(`${act(ids.account)}/campaigns`, {
       form: { name: tag, objective: "OUTCOME_LEADS", status: "PAUSED", buying_type: "AUCTION", special_ad_categories: [], is_adset_budget_sharing_enabled: false },
     })).id)) ?? undefined;
@@ -756,8 +778,8 @@ async function selfTest(company: Row) {
       };
       // Meta wants two different images for this; an account with one can't test it.
       const placement = images[1] ? await step("creative, feed + stories", async () =>
-        String((await graph(`${act(ids.account)}/adcreatives`, { form: { name: tag, ...placementSpec(ids.page, ad, made.form!) } })).id)) : null;
-      const single = await step("creative, one image", async () => (await makeCreative(ids, { ...ad, meta: { feed_hash: images[0] } }, made.form!, settings, `${tag} single`)).creative_id);
+        String((await graph(`${act(ids.account)}/adcreatives`, { form: { name: tag, ...placementSpec(ids.page, ad, made.form!, ig) } })).id)) : null;
+      const single = await step("creative, one image", async () => (await makeCreative(ids, { ...ad, meta: { feed_hash: images[0] } }, made.form!, settings, `${tag} single`, ig)).creative_id);
       const creative = placement || single;
       if (creative) {
         await step("ad", async () => String((await graph(`${act(ids.account)}/ads`, {
