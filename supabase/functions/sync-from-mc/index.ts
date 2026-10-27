@@ -591,9 +591,9 @@ Deno.serve(async (req: Request) => {
       const patch: Record<string, string> = {}
       if (!company.ads_live_date) patch.ads_live_date = today
       if (!company.management_included_from) patch.management_included_from = company.ads_live_date || today
-      // The first invoice falls 30 days after day 1, as in team-api.
+      // The first payment is on day 30 (go-live + 29), as in team-api.
       if (!company.next_invoice_due) {
-        const d = new Date((company.ads_live_date || today) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 30)
+        const d = new Date((company.ads_live_date || today) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 29)
         patch.next_invoice_due = d.toISOString().slice(0, 10)
       }
       if (Object.keys(patch).length) {

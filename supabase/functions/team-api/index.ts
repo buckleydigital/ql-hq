@@ -1720,7 +1720,7 @@ Deno.serve(async (req) => {
           return json({ error: "Say what it is blocked on" }, 400);
         }
         // Going live is day 1 of management: the ads-live date, the start of
-        // the included 30 days, and the first invoice 30 days on. Each is set
+        // the included 30 days, and the first invoice on day 30 (go-live + 29). Each is set
         // once, so re-ticking the step never restarts the clock. Written before
         // the step so the sync to ql-mc that the step sends carries the date.
         if (b.step_key === "ads_live" && b.status === "done") {
@@ -1731,7 +1731,7 @@ Deno.serve(async (req) => {
           if (!co?.ads_live_date) patch.ads_live_date = live;
           if (!co?.management_included_from) patch.management_included_from = live;
           if (!co?.next_invoice_due) {
-            const d = new Date(live + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 30);
+            const d = new Date(live + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 29);
             patch.next_invoice_due = d.toISOString().slice(0, 10);
           }
           if (Object.keys(patch).length) {
