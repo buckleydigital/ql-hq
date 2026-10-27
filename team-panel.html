@@ -1922,7 +1922,7 @@ select{cursor:pointer}
       ${built ? '<div class="muted" style="font-size:12px;margin-top:6px">Built with the settings below. Changing them affects a rebuild, not the campaign already made.</div>' : ''}
       <div class="st-camp-row"><label>Daily budget $ <input type="number" min="5" step="1" id="cpBudget" style="width:80px" value="${esc(saved.daily_budget || '')}" placeholder="${esc(st.daily_budget || '')}"></label>
         <span class="muted">${esc((st.sources || {}).daily_budget || 'none from onboarding')}</span></div>
-      <div class="st-camp-row"><span>Area</span>${ed.locations.map((p, i) => `<span class="st-place">${esc(p.name)}${p.type === 'city' ? ` +<input type="number" min="10" max="80" data-cp-radius="${i}" value="${esc(p.radius_km || 25)}">km` : ''}<button type="button" data-cp-drop="${i}" title="Remove">×</button></span>`).join('') || '<span class="muted">none yet</span>'}</div>
+      <div class="st-camp-row"><span>Area</span>${ed.locations.map((p, i) => `<span class="st-place">${esc(p.name)}${p.type === 'city' || p.type === 'pin' ? ` +<input type="number" min="${p.type === 'pin' ? 1 : 10}" max="80" data-cp-radius="${i}" value="${esc(p.radius_km || 25)}">km` : ''}<button type="button" data-cp-drop="${i}" title="Remove">×</button></span>`).join('') || '<span class="muted">none yet</span>'}</div>
       <div class="st-camp-row"><input type="text" id="cpFind" placeholder="Add a town or postcode" style="width:200px"><button class="btn btn-sm" type="button" id="cpFindBtn">Find</button>
         ${ed.results.map((p, i) => `<button class="btn btn-sm" type="button" data-cp-add="${i}">+ ${esc(p.name)} <span class="muted">(${esc(p.type)})</span></button>`).join('')}</div>
       ${leadsRowHtml()}

@@ -45,6 +45,9 @@ const MAX_ATTEMPTS = 3;
 const DEFAULT_RADIUS_KM = 25;
 const DEFAULT_AGE_MIN = 25;
 const MIN_DAILY_BUDGET = 5;
+// Meta takes a radius of 1 to 80 km around a point.
+const pinRadius = (v: unknown) => Math.min(80, Math.max(1, Math.round(Number(v)) || DEFAULT_RADIUS_KM));
+
 // The ad rules check's special category, as Meta names it.
 const SPECIAL_CATEGORY: Record<string, string> = {
   financial_products_and_services: "FINANCIAL_PRODUCTS_SERVICES",
@@ -56,7 +59,10 @@ const FEED = "ql_feed", STORY = "ql_story";
 type Admin = ReturnType<typeof createClient>;
 type Row = Record<string, unknown>;
 type Actor = { id: string | null; name: string };
-type Place = { key: string; name: string; type: string; radius_km?: number };
+// A place to target. "pin" is a point from the onboarding form's map (the
+// client's own suburb and travel radius, exactly as they drew it); "city",
+// "zip" and "region" are Meta's own locations, found by search.
+type Place = { key: string; name: string; type: string; radius_km?: number; lat?: number; lng?: number };
 type Settings = {
   daily_budget: number | null; locations: Place[]; unplaced: string[]; age_min: number;
   privacy_url: string; website: string | null; special: string[];
@@ -188,8 +194,25 @@ async function resolveSettings(company: Row): Promise<Settings> {
 
   let locations = Array.isArray(s.locations) ? (s.locations as Place[]).filter((p) => p?.key) : [];
   const unplaced: string[] = [];
+  // The map on the onboarding form: each suburb as a point with the travel
+  // radius the client set, targeted as exactly that circle.
+  const drawn = Array.isArray(dfy.service_areas) ? (dfy.service_areas as Row[]) : [];
+  const pins: Place[] = drawn
+    .filter((a) => Number.isFinite(Number(a?.lat)) && Number.isFinite(Number(a?.lng)))
+    .slice(0, 50)
+    .map((a) => ({
+      key: `pin:${Number(a.lat).toFixed(5)},${Number(a.lng).toFixed(5)}`,
+      name: String(a.label || "Pin").slice(0, 120), type: "pin",
+      lat: Number(a.lat), lng: Number(a.lng), radius_km: pinRadius(a.radius_km),
+    }));
   if (locations.length) sources.locations = "set by the team";
-  else {
+  else if (pins.length) {
+    locations = pins;
+    sources.locations = "their map on the onboarding form";
+  } else if (String(dfy.service_coverage || "") === "Nationwide") {
+    locations = [{ key: "AU", name: "Australia", type: "country" }];
+    sources.locations = "nationwide, from their onboarding form";
+  } else {
     // Their own words, one place at a time: "Gold Coast, Tweed Heads and 2486".
     const text = String(dfy.service_location || company.service_area || ((dfy.purchase || {}) as Row).service_location || dfy.service_area || "");
     const radius = Math.min(80, Math.max(10, num(s.radius_km) ?? num(dfy.service_radius) ?? DEFAULT_RADIUS_KM));
@@ -242,10 +265,14 @@ async function saveSettings(admin: Admin, company: Row, body: Row) {
   }
   if ("locations" in body) {
     const list = Array.isArray(body.locations) ? body.locations as Row[] : [];
-    next.locations = list.filter((p) => p?.key).slice(0, 50).map((p) => ({
-      key: String(p.key), name: String(p.name || p.key).slice(0, 120), type: String(p.type || "city"),
-      ...(String(p.type || "city") === "city" ? { radius_km: Math.min(80, Math.max(10, num(p.radius_km) ?? DEFAULT_RADIUS_KM)) } : {}),
-    }));
+    next.locations = list.filter((p) => p?.key).slice(0, 50).map((p) => {
+      const type = String(p.type || "city");
+      const base = { key: String(p.key), name: String(p.name || p.key).slice(0, 120), type };
+      if (type === "pin" && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) {
+        return { ...base, lat: Number(p.lat), lng: Number(p.lng), radius_km: pinRadius(p.radius_km) };
+      }
+      return type === "city" ? { ...base, radius_km: Math.min(80, Math.max(10, num(p.radius_km) ?? DEFAULT_RADIUS_KM)) } : base;
+    }).filter((p) => p.type !== "pin" || "lat" in p);
   }
   await admin.from("companies").update({ campaign_settings: next }).eq("id", company.id);
   company.campaign_settings = next;
@@ -448,9 +475,14 @@ function targeting(st: Settings) {
   }));
   const zips = special ? [] : st.locations.filter((p) => p.type === "zip").map((p) => ({ key: p.key }));
   const regions = st.locations.filter((p) => p.type === "region").map((p) => ({ key: p.key }));
+  const custom_locations = st.locations.filter((p) => p.type === "pin").map((p) => ({
+    latitude: p.lat, longitude: p.lng, radius: Math.max(special ? SPECIAL_MIN_RADIUS_KM : 1, p.radius_km ?? DEFAULT_RADIUS_KM), distance_unit: "kilometer",
+  }));
+  const countries = st.locations.filter((p) => p.type === "country").map((p) => p.key);
   return {
     geo_locations: {
       ...(cities.length ? { cities } : {}), ...(zips.length ? { zips } : {}), ...(regions.length ? { regions } : {}),
+      ...(custom_locations.length ? { custom_locations } : {}), ...(countries.length ? { countries } : {}),
       location_types: ["home", "recent"],
     },
     age_min: special ? 18 : st.age_min, age_max: 65,
