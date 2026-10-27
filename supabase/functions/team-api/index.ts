@@ -1575,6 +1575,7 @@ Deno.serve(async (req) => {
     // ops manager or admin for every client.
     const FULFILMENT_ACTIONS = new Set([
       "list_fulfilment", "set_fulfilment_step", "fulfilment_overview", "list_fulfilment_log", "reset_test_account",
+      "create_test_account", "delete_test_account",
     ]);
     if (FULFILMENT_ACTIONS.has(action || "")) {
       if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
@@ -1665,8 +1666,38 @@ Deno.serve(async (req) => {
         return json({ clients, steps: defs || [] });
       }
 
+      // ── A new test account (admin only): a bare managed company flagged
+      // is_test, with no login, so the flow can be walked from the top.
+      if (action === "create_test_account") {
+        if (!isAdmin) return json({ error: "Only an admin can create a test account" }, 403);
+        const b = body as { name?: string; niche?: string; service_area?: string };
+        const name = String(b.name || "").trim().slice(0, 120) || "FULFILMENT TESTING";
+        const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "fulfilment-testing";
+        const { data: co, error } = await adminClient.from("companies").insert({
+          name, slug: `${slugBase}-${crypto.randomUUID().slice(0, 6)}`,
+          niche: String(b.niche || "").trim().slice(0, 200) || null,
+          service_area: String(b.service_area || "").trim().slice(0, 200) || null,
+          plan: "managed", status: "active", is_test: true,
+        }).select("id").single();
+        if (error) return json({ error: error.message }, 400);
+        await adminClient.rpc("recalc_company_fulfilment", { p_company_id: co.id });
+        return json({ ok: true, company_id: co.id });
+      }
+
       const cid = (body as { company_id?: string }).company_id;
       if (!mayTouch(cid)) return json({ error: "Forbidden: client not assigned to you" }, 403);
+
+      // ── DELETE a test account and everything hanging off it (admin only).
+      // Only ever a company flagged is_test.
+      if (action === "delete_test_account") {
+        if (!isAdmin) return json({ error: "Only an admin can delete a test account" }, 403);
+        const { data: co } = await adminClient.from("companies").select("is_test").eq("id", cid).maybeSingle();
+        if (!co?.is_test) return json({ error: "Only a test account can be deleted here" }, 400);
+        await adminClient.from("quote_followup_queue").delete().eq("company_id", cid);
+        const { error } = await adminClient.from("companies").delete().eq("id", cid).eq("is_test", true);
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
 
       // ── RESET a test account back to a brand new client (admin only) ────
       // reset_test_company refuses anything that is not is_test.

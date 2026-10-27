@@ -2438,7 +2438,10 @@ select{cursor:pointer}
     if (!clients.length) { el.innerHTML = '<div class="card empty">No clients yet.</div>'; return; }
     // A test account always sits at the top, where it is easy to find.
     const ordered = [...clients.filter(c => c.is_test), ...clients.filter(c => !c.is_test)];
-    el.innerHTML = ordered.map(c => {
+    const newTestBtn = _realAdmin
+      ? '<div style="margin-bottom:10px"><button class="btn btn-sm" id="newTestBtn" type="button">+ New test account</button></div>'
+      : '';
+    el.innerHTML = newTestBtn + ordered.map(c => {
       const total = c.steps_total || 1;
       const pct = Math.round(((c.steps_settled || 0) / total) * 100);
       const state = c.complete
@@ -2457,12 +2460,36 @@ select{cursor:pointer}
           <div class="prog" style="max-width:240px"><i style="width:${pct}%"></i></div>
         </div>
         <div style="text-align:right">${state}<div class="smeta">${c.steps_settled || 0}/${total} steps</div>
-          ${c.is_test && _realAdmin ? `<button class="btn btn-sm" data-reset-test="${esc(c.id)}" type="button" style="margin-top:6px;color:var(--red);border-color:rgba(255,69,96,.35)">RESET</button>` : ''}</div>
+          ${c.is_test && _realAdmin ? `<button class="btn btn-sm" data-reset-test="${esc(c.id)}" type="button" style="margin-top:6px;color:var(--red);border-color:rgba(255,69,96,.35)">RESET</button>
+          <button class="btn btn-sm" data-delete-test="${esc(c.id)}" data-name="${esc(c.name || '')}" type="button" style="margin-top:6px;color:var(--red);border-color:rgba(255,69,96,.35)">DELETE</button>` : ''}</div>
       </div>`;
     }).join('');
     el.querySelectorAll('[data-goto]').forEach(row => {
-      row.addEventListener('click', (e) => { if (!e.target.closest('[data-reset-test]')) openClient(row.dataset.goto, true); });
+      row.addEventListener('click', (e) => { if (!e.target.closest('[data-reset-test],[data-delete-test]')) openClient(row.dataset.goto, true); });
     });
+    const nt = $('newTestBtn');
+    if (nt) nt.addEventListener('click', async () => {
+      const n = clients.filter(c => c.is_test).length;
+      const name = prompt('Name for the test account:', 'FULFILMENT TESTING ' + (n + 1));
+      if (name === null) return;
+      const niche = prompt('Niche (e.g. Solar & battery, Painting - residential interior & exterior):', '');
+      if (niche === null) return;
+      const area = prompt('Service area (e.g. Sydney, NSW):', '');
+      if (area === null) return;
+      nt.disabled = true; nt.textContent = 'Creating…';
+      const { ok, data } = await teamApi({ action: 'create_test_account', name, niche, service_area: area });
+      if (!ok) { alert(data.error || 'Could not create it.'); nt.disabled = false; nt.textContent = '+ New test account'; return; }
+      _fulfilBoard = null;
+      showFulfilBoard();
+    });
+    el.querySelectorAll('[data-delete-test]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm(`Delete the test account "${b.dataset.name}" for good? Everything on it goes, including uploaded photos and the logo.`)) return;
+      b.disabled = true; b.textContent = 'Deleting…';
+      const { ok, data } = await teamApi({ action: 'delete_test_account', company_id: b.dataset.deleteTest });
+      if (!ok) { alert(data.error || 'Could not delete it.'); b.disabled = false; b.textContent = 'DELETE'; return; }
+      _fulfilBoard = null;
+      showFulfilBoard();
+    }));
     el.querySelectorAll('[data-reset-test]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('Reset the test account to a brand new client? Its checklist, log, preview rounds, generated copy and dates are cleared. Uploaded photos and the logo stay.')) return;
       b.disabled = true; b.textContent = 'Resetting…';
