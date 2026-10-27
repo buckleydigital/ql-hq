@@ -339,6 +339,10 @@ Deno.serve(async (req) => {
         return;
       }
       try {
+        // A test account is a sandbox; it has no business on the real kanban.
+        const { data: co } = await adminClient
+          .from("companies").select("is_test").eq("id", companyId).maybeSingle();
+        if (co?.is_test) return;
         const { data: sum } = await adminClient
           .from("company_fulfilment_summary")
           .select("stage, stage_at, active_status, steps_done, steps_settled, steps_total, blocked_count, next_step_key, next_step_due")
@@ -409,14 +413,21 @@ Deno.serve(async (req) => {
     };
 
     // ── Scope: the one definition of "which clients may this caller touch" ──
-    // null = every client (admin or ops manager). A Set = exactly those.
+    // null = every client (admin only). A Set = exactly those.
+    //
+    // Test accounts (companies.is_test) are admin-only, so anyone else's scope
+    // is an explicit Set with them taken out - including an ops manager's
+    // "every client", which is why that is a Set rather than null.
     let _scopeCache: Set<string> | null | undefined;
     const resolveScope = async (): Promise<Set<string> | null> => {
       if (_scopeCache !== undefined) return _scopeCache;
-      if (unrestricted) { _scopeCache = null; return null; }
+      if (isAdmin) { _scopeCache = null; return null; }
+      const { data: real } = await adminClient.from("companies").select("id").eq("is_test", false);
+      const realIds = new Set((real || []).map((c: { id: string }) => c.id));
+      if (unrestricted) { _scopeCache = realIds; return realIds; }
       const { data } = await adminClient
         .from("team_assignments").select("company_id").eq("team_user_id", caller.id);
-      _scopeCache = new Set((data || []).map((a: { company_id: string }) => a.company_id));
+      _scopeCache = new Set((data || []).map((a: { company_id: string }) => a.company_id).filter((id: string) => realIds.has(id)));
       return _scopeCache;
     };
 
@@ -766,7 +777,7 @@ Deno.serve(async (req) => {
 
         const { data: companies } = await adminClient
           .from("companies")
-          .select("id, name, plan, email, phone")
+          .select("id, name, plan, email, phone, is_test")
           .in("id", ids)
           .order("name", { ascending: true });
 
@@ -801,6 +812,7 @@ Deno.serve(async (req) => {
 
         const clients = (companies || []).map((c: Record<string, unknown>) => ({
           id: c.id, name: c.name, plan: c.plan, email: c.email, phone: c.phone,
+          is_test: c.is_test === true,
           ...agg[c.id as string],
         }));
         // The caller's own role travels with the list so the panel can label
@@ -1551,7 +1563,7 @@ Deno.serve(async (req) => {
 
       // ── The whole board: one row per client, ordered by what is late ─────
       if (action === "fulfilment_overview") {
-        let cq = adminClient.from("companies").select("id, name, plan, created_at");
+        let cq = adminClient.from("companies").select("id, name, plan, created_at, is_test");
         if (fScope) {
           const ids = [...fScope];
           if (!ids.length) return json({ clients: [], steps: [] });
@@ -1579,6 +1591,7 @@ Deno.serve(async (req) => {
           const due = sum?.next_step_due ? new Date(sum.next_step_due as string).getTime() : null;
           return {
             id: c.id, name: c.name, plan: c.plan, created_at: c.created_at,
+            is_test: c.is_test === true,
             stage: sum?.stage ?? null,
             active_status: sum?.active_status ?? null,
             steps_done: sum?.steps_done ?? 0,
@@ -2297,7 +2310,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list_companies") {
-      const { data } = await adminClient.from("companies").select("id, name, plan").order("name", { ascending: true });
+      let lq = adminClient.from("companies").select("id, name, plan, is_test");
+      // An ops manager assigning clients never sees a test account to assign.
+      if (!isAdmin) lq = lq.eq("is_test", false);
+      const { data } = await lq.order("name", { ascending: true });
       return json({ companies: data || [] });
     }
 
@@ -2317,6 +2333,9 @@ Deno.serve(async (req) => {
       // Only allow assigning companies to someone actually on the team.
       const { data: target } = await adminClient.from("profiles").select("is_team, full_name").eq("id", team_user_id).maybeSingle();
       if (!target?.is_team) return json({ error: "Target user is not on the Internal Team" }, 400);
+      // Test accounts are admin-only; assigning one would put it in a member's panel.
+      const { data: assignCo } = await adminClient.from("companies").select("is_test").eq("id", company_id).maybeSingle();
+      if (assignCo?.is_test) return json({ error: "Test accounts cannot be assigned to team members" }, 400);
       const targetEmail = (await emailMap(adminClient, [team_user_id]))[team_user_id] || "";
       // Was this already theirs? Re-running the assignment should not re-notify.
       const { data: existing } = await adminClient.from("team_assignments")

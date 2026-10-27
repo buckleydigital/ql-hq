@@ -268,6 +268,7 @@ body{overflow:hidden}
 .badge.paid{background:var(--grn-dim);color:var(--grn);border:1px solid rgba(46,204,138,.18)}
 .badge.unpaid{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,69,96,.18)}
 .badge.sent{background:var(--acc-dim);color:var(--acc);border:1px solid rgba(79,143,255,.15)}
+.badge.test{background:var(--red-dim);color:var(--red);border:1px dashed rgba(255,69,96,.35)}
 .chip{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;
   font-size:10px;font-weight:600;border:1px solid var(--bd2);color:var(--ink2);
   background:var(--s3);white-space:nowrap}
@@ -879,6 +880,8 @@ select{cursor:pointer}
   const fmtMoney = (v) => v != null ? '$' + Number(v).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-';
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-AU', {day:'numeric', month:'short', year:'numeric'}) : '-';
   const planBadge = (p) => { const k = p === 'managed' ? 'managed' : (p === 'ppl' || p === 'ppl_managed') ? 'ppl' : 'other'; const label = p === 'managed' ? 'Managed' : p === 'ppl' ? 'PPL' : p === 'ppl_managed' ? 'PPL + Managed' : (p || '-'); return `<span class="badge ${k}">${esc(label)}</span>`; };
+  // A sandbox client, shown to admins only. Loud on purpose so nobody mistakes it for a real one.
+  const testBadge = (c) => (c && c.is_test) ? '<span class="badge test">Test</span>' : '';
 
   async function teamApi(body) {
     const { data: { session } } = await sb.auth.getSession();
@@ -2391,7 +2394,7 @@ select{cursor:pointer}
             : '<span class="badge sent">On track</span>';
       return `<div class="card fcard" data-goto="${esc(c.id)}">
         <div style="flex:1;min-width:180px">
-          <div class="client-name">${esc(c.name || 'Unnamed')}</div>
+          <div class="client-name">${esc(c.name || 'Unnamed')} ${testBadge(c)}</div>
           <div class="smeta">${esc(c.stage || 'Not started')}${c.next_step_key ? ' → ' + esc(labelFor(c.next_step_key)) : ''}</div>
           <div class="prog" style="max-width:240px"><i style="width:${pct}%"></i></div>
         </div>
@@ -2818,7 +2821,7 @@ select{cursor:pointer}
       return `
       <div class="card client-row" data-id="${esc(c.id)}">
         <div>
-          <div class="client-name">${esc(c.name || '(no name)')} ${planBadge(c.plan)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${invSt}</div>
+          <div class="client-name">${esc(c.name || '(no name)')} ${testBadge(c)} ${planBadge(c.plan)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${invSt}</div>
           <div class="stat-row">
             <span>${leadStat}</span>
             ${isPpl ? `<span><b>${c.activeOrders || 0}</b> active order${c.activeOrders === 1 ? '' : 's'}</span>` : ''}
@@ -2973,7 +2976,7 @@ select{cursor:pointer}
 
     $('detailBody').innerHTML = `
       <div class="card">
-        <div class="client-name" style="font-size:18px">${esc(c.name || '(no name)')} ${planBadge(c.plan)} ${isNew48(cache) ? '<span class="badge new">New</span>' : ''}</div>
+        <div class="client-name" style="font-size:18px">${esc(c.name || '(no name)')} ${testBadge(cache)} ${planBadge(c.plan)} ${isNew48(cache) ? '<span class="badge new">New</span>' : ''}</div>
         <div class="sec-title">Contact</div>
         <div class="kv"><span class="k">Company email</span><span>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '-'}</span></div>
         <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '-')}</span></div>
