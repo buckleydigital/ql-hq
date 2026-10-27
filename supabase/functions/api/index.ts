@@ -55,9 +55,10 @@ function checkRateLimit(companyId: string): boolean {
 // ── Input validation helpers ──────────────────────────────────────────────────
 const MAX_STR = 500;
 const MAX_TEXT = 5000;
+// The pipeline_stage values in the database (follow_up is shown as Qualifying).
 const VALID_PIPELINE_STAGES = [
-  "new", "contacted", "qualified", "quoted",
-  "closed_won", "closed_lost", "follow_up",
+  "new_lead", "no_answer", "follow_up", "quote_in_progress", "quoted",
+  "closed_won", "closed_lost",
 ];
 
 function validateLeadFields(body: Record<string, unknown>): string | null {

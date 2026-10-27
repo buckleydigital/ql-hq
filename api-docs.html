@@ -496,7 +496,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
                     <tbody>
                         <tr><td>page<span class="param-optional">optional</span></td><td>integer</td><td>Page number (default 1)</td></tr>
                         <tr><td>per_page<span class="param-optional">optional</span></td><td>integer</td><td>Results per page, max 100 (default 25)</td></tr>
-                        <tr><td>stage<span class="param-optional">optional</span></td><td>string</td><td>Filter by pipeline stage: <code>new_lead</code>, <code>follow_up</code>, <code>quote_in_progress</code>, <code>quoted</code>, <code>closed_won</code>, <code>closed_lost</code></td></tr>
+                        <tr><td>stage<span class="param-optional">optional</span></td><td>string</td><td>Filter by pipeline stage: <code>new_lead</code>, <code>no_answer</code>, <code>follow_up</code>, <code>quote_in_progress</code>, <code>quoted</code>, <code>closed_won</code>, <code>closed_lost</code></td></tr>
                         <tr><td>ai_status<span class="param-optional">optional</span></td><td>string</td><td>Filter by AI status: <code>hot</code>, <code>warm</code>, <code>cold</code>, <code>new</code></td></tr>
                         <tr><td>search<span class="param-optional">optional</span></td><td>string</td><td>Search by name, phone, or email (case-insensitive)</td></tr>
                     </tbody>
@@ -878,6 +878,7 @@ footer { border-top: 1px solid var(--border); padding: 48px; display: flex; alig
 {
   <span class="str">"data"</span>: {
     <span class="str">"new_lead"</span>: <span class="num">12</span>,
+    <span class="str">"no_answer"</span>: <span class="num">4</span>,
     <span class="str">"follow_up"</span>: <span class="num">8</span>,
     <span class="str">"quote_in_progress"</span>: <span class="num">3</span>,
     <span class="str">"quoted"</span>: <span class="num">5</span>,
