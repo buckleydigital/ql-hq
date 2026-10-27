@@ -1307,6 +1307,12 @@ select{cursor:pointer}
             </div>
             <button class="btn btn-sm" id="stFromLogo" type="button"${logo ? '' : ' disabled'}>Pick from logo</button>
           </div>
+          <div class="st-block">
+            <div class="st-h">Niche</div>
+            <input type="text" id="stNiche" value="${esc(st.niche || '')}" maxlength="120" placeholder="e.g. Solar & batteries" list="stNicheList" style="width:100%">
+            <datalist id="stNicheList">${['Solar', 'Solar & batteries', 'Batteries', 'Air conditioning', 'Renovations', 'Roofing', 'Painting'].map(n => `<option value="${n}">`).join('')}</datalist>
+            <div class="muted" style="font-size:11.5px;margin-top:4px">Stock trade: <b>${esc((st.trades || []).join(', ') || 'other')}</b></div>
+          </div>
         </div>
 
         <div class="st-h">Photos and videos <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· their own job photos work best; stock if they have none</span></div>
@@ -1426,6 +1432,12 @@ select{cursor:pointer}
       if (!st.sizes.some(s => s.w === w && s.h === h)) st.sizes.push({ w, h, label: 'Custom', on: true });
       else st.sizes.find(s => s.w === w && s.h === h).on = true;
       renderStudio();
+    });
+    $('stNiche').addEventListener('change', async () => {
+      const niche = $('stNiche').value.trim();
+      const { ok, data } = await aiApi({ action: 'save_creative_settings', company_id: cid, niche });
+      if (!ok) return alert(data.error || 'Could not save the niche.');
+      st.niche = niche; st.trades = data.trades || st.trades; renderStudio();
     });
     $('stCount').addEventListener('change', () => { st.count = +$('stCount').value; });
     $('stNote').addEventListener('change', () => {
@@ -1645,7 +1657,7 @@ select{cursor:pointer}
   // the first one once access and media are in, and each revision after the
   // client's comments. Those arrive here as "ready to finish".
   const ROUND_STATUS = {
-    building: 'Being written automatically', drawing: 'Ready to finish', team_review: 'Ready to check and send',
+    building: 'Being written automatically', drawing: 'Ready to finish', awaiting_access: 'Finished, waiting on their Meta access', team_review: 'Ready to check and send',
     preparing: 'Sent, waiting on Meta to process a video', sent: 'With the client', approved: 'Approved by the client',
     changes_requested: 'Client asked for changes',
   };
@@ -1696,10 +1708,10 @@ select{cursor:pointer}
         <div class="st-actions" style="margin-top:10px">
           ${latest.status === 'drawing' ? '<button class="btn btn-p" id="rdFinish" type="button">Finish pack</button>' : ''}
           ${latest.status === 'team_review' ? '<button class="btn btn-p" id="rdSend" type="button">Send to client</button>' : ''}
-          ${['drawing', 'team_review'].includes(latest.status) ? '<button class="btn" id="rdDiscard" type="button">Discard round</button>' : ''}
+          ${['drawing', 'awaiting_access', 'team_review'].includes(latest.status) ? '<button class="btn" id="rdDiscard" type="button">Discard round</button>' : ''}
           ${rs.approval_url ? `<button class="btn btn-sm" id="rdLink" type="button">Copy client link</button>` : ''}
-          ${!rs.meta_ready ? '<span class="muted" style="font-size:12px">Their ad account and Page aren\'t connected yet, so Meta previews can\'t be made.</span>' : ''}
         </div>
+        ${!rs.meta_ready && ['drawing', 'awaiting_access'].includes(latest.status) ? `<div class="st-iss"><span class="sev chk">No Meta account</span>Their ad account and Facebook Page aren't connected yet (the access step). ${latest.status === 'drawing' ? 'You can still finish the pack: it' : 'The pack'} goes into their ad account automatically once access is in, then comes back here to check and send.</div>` : ''}
         ${roundPreviewsHtml(latest)}
       </div>`;
     }
@@ -1800,10 +1812,11 @@ select{cursor:pointer}
           if (!r.ok) throw new Error(r.data.error || 'saving an image failed');
         }
       }
-      studioStatus("Adding them to the client's ad account…");
+      studioStatus(_studio.rounds && _studio.rounds.meta_ready ? "Adding them to the client's ad account…" : 'Saving the pack…');
       const r = await roundsApi({ action: 'finish', company_id: cid, round_id: round.id });
       if (!r.ok) throw new Error(r.data.error || 'could not finish the round');
       studioStatus('');
+      if (r.data.status === 'awaiting_access') alert("Pack saved. No Meta ad account is connected yet, so it will go into their ad account automatically once the access step is done.");
       await loadRounds();
       loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
     } catch (e) {

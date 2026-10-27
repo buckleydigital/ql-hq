@@ -238,7 +238,7 @@ async function generateAdCopy(ctx: Ctx) {
       max_tokens: 16000,
       system,
       messages: [{ role: "user", content: prompt }],
-      output_config: { format: zodOutputFormat(AdCopySchema), effort: "high" },
+      output_config: { format: zodOutputFormat(AdCopySchema), effort: "medium" },
       // Ad copy for a real client should not silently come back empty because a
       // classifier declined; on a decline the API re-runs on the fallback model
       // inside the same call.
@@ -361,6 +361,7 @@ async function creativeState(ctx: Ctx) {
     assets: await Promise.all(((assets ?? []) as Record<string, unknown>[]).map(withUrl)),
     creative_source: ctx.company.creative_source ?? null,
     trades: tradesOf(ctx.company),
+    niche: ctx.company.niche ?? "",
     media_ready: mediaConfigured(),
     brand_color: ctx.company.brand_color ?? null,
     creative_note: ctx.company.creative_note ?? "",
@@ -561,10 +562,13 @@ async function saveCreativeSettings(ctx: Ctx, b: Record<string, unknown>) {
     patch.brand_color = c ? c.toLowerCase() : null;
   }
   if ("creative_note" in b) patch.creative_note = String(b.creative_note ?? "").trim().slice(0, 2000) || null;
+  // The niche decides which stock trade the studio offers, so it can be fixed
+  // from the studio rather than only at signup.
+  if ("niche" in b) patch.niche = String(b.niche ?? "").trim().slice(0, 120) || null;
   if (!Object.keys(patch).length) return json({ ok: true });
   const { error } = await ctx.admin.from("companies").update(patch).eq("id", ctx.companyId);
   if (error) return json({ error: error.message }, 500);
-  return json({ ok: true });
+  return json({ ok: true, trades: tradesOf({ ...ctx.company, ...patch }) });
 }
 
 async function saveCreativePrompt(ctx: Ctx, b: Record<string, unknown>) {
@@ -623,7 +627,7 @@ async function writeCreativeCopy(ctx: Ctx, b: Record<string, unknown>) {
       max_tokens: 16000,
       system,
       messages: [{ role: "user", content: user }],
-      output_config: { format: zodOutputFormat(CreativeCopySchema), effort: "high" },
+      output_config: { format: zodOutputFormat(CreativeCopySchema), effort: "medium" },
       fallbacks: "default",
     } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
     if (res.stop_reason === "refusal") {

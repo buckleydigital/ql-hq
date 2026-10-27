@@ -103,7 +103,7 @@ export async function runPolicy(company: Record<string, unknown>, lines: Line[],
     max_tokens: 16000,
     system: SYSTEM,
     messages: [{ role: "user", content: user }],
-    output_config: { format: zodOutputFormat(PolicySchema), effort: "high" },
+    output_config: { format: zodOutputFormat(PolicySchema), effort: "medium" },
     fallbacks: "default",
   } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
   if (res.stop_reason === "refusal") throw new Error(`The model declined this request: ${res.stop_details?.explanation || "no reason given"}`);

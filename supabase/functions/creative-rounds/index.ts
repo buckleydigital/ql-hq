@@ -9,6 +9,9 @@
 //                comments and checks it again
 //   drawing      copy final; the Team Panel draws the images (a browser does
 //                this in a moment; an edge function can't)
+//   awaiting_access  drawn and finished, but the client's ad account and Page
+//                aren't connected yet; the autopilot puts it into the ad
+//                account as soon as they are
 //   team_review  the images and videos are in the client's ad account, and
 //                the team sees Meta's own previews; edits, then sends
 //   preparing    sent, but Meta is still processing a video: goes out on its
@@ -47,7 +50,7 @@ const MAX_SENT_ROUNDS = 3;
 const IMAGE_ADS = 3;
 const MAX_IMAGE_ADS = 6;
 const VIDEO_ADS = 2;
-const OPEN = ["building", "drawing", "team_review", "preparing"];
+const OPEN = ["building", "drawing", "awaiting_access", "team_review", "preparing"];
 
 type Admin = ReturnType<typeof createClient>;
 type Row = Record<string, unknown>;
@@ -218,15 +221,25 @@ async function attach(admin: Admin, company: Row, b: Row) {
   return json({ ok: true });
 }
 
-/** Put the round's images and videos into the client's ad account; ready for review. */
+/** Finish a drawn round: into the client's ad account if it's connected, else parked until it is. */
 async function finish(admin: Admin, company: Row, b: Row) {
   const round = await loadRound(admin, company, b.round_id);
   if (!round || round.status !== "drawing") return json({ error: "That round isn't waiting to be finished" }, 400);
-  const ids = metaIds(company);
-  if (!ids) return json({ error: "Connect the client's ad account and Facebook Page first (the access step)" }, 400);
-  const ads = round.ads as Ad[];
-  const missing = ads.filter((a) => a.kind === "image" && !a.feed_url).map((a) => a.key);
+  const missing = (round.ads as Ad[]).filter((a) => a.kind === "image" && !a.feed_url).map((a) => a.key);
   if (missing.length) return json({ error: `Images still missing for ${missing.join(", ")}` }, 400);
+  if (!metaIds(company)) {
+    await admin.from("creative_rounds").update({ status: "awaiting_access", error: null }).eq("id", round.id);
+    return json({ ok: true, status: "awaiting_access" });
+  }
+  const err = await pushToMeta(admin, company, round);
+  return err ? json({ error: err }, 502) : json({ ok: true, status: "team_review" });
+}
+
+/** Put the round's images and videos into the client's ad account; ready for review. Returns an error, or null. */
+async function pushToMeta(admin: Admin, company: Row, round: Row): Promise<string | null> {
+  const ids = metaIds(company);
+  if (!ids) return "Their ad account and Facebook Page aren't connected";
+  const ads = round.ads as Ad[];
   try {
     for (const ad of ads) {
       ad.meta = ad.meta || {};
@@ -242,10 +255,10 @@ async function finish(admin: Admin, company: Row, b: Row) {
     }
   } catch (e) {
     await admin.from("creative_rounds").update({ ads, error: (e as Error).message }).eq("id", round.id);
-    return json({ error: (e as Error).message }, 502);
+    return (e as Error).message;
   }
   await admin.from("creative_rounds").update({ ads, status: "team_review", previews: null, error: null }).eq("id", round.id);
-  return json({ ok: true });
+  return null;
 }
 
 /** Ask Meta how far it is with each video; true when none are still processing. */
@@ -355,6 +368,19 @@ async function autopilot(admin: Admin, secret: string) {
 }
 
 async function nextUnit(admin: Admin, secret: string, skip: Set<string>): Promise<string | null> {
+  // 0. Finished before the client's Meta access was in: push it once it is.
+  //    A failed push stays parked with its error showing, and is retried on
+  //    the next run.
+  const { data: parked } = await admin.from("creative_rounds").select("*").eq("status", "awaiting_access").order("created_at").limit(10);
+  for (const r of (parked ?? []) as Row[]) {
+    if (skip.has(String(r.id))) continue;
+    skip.add(String(r.id));
+    const company = await loadCompany(admin, String(r.company_id));
+    if (!company || !metaIds(company)) continue;
+    const err = await pushToMeta(admin, company, r);
+    return err ? `couldn't put ${r.id} into the ad account: ${err}` : `put ${r.id} into the ad account now access is in`;
+  }
+
   // 1. Sent by the team, waiting on Meta to finish a video.
   const { data: preparing } = await admin.from("creative_rounds").select("*").eq("status", "preparing").order("created_at").limit(10);
   for (const r of (preparing ?? []) as Row[]) {
@@ -403,7 +429,11 @@ async function nextUnit(admin: Admin, secret: string, skip: Set<string>): Promis
     if (skip.has(String(r.id))) continue;
     skip.add(String(r.id));
     try {
-      return await buildStage(admin, secret, r);
+      const done = await buildStage(admin, secret, r);
+      // Its next stage can run in this same pass if there's time, rather than
+      // waiting five minutes for the next one. Only a failure stays skipped.
+      skip.delete(String(r.id));
+      return done;
     } catch (e) {
       const msg = (e as Error).message;
       const attempts = Number(((r.reminders || {}) as Row).attempts || 0) + 1;
@@ -585,7 +615,7 @@ async function revise(admin: Admin, company: Row, last: Row): Promise<{ ads: Ad[
       "6. To change a photo, pick one by its id from the library shown. If nothing there fits, keep the photo and say what's needed in needs_person.",
     ].join("\n"),
     messages: [{ role: "user", content }],
-    output_config: { format: zodOutputFormat(RevisionSchema), effort: "high" },
+    output_config: { format: zodOutputFormat(RevisionSchema), effort: "medium" },
     fallbacks: "default",
   } as Parameters<typeof client.messages.parse>[0], FALLBACK_BETA);
   if (res.stop_reason === "refusal") throw new Error(`The model declined: ${res.stop_details?.explanation || "no reason given"}`);
