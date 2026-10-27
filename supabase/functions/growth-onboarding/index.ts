@@ -219,10 +219,14 @@ Deno.serve(async (req: Request) => {
 
     // ── 2. VERIFY (the spam gate) ───────────────────────────────────────────
     // Someone who has paid for a system on /buy-system is not spam: paying is
-    // the check. Payment sends them straight here, so they are let through
-    // without the pipeline lookup.
-    const { data: paid } = await admin.from("managed_purchases").select("stripe_session_id, metadata")
-      .eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    // the check. Payment sends them straight here with their checkout session
+    // in the link, and it has to match the one paid with that email: knowing
+    // a buyer's email alone does not get a form past the gate.
+    const sid = str(payload.stripe_session_id, 200);
+    const { data: paid } = sid
+      ? await admin.from("managed_purchases").select("stripe_session_id, metadata")
+          .eq("email", email).eq("stripe_session_id", sid).maybeSingle()
+      : { data: null };
     const gate = paid
       ? { pass: true, detail: { reason: `Paid online for the ${(paid.metadata as Record<string, string>)?.plan_label || "Branded Lead Gen System"}`, checked: true, paid: true } }
       : await runSpamGate(email, phoneE164 || phone);

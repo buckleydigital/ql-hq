@@ -50,6 +50,22 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // The payment page asks what a finished checkout actually took, ex GST and
+  // after any promo code, so the Purchase pixel reports the real figure. The
+  // session id is unguessable and this returns the amount alone.
+  if (req.method === 'GET') {
+    const sid = new URL(req.url).searchParams.get('session_id') || ''
+    if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) return new Response(JSON.stringify({ error: 'Bad session' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    try {
+      const s = await stripe.checkout.sessions.retrieve(sid)
+      if (s.metadata?.type !== 'managed' || s.payment_status !== 'paid') throw new Error('Not a paid system checkout')
+      const value = ((s.amount_total ?? 0) - (s.total_details?.amount_tax ?? 0)) / 100
+      return new Response(JSON.stringify({ value }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e) }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+  }
+
   try {
     const formData = await req.json()
 

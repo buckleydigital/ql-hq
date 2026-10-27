@@ -110,7 +110,7 @@ async function chaseUnonboarded(admin: ReturnType<typeof createClient>): Promise
   for (const r of (rows ?? []) as Row[]) {
     const m = (r.metadata || {}) as Record<string, string>;
     const form = "https://quoteleads.com.au/growth-onboarding?" + new URLSearchParams({
-      paid: "1", first_name: m.first_name || "", last_name: m.last_name || "", company: m.company || "",
+      paid: "1", sid: String(r.stripe_session_id), first_name: m.first_name || "", last_name: m.last_name || "", company: m.company || "",
       phone: m.phone || "", email: String(r.email),
     }).toString();
     const first = (m.first_name || "").trim() || "there";

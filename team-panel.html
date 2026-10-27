@@ -2435,13 +2435,24 @@ select{cursor:pointer}
     $('fulfilSub').innerHTML = `${clients.length} client${clients.length !== 1 ? 's' : ''} · ` +
       `<b style="color:var(--amb)">${late}</b> overdue · <b style="color:var(--red)">${blocked}</b> blocked · ` +
       `<b style="color:var(--grn)">${done}</b> fully onboarded`;
-    if (!clients.length) { el.innerHTML = '<div class="card empty">No clients yet.</div>'; return; }
+    const waiting = _fulfilBoard.waiting || [];
+    if (!clients.length && !waiting.length && !_realAdmin) { el.innerHTML = '<div class="card empty">No clients yet.</div>'; return; }
+    // Paid online but the onboarding form is not in yet: no account, so no
+    // checklist. Shown first so nobody who has paid is forgotten.
+    const waitingHtml = waiting.map(w => `<div class="card fcard" style="border-color:rgba(255,184,0,.4)">
+        <div style="flex:1;min-width:180px">
+          <div class="client-name">${esc(w.company || w.email)} <span class="badge due">Paid, waiting on form</span></div>
+          <div class="smeta">${esc(w.plan_label)} · paid ${esc(new Date(w.paid_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }))}${w.reminded_at ? ' · reminder sent' : ''}</div>
+          <div class="smeta">${esc(w.name)} · <a href="mailto:${esc(w.email)}">${esc(w.email)}</a>${w.phone ? ' · <a href="tel:' + esc(w.phone) + '">' + esc(w.phone) + '</a>' : ''}</div>
+        </div>
+        <div style="text-align:right"><button class="btn btn-sm" data-copy-form="${esc(w.form_url)}" type="button">Copy form link</button></div>
+      </div>`).join('');
     // A test account always sits at the top, where it is easy to find.
     const ordered = [...clients.filter(c => c.is_test), ...clients.filter(c => !c.is_test)];
     const newTestBtn = _realAdmin
       ? '<div style="margin-bottom:10px"><button class="btn btn-sm" id="newTestBtn" type="button">+ New test account</button></div>'
       : '';
-    el.innerHTML = newTestBtn + ordered.map(c => {
+    el.innerHTML = newTestBtn + waitingHtml + ordered.map(c => {
       const total = c.steps_total || 1;
       const pct = Math.round(((c.steps_settled || 0) / total) * 100);
       const state = c.complete
@@ -2467,6 +2478,10 @@ select{cursor:pointer}
     el.querySelectorAll('[data-goto]').forEach(row => {
       row.addEventListener('click', (e) => { if (!e.target.closest('[data-reset-test],[data-delete-test]')) openClient(row.dataset.goto, true); });
     });
+    el.querySelectorAll('[data-copy-form]').forEach(b => b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copyForm); b.textContent = 'Copied'; }
+      catch { prompt('Their onboarding form link:', b.dataset.copyForm); }
+    }));
     const nt = $('newTestBtn');
     if (nt) nt.addEventListener('click', async () => {
       const n = clients.filter(c => c.is_test).length;

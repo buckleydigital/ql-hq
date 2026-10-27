@@ -39,6 +39,7 @@
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import "../_shared/no-em-dash.ts";
+import { deleteObject } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1663,7 +1664,27 @@ Deno.serve(async (req) => {
           (b.overdue_hours as number) - (a.overdue_hours as number) ||
           (b.blocked_count as number) - (a.blocked_count as number) ||
           (a.steps_settled as number) - (b.steps_settled as number));
-        return json({ clients, steps: defs || [] });
+        // Paid for a system online but no onboarding form yet, so no account
+        // and no row above. Only for someone who sees every client.
+        let waiting: unknown[] = [];
+        if (!fScope) {
+          const { data: mp } = await adminClient.from("managed_purchases")
+            .select("stripe_session_id, email, metadata, created_at, reminded_at")
+            .is("claimed_at", null).order("created_at", { ascending: false }).limit(50);
+          waiting = (mp || []).map((r: Record<string, unknown>) => {
+            const m = (r.metadata || {}) as Record<string, string>;
+            return {
+              session_id: r.stripe_session_id, email: r.email, paid_at: r.created_at, reminded_at: r.reminded_at,
+              name: [m.first_name, m.last_name].filter(Boolean).join(" ") || m.name || "",
+              company: m.company || "", phone: m.phone || "", plan_label: m.plan_label || "Branded Lead Gen System",
+              form_url: "https://quoteleads.com.au/growth-onboarding?" + new URLSearchParams({
+                paid: "1", sid: String(r.stripe_session_id), first_name: m.first_name || "", last_name: m.last_name || "",
+                company: m.company || "", phone: m.phone || "", email: String(r.email),
+              }).toString(),
+            };
+          });
+        }
+        return json({ clients, steps: defs || [], waiting });
       }
 
       // ── A new test account (admin only): a bare managed company flagged
@@ -1693,6 +1714,13 @@ Deno.serve(async (req) => {
         if (!isAdmin) return json({ error: "Only an admin can delete a test account" }, 403);
         const { data: co } = await adminClient.from("companies").select("is_test").eq("id", cid).maybeSingle();
         if (!co?.is_test) return json({ error: "Only a test account can be deleted here" }, 400);
+        // The files first: the rows that point at them go with the company.
+        const { data: assets } = await adminClient.from("company_assets").select("path, storage").eq("company_id", cid);
+        for (const a of (assets ?? []) as Array<{ path: string | null; storage: string | null }>) {
+          if (a.path && a.storage === "r2") await deleteObject(a.path).catch(() => {});
+        }
+        const { data: files } = await adminClient.storage.from("preview-images").list(cid, { limit: 1000 });
+        if (files?.length) await adminClient.storage.from("preview-images").remove(files.map((f: { name: string }) => `${cid}/${f.name}`));
         await adminClient.from("quote_followup_queue").delete().eq("company_id", cid);
         const { error } = await adminClient.from("companies").delete().eq("id", cid).eq("is_test", true);
         if (error) return json({ error: error.message }, 400);
