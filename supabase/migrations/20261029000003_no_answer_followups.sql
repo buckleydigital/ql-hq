@@ -23,8 +23,7 @@ begin
   return new;
 end $$;
 
-drop trigger if exists leads_stamp_pipeline_stage on public.leads;
-create trigger leads_stamp_pipeline_stage
+create or replace trigger leads_stamp_pipeline_stage
   before insert or update of pipeline_stage on public.leads
   for each row execute function public.leads_stamp_pipeline_stage();
 
