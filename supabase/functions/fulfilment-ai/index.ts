@@ -160,7 +160,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: company } = await admin
       .from("companies")
-      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend, brand_color, creative_note, creative_copy, client_testimonials, ad_policy_check, creative_source")
+      .select("id, name, niche, service_area, plan, website_url, dfy_profile, generated_ad_copy, max_daily_ad_spend, brand_color, brand_font, creative_note, creative_copy, client_testimonials, ad_policy_check, creative_source")
       .eq("id", companyId).maybeSingle();
     if (!company) return json({ error: "Client not found" }, 404);
 
@@ -294,6 +294,8 @@ async function generateAdCopy(ctx: Ctx) {
 
 const BUCKET = "preview-images";
 const HEX = /^#[0-9a-f]{6}$/i;
+// The fonts the Team Panel can draw ads in (STUDIO_FONTS there).
+const FONTS = ["poppins", "montserrat", "inter", "archivo", "raleway", "oswald", "playfair"];
 
 // The house creative direction. Editable by an admin in the panel (stored in
 // platform_settings.creative_prompt); this is what applies until they do.
@@ -364,6 +366,7 @@ async function creativeState(ctx: Ctx) {
     niche: ctx.company.niche ?? "",
     media_ready: mediaConfigured(),
     brand_color: ctx.company.brand_color ?? null,
+    brand_font: ctx.company.brand_font ?? null,
     creative_note: ctx.company.creative_note ?? "",
     creative_copy: ctx.company.creative_copy ?? null,
     ad_policy_check: ctx.company.ad_policy_check ?? null,
@@ -560,6 +563,11 @@ async function saveCreativeSettings(ctx: Ctx, b: Record<string, unknown>) {
     const c = String(b.brand_color ?? "").trim();
     if (c && !HEX.test(c)) return json({ error: "Brand colour must be a hex colour like #1063d6" }, 400);
     patch.brand_color = c ? c.toLowerCase() : null;
+  }
+  if ("brand_font" in b) {
+    const f = String(b.brand_font ?? "").trim().toLowerCase();
+    if (f && !FONTS.includes(f)) return json({ error: "That font isn't one of the options" }, 400);
+    patch.brand_font = f && f !== "poppins" ? f : null;
   }
   if ("creative_note" in b) patch.creative_note = String(b.creative_note ?? "").trim().slice(0, 2000) || null;
   // The niche decides which stock trade the studio offers, so it can be fixed

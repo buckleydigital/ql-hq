@@ -1287,14 +1287,33 @@ select{cursor:pointer}
     { w: 960,  h: 1200, label: 'Google portrait 4:5' },
   ];
   const STUDIO_FONT = 'QLCreative';
+  // The fonts an ad can be drawn in, all open licence (assets/creative/*-OFL.txt).
+  // Poppins is the default and comes in three weights; the rest are single
+  // variable files covering every weight. A client's choice is companies.brand_font.
+  const STUDIO_FONTS = {
+    poppins:   { label: 'Poppins (default)' },
+    montserrat:{ label: 'Montserrat', file: 'Montserrat.ttf' },
+    inter:     { label: 'Inter', file: 'Inter.ttf' },
+    archivo:   { label: 'Archivo', file: 'Archivo.ttf' },
+    raleway:   { label: 'Raleway', file: 'Raleway.ttf' },
+    oswald:    { label: 'Oswald (condensed)', file: 'Oswald.ttf' },
+    playfair:  { label: 'Playfair Display (serif)', file: 'PlayfairDisplay.ttf' },
+  };
   let _studio = null;          // state from creative_state, plus local choices
-  let _studioFonts = null;
+  const _studioFonts = {};
 
-  function loadStudioFonts() {
-    _studioFonts ??= Promise.all([['500', 'Medium'], ['700', 'Bold'], ['800', 'ExtraBold']].map(([w, n]) =>
-      new FontFace(STUDIO_FONT, `url(assets/creative/Poppins-${n}.ttf)`, { weight: w }).load()
-        .then(f => document.fonts.add(f)))).catch(e => { _studioFonts = null; throw e; });
-    return _studioFonts;
+  const studioFontKey = () => (_studio && STUDIO_FONTS[_studio.brand_font]) ? _studio.brand_font : 'poppins';
+  const studioFontFamily = (key = studioFontKey()) => key === 'poppins' ? STUDIO_FONT : `${STUDIO_FONT}-${key}`;
+
+  // Loads the client's font (or the one named), once per page.
+  function loadStudioFonts(key = studioFontKey()) {
+    const fam = studioFontFamily(key), f = STUDIO_FONTS[key];
+    _studioFonts[key] ??= (f.file
+      ? new FontFace(fam, `url(assets/creative/${f.file})`, { weight: '100 900' }).load().then(ff => { document.fonts.add(ff); })
+      : Promise.all([['500', 'Medium'], ['700', 'Bold'], ['800', 'ExtraBold']].map(([w, n]) =>
+          new FontFace(fam, `url(assets/creative/Poppins-${n}.ttf)`, { weight: w }).load().then(ff => document.fonts.add(ff))))
+    ).catch(e => { delete _studioFonts[key]; throw e; });
+    return _studioFonts[key];
   }
 
   async function loadStudio(companyId) {
@@ -1347,6 +1366,11 @@ select{cursor:pointer}
               <input type="text" id="stHex" value="${esc(brand)}" maxlength="7" spellcheck="false">
             </div>
             <button class="btn btn-sm" id="stFromLogo" type="button"${logo ? '' : ' disabled'}>Pick from logo</button>
+          </div>
+          <div class="st-block">
+            <div class="st-h">Font <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· optional</span></div>
+            <select id="stFont" style="width:100%">${Object.entries(STUDIO_FONTS).map(([k, f]) => `<option value="${k}"${k === studioFontKey() ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}</select>
+            <div id="stFontSample" style="font-family:'${studioFontFamily()}',sans-serif;font-weight:800;font-size:19px;line-height:1.2;margin-top:8px">Get a free quote today</div>
           </div>
           <div class="st-block">
             <div class="st-h">Niche</div>
@@ -1456,6 +1480,17 @@ select{cursor:pointer}
       if (save) await aiApi({ action: 'save_creative_settings', company_id: cid, brand_color: st.brand_color });
     };
     colour.addEventListener('input', () => { hex.value = colour.value; st.brand_color = colour.value; });
+    // The font every new image is drawn in; images already made keep theirs.
+    loadStudioFonts().catch(() => {});
+    $('stFont').addEventListener('change', async (e) => {
+      const key = STUDIO_FONTS[e.target.value] ? e.target.value : 'poppins';
+      const sample = $('stFontSample');
+      try { await loadStudioFonts(key); } catch { return alert('Could not load that font. Try again.'); }
+      st.brand_font = key;
+      if (sample) sample.style.fontFamily = `'${studioFontFamily(key)}',sans-serif`;
+      const { ok, data } = await aiApi({ action: 'save_creative_settings', company_id: cid, brand_font: key });
+      if (!ok) alert(data.error || 'Could not save the font.');
+    });
     colour.addEventListener('change', () => setColour(colour.value, true));
     hex.addEventListener('change', () => { const v = hex.value.trim(); setColour(v.startsWith('#') ? v : '#' + v, true); });
     $('stFromLogo').addEventListener('click', async () => {
@@ -1613,7 +1648,7 @@ select{cursor:pointer}
         const layout = photo ? (i % 2 ? 'split' : 'overlay') : 'band';
         const canvas = drawCreative({
           W: s.w, H: s.h, layout, headline: v.headline, subline: v.subline, cta: v.cta,
-          brand: st.brand_color || '#1063d6', photo, logo,
+          brand: st.brand_color || '#1063d6', photo, logo, fontFamily: studioFontFamily(),
         });
         const { ok, data } = await aiApi({
           action: 'save_creative', company_id: cid, content_type: 'image/jpeg',
@@ -1848,7 +1883,7 @@ select{cursor:pointer}
         const t = ad.image_text || {};
         for (const [shape, W, H] of [['feed', 1080, 1350], ['story', 1080, 1920]]) {
           studioStatus(`Drawing ${++n} of ${total}…`);
-          const canvas = drawCreative({ W, H, layout, headline: t.headline, subline: t.subline, cta: t.cta, brand: st.brand_color || '#1063d6', photo, logo });
+          const canvas = drawCreative({ W, H, layout, headline: t.headline, subline: t.subline, cta: t.cta, brand: st.brand_color || '#1063d6', photo, logo, fontFamily: studioFontFamily() });
           const r = await roundsApi({ action: 'attach', company_id: cid, round_id: round.id, ad_key: ad.key, shape, data: canvas.toDataURL('image/jpeg', 0.92) });
           if (!r.ok) throw new Error(r.data.error || 'saving an image failed');
         }
@@ -2227,7 +2262,7 @@ select{cursor:pointer}
     const u = Math.min(Math.sqrt(W * H) / 1080, W / 900);
     const pad = Math.round(64 * u);
     const brand = o.brand;
-    const font = (w, s) => `${w} ${s}px ${STUDIO_FONT}`;
+    const font = (w, s) => `${w} ${s}px "${o.fontFamily || STUDIO_FONT}"`;
 
     const cover = (img, x, y, w, h) => {
       const k = Math.max(w / img.width, h / img.height);
