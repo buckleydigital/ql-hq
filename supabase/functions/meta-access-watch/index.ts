@@ -51,6 +51,7 @@
 // =============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import "../_shared/no-em-dash.ts";
+import { anyNameMatches } from "../_shared/names.ts";
 
 const BUSINESS_ID = Deno.env.get("META_BUSINESS_ID") || "1065750507426304";
 const GRAPH = `https://graph.facebook.com/${Deno.env.get("META_GRAPH_VERSION") || "v23.0"}`;
@@ -304,7 +305,10 @@ Deno.serve(async (req: Request) => {
   const [sharedAcc, ownedAcc, sharedPages, ownedPages] = await Promise.all([
     graphList(`${BUSINESS_ID}/client_ad_accounts?fields=${accFields}`, token),
     graphList(`${BUSINESS_ID}/owned_ad_accounts?fields=${accFields}`, token),
-    graphList(`${BUSINESS_ID}/client_pages?fields=id,name,link`, token),
+    // The owning business, so a Page can be matched to the ad account it came
+    // with; without it if Meta won't give it.
+    graphList(`${BUSINESS_ID}/client_pages?fields=id,name,link,business{id,name}`, token)
+      .then((r) => r.error ? graphList(`${BUSINESS_ID}/client_pages?fields=id,name,link`, token) : r),
     graphList(`${BUSINESS_ID}/owned_pages?fields=id,name,link`, token),
   ]);
   const listErr = sharedAcc.error || sharedPages.error;
@@ -384,10 +388,22 @@ Deno.serve(async (req: Request) => {
     // ── 1. Detect ───────────────────────────────────────────────────────────
     const acc = wantAcc ? accounts.find((a) => digits(a.account_id) === wantAcc) : undefined;
     if (acc) {
+      const accId = digits(acc.account_id);
+      // Their Page: the one they named, else the one plainly theirs among those
+      // shared with us and not already another client's: the only one from the
+      // same business as the ad account, else the only one whose name matches
+      // theirs. Anything less certain is left for the team to pick.
+      const takenPages = new Set((allCos ?? []).filter((co) => co.id !== cid)
+        .map((co) => String((((co.dfy_profile ?? {}) as Row).meta_access as Row | undefined)?.page_id ?? "")).filter(Boolean));
+      const free = pages.filter((p) => !takenPages.has(String(p.id)));
+      const accBiz = (acc.business as Row | undefined) ?? {};
+      const sameBiz = accBiz.id ? free.filter((p) => String(((p.business as Row | undefined) ?? {}).id || "") === String(accBiz.id)) : [];
+      const byName = free.filter((p) => anyNameMatches([p.name], [c.name, acc.name, accBiz.name]));
+      const both = sameBiz.filter((p) => byName.includes(p));
       const page = wantPage
         ? pages.find((p) => String(p.id) === wantPage || pageKey(p.link) === wantPage)
-        : undefined;
-      const accId = digits(acc.account_id);
+        : sameBiz.length === 1 ? sameBiz[0] : byName.length === 1 ? byName[0] : both.length === 1 ? both[0] : undefined;
+      const pageChoices = page ? [] : (sameBiz.length ? sameBiz : byName).slice(0, 8);
 
       // Health of the account, so the team hears about a problem now rather
       // than when the campaign will not publish.
@@ -419,7 +435,8 @@ Deno.serve(async (req: Request) => {
       const note = [
         `Ad account ${acc.name} (${accId}) shared: ${status}, ${acc.currency}` +
           (hasPayment === null ? "" : hasPayment ? ", payment method on file" : ", no payment method"),
-        page ? `Page ${page.name} shared` : wantPage ? "Page not shared yet" : "",
+        page ? `Page ${page.name} shared` : wantPage ? "Page not shared yet"
+          : `Page not picked${pageChoices.length ? ` (could be ${pageChoices.map((p) => `${p.name} ${p.id}`).join(", ")})` : ""}: set it in the Team Panel, Campaign, Meta connection`,
         accConn.ok ? (accConn.already ? "System user already connected" : "System user connected automatically")
           : `Connect the system user by hand: ${accConn.error}`,
         pageConn && !pageConn.ok ? `Connect the Page by hand: ${pageConn.error}` : "",
@@ -438,7 +455,10 @@ Deno.serve(async (req: Request) => {
           `${problems.length || needsHand ? "⚠️" : "✅"} Meta access received - ${c.name}`,
           `<p><strong>${c.name}</strong> shared their ad account <strong>${acc.name}</strong> (${accId}).</p><p>${note}.</p>` +
             (problems.length ? `<p style="color:#b42318"><strong>Needs attention:</strong> ${problems.join("; ")}.</p>` : "") +
-            (needsHand ? `<p style="color:#b42318">Assign it by hand in Business Settings (Users → System users or People → Assign assets).</p>` : ""),
+            (needsHand ? `<p style="color:#b42318">Assign it by hand in Business Settings (Users → System users or People → Assign assets).</p>` : "") +
+            (!page ? `<p style="color:#b42318"><strong>Which Page is theirs?</strong> We couldn't tell for sure${pageChoices.length
+              ? `. It's probably one of these: <ul>${pageChoices.map((p) => `<li>${esc(p.name)} (${p.id})</li>`).join("")}</ul>`
+              : ", and no Page shared with us looks like theirs yet. "}Set it on their page in the Team Panel (Campaign, Meta connection) and the ads can be built.</p>` : ""),
         );
       }
       continue;

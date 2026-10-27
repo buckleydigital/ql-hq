@@ -34,6 +34,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { act, graph } from "../_shared/meta-ads.ts";
 import { type Ad, metaIds } from "../_shared/rounds.ts";
 import { opsEmail, setStep, SITE } from "../_shared/notify.ts";
+import { anyNameMatches } from "../_shared/names.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,6 +136,7 @@ Deno.serve(async (req: Request) => {
       case "state":         return json(await state(admin, company));
       case "save_settings": return json(await saveSettings(admin, company, body));
       case "geo_search":    return json({ places: await geoSearch(String(body.q || "")) });
+      case "save_connection": return json(await saveConnection(admin, company, body, actor));
       case "build":         return json(await teamBuild(admin, company, body, actor, isAdmin || isOps));
       case "self_test":
         if (!(isAdmin || isOps)) return json({ error: "Ops managers and admins only" }, 403);
@@ -296,6 +298,40 @@ async function saveSettings(admin: Admin, company: Row, body: Row) {
   return await state(admin, company);
 }
 
+// ── The client's ad account and Page, set by hand ─────────────────────────────
+// Normally found by meta-access-watch once the client shares them. The team can
+// set or correct either here. Each is checked once with Meta on save (never on
+// a timer): the answer says what Meta calls it, or why we can't use it yet.
+async function saveConnection(admin: Admin, company: Row, body: Row, actor: Actor) {
+  const account = String(body.ad_account_id ?? "").replace(/\D/g, "");
+  const page = String(body.page_id ?? "").replace(/\D/g, "");
+  const dfy = { ...((company.dfy_profile || {}) as Row) };
+  const prev = (dfy.meta_access || {}) as Row;
+  const checks: { account?: string; page?: string } = {};
+  if (account) {
+    const a = await graph(`${act(account)}?fields=name,account_status,currency`).catch((e) => ({ error: (e as Error).message } as Row));
+    checks.account = a.error ? `Can't see it yet: ${a.error}` : `${a.name} (${a.currency})${Number(a.account_status) === 1 ? "" : ", not active"}`;
+  }
+  if (page) {
+    const p = await graph(`${page}?fields=name,access_token`).catch((e) => ({ error: (e as Error).message } as Row));
+    checks.page = p.error ? `Can't see it yet: ${p.error}` : `${p.name}${p.access_token ? "" : " (not shared with full control yet)"}`;
+  }
+  if (account || page) {
+    dfy.meta_access = { ...prev, ad_account_id: account || null, page_id: page || null, set_by: actor.name, set_at: new Date().toISOString() };
+  } else {
+    delete dfy.meta_access;
+  }
+  await admin.from("companies").update({ dfy_profile: dfy }).eq("id", company.id);
+  company.dfy_profile = dfy;
+  // Both in and both usable: access is granted, as if the watcher had found it.
+  if (account && page && !checks.account?.startsWith("Can't") && !checks.page?.startsWith("Can't")
+    && !(await stepDone(admin, String(company.id), ["ad_access_granted"]))) {
+    await setStep(admin, String(company.id), "ad_access_granted", "done",
+      `Set in the Team Panel by ${actor.name}: ad account ${checks.account}, Page ${checks.page}.`, actor);
+  }
+  return { ...(await state(admin, company)), checks };
+}
+
 // ── What the team sees ──────────────────────────────────────────────────────────
 
 async function state(admin: Admin, company: Row) {
@@ -310,6 +346,12 @@ async function state(admin: Admin, company: Row) {
   return {
     ok: true,
     meta: ids ? { ...ids, ads_manager: adsManager(ids.account, (build?.meta as BuildMeta | undefined)?.campaign_id) } : null,
+    // What's saved, even half of it (an ad account with no Page yet), for the
+    // Meta connection fields.
+    connection: (() => {
+      const m = (((company.dfy_profile || {}) as Row).meta_access || {}) as Row;
+      return { ad_account_id: m.ad_account_id ?? null, page_id: m.page_id ?? null, set_by: m.set_by ?? null };
+    })(),
     saved: company.campaign_settings || {},
     settings, settings_error: settingsError,
     problems: settings ? settingsProblems(settings) : [],
@@ -525,38 +567,16 @@ async function pageAccess(pageId: string): Promise<{ token: string; name: string
 async function instagramFor(company: Row, ids: { account: string; page: string }, pageToken: string, pageName: string): Promise<string | null> {
   const set = String(((company.campaign_settings || {}) as Row).instagram_user_id || "").replace(/\D/g, "");
   if (set) return set;
-  const names = [String(company.name || ""), pageName].map(squash).filter((n) => n.length >= 3);
   const linked = await graph(`${ids.page}?fields=instagram_business_account{id,username,name}`, { token: pageToken }).catch(() => ({} as Row));
   const shared = await graph(`${act(ids.account)}/instagram_accounts?fields=id,username`).catch(() => ({ data: [] } as Row));
   const candidates = [linked.instagram_business_account as Row | undefined, ...((shared.data || []) as Row[])].filter(Boolean) as Row[];
-  const theirs = candidates.find((c) => [c.username, c.name].some((n) => names.some((want) => sameName(squash(String(n || "")), want))));
+  const theirs = candidates.find((c) => anyNameMatches([c.username, c.name], [company.name, pageName]));
   if (theirs?.id) return String(theirs.id);
   const backed = await graph(`${ids.page}/page_backed_instagram_accounts?fields=id`, { token: pageToken }).catch(() => ({ data: [] } as Row));
   const have = ((backed.data || []) as Row[])[0]?.id;
   if (have) return String(have);
   const made = await graph(`${ids.page}/page_backed_instagram_accounts`, { token: pageToken, form: {} }).catch(() => ({} as Row));
   return made.id ? String(made.id) : null;
-}
-
-// "Smith's Solar Pty Ltd", "@smithssolar" and "smithssolar.au" all become
-// "smithssolar".
-const squash = (s: string) => s.toLowerCase().replace(/\b(pty|ltd|limited|co|inc|au|official)\b/g, "")
-  .replace(/[^a-z0-9]/g, "").replace(/(official|aus|au)$/, "");
-
-/** The same name, or one a typo or two away (at least 85% alike). */
-function sameName(a: string, b: string): boolean {
-  if (a.length < 3 || b.length < 3) return false;
-  if (a === b) return true;
-  const d: number[] = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    let prev = d[0]; d[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const tmp = d[j];
-      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = tmp;
-    }
-  }
-  return 1 - d[b.length] / Math.max(a.length, b.length) >= 0.85;
 }
 
 async function findByName(edge: string, name: string, token?: string): Promise<string | null> {

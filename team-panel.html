@@ -1901,7 +1901,11 @@ select{cursor:pointer}
     const head = '<div class="st-h" style="margin-top:16px">Campaign</div>';
     if (!c) { host.innerHTML = head + '<div class="muted" style="font-size:12px">Loading…</div>'; return; }
     if (c.error) { host.innerHTML = head + `<div class="muted" style="font-size:12px">${esc(c.error)}</div>`; return; }
-    if (!c.meta) { host.innerHTML = head + '<div class="muted" style="font-size:12.5px">Their ad account and Facebook Page aren\'t connected yet.</div>'; return; }
+    if (!c.meta) {
+      host.innerHTML = head + `<div class="st-round"><div class="muted" style="font-size:12.5px;margin-bottom:6px">Their ad account and Facebook Page aren't both connected yet. It fills in by itself once they share them with QuoteLeads, or set them here.</div>${connectionRowHtml(c)}</div>`;
+      wireConnection();
+      return;
+    }
     const b = c.build, st = c.settings || {}, saved = c.saved || {}, ed = _studio.campaignEdit;
     const date = (d) => d ? new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
     const built = b && b.status === 'built';
@@ -1915,6 +1919,7 @@ select{cursor:pointer}
 
     host.innerHTML = `${head}<div class="st-round">
       <div class="st-iss" style="border-top:0;padding-top:0">${status}</div>
+      ${connectionRowHtml(c)}
       ${built && b.meta.form_id && !(_studio.leads && _studio.leads.delivery === 'direct') ? `<div class="st-iss"><span class="sev chk">Make</span>Connect the form <b>${esc(b.meta.form_name || '')}</b> (${esc(b.meta.form_id)}) in Make before launch, so its leads reach their integrations.</div>` : ''}
       ${formats ? `<div class="st-iss"><span class="sev chk">Check</span>${formats} ad(s) couldn't carry the Stories image, so Meta crops the feed image there.</div>` : ''}
       ${(c.problems || []).map(p => `<div class="st-iss"><span class="sev fix">Missing</span>${esc(p)}</div>`).join('')}
@@ -1937,6 +1942,34 @@ select{cursor:pointer}
       </div>
     </div>`;
     wireCampaign();
+  }
+
+  // Their ad account and Page: found by the access watcher once they share
+  // them, or set here by hand. Saving checks each once with Meta.
+  function connectionRowHtml(c) {
+    const cn = c.connection || {};
+    return `<div class="st-camp-row"><span>Meta connection</span>
+      <label>Ad account <input type="text" id="cpAcc" inputmode="numeric" style="width:170px" value="${esc(cn.ad_account_id || '')}" placeholder="act_ number"></label>
+      <label>Page ID <input type="text" id="cpPage" inputmode="numeric" style="width:170px" value="${esc(cn.page_id || '')}" placeholder="Page ID"></label>
+      <button class="btn btn-sm" type="button" id="cpConnSave">Save</button>
+      <span class="muted" id="cpConnMsg">${cn.set_by ? `set by ${esc(cn.set_by)}` : ''}</span></div>`;
+  }
+
+  function wireConnection() {
+    const b = $('cpConnSave');
+    if (!b) return;
+    b.addEventListener('click', async () => {
+      const cid = _studio.companyId, m = $('cpConnMsg');
+      b.disabled = true; m.textContent = 'Checking with Meta…';
+      const { ok, data } = await campaignApi({ action: 'save_connection', company_id: cid, ad_account_id: $('cpAcc').value, page_id: $('cpPage').value });
+      b.disabled = false;
+      if (!ok) { m.textContent = data.error || 'Could not save.'; return; }
+      const ch = data.checks || {};
+      await loadCampaign();
+      const m2 = $('cpConnMsg');
+      if (m2) m2.textContent = ['Saved.', ch.account && `Ad account: ${ch.account}.`, ch.page && `Page: ${ch.page}.`].filter(Boolean).join(' ');
+      loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
+    });
   }
 
   function leadsRowHtml() {
@@ -1964,6 +1997,7 @@ select{cursor:pointer}
   }
 
   function wireCampaign() {
+    wireConnection();
     const cid = _studio.companyId, ed = _studio.campaignEdit;
     const msg = (t) => { const m = $('cpMsg'); if (m) m.textContent = t; };
     document.querySelectorAll('#stCampaign [data-cp-radius]').forEach(inp => inp.addEventListener('change', () => { ed.locations[+inp.dataset.cpRadius].radius_km = +inp.value || 25; }));
