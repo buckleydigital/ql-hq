@@ -341,7 +341,7 @@ Deno.serve(async (req) => {
       try {
         // A test account is a sandbox; it has no business on the real kanban.
         const { data: co } = await adminClient
-          .from("companies").select("is_test").eq("id", companyId).maybeSingle();
+          .from("companies").select("is_test, ads_live_date").eq("id", companyId).maybeSingle();
         if (co?.is_test) return;
         const { data: sum } = await adminClient
           .from("company_fulfilment_summary")
@@ -352,7 +352,9 @@ Deno.serve(async (req) => {
         const res = await fetch(`${QL_MC_API_URL}/sync-from-hq`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-secret": QL_MC_API_SECRET },
-          body: JSON.stringify({ action: "upsert_fulfilment", hq_company_id: companyId, summary: sum }),
+          // The ads-live date travels with it: it is day 1 of management in
+          // ql-mc as well, where billing counts its 30-day periods from it.
+          body: JSON.stringify({ action: "upsert_fulfilment", hq_company_id: companyId, summary: sum, ads_live_date: co?.ads_live_date ?? null }),
         });
         if (!res.ok) {
           console.warn("ql-mc fulfilment mirror rejected:", res.status, await res.text().catch(() => ""));
@@ -734,7 +736,7 @@ Deno.serve(async (req) => {
     };
 
     // ────────────────────── INTERNAL TEAM ACTIONS ──────────────────────────
-    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability", "start_call", "list_calls", "send_client_sms", "list_client_sms", "sms_inbox", "mark_sms_read", "list_sms_threads", "list_sms_thread", "reply_to_number"]);
+    const TEAM_ACTIONS = new Set(["list_clients", "get_client", "add_note", "get_availability", "set_availability", "start_call", "list_calls", "send_client_sms", "list_client_sms", "sms_inbox", "mark_sms_read", "list_sms_threads", "list_sms_thread", "reply_to_number", "mc_billing", "mc_send_invoice"]);
     if (TEAM_ACTIONS.has(action || "")) {
       // An admin who is not on the team can still use these to see the panel
       // the team sees; scope resolution below gives them everything.
@@ -815,6 +817,20 @@ Deno.serve(async (req) => {
           is_test: c.is_test === true,
           ...agg[c.id as string],
         }));
+        // Who is assigned to each client, and who could be, for the callers who
+        // assign clients (admins, and roles with assignments_manage). The list
+        // shows a picker on each row from these.
+        let teamMembers: { id: string; name: string }[] | undefined;
+        if (isAdmin || (isTeam && can("assignments_manage"))) {
+          const [{ data: asg }, { data: team }] = await Promise.all([
+            adminClient.from("team_assignments").select("company_id, team_user_id").in("company_id", ids),
+            adminClient.from("profiles").select("id, full_name, team_role").eq("is_team", true).order("full_name"),
+          ]);
+          const byCo: Record<string, string[]> = {};
+          for (const a of asg || []) (byCo[a.company_id as string] ||= []).push(a.team_user_id as string);
+          for (const c of clients as Record<string, unknown>[]) c.va_ids = byCo[c.id as string] || [];
+          teamMembers = (team || []).map((t: Record<string, unknown>) => ({ id: t.id as string, name: (t.full_name as string) || "Unnamed" }));
+        }
         // The caller's own role travels with the list so the panel can label
         // itself honestly ("All clients" vs "Clients assigned to you") instead
         // of guessing from the row count.
@@ -837,6 +853,7 @@ Deno.serve(async (req) => {
             // matters is server-side; this stops the UI offering a 403.
             can: perms,
           },
+          ...(teamMembers ? { team_members: teamMembers } : {}),
         });
       }
 
@@ -1035,6 +1052,39 @@ Deno.serve(async (req) => {
       const companyId = (body as { company_id?: string }).company_id;
       if (!companyId) return json({ error: "company_id is required" }, 400);
       if (!allowedIds.has(companyId)) return json({ error: "Forbidden: client not assigned to you" }, 403);
+
+      // ── Invoices: Mission Control's, shown and sent from here ─────────────
+      // ql-mc makes and numbers every invoice. The panel reads that client's
+      // invoices and payment dates from ql-mc and sends through it, so the
+      // number, the PDF and the sent stamp are the same in both places.
+      if (action === "mc_billing" || action === "mc_send_invoice") {
+        if (action === "mc_send_invoice" && !can("invoices_manage")) {
+          return json({ error: "Your role cannot send invoices" }, 403);
+        }
+        const mcUrl = Deno.env.get("QL_MC_API_URL"), mcSecret = Deno.env.get("QL_MC_API_SECRET");
+        if (!mcUrl || !mcSecret) return json({ error: "Mission Control is not connected" }, 503);
+        const b = body as Record<string, unknown>;
+        const payload = action === "mc_billing"
+          ? { action: "client_billing", hq_company_id: companyId }
+          : {
+            action: "send_client_invoice", hq_company_id: companyId, invoice_id: b.invoice_id,
+            to: b.to, subject: b.subject, message: b.message, pdf_base64: b.pdf_base64,
+            reply_to: caller.email || "",
+          };
+        const res = await fetch(`${mcUrl}/sync-from-hq`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-api-secret": mcSecret },
+          body: JSON.stringify(payload),
+        });
+        const out = await res.json().catch(() => ({})) as Record<string, unknown>;
+        if (!res.ok) return json({ error: (out.error as string) || `Mission Control returned ${res.status}` }, res.status >= 500 ? 502 : res.status);
+        if (action === "mc_send_invoice") {
+          await logAction({
+            company_id: companyId, action: "invoice.sent",
+            detail: { invoice_id: b.invoice_id, to: out.to ?? b.to },
+          });
+        }
+        return json(out);
+      }
 
       if (action === "get_client") {
         const { data: company } = await adminClient
@@ -1524,7 +1574,7 @@ Deno.serve(async (req) => {
     // Open to the whole Internal Team: a member for their assigned clients, an
     // ops manager or admin for every client.
     const FULFILMENT_ACTIONS = new Set([
-      "list_fulfilment", "set_fulfilment_step", "fulfilment_overview", "list_fulfilment_log",
+      "list_fulfilment", "set_fulfilment_step", "fulfilment_overview", "list_fulfilment_log", "reset_test_account",
     ]);
     if (FULFILMENT_ACTIONS.has(action || "")) {
       if (!isTeam && !isAdmin) return json({ error: "Forbidden: Internal Team access required" }, 403);
@@ -1618,6 +1668,15 @@ Deno.serve(async (req) => {
       const cid = (body as { company_id?: string }).company_id;
       if (!mayTouch(cid)) return json({ error: "Forbidden: client not assigned to you" }, 403);
 
+      // ── RESET a test account back to a brand new client (admin only) ────
+      // reset_test_company refuses anything that is not is_test.
+      if (action === "reset_test_account") {
+        if (!isAdmin) return json({ error: "Only an admin can reset a test account" }, 403);
+        const { error } = await adminClient.rpc("reset_test_company", { p_company: cid });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true });
+      }
+
       // ── One client's checklist, with its history ─────────────────────────
       if (action === "list_fulfilment") {
         const { data: defs } = await adminClient
@@ -1660,6 +1719,26 @@ Deno.serve(async (req) => {
         if (b.status === "blocked" && !(b.notes || "").trim()) {
           return json({ error: "Say what it is blocked on" }, 400);
         }
+        // Going live is day 1 of management: the ads-live date, the start of
+        // the included 30 days, and the first invoice 30 days on. Each is set
+        // once, so re-ticking the step never restarts the clock. Written before
+        // the step so the sync to ql-mc that the step sends carries the date.
+        if (b.step_key === "ads_live" && b.status === "done") {
+          const { data: co } = await adminClient
+            .from("companies").select("ads_live_date, management_included_from, next_invoice_due").eq("id", cid).maybeSingle();
+          const live = co?.ads_live_date || new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+          const patch: Record<string, string> = {};
+          if (!co?.ads_live_date) patch.ads_live_date = live;
+          if (!co?.management_included_from) patch.management_included_from = live;
+          if (!co?.next_invoice_due) {
+            const d = new Date(live + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 30);
+            patch.next_invoice_due = d.toISOString().slice(0, 10);
+          }
+          if (Object.keys(patch).length) {
+            await adminClient.from("companies").update(patch).eq("id", cid);
+          }
+        }
+
         const res = await setStep(cid, b.step_key, b.status, (b.notes || "").trim() || null);
         if (!res.ok) return json({ error: res.error }, res.code);
 
@@ -1670,20 +1749,6 @@ Deno.serve(async (req) => {
           await adminClient.from("companies")
             .update({ intro_email_sent: done, intro_email_sent_at: done ? new Date().toISOString() : null })
             .eq("id", cid);
-        }
-        // Same for the ads-live date the billing panel shows, and the start of
-        // the included 30 days of management, which runs from going live. Both
-        // are set once: re-ticking the step must not restart the clock.
-        if (b.step_key === "ads_live" && b.status === "done") {
-          const { data: co } = await adminClient
-            .from("companies").select("ads_live_date, management_included_from").eq("id", cid).maybeSingle();
-          const today = new Date().toISOString().slice(0, 10);
-          const patch: Record<string, string> = {};
-          if (!co?.ads_live_date) patch.ads_live_date = today;
-          if (!co?.management_included_from) patch.management_included_from = co?.ads_live_date || today;
-          if (Object.keys(patch).length) {
-            await adminClient.from("companies").update(patch).eq("id", cid);
-          }
         }
         return json({ ok: true, step: res.step });
       }

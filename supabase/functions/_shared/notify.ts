@@ -72,10 +72,11 @@ export async function setStep(admin: Admin, companyId: string, stepKey: string, 
     const { data: sum } = await admin.from("company_fulfilment_summary")
       .select("stage, stage_at, active_status, steps_done, steps_settled, steps_total, blocked_count, next_step_key, next_step_due")
       .eq("company_id", companyId).maybeSingle();
-    if (sum) {
+    const { data: co } = await admin.from("companies").select("is_test, ads_live_date").eq("id", companyId).maybeSingle();
+    if (sum && !(co as Row | null)?.is_test) {
       await fetch(`${url}/sync-from-hq`, {
         method: "POST", headers: { "Content-Type": "application/json", "x-api-secret": secret },
-        body: JSON.stringify({ action: "upsert_fulfilment", hq_company_id: companyId, summary: sum }),
+        body: JSON.stringify({ action: "upsert_fulfilment", hq_company_id: companyId, summary: sum, ads_live_date: (co as Row | null)?.ads_live_date ?? null }),
       });
     }
   } catch (e) {

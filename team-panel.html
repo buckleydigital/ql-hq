@@ -482,6 +482,17 @@ select{cursor:pointer}
 .step.blocked{border-color:rgba(255,69,96,.35);background:var(--red-dim)}
 .step.overdue{border-color:rgba(245,166,35,.35)}
 .step select{font-size:10.5px;padding:4px 7px}
+.fstage{border:1px solid var(--bd);border-radius:10px;margin-top:10px;background:var(--s1)}
+.fstage>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink)}
+.fstage>summary::-webkit-details-marker{display:none}
+.fstage>summary .fsn{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;background:var(--s3);color:var(--ink2);flex:none}
+.fstage.done>summary .fsn{background:var(--grn-dim);color:var(--grn)}
+.fstage.now>summary .fsn{background:var(--acc);color:#fff}
+.fstage>summary .fsc{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:400;color:var(--ink3)}
+.fstage .fsteps{padding:0 10px 10px}
+.fnext{border:1px solid rgba(79,143,255,.35);background:var(--acc-dim);border-radius:10px;padding:12px 14px;margin:12px 0 4px}
+.fnext .fnk{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--acc)}
+.fnext .fnl{font-size:15px;font-weight:600;color:var(--ink);margin-top:4px}
 .prog{height:4px;border-radius:20px;background:var(--ink4);overflow:hidden;margin:9px 0 2px}
 .prog>i{display:block;height:100%;background:var(--grn);border-radius:20px;transition:width .3s}
 .logrow{display:flex;gap:10px;font-family:var(--mono);font-size:10.5px;padding:6px 0;
@@ -781,6 +792,35 @@ select{cursor:pointer}
 <!-- PREVIEW EMAIL MODAL -->
 <!-- Deliberately the same shape as the intro modal: the team reviews a merged
      draft and presses send. Confirm-then-send, never automatic. -->
+<div id="mcPdfModal" class="inv-overlay hidden">
+  <div class="inv-modal" style="max-width:860px;width:96vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 style="margin:0;font-size:17px" id="mcPdfTitle">Invoice</h2>
+      <button class="btn" id="mcPdfClose" type="button">✕</button>
+    </div>
+    <iframe id="mcPdfFrame" title="Invoice preview" style="width:100%;height:75vh;border:1px solid var(--bd2);border-radius:8px;background:#fff"></iframe>
+  </div>
+</div>
+<div id="mcSendModal" class="inv-overlay hidden">
+  <div class="inv-modal" style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="margin:0;font-size:17px">Send invoice</h2>
+      <button class="btn" id="mcSendClose" type="button">✕</button>
+    </div>
+    <div class="muted" id="mcSendSub" style="margin-bottom:12px"></div>
+    <input type="hidden" id="mcSendId">
+    <label class="inv-lbl" style="display:block">To<input id="mcSendTo" type="email"></label>
+    <label class="inv-lbl" style="display:block;margin-top:10px">Subject<input id="mcSendSubject" type="text"></label>
+    <div class="sec-title">Message</div>
+    <textarea id="mcSendMsg" style="min-height:220px;line-height:1.6"></textarea>
+    <div class="muted" style="font-size:12px;margin-top:6px">The invoice PDF is attached, exactly as Preview shows it. It is sent from Mission Control and marked sent in both panels.</div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-p" id="mcSendBtn" type="button">Send invoice</button>
+      <button class="btn" id="mcSendCancel" type="button">Cancel</button>
+      <span class="muted" id="mcSendStatus" style="font-size:12px"></span>
+    </div>
+  </div>
+</div>
 <div id="prevModal" class="inv-overlay hidden">
   <div class="inv-modal" style="max-width:680px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -934,6 +974,21 @@ select{cursor:pointer}
   ];
   const OWNER_LABEL = { team: '', client: 'waiting on client', ops: 'ops' };
 
+  // The checklist in the five stages onboarding actually moves through. A step
+  // not listed here (a new one in the catalogue) lands in the stage its phase
+  // suggests, so nothing ever disappears from the page.
+  const FULFIL_STAGES = [
+    { key: 'signup',   name: 'Signup',           steps: ['paid_signed', 'intro_email_sent', 'form_filled', 'signup_verified', 'account_created', 'welcome_email_sent'] },
+    { key: 'access',   name: 'Access & assets',  steps: ['ad_access_granted', 'crm_integration', 'assets_provided'] },
+    { key: 'creative', name: 'Creative',         steps: ['ad_copy_generated', 'creatives_generated', 'previews_sent', 'previews_accepted'] },
+    { key: 'launch',   name: 'Launch',           steps: ['page_live', 'sms_agent_live', 'campaign_built', 'ads_live'] },
+    { key: 'live',     name: 'Live',             steps: ['first_lead', 'review_system_live'] },
+  ];
+  function stageOfStep(stepKey, phase) {
+    return FULFIL_STAGES.find(g => g.steps.includes(stepKey))
+      || FULFIL_STAGES.find(g => g.key === (phase === 'live' ? 'live' : 'launch'));
+  }
+
   let _fulfil = null;        // { steps, summary, log } for the open client
   let _fulfilBoard = null;   // the overview, cached per visit
 
@@ -1040,25 +1095,50 @@ select{cursor:pointer}
     const total = sum.steps_total || steps.filter(s => s.required).length || 1;
     const settled = sum.steps_settled || 0;
     const pct = Math.round((settled / total) * 100);
-    const onboarding = steps.filter(s => s.phase === 'onboarding');
-    const live = steps.filter(s => s.phase === 'live');
+    const isSettled = (st) => st.status === 'done' || st.status === 'skipped';
+    const next = steps.find(st => st.step_key === sum.next_step_key) || null;
+    const nowStage = next ? stageOfStep(next.step_key, next.phase) : null;
+
+    // What to do now: the one step that is next, in plain words, with its button.
+    const nextCard = next
+      ? `<div class="fnext">
+          <div class="fnk">Next step · ${esc(nowStage.name)}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="fnl" style="flex:1">${esc(next.label || next.step_key)}</div>
+            ${automationBtn(next, next.status || 'pending')}
+          </div>
+          <div class="smeta" style="margin-top:4px">${[
+            next.owner_role === 'client' ? 'Waiting on the client' : next.owner_role === 'ops' ? 'For ops' : 'For the team',
+            sum.next_step_due ? 'due ' + relTime(sum.next_step_due) : '',
+            next.status === 'blocked' && next.notes ? 'blocked: ' + esc(next.notes) : '',
+          ].filter(Boolean).join(' · ')}</div>
+        </div>`
+      : '<div class="fnext"><div class="fnk">Next step</div><div class="fnl" style="color:var(--grn)">Nothing left: onboarding is complete</div></div>';
+
+    const groups = FULFIL_STAGES.map(g => ({ ...g, rows: steps.filter(st => stageOfStep(st.step_key, st.phase) === g) }))
+      .filter(g => g.rows.length);
+    const stagesHtml = groups.map((g, i) => {
+      const req = g.rows.filter(st => st.required);
+      const doneN = req.filter(isSettled).length;
+      const complete = req.length > 0 && doneN === req.length && !g.rows.some(st => st.status === 'blocked');
+      const now = nowStage === g;
+      return `<details class="fstage${complete ? ' done' : ''}${now ? ' now' : ''}"${now || g.rows.some(st => st.status === 'blocked') ? ' open' : ''}>
+        <summary><span class="fsn">${complete ? '✓' : i + 1}</span>${esc(g.name)}<span class="fsc">${doneN}/${req.length || g.rows.length}${g.rows.some(st => st.status === 'blocked') ? ' · blocked' : ''}</span></summary>
+        <div class="fsteps">${g.rows.map(stepRowHtml).join('')}</div>
+      </details>`;
+    }).join('');
+
     const head = `
-      <div class="kv"><span class="k">Stage</span><b>${esc(sum.stage || '—')}</b>${sum.active_status ? ' <span class="badge ppl" style="margin-left:8px">' + esc(sum.active_status) + '</span>' : ''}</div>
       <div class="kv"><span class="k">Progress</span><span>${settled} of ${total} steps${sum.steps_done != null && sum.steps_done !== settled ? ' (' + sum.steps_done + ' ticked, rest skipped)' : ''}</span></div>
       <div class="prog"><i style="width:${pct}%"></i></div>
-      ${sum.next_step_key
-        ? `<div class="kv"><span class="k">Waiting on</span><span>${esc((steps.find(s => s.step_key === sum.next_step_key) || {}).label || sum.next_step_key)}${sum.next_step_due ? ' · due ' + relTime(sum.next_step_due) : ''}</span></div>`
-        : '<div class="kv"><span class="k">Waiting on</span><span style="color:var(--grn)">Nothing — onboarding complete</span></div>'}
       ${sum.blocked_count ? `<div class="kv"><span class="k">Blocked</span><span style="color:var(--red)">${sum.blocked_count} step${sum.blocked_count !== 1 ? 's' : ''}</span></div>` : ''}`;
     const log = (_fulfil.log || []).slice(0, 25);
     return `
       <div class="sec-title">Fulfilment</div>
       <div class="card">
+        ${nextCard}
         ${head}
-        ${automationToolsHtml()}
-        <div class="sec-title" style="margin-top:14px">Onboarding</div>
-        ${onboarding.map(stepRowHtml).join('') || '<div class="muted">No steps defined.</div>'}
-        ${live.length ? '<div class="sec-title">Once live</div>' + live.map(stepRowHtml).join('') : ''}
+        ${stagesHtml || '<div class="muted">No steps defined.</div>'}
       </div>
       ${adCopyHtml()}
       <div class="sec-title">Activity</div>
@@ -1110,6 +1190,8 @@ select{cursor:pointer}
       case 'invoice.created':   return 'created invoice ' + ((l.detail && l.detail.invoice_number) || '');
       case 'invoice.updated':   return 'updated invoice ' + ((l.detail && l.detail.invoice_number) || '');
       case 'invoice.deleted':   return 'deleted an invoice';
+      case 'invoice.sent':      return 'sent the invoice to ' + ((l.detail && l.detail.to) || 'the client');
+      case 'invoice.reminder_sent': return 'reminded ' + (((l.detail && l.detail.told) || []).join(', ') || 'the office') + ' to send invoice ' + ((l.detail && l.detail.invoice_number) || '');
       case 'preview.added':     return 'added a preview ' + ((l.detail && l.detail.kind) || 'link');
       case 'preview.deleted':   return 'removed a preview';
       case 'dfy.saved':         return 'updated the campaign brief';
@@ -2395,7 +2477,9 @@ select{cursor:pointer}
       `<b style="color:var(--amb)">${late}</b> overdue · <b style="color:var(--red)">${blocked}</b> blocked · ` +
       `<b style="color:var(--grn)">${done}</b> fully onboarded`;
     if (!clients.length) { el.innerHTML = '<div class="card empty">No clients yet.</div>'; return; }
-    el.innerHTML = clients.map(c => {
+    // A test account always sits at the top, where it is easy to find.
+    const ordered = [...clients.filter(c => c.is_test), ...clients.filter(c => !c.is_test)];
+    el.innerHTML = ordered.map(c => {
       const total = c.steps_total || 1;
       const pct = Math.round(((c.steps_settled || 0) / total) * 100);
       const state = c.complete
@@ -2408,15 +2492,26 @@ select{cursor:pointer}
       return `<div class="card fcard" data-goto="${esc(c.id)}">
         <div style="flex:1;min-width:180px">
           <div class="client-name">${esc(c.name || 'Unnamed')} ${testBadge(c)}</div>
-          <div class="smeta">${esc(c.stage || 'Not started')}${c.next_step_key ? ' → ' + esc(labelFor(c.next_step_key)) : ''}</div>
+          <div class="smeta">${c.next_step_key
+            ? esc(stageOfStep(c.next_step_key).name) + ' · next: ' + esc(labelFor(c.next_step_key))
+            : (c.complete ? 'Live' : 'Not started')}</div>
           <div class="prog" style="max-width:240px"><i style="width:${pct}%"></i></div>
         </div>
-        <div style="text-align:right">${state}<div class="smeta">${c.steps_settled || 0}/${total} steps</div></div>
+        <div style="text-align:right">${state}<div class="smeta">${c.steps_settled || 0}/${total} steps</div>
+          ${c.is_test && _realAdmin ? `<button class="btn btn-sm" data-reset-test="${esc(c.id)}" type="button" style="margin-top:6px;color:var(--red);border-color:rgba(255,69,96,.35)">RESET</button>` : ''}</div>
       </div>`;
     }).join('');
     el.querySelectorAll('[data-goto]').forEach(row => {
-      row.addEventListener('click', () => openClient(row.dataset.goto, true));
+      row.addEventListener('click', (e) => { if (!e.target.closest('[data-reset-test]')) openClient(row.dataset.goto, true); });
     });
+    el.querySelectorAll('[data-reset-test]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Reset the test account to a brand new client? Its checklist, log, preview rounds, generated copy and dates are cleared. Uploaded photos and the logo stay.')) return;
+      b.disabled = true; b.textContent = 'Resetting…';
+      const { ok, data } = await teamApi({ action: 'reset_test_account', company_id: b.dataset.resetTest });
+      if (!ok) { alert(data.error || 'Could not reset it.'); b.disabled = false; b.textContent = 'RESET'; return; }
+      _fulfilBoard = null;
+      showFulfilBoard();
+    }));
   }
 
   // ─── Availability ─────────────────────────────────────────────────────────
@@ -2559,6 +2654,10 @@ select{cursor:pointer}
     $('prevCloseBtn').addEventListener('click', closePreviewModal);
     $('prevCancelBtn').addEventListener('click', closePreviewModal);
     $('prevSendBtn').addEventListener('click', sendPreviewEmail);
+    $('mcPdfClose').addEventListener('click', () => { $('mcPdfModal').classList.add('hidden'); $('mcPdfFrame').src = 'about:blank'; });
+    $('mcSendClose').addEventListener('click', () => $('mcSendModal').classList.add('hidden'));
+    $('mcSendCancel').addEventListener('click', () => $('mcSendModal').classList.add('hidden'));
+    $('mcSendBtn').addEventListener('click', sendMcInvoice);
     $('invAddLineBtn').addEventListener('click', function () { addLineItem(); });
     $('invGstType').addEventListener('change', recalcInvTotals);
     $('invSaveBtn').addEventListener('click', function () { submitInvoice(false); });
@@ -2632,17 +2731,32 @@ select{cursor:pointer}
     const { ok, data } = await teamApi({ action: 'list_team_clients', team_user_id: vaId });
     if (!ok) { $('clientList').innerHTML = `<div class="card empty">${esc(data.error || 'Error')}</div>`; return; }
     _clients = data.clients || [];
+    // A previewed member has no assignment picker, so neither does the preview.
+    _teamMembers = null;
     // Their capabilities, not the admin's - the point of a preview is to show
     // what they see, including which controls are not there.
     _me = data.me || {};
     applyRoleChrome();
     showList();
     enrichBilling();
+    openFromLink();
   }
 
   let _clients = [];
+  // Everyone on the team, when the caller can assign clients (admins and
+  // roles with assignments_manage); null for everyone else.
+  let _teamMembers = null;
   // Set when the open client was reached from the fulfilment board.
   let _cameFromBoard = false;
+  // Links in reminder emails open the client straight away (?client=<id>).
+  // Once only, so going back to the list does not jump into it again.
+  let _linkOpened = false;
+  function openFromLink() {
+    const want = new URLSearchParams(location.search).get('client');
+    if (_linkOpened || !want || !_clients.some(c => c.id === want)) return;
+    _linkOpened = true;
+    openClient(want);
+  }
   async function loadClients() {
     const { ok, status, data } = await teamApi({ action: 'list_clients' });
     if (!ok) {
@@ -2652,6 +2766,7 @@ select{cursor:pointer}
     }
     _clients = data.clients || [];
     _me = data.me || {};
+    _teamMembers = data.team_members || null;
     _realAdmin = _me.is_admin === true;
     _realPhone = _me.phone || null;
     _realUserId = _me.id || null;
@@ -2660,6 +2775,7 @@ select{cursor:pointer}
     $('vaNav').classList.remove('hidden');
     showList();
     enrichBilling();
+    openFromLink();
   }
 
   // ─── Role chrome ──────────────────────────────────────────────────────────
@@ -2785,6 +2901,8 @@ select{cursor:pointer}
     }
     if (managed && c.payment_method !== 'stripe') {
       const due = c.next_invoice_due ? new Date(c.next_invoice_due + 'T00:00:00') : null;
+      // Seven days before the payment date, the same day Mission Control drafts it.
+      if (due) due.setDate(due.getDate() - 7);
       if (c.invoice_status === 'due' || (due && due <= todayMidnight())) {
         tasks.push({ key: 'invoice', ic: '🧾', label: `Time to send ${c.name || 'this client'}'s invoice${c.next_invoice_due ? ' (due ' + fmtDate(c.next_invoice_due) + ')' : ''}` });
       }
@@ -2843,11 +2961,49 @@ select{cursor:pointer}
             ${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}
           </div>
         </div>
+        ${_teamMembers ? vaPickerHtml(c) : ''}
         <span class="goarrow">→</span>
       </div>`;
     }).join('');
-    el.querySelectorAll('.client-row').forEach(r => r.addEventListener('click', () => openClient(r.dataset.id)));
+    el.querySelectorAll('.client-row').forEach(r => r.addEventListener('click', (e) => {
+      if (e.target.closest('[data-va-pick]')) return;
+      openClient(r.dataset.id);
+    }));
+    el.querySelectorAll('select[data-va-pick]').forEach(sel => sel.addEventListener('change', () => setClientVa(sel.dataset.vaPick, sel.value, sel)));
     el.querySelectorAll('[data-goto]').forEach(r => r.addEventListener('click', () => openClient(r.dataset.goto)));
+  }
+
+  // ── Assigned VA picker on the client list (admins and ops) ──
+  function vaPickerHtml(c) {
+    const ids = c.va_ids || [];
+    const opts = _teamMembers.map(m => `<option value="${esc(m.id)}"${ids[0] === m.id ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
+    return `<label data-va-pick style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--ink3);margin-left:auto;margin-right:10px">Assigned VA
+      <select data-va-pick="${esc(c.id)}" style="min-width:150px"><option value="">Unassigned</option>${opts}</select>
+      ${ids.length > 1 ? `<span class="muted">+${ids.length - 1} more</span>` : ''}</label>`;
+  }
+  // One VA per client from here: the new one is assigned (and emailed by
+  // assign), then anyone else on the client is taken off.
+  async function setClientVa(companyId, vaId, sel) {
+    const c = _clients.find(x => x.id === companyId);
+    if (!c) return;
+    const before = c.va_ids || [];
+    sel.disabled = true;
+    try {
+      if (vaId && !before.includes(vaId)) {
+        const r = await teamApi({ action: 'assign', team_user_id: vaId, company_id: companyId });
+        if (!r.ok) throw new Error(r.data.error || 'Could not assign');
+      }
+      for (const old of before.filter(id => id !== vaId)) {
+        const r = await teamApi({ action: 'unassign', team_user_id: old, company_id: companyId });
+        if (!r.ok) throw new Error(r.data.error || 'Could not unassign');
+      }
+      c.va_ids = vaId ? [vaId] : [];
+    } catch (e) {
+      alert(e.message || e);
+      sel.value = before[0] || '';
+    }
+    sel.disabled = false;
+    showList();
   }
 
   let _bankRO = null;  // cached business/bank details (read-only for the team)
@@ -2923,7 +3079,7 @@ select{cursor:pointer}
       <div class="task" data-task="${t.key}">
         <span class="ic">${t.ic}</span>
         <div class="tbody">${esc(t.label)}</div>
-        ${t.key === 'invoice' || t.key === 'reorder' ? '<button class="btn btn-p" data-new-inv type="button">New invoice</button>' : ''}
+        ${t.key === 'invoice' || t.key === 'reorder' ? '<button class="btn btn-p" data-new-inv type="button">Check &amp; send invoice</button>' : ''}
       </div>`).join('');
 
     // ── DFY profile (editable) ──
@@ -3050,13 +3206,9 @@ select{cursor:pointer}
         <div id="plList"></div>
       </div>` : ''}
 
-      <div class="card">
-        <div class="sec-title" style="margin-top:0">Invoices</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span class="muted">Bank details shown on the invoice are set by your admin (read-only).</span>
-          <button class="btn btn-p" id="newInvBtn" type="button">+ New invoice</button>
-        </div>
-        <div id="invList"></div>
+      <div class="card" id="mcInvCard">
+        <div class="sec-title" style="margin-top:0">Invoices <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· from Mission Control</span></div>
+        <div id="mcInvList"></div>
       </div>
 
       <div class="card">
@@ -3077,14 +3229,14 @@ select{cursor:pointer}
       $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
       wirePreviewDropzone(companyId);
     }
-    $('newInvBtn').addEventListener('click', () => openInvModal(companyId, c));
+    loadMcBilling(companyId);
     wireFulfilment(companyId);
     if (mayRun('creatives')) loadStudio(companyId);
     const introBtn = $('detailBody').querySelector('[data-intro-toggle]');
     if (introBtn) introBtn.addEventListener('click', () => markIntroDone(companyId, !cache.intro_email_sent, introBtn));
     const introSendBtn = $('detailBody').querySelector('[data-intro-send]');
     if (introSendBtn) introSendBtn.addEventListener('click', () => openIntroModal(companyId, c, introSendBtn));
-    $('detailBody').querySelectorAll('[data-new-inv]').forEach(b => b.addEventListener('click', () => openInvModal(companyId, c)));
+    $('detailBody').querySelectorAll('[data-new-inv]').forEach(b => b.addEventListener('click', () => $('mcInvCard').scrollIntoView({ behavior: 'smooth', block: 'start' })));
 
     if (iCan('calls_make')) {
       $('detailBody').querySelectorAll('[data-call]').forEach(b =>
@@ -3625,6 +3777,281 @@ select{cursor:pointer}
       const inv = _detailInvoices.find(x => x.id === b.getAttribute('data-inv-pdf'));
       if (inv) downloadInvoicePDF(inv);
     }));
+  }
+
+  // ── Invoices from Mission Control ──
+  // ql-mc makes and numbers every invoice (it drafts the monthly one 7 days
+  // before each payment date). This card shows that client's ql-mc invoices,
+  // draws the PDF exactly as ql-mc's Invoices screen does, and sends through
+  // ql-mc, so the number, the document and the sent stamp match in both.
+  let _mcBilling = null;
+  let _mcLoadFor = null;
+  async function loadMcBilling(companyId) {
+    const host = $('mcInvList');
+    if (!host) return;
+    _mcLoadFor = companyId;
+    host.innerHTML = '<div class="muted">Loading invoices…</div>';
+    const { ok, data } = await teamApi({ action: 'mc_billing', company_id: companyId });
+    if (!$('mcInvList') || _mcLoadFor !== companyId) return;
+    if (!ok) { host.innerHTML = `<div class="muted">${esc(data.error || 'Could not load invoices from Mission Control.')}</div>`; return; }
+    _mcBilling = { companyId, ...data };
+    renderMcBilling();
+  }
+
+  function renderMcBilling() {
+    const host = $('mcInvList'), b = _mcBilling;
+    if (!host || !b) return;
+    const c = b.client;
+    if (!c) { host.innerHTML = '<div class="muted">This client isn\'t in Mission Control yet, so there are no invoices to show.</div>'; return; }
+    const head = `<div class="kv"><span class="k">Management day 1</span><span>${c.ads_first_live_date ? fmtDate(c.ads_first_live_date) : '<span class="muted">when the ads go live</span>'}</span></div>
+      <div class="kv"><span class="k">Next payment</span><span>${c.next_payment_date ? fmtDate(c.next_payment_date) + ' <span class="muted">· invoice goes out 7 days before</span>' : '-'}</span></div>`;
+    const money = (n) => '$' + Number(n || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const rows = (b.invoices || []).map(inv => `
+      <div class="task" style="align-items:center;flex-wrap:wrap">
+        <span class="tbody" style="font-family:monospace">${esc(inv.invoice_number || '')}</span>
+        <span>${money(inv.total)}</span>
+        <span class="badge ${inv.status === 'paid' ? 'paid' : inv.status === 'sent' ? 'sent' : 'due'}">${esc(inv.status || 'draft')}</span>
+        <span class="muted">${inv.sent_at ? 'sent ' + fmtDate(inv.sent_at) + (inv.sent_to ? ' to ' + esc(inv.sent_to) : '') : 'due ' + fmtDate(inv.due_date)}</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn" data-mcinv-view="${esc(inv.id)}" type="button">Preview</button>
+          ${iCan('invoices_manage') ? `<button class="btn btn-p" data-mcinv-send="${esc(inv.id)}" type="button">${inv.sent_at ? 'Resend…' : 'Send…'}</button>` : ''}
+        </span>
+      </div>`).join('') || '<div class="muted">No invoices yet. The monthly one is drafted automatically 7 days before the payment date.</div>';
+    host.innerHTML = head + '<div style="margin-top:10px">' + rows + '</div>';
+    host.querySelectorAll('[data-mcinv-view]').forEach(btn => btn.addEventListener('click', () => previewMcInvoice(btn.dataset.mcinvView, btn)));
+    host.querySelectorAll('[data-mcinv-send]').forEach(btn => btn.addEventListener('click', () => openMcSend(btn.dataset.mcinvSend)));
+  }
+
+  async function previewMcInvoice(id, btn) {
+    const inv = (_mcBilling.invoices || []).find(i => i.id === id);
+    if (!inv) return;
+    const was = btn.textContent; btn.disabled = true; btn.textContent = 'Drawing…';
+    try {
+      const b64 = await mcInvoicePdf(inv, _mcBilling.client, _mcBilling.biz);
+      const bytes = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      $('mcPdfFrame').src = url;
+      $('mcPdfTitle').textContent = (inv.invoice_number || 'Invoice') + ' · ' + (inv.client_name || '');
+      $('mcPdfModal').classList.remove('hidden');
+    } catch (e) { alert('Could not draw the invoice: ' + (e.message || e)); }
+    btn.disabled = false; btn.textContent = was;
+  }
+
+  function openMcSend(id) {
+    const inv = (_mcBilling.invoices || []).find(i => i.id === id);
+    if (!inv) return;
+    const c = _mcBilling.client || {}, biz = _mcBilling.biz || {};
+    const first = String(c.contact_name || '').trim().split(/\s+/)[0];
+    const money = '$' + Number(inv.total || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const due = inv.due_date ? new Date(inv.due_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    const from = biz.business_name || 'QuoteLeads';
+    $('mcSendId').value = inv.id;
+    $('mcSendSub').textContent = (inv.invoice_number || 'Invoice') + ' - ' + (inv.client_name || '') + (inv.sent_at ? ' (already sent to ' + (inv.sent_to || '') + ')' : '');
+    $('mcSendTo').value = inv.client_email || c.email || '';
+    $('mcSendSubject').value = 'Invoice ' + (inv.invoice_number || '') + ' from ' + from;
+    $('mcSendMsg').value = 'Hi ' + (first || 'there') + ',\n\n' +
+      'Please find attached invoice ' + (inv.invoice_number || '') + ' for ' + money + (inv.gst_type === 'exclusive' ? ' including GST' : '') + (due ? ', due ' + due : '') + '.\n\n' +
+      'Payment details are on the invoice. Any questions, just reply to this email.\n\n' +
+      'Thanks,\n' + from;
+    $('mcSendStatus').textContent = '';
+    $('mcSendModal').classList.remove('hidden');
+  }
+
+  async function sendMcInvoice() {
+    const id = $('mcSendId').value;
+    const inv = (_mcBilling.invoices || []).find(i => i.id === id);
+    if (!inv) return;
+    const to = $('mcSendTo').value.trim();
+    if (!confirm(`Send ${inv.invoice_number || 'this invoice'} to ${to}?`)) return;
+    const btn = $('mcSendBtn'); btn.disabled = true; $('mcSendStatus').textContent = 'Drawing the PDF…';
+    try {
+      const pdf = await mcInvoicePdf(inv, _mcBilling.client, _mcBilling.biz);
+      $('mcSendStatus').textContent = 'Sending…';
+      const { ok, data } = await teamApi({
+        action: 'mc_send_invoice', company_id: _mcBilling.companyId, invoice_id: id,
+        to, subject: $('mcSendSubject').value.trim(), message: $('mcSendMsg').value.trim(), pdf_base64: pdf,
+      });
+      if (!ok) throw new Error(data.error || 'Sending failed');
+      $('mcSendModal').classList.add('hidden');
+      loadMcBilling(_mcBilling.companyId);
+    } catch (e) { $('mcSendStatus').textContent = e.message || String(e); }
+    btn.disabled = false;
+  }
+
+  // The logo pill: ql-mc's white logo, trimmed of its transparent margin.
+  let _mcLogo = null;
+  async function mcInvoiceLogo() {
+    if (_mcLogo) return _mcLogo;
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'assets/invoice-logo-white.png'; });
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const px = g.getImageData(0, 0, c.width, c.height).data;
+    let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+      if (px[(y * c.width + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 <= x0) return null;
+    const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+    // Flattened onto the pill's black and embedded as a JPEG: a transparent
+    // PNG can come out as noise in some browsers' jsPDF output.
+    const og = o.getContext('2d'); og.fillStyle = '#000'; og.fillRect(0, 0, o.width, o.height);
+    og.drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+    _mcLogo = { data: o.toDataURL('image/jpeg', 0.95), ratio: o.width / o.height };
+    return _mcLogo;
+  }
+
+  // A copy of ql-mc's downloadInvoicePDF (index.html). Keep the two in step:
+  // a change to the invoice layout there belongs here too.
+  const MC_INVOICE_INCLUDED = {
+    managed: [
+      '30 days of active ad campaign management',
+      'Ongoing Meta ad optimisation (budget, audiences, creatives)',
+      'A/B testing and performance adjustments',
+      'Monthly performance report',
+      'Lead quality monitoring and CRM pipeline review',
+    ],
+  };
+  const MC_INVOICE_FROM_LINES = ['contact@quoteleads.com.au', 'quoteleads.com.au'];
+
+  async function mcInvoicePdf(inv, client, biz) {
+    biz = biz || {};
+    await ensureJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pw = 210, mx = 15, rx = pw - mx, col2 = 105;
+    const INK = [22, 27, 45], GREY = [140, 146, 158], BLUE = [47, 111, 235], RULE = [232, 235, 240];
+    const NAVY = [22, 27, 45];
+    const clean = v => String(v ?? '').replace(/[^\x20-\x7E -ÿ–—‘’“”\n]/g, ' ');
+    const money = n => '$' + Number(n || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const day = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+    const spacedRight = (t, xr, y, cs) => { doc.setCharSpace(0); const w = doc.getTextWidth(t) + cs * (t.length - 1); doc.setCharSpace(cs); doc.text(t, xr - w, y); doc.setCharSpace(0); };
+    const label = (t, x, y, opts) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...BLUE); doc.setCharSpace(0.45); doc.text(t, x, y, opts); doc.setCharSpace(0); };
+    const text = (t, x, y, size, rgb, bold, opts) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...rgb); doc.text(Array.isArray(t) ? t.map(clean) : clean(t), x, y, opts); };
+
+    const company = client?.company_name || inv.client_name || '-';
+    const billName = client?.contact_name && !String(inv.client_name || '').includes(client.contact_name)
+      ? `${client.contact_name} – ${company}` : (inv.client_name || company);
+    const billLines = [inv.client_email || client?.email, client?.phone].filter(Boolean);
+
+    const logo = await mcInvoiceLogo().catch(() => null);
+    doc.setFillColor(0, 0, 0);
+    doc.roundedRect(mx, 12.5, 38, 12.5, 2.6, 2.6, 'F');
+    if (logo) {
+      const h = 5.6, w = Math.min(30, h * logo.ratio);
+      try { doc.addImage(logo.data, 'JPEG', mx + (38 - w) / 2, 12.5 + (12.5 - h) / 2, w, h); } catch (e) {}
+    } else {
+      text('quoteleads', mx + 19, 20.6, 12, [255, 255, 255], true, { align: 'center' });
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...BLUE);
+    spacedRight('TAX INVOICE', rx, 17, 0.6);
+    if (biz.abn) {
+      const abn = String(biz.abn).replace(/\s/g, '').replace(/^(\d{2})(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3 $4');
+      text('ABN ' + abn, rx, 22, 8, GREY, false, { align: 'right' });
+    }
+    doc.setDrawColor(...BLUE); doc.setLineWidth(0.7); doc.line(mx, 30.7, rx, 30.7);
+
+    text('INVOICE', mx - 0.6, 51, 40, INK, true);
+    const num = String(inv.invoice_number || '').match(/(\d+)\s*$/);
+    text('#' + (num ? num[1] : (inv.invoice_number || '')), mx, 59, 12.5, BLUE, true);
+    const dateLabel = (t, y) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GREY); spacedRight(t, rx, y, 0.45); };
+    dateLabel('ISSUE DATE', 42);
+    text(day(inv.invoice_date), rx, 48, 12.5, INK, true, { align: 'right' });
+    dateLabel('DUE', 56.5);
+    text(day(inv.due_date), rx, 62.5, 12.5, INK, true, { align: 'right' });
+
+    label('FROM', mx, 76);
+    label('BILL TO', col2, 76);
+    text(biz.business_name || 'QuoteLeads', mx, 84, 12, INK, true);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    const billWrap = doc.splitTextToSize(clean(billName), rx - col2);
+    text(billWrap, col2, 84, 12, INK, true);
+    let fy = 90.8, by = 90.8 + (billWrap.length - 1) * 5.2;
+    MC_INVOICE_FROM_LINES.forEach(l => { text(l, mx, fy, 9.5, GREY); fy += 6.3; });
+    billLines.forEach(l => { text(l, col2, by, 9.5, GREY); by += 6.3; });
+    let y = Math.max(fy, by) + 4;
+
+    doc.setFillColor(...INK); doc.rect(mx, y, rx - mx, 13.5, 'F');
+    text('Description', mx + 5.8, y + 8.4, 10, [255, 255, 255], true);
+    text('Amount (AUD)', rx - 5.8, y + 8.4, 10, [255, 255, 255], true, { align: 'right' });
+    y += 13.5;
+    const period = inv.delivery_period_start && inv.delivery_period_end
+      ? ` (${new Date(inv.delivery_period_start + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} – ${day(inv.delivery_period_end)})` : '';
+    const items = inv.line_items || [];
+    items.forEach(li => {
+      let d = clean(li.description || '');
+      if (Number(li.qty) > 1) d += ` (${li.qty} × ${money(li.unit_price)})`;
+      if (period && items.length === 1 && !d.includes('(')) d += period;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      const wrap = doc.splitTextToSize(d, rx - mx - 45);
+      const h = Math.max(14.3, 8 + wrap.length * 4.6);
+      if (y + h > 250) { doc.addPage(); y = 20; }
+      text(wrap, mx + 5.8, y + 8.6, 10, INK);
+      text(money(li.line_total), rx - 5.8, y + 8.6, 10, INK, false, { align: 'right' });
+      doc.setDrawColor(...RULE); doc.setLineWidth(0.25); doc.line(mx, y + h, rx, y + h);
+      y += h;
+    });
+    doc.setFillColor(245, 247, 250); doc.rect(mx, y, rx - mx, 14.3, 'F');
+    text(inv.gst_type === 'inclusive' ? 'GST (10%, included)' : 'GST (10%)', mx + 5.8, y + 8.6, 10, INK);
+    text(money(inv.gst_amount), rx - 5.8, y + 8.6, 10, INK, false, { align: 'right' });
+    y += 14.3;
+    doc.setFillColor(...NAVY); doc.rect(col2, y, rx - col2, 30, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(200, 205, 215); doc.setCharSpace(0.5);
+    doc.text('TOTAL DUE', col2 + 6.2, y + 9.5); doc.setCharSpace(0);
+    text(money(inv.total), col2 + 6.2, y + 21, 25, [255, 255, 255], true);
+    text('AUD', rx - 6.2, y + 22, 11, BLUE, true, { align: 'right' });
+    y += 30 + 10;
+
+    const included = MC_INVOICE_INCLUDED[inv.offer_type] || [];
+    const notes = clean(inv.notes || '').trim();
+    const footerNote = notes && notes.length <= 90 && !notes.includes('\n') ? notes : 'Thank you for your business.';
+    const ensure = need => { if (y + need > 278) { doc.addPage(); y = 20; } };
+    if (included.length) {
+      ensure(10 + included.length * 7.7);
+      label("WHAT'S INCLUDED", mx, y); y += 8.5;
+      included.forEach(t => {
+        doc.setDrawColor(...GREY); doc.setLineWidth(0.3);
+        doc.line(mx + 1, y - 1.2, mx + 4.2, y - 1.2); doc.line(mx + 3.1, y - 2.2, mx + 4.2, y - 1.2); doc.line(mx + 3.1, y - 0.2, mx + 4.2, y - 1.2);
+        text(t, mx + 7.2, y, 10.5, INK); y += 7.7;
+      });
+      y += 3;
+    }
+    if (notes && notes !== footerNote) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      const lines = doc.splitTextToSize(notes, rx - mx);
+      ensure(10 + lines.length * 5);
+      label('NOTES', mx, y); y += 7;
+      text(lines, mx, y, 10, INK); y += lines.length * 5 + 4;
+    }
+
+    let rows;
+    if (inv.payment_details) {
+      rows = inv.payment_details.split('\n').map(l => l.trim()).filter(Boolean)
+        .map(l => { const m = l.match(/^([^:]{1,24}):\s*(.+)$/); return m ? [m[1], m[2]] : ['', l]; });
+    } else {
+      rows = [['PayID', biz.payid], ['BSB', biz.bsb], ['Account', biz.account_number]].filter(r => r[1]);
+    }
+    if (rows.length) {
+      ensure(10 + rows.length * 6.8);
+      label('PAYMENT DETAILS', mx, y); y += 8.6;
+      rows.forEach(([k, v]) => {
+        if (k) text(k, mx, y, 10.5, INK, true);
+        text(v, k ? mx + 24.8 : mx, y, 10.5, INK); y += 6.8;
+      });
+    }
+
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFillColor(...INK); doc.rect(0, 282, pw, 15, 'F');
+      const site = 'quoteleads.com.au', sep = '   ·   ';
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      const noteW = doc.getTextWidth(clean(footerNote) + sep);
+      doc.setFont('helvetica', 'bold');
+      const fx = (pw - noteW - doc.getTextWidth(site)) / 2;
+      text(footerNote + sep, fx, 290.6, 9.5, [200, 205, 215]);
+      text(site, fx + noteW, 290.6, 9.5, [124, 170, 255], true);
+    }
+    return doc.output('datauristring').split(',')[1];
   }
 
   async function addNote(companyId) {

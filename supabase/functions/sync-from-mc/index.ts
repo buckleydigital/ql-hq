@@ -515,7 +515,7 @@ Deno.serve(async (req: Request) => {
       const completedAt = liveDate ? new Date(liveDate).toISOString() : new Date().toISOString()
 
       const { data: company } = await supabase
-        .from('companies').select('id, ads_live_date, management_included_from').eq('id', companyId).maybeSingle()
+        .from('companies').select('id, ads_live_date, management_included_from, next_invoice_due').eq('id', companyId).maybeSingle()
       if (!company) return json({ error: 'company not found' }, 404)
 
       const { data: defs, error: dErr } = await supabase
@@ -591,6 +591,11 @@ Deno.serve(async (req: Request) => {
       const patch: Record<string, string> = {}
       if (!company.ads_live_date) patch.ads_live_date = today
       if (!company.management_included_from) patch.management_included_from = company.ads_live_date || today
+      // The first invoice falls 30 days after day 1, as in team-api.
+      if (!company.next_invoice_due) {
+        const d = new Date((company.ads_live_date || today) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 30)
+        patch.next_invoice_due = d.toISOString().slice(0, 10)
+      }
       if (Object.keys(patch).length) {
         await supabase.from('companies').update(patch).eq('id', companyId)
       }

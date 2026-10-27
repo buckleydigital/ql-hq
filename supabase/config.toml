@@ -227,3 +227,7 @@ verify_jwt = false
 # see, saved to meta_assets. Called with the vault's meta_watch_secret.
 [functions.meta-inventory]
 verify_jwt = false
+
+# Daily, from pg_cron with the autopilot secret: the VA's invoice reminder.
+[functions.invoice-reminders]
+verify_jwt = false
