@@ -725,7 +725,9 @@ async function applyManagedPurchase(p: ManagedPurchase, userId: string) {
       // A payment-mode session only carries a customer when one was created;
       // never overwrite a customer we already hold with null.
       ...(p.stripe_customer_id && { stripe_customer_id: p.stripe_customer_id }),
-      niche:              m.niche || null,
+      // The trade picked at checkout, unless it was "another trade": then the
+      // onboarding form's answer stays.
+      ...(m.niche && m.niche !== 'other' && { niche: m.niche }),
       ...(m.service_location && !prior?.service_area && { service_area: m.service_location }),
       dfy_profile:        { ...((prior?.dfy_profile as Record<string, unknown>) || {}), purchase: purchaseAnswers },
       // The monthly fee agreed with the build, for when they switch on
