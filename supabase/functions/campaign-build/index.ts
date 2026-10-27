@@ -379,7 +379,7 @@ async function advance(admin: Admin, build: Row, actor: Actor): Promise<string> 
 
     if (stage === "form") {
       meta.page_name = pageToken.name;
-      if (meta.instagram_id === undefined) meta.instagram_id = await instagramFor(company, ids.page, pageToken.token);
+      if (meta.instagram_id === undefined) meta.instagram_id = await instagramFor(company, ids, pageToken.token, pageToken.name);
       if (!meta.form_id) meta.form_id = await ensureForm(ids.page, pageToken.token, name, settings, pageToken.name);
       meta.form_name = name;
       await save({ stage: "campaign", meta });
@@ -515,22 +515,48 @@ async function pageAccess(pageId: string): Promise<{ token: string; name: string
 }
 
 /**
- * The Instagram account the ads run as, which Meta needs whenever ads can show
- * on Instagram: one set on the client's campaign settings, else the one linked
- * to their Page, else Meta's Page-backed account (made if there isn't one,
- * which shows the Page's name and picture). Null if Meta gives none.
+ * The Instagram account the ads run as (Meta needs one whenever ads can show
+ * on Instagram). Meta's Page-backed account, which shows the Page's name and
+ * picture, unless a real Instagram account we can see (linked to their Page or
+ * shared with their ad account) is plainly theirs: its username or name the
+ * same as, or very close to, their business name or Page name. One set on the
+ * client's campaign settings wins over both.
  */
-async function instagramFor(company: Row, pageId: string, pageToken: string): Promise<string | null> {
+async function instagramFor(company: Row, ids: { account: string; page: string }, pageToken: string, pageName: string): Promise<string | null> {
   const set = String(((company.campaign_settings || {}) as Row).instagram_user_id || "").replace(/\D/g, "");
   if (set) return set;
-  const linked = await graph(`${pageId}?fields=instagram_business_account`, { token: pageToken }).catch(() => ({} as Row));
-  const ig = (linked.instagram_business_account as Row | undefined)?.id;
-  if (ig) return String(ig);
-  const backed = await graph(`${pageId}/page_backed_instagram_accounts?fields=id`, { token: pageToken }).catch(() => ({ data: [] } as Row));
+  const names = [String(company.name || ""), pageName].map(squash).filter((n) => n.length >= 3);
+  const linked = await graph(`${ids.page}?fields=instagram_business_account{id,username,name}`, { token: pageToken }).catch(() => ({} as Row));
+  const shared = await graph(`${act(ids.account)}/instagram_accounts?fields=id,username`).catch(() => ({ data: [] } as Row));
+  const candidates = [linked.instagram_business_account as Row | undefined, ...((shared.data || []) as Row[])].filter(Boolean) as Row[];
+  const theirs = candidates.find((c) => [c.username, c.name].some((n) => names.some((want) => sameName(squash(String(n || "")), want))));
+  if (theirs?.id) return String(theirs.id);
+  const backed = await graph(`${ids.page}/page_backed_instagram_accounts?fields=id`, { token: pageToken }).catch(() => ({ data: [] } as Row));
   const have = ((backed.data || []) as Row[])[0]?.id;
   if (have) return String(have);
-  const made = await graph(`${pageId}/page_backed_instagram_accounts`, { token: pageToken, form: {} }).catch(() => ({} as Row));
+  const made = await graph(`${ids.page}/page_backed_instagram_accounts`, { token: pageToken, form: {} }).catch(() => ({} as Row));
   return made.id ? String(made.id) : null;
+}
+
+// "Smith's Solar Pty Ltd", "@smithssolar" and "smithssolar.au" all become
+// "smithssolar".
+const squash = (s: string) => s.toLowerCase().replace(/\b(pty|ltd|limited|co|inc|au|official)\b/g, "")
+  .replace(/[^a-z0-9]/g, "").replace(/(official|aus|au)$/, "");
+
+/** The same name, or one a typo or two away (at least 85% alike). */
+function sameName(a: string, b: string): boolean {
+  if (a.length < 3 || b.length < 3) return false;
+  if (a === b) return true;
+  const d: number[] = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return 1 - d[b.length] / Math.max(a.length, b.length) >= 0.85;
 }
 
 async function findByName(edge: string, name: string, token?: string): Promise<string | null> {
@@ -759,7 +785,7 @@ async function selfTest(company: Row) {
   if (page && images) {
     const pg = page as { token: string; name: string };
     made.form = await step("form", () => ensureForm(ids.page, pg.token, tag, settings, pg.name)) ?? undefined;
-    const ig = await step("instagram account", () => instagramFor(company, ids.page, pg.token));
+    const ig = await step("instagram account", () => instagramFor(company, ids, pg.token, pg.name));
     made.campaign = await step("campaign", async () => String((await graph(`${act(ids.account)}/campaigns`, {
       form: { name: tag, objective: "OUTCOME_LEADS", status: "PAUSED", buying_type: "AUCTION", special_ad_categories: [], is_adset_budget_sharing_enabled: false },
     })).id)) ?? undefined;
