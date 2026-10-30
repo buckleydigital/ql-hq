@@ -1157,7 +1157,7 @@ function applyPermissionRestrictions() {
 // Settings, linking down to the steps in its Meta Sales Tracking panel. "Not now"
 // hides it in this browser for a week.
 const PIXEL_NOTICE_SNOOZE = "qlPixelNoticeSnoozedUntil";
-function showPixelNotice(company) {
+async function showPixelNotice(company) {
   const box = document.getElementById("pixelNotice");
   if (!box) return;
   const saved = company?.meta_dataset_id;
@@ -1165,9 +1165,21 @@ function showPixelNotice(company) {
   let snoozed = false;
   try { snoozed = Number(localStorage.getItem(PIXEL_NOTICE_SNOOZE) || 0) > Date.now(); } catch (_) {}
   if (company?.plan !== "managed" || connected || snoozed) { box.style.display = "none"; return; }
-  document.getElementById("pixelNoticeTitle").textContent = saved ? "Your Meta pixel isn't connected yet" : "Connect your Meta pixel";
-  document.getElementById("pixelNoticeText").textContent =
-    "Share your Pixel with QuoteLeads in Meta Business Settings so your ads learn which leads turn into paying jobs. It takes two minutes.";
+  // By default we are setting it up and there is nothing for the client to do.
+  // Only when the team marks "Pixel shared with us" as Blocked in the Team
+  // Panel are they asked to act, with the same steps as /meta-access-guide.
+  let status = null;
+  try { const { data } = await sb.rpc("my_pixel_status"); status = data; } catch (_) {}
+  if (status === "done" || status === "skipped") { box.style.display = "none"; return; }
+  const needed = status === "blocked";
+  document.getElementById("pixelNoticeTitle").textContent = needed ? "We need you to share your Meta Pixel" : "We're setting up your Pixel tracking";
+  document.getElementById("pixelNoticeText").textContent = needed
+    ? "We couldn't connect your Pixel yet. Please share it with QuoteLeads in Meta Business Settings so your ads learn which leads turn into paying jobs. It takes two minutes."
+    : "We're connecting your Meta Pixel so your ads learn which leads turn into paying jobs. Nothing for you to do; we'll let you know if we need anything.";
+  const goBtn = document.getElementById("pixelNoticeGo");
+  if (goBtn) goBtn.style.display = needed ? "" : "none";
+  const laterBtn = document.getElementById("pixelNoticeLater");
+  if (laterBtn) laterBtn.textContent = needed ? "Not now" : "Got it";
   box.style.display = "";
   const go = document.getElementById("pixelNoticeGo");
   const later = document.getElementById("pixelNoticeLater");
