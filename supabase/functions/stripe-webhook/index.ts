@@ -709,6 +709,7 @@ async function applyManagedPurchase(p: ManagedPurchase, userId: string) {
     service_location:  m.service_location || null,
     monthly_lead_goal: m.monthly_lead_goal || null,
     multi_campaign:    m.multi_campaign || null,
+    sub_niche:         m.sub_niche || null,
     google_too:        m.google_too || null,
     source:            m.source || null,
     stripe_session:    p.stripe_session_id,
@@ -774,7 +775,7 @@ async function applyManagedPurchase(p: ManagedPurchase, userId: string) {
     company_name:     m.company || '',
     email:            m.email,
     phone:            m.phone || '',
-    niche:            m.niche || m.trade || '',
+    niche:            [m.niche || m.trade, m.sub_niche].filter(Boolean).join(' › '),
     tier_label:       label,
     build_fee:        buildFee,
     management_fee:   monthly,
@@ -791,7 +792,7 @@ async function applyManagedPurchase(p: ManagedPurchase, userId: string) {
        <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${m.company || '-'}</td></tr>
        <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${m.email}</td></tr>
        <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${m.phone || '-'}</td></tr>
-       <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}</td></tr>
+       <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${emailNiche(m.niche) || m.trade || '-'}${m.sub_niche ? ' › ' + m.sub_niche : ''}</td></tr>
        <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${m.monthly_lead_goal || '-'}</td></tr>
        <tr><td style="padding:3px 14px 3px 0;color:#666">Service area</td><td>${m.service_location || '-'}</td></tr>
      </table>

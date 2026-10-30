@@ -150,7 +150,7 @@ serve(async (req) => {
               <tr><td style="padding:3px 14px 3px 0;color:#666">Company</td><td>${metadata.company || '-'}</td></tr>
               <tr><td style="padding:3px 14px 3px 0;color:#666">Email</td><td>${metadata.email || '-'}</td></tr>
               <tr><td style="padding:3px 14px 3px 0;color:#666">Phone</td><td>${metadata.phone || '-'}</td></tr>
-              <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${metadata.trade || metadata.niche || '-'}</td></tr>
+              <tr><td style="padding:3px 14px 3px 0;color:#666">Trade</td><td>${metadata.trade || metadata.niche || '-'}${metadata.sub_niche ? ' › ' + metadata.sub_niche : ''}</td></tr>
               <tr><td style="padding:3px 14px 3px 0;color:#666">Lead goal</td><td>${metadata.monthly_lead_goal || '-'}</td></tr>
             </table>
             <p style="color:#999;margin-top:12px">You'll get a second email if/when the payment completes.</p>
