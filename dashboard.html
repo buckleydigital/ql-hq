@@ -1546,6 +1546,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
         <section class="panel" id="metaSalesTrackingPanel" style="margin-top:24px">
           <div class="panel-h"><div><h2>Meta Sales Tracking</h2><p>When a lead books an appointment, is sent a quote and is marked as won, we tell Meta, so your Facebook and Instagram ads learn which people turn into paying jobs. Only the customer's name, email, phone and postcode are sent, hashed so Meta can match them but not read them.</p></div></div>
           <div class="panel-b">
+            <p class="muted" style="margin:0 0 12px">Shared your Pixel with QuoteLeads (the last step of <a href="#" onclick="navigateTo('onboarding');setTimeout(()=>document.getElementById('obPixelStep')?.scrollIntoView({behavior:'smooth'}),150);return false">Meta access</a>)? We set this up for you, there's nothing to fill in here.</p>
             <form id="metaDatasetForm" class="stack">
               <div class="field"><label for="settingsMetaDatasetId">Meta Pixel ID</label><input id="settingsMetaDatasetId" type="text" inputmode="numeric" placeholder="e.g. 123456789012345" autocomplete="off"></div>
               <div class="field"><label for="settingsMetaCapiToken">Conversions API token</label><input id="settingsMetaCapiToken" type="password" placeholder="Paste the token from Events Manager" autocomplete="off"></div>
@@ -1854,7 +1855,7 @@ body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-p
                   <h3>Save</h3>
                   <p>Before saving, check <b>Leads</b> is <b>On</b> for your Page: without it we can't deliver your leads. Then click <b>Save</b> and you'll see the "Assets assigned" screen. Saved with Leads off? Go to <b>Settings → Users → Partners</b>, click <b>QuoteLeads</b>, select your Page and turn Leads on.</p>
                 </li>
-                <li>
+                <li id="obPixelStep">
                   <h3>Create your Pixel</h3>
                   <p>Still in Business Settings, open <b>Data sources</b> in the left sidebar and select <b>Datasets and pixels</b>. Click <b>+ Add</b>, enter a name (for example your business name + pixel) and click <b>Create</b>. Already have one? Select it and skip to the next step.</p>
                 </li>

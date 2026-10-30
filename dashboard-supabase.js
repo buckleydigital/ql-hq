@@ -1166,16 +1166,19 @@ function showPixelNotice(company) {
   try { snoozed = Number(localStorage.getItem(PIXEL_NOTICE_SNOOZE) || 0) > Date.now(); } catch (_) {}
   if (company?.plan !== "managed" || connected || snoozed) { box.style.display = "none"; return; }
   document.getElementById("pixelNoticeTitle").textContent = saved ? "Your Meta pixel isn't connected yet" : "Connect your Meta pixel";
-  document.getElementById("pixelNoticeText").textContent = (saved
-    ? "Your pixel ID is saved, but the Conversions API token is missing or doesn't work with it. Until it does, the jobs you win can't be reported back to your ads."
-    : "Let your ads learn which leads turn into paying jobs. It takes two minutes: add your pixel ID and a token from Meta Events Manager.");
+  document.getElementById("pixelNoticeText").textContent =
+    "Share your Pixel with QuoteLeads in Meta Business Settings so your ads learn which leads turn into paying jobs. It takes two minutes.";
   box.style.display = "";
   const go = document.getElementById("pixelNoticeGo");
   const later = document.getElementById("pixelNoticeLater");
   if (go && !go.dataset.bound) {
     go.dataset.bound = "1";
     go.addEventListener("click", () =>
-      document.getElementById("metaSalesTrackingPanel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+{
+      // The same steps as /meta-access-guide: create the Pixel, share it with us.
+      navigateTo("onboarding");
+      setTimeout(() => document.getElementById("obPixelStep")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    });
   }
   if (later && !later.dataset.bound) {
     later.dataset.bound = "1";
