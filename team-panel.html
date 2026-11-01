@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; font-src 'self' https://fonts.gstatic.com https://cdn.fontshare.com https://api.fontshare.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self';">
 <title>Team Panel · QuoteLeads</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/product-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
 <style>
 /* ═══ TOKENS ═══
    Lifted from ql-mc so the two internal tools are one product rather than two
@@ -560,9 +561,9 @@ select{cursor:pointer}
   --primary-h:linear-gradient(135deg,#5ea5ff 0%,#3a88f5 55%,#2a72e6 100%);
 }
 :root{
-  --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  --mono:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
-  --display:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --display:'General Sans','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --r:12px; --r2:18px; --r3:24px;
 }
 
@@ -692,6 +693,9 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   background-repeat:no-repeat;background-position:right 12px center;background-size:15px}
 .dfyf input,.dfyf textarea,.dfyf select{display:block;width:100%;margin-top:8px}
 .tb-mark{height:26px}
+
+/* Website type: General Sans for headings and big numbers, Inter for text. */
+h1,h2,h3,.tb-name,.sec-title,.client-name{font-family:'General Sans','Inter',-apple-system,BlinkMacSystemFont,sans-serif}
 </style>
 </head>
 <body>
