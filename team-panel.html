@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/product-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* ═══ TOKENS ═══
    Lifted from ql-mc so the two internal tools are one product rather than two
@@ -518,6 +518,180 @@ select{cursor:pointer}
   .logrow{flex-wrap:wrap}
   .logrow .lwhen{width:auto}
 }
+
+/* ═══ 2026 THEME ═══
+   A modern skin over the same markup: deep navy with a soft blue glow
+   (brand #4797FF), glassy rounded cards, pill buttons, one friendly typeface
+   in sentence case instead of uppercase mono labels. Dark and light each get
+   their own colours here, matching Mission Control. Appearance only. */
+:root:not([data-theme="light"]){
+  --bg:#060a14; --bg2:#0a1020;
+  --s1:#0c1322; --s2:#111a2d; --s3:#17223a; --s4:#1e2b47;
+  --bd:rgba(148,180,255,.08); --bd2:rgba(148,180,255,.13); --bd3:rgba(148,180,255,.22);
+  --ink:#eef3ff; --ink2:#a6b2cc; --ink3:#7f8ba6; --ink4:#47516b;
+  --acc:#4797ff; --acc2:#2f80f5; --acc3:#1f6ae0;
+  --acc-dim:rgba(71,151,255,.13); --acc-glow:rgba(71,151,255,.4); --acc-ink:#a9cdff;
+  --acc-fill:#2a6fe0;
+  --red:#ff5c7a; --red-dim:rgba(255,92,122,.1);
+  --grn:#34d399; --grn-dim:rgba(52,211,153,.1);
+  --amb:#fbbf4b;
+  --glass:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.016));
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 24px 48px -26px rgba(0,0,0,.75);
+  --btn-bg:rgba(255,255,255,.04); --btn-bg-h:rgba(255,255,255,.08);
+  --field-bg:rgba(255,255,255,.035);
+  --chrome:rgba(8,12,24,.6);
+  --primary:linear-gradient(135deg,#6cb0ff 0%,#4797ff 50%,#2f7ff0 100%);
+  --primary-h:linear-gradient(135deg,#7dbaff 0%,#57a1ff 50%,#3a88f5 100%);
+}
+[data-theme="light"]{
+  --bg:#f3f6fc; --bg2:#eaf0fa;
+  --s1:#ffffff; --s2:#f6f9fe; --s3:#edf2fb; --s4:#e2e9f6;
+  --bd:rgba(20,40,90,.08); --bd2:rgba(20,40,90,.13); --bd3:rgba(20,40,90,.2);
+  --ink:#0b1530; --ink2:#4a5675; --ink3:#66718e; --ink4:#b5bfd3;
+  --acc:#1f6fe5; --acc2:#1a5fcf; --acc3:#154fb0;
+  --acc-dim:rgba(31,111,229,.08); --acc-glow:rgba(31,111,229,.28); --acc-ink:#1a5ccc;
+  --acc-fill:#1f6fe5;
+  --glass:#ffffff;
+  --glass-shadow:0 1px 2px rgba(15,30,70,.05),0 14px 34px -18px rgba(15,30,70,.2);
+  --btn-bg:#ffffff; --btn-bg-h:#f2f6fd;
+  --field-bg:#ffffff;
+  --chrome:rgba(255,255,255,.72);
+  --primary:linear-gradient(135deg,#4f9bff 0%,#2f7ff0 55%,#1f6ae0 100%);
+  --primary-h:linear-gradient(135deg,#5ea5ff 0%,#3a88f5 55%,#2a72e6 100%);
+}
+:root{
+  --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --display:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --r:12px; --r2:18px; --r3:24px;
+}
+
+/* Type: one face, sentence case, no robotic tracking. */
+body *:not(code):not(pre):not(kbd){text-transform:none!important;letter-spacing:0!important}
+body{font-size:14px;line-height:1.6;font-feature-settings:"tnum" 1,"cv11" 1}
+h1,h2,h3,.tb-name,.client-name{letter-spacing:-.02em!important}
+h2{font-weight:700}
+
+/* The glow behind everything. */
+body{background:
+  radial-gradient(1100px 620px at 88% -12%,rgba(71,151,255,.17),transparent 62%),
+  radial-gradient(900px 560px at -8% 108%,rgba(99,102,241,.08),transparent 60%),
+  var(--bg) fixed}
+[data-theme="light"] body{background:
+  radial-gradient(1100px 620px at 88% -12%,rgba(71,151,255,.12),transparent 62%),var(--bg) fixed}
+.content{background:transparent}
+
+/* Top bar and sidebar: frosted, floating over the glow. */
+.topbar{height:60px;padding:0 20px;gap:12px;background:var(--chrome);
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-bottom:1px solid var(--bd)}
+.tb-name{font-size:15px;font-weight:700}
+.pill{font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:999px;
+  background:var(--acc-dim);color:var(--acc-ink);border:1px solid color-mix(in srgb,var(--acc) 25%,transparent)}
+.ibtn,#smsBell{width:38px;height:38px;border-radius:999px;border:1px solid var(--bd);
+  background:rgba(255,255,255,.03)}
+.ibtn:hover,#smsBell:hover{background:var(--acc-dim);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc-ink)}
+.ibtn svg{width:17px;height:17px}
+.tb-badge{font-size:9.5px;border-radius:999px;padding:0 5px;top:-2px;right:-2px;
+  background:linear-gradient(135deg,#ff6b8b,#ff4f6d);box-shadow:0 0 0 2px var(--bg)}
+
+.sidebar{width:236px;background:var(--chrome);-webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);border-right:1px solid var(--bd)}
+.sb-header{padding:18px 16px 14px}
+.sb-status{border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;
+  background:var(--acc-dim);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);color:var(--acc-ink)}
+.sb-status-dot{width:6px;height:6px;background:var(--acc);box-shadow:0 0 8px var(--acc)}
+.sb-nav{padding:12px 12px 0}
+.sb-group-label{font-size:11.5px;font-weight:600;color:var(--ink3);padding:14px 12px 6px}
+.navbtn{border-radius:14px;padding:11px 13px;font-size:14px;font-weight:500;margin-bottom:3px;gap:12px}
+.navbtn:hover{background:rgba(255,255,255,.04)}
+.navbtn.active{color:var(--ink);font-weight:600;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 26%,transparent),color-mix(in srgb,var(--acc) 9%,transparent));
+  border-color:color-mix(in srgb,var(--acc) 30%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 24px -12px var(--acc-glow)}
+.navbtn.active .ni{color:var(--acc)}
+.nav-badge{font-size:10.5px;border-radius:999px;padding:1px 8px}
+.sb-bottom .navbtn{font-size:13px}
+
+.panelwrap{padding:28px 32px 56px;max-width:1240px}
+
+/* Cards: glass, generous corners and padding. */
+.card,#clientList{background:var(--glass);border:1px solid var(--bd);border-radius:var(--r2);
+  box-shadow:var(--glass-shadow)}
+.card{padding:22px 24px;margin-bottom:16px}
+.empty{color:var(--ink3);font-size:14px}
+
+/* Section titles: quiet sentence-case headings instead of shouting labels. */
+.sec-title{font-size:15px;font-weight:700;color:var(--ink);margin:28px 0 14px}
+.sec-title::after{display:none}
+.sec-title .muted{font-weight:500;font-size:13px}
+
+/* Buttons: pills, gradient for the main action. */
+.btn{border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;gap:7px;
+  border:1px solid var(--bd2);background:var(--btn-bg);color:var(--ink)}
+.btn:hover{background:var(--btn-bg-h);border-color:var(--bd3);color:var(--ink)}
+.btn-p{color:#fff;border:1px solid rgba(255,255,255,.12);
+  background:var(--primary);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 28px -10px var(--acc-glow)}
+.btn-p:hover{color:#fff;border-color:rgba(255,255,255,.2);transform:translateY(-1px);
+  background:var(--primary-h);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 14px 34px -10px var(--acc-glow)}
+.btn.btn-p,[data-theme="light"] .btn.btn-p{color:#fff!important;border-color:transparent!important;background:var(--primary)!important}
+.btn.btn-p:hover{background:var(--primary-h)!important}
+.btn-xs{padding:5px 12px;font-size:12px}
+.btn-sm{padding:7px 14px;font-size:12.5px}
+.btn-danger{color:var(--red)}
+
+/* Inputs: soft, rounded, a blue ring on focus. */
+textarea,input[type=text],input[type=date],input[type=tel],input[type=number],input[type=email],input[type=search],input[type=password],select{
+  background:var(--field-bg);border:1px solid var(--bd2);border-radius:14px;
+  font-size:14px;padding:11px 14px;color:var(--ink)}
+[data-theme="light"] textarea,[data-theme="light"] input[type=text],[data-theme="light"] input[type=date],
+[data-theme="light"] input[type=tel],[data-theme="light"] input[type=number],[data-theme="light"] select{background:#fff}
+textarea:focus,input:focus,select:focus{border-color:color-mix(in srgb,var(--acc) 60%,transparent);box-shadow:0 0 0 4px var(--acc-dim)}
+select option{background:var(--s2);color:var(--ink)}
+.form-label,.dfyf{font-size:12.5px;font-weight:600;color:var(--ink2)}
+
+/* Badges and chips: soft pills. */
+.badge,.chip{border-radius:999px;font-size:11.5px;font-weight:600;padding:4px 11px}
+.badge.new,.badge.sent{color:var(--acc-ink);background:var(--acc-dim);border-color:color-mix(in srgb,var(--acc) 25%,transparent)}
+
+/* Client list: roomy rows on one glass surface. */
+.client-row{padding:16px 20px}
+.client-row:hover{background:rgba(255,255,255,.03)}
+.client-name{font-size:15px;font-weight:600}
+.stat-row{font-size:12.5px;gap:18px;margin-top:6px}
+.stat-row b{font-weight:600;color:var(--ink)}
+.goarrow{font-size:15px}
+
+/* Tasks, notes, key/value rows. */
+.task{border-radius:16px;padding:14px 16px;margin-bottom:10px;gap:12px;
+  background:rgba(255,255,255,.03);border:1px solid var(--bd)}
+.task .tbody{font-size:13.5px}
+.task .ic svg{stroke:var(--acc-ink)}
+.note{border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.03);font-size:13.5px}
+.note-meta{font-size:11.5px}
+.kv{font-size:13.5px;padding:10px 0}
+.kv .k{color:var(--ink3)}
+
+/* Tables. */
+table{font-size:13.5px}
+th{font-size:12px;font-weight:600;color:var(--ink3);background:transparent}
+td{padding:13px 14px}
+tbody tr:hover td{background:rgba(255,255,255,.025)}
+
+/* Scrollbars that don't vanish. */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:999px;border:2px solid transparent;background-clip:padding-box}
+
+#clientList .client-row.card{background:transparent;border:0;border-bottom:1px solid var(--bd);
+  border-radius:0;box-shadow:none;margin:0;padding:16px 22px}
+#clientList .client-row.card:hover{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+#clientList .client-row.card:last-child{border-bottom:0}
+#clientList .client-row select{padding:7px 34px 7px 14px;font-size:12.5px;border-radius:999px}
+select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;padding-right:34px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238893ad' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:15px}
+.dfyf input,.dfyf textarea,.dfyf select{display:block;width:100%;margin-top:8px}
+.tb-mark{height:26px}
 </style>
 </head>
 <body>
