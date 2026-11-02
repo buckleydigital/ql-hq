@@ -3201,7 +3201,24 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // Tasks someone marked Done, by company: Set of instance keys (team_task_done).
   let _taskDone = {};
   const isTaskDone = (c, t) => t.key !== 'intro' && !!(_taskDone[c.id] && _taskDone[c.id].has(t.inst));
+  // "Client has paid, send QuoteLeads your invoice": one row per paid invoice
+  // per assigned person (csm_pay_requests, written when Mission Control marks
+  // the invoice paid). Only the person it is for sees it, including when an
+  // admin is viewing the panel as them.
+  let _payReqs = {};
+  async function loadPayRequests() {
+    try {
+      if (!_me.id) { _payReqs = {}; return; }
+      const { data } = await sb.from('csm_pay_requests')
+        .select('id, company_id, invoice_number, period_start, period_end, client_paid_at')
+        .eq('team_user_id', _me.id).order('client_paid_at', { ascending: true });
+      const m = {};
+      (data || []).forEach(r => { (m[r.company_id] = m[r.company_id] || []).push(r); });
+      _payReqs = m;
+    } catch (_) { _payReqs = {}; }
+  }
   async function loadTaskDone() {
+    await loadPayRequests();
     try {
       const { data } = await sb.from('team_task_done').select('company_id, task_key');
       const m = {};
@@ -3234,6 +3251,11 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         tasks.push({ key: 'invoice', ic: TASK_IC.invoice, inst: 'invoice:' + (c.next_invoice_due || ''), label: `Time to send ${c.name || 'this client'}'s invoice${c.next_invoice_due ? ' (due ' + fmtDate(c.next_invoice_due) + ')' : ''}` });
       }
     }
+    (_payReqs[c.id] || []).forEach(r => {
+      const period = r.period_start && r.period_end ? ` for ${fmtDate(r.period_start)} to ${fmtDate(r.period_end)}` : '';
+      tasks.push({ key: 'csm_invoice', ic: TASK_IC.invoice, inst: 'csm_invoice:' + r.id,
+        label: `${c.name || 'This client'} has paid${r.invoice_number ? ' ' + r.invoice_number : ''}${period}. Send QuoteLeads your invoice for managing them (email it to contact@quoteleads.com.au)` });
+    });
     if (c.report_draft) {
       tasks.push({ key: 'report', ic: TASK_IC.report, inst: 'report:' + (c.report_draft.id || c.report_draft.period_end || ''), label: `${c.name || 'This client'}'s performance report for ${fmtDate(c.report_draft.period_start)} to ${fmtDate(c.report_draft.period_end)} is ready to check and send` });
     }
