@@ -692,6 +692,19 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   background-repeat:no-repeat;background-position:right 12px center;background-size:15px}
 .dfyf input,.dfyf textarea,.dfyf select{display:block;width:100%;margin-top:8px}
 .tb-mark{height:26px}
+
+/* SOP text (Markdown) in the SOPs view */
+.sop-md{font-size:13.5px;line-height:1.65;margin-top:12px;border-top:1px solid var(--bd);padding-top:12px}
+.sop-md h2,.sop-md h3,.sop-md h4,.sop-md h5{font-size:15px;font-weight:600;margin:18px 0 6px}
+.sop-md h3,.sop-md h4,.sop-md h5{font-size:14px}
+.sop-md p{margin:6px 0}
+.sop-md ul,.sop-md ol{margin:6px 0 6px 20px;padding:0}
+.sop-md li{margin:3px 0}
+.sop-md code{font-size:12px;background:var(--acc-dim);padding:1px 5px;border-radius:4px;word-break:break-all}
+.sop-md .sop-tw{overflow-x:auto;margin:8px 0}
+.sop-md table{border-collapse:collapse;width:100%;font-size:12.5px}
+.sop-md th{text-align:left;font-weight:600;border-bottom:1px solid var(--bd);padding:6px 8px;white-space:nowrap}
+.sop-md td{border-bottom:1px solid var(--bd);padding:6px 8px;vertical-align:top}
 </style>
 </head>
 <body>
@@ -4797,6 +4810,52 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // ── SOPs ──
   // Kept in Mission Control (Files > SOPs), each marked with the roles that
   // read it; team-api asks for this caller's role, so nobody sees the rest.
+  // SOPs are written in Markdown in Mission Control. A small renderer for what
+  // they use: headings, paragraphs, lists (with indented sub-points), tables,
+  // **bold** and `code`. Everything is escaped first, so nothing in an SOP
+  // can inject markup.
+  function sopMarkdown(md) {
+    const inline = (t) => esc(t).split(/(`[^`]*`)/g).map((part) => part.startsWith('`') && part.endsWith('`') && part.length > 1
+      ? `<code>${part.slice(1, -1)}</code>`
+      : part.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')).join('');
+    const lines = String(md || '').replace(/\r/g, '').split('\n');
+    let html = '', i = 0;
+    const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+    const cells = (l) => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
+    while (i < lines.length) {
+      const l = lines[i];
+      if (!l.trim()) { i++; continue; }
+      let m;
+      if ((m = l.match(/^(#{1,4})\s+(.*)$/))) { const lv = Math.min(m[1].length + 1, 5); html += `<h${lv}>${inline(m[2])}</h${lv}>`; i++; continue; }
+      if (isRow(l)) {
+        const rows = []; while (i < lines.length && isRow(lines[i])) rows.push(lines[i++]);
+        const head = cells(rows[0]), body = rows.slice(rows[1] && /^[\s|:-]+$/.test(rows[1]) ? 2 : 1);
+        html += '<div class="sop-tw"><table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>' +
+          body.map((r) => '<tr>' + cells(r).map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+        continue;
+      }
+      if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+        const ordered = /^\s*\d+\./.test(l);
+        let items = [];
+        while (i < lines.length && (/^\s*([-*]|\d+\.)\s+/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+          const cur = lines[i];
+          const sub = /^\s{2,}([-*]|\d+\.)\s+/.test(cur);
+          const text = cur.replace(/^\s*([-*]|\d+\.)\s+/, '').trim();
+          if (sub && items.length) (items[items.length - 1].sub ||= []).push(text);
+          else if (/^\s{2,}\S/.test(cur) && !/^\s*([-*]|\d+\.)\s+/.test(cur) && items.length) items[items.length - 1].text += ' ' + cur.trim();
+          else items.push({ text });
+          i++;
+        }
+        const tag = ordered ? 'ol' : 'ul';
+        html += `<${tag}>` + items.map((it) => `<li>${inline(it.text)}${it.sub ? '<ul>' + it.sub.map((x) => `<li>${inline(x)}</li>`).join('') + '</ul>' : ''}</li>`).join('') + `</${tag}>`;
+        continue;
+      }
+      const para = []; while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*\||\s*([-*]|\d+\.)\s)/.test(lines[i])) para.push(lines[i++].trim());
+      html += `<p>${inline(para.join(' '))}</p>`;
+    }
+    return html;
+  }
+
   async function showSops() {
     hideAllViews();
     $('sopsView').classList.remove('hidden');
@@ -4816,7 +4875,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           ${s.has_pdf ? `<button class="btn btn-p" data-sop-pdf="${i}" type="button">Open PDF</button>` : ''}
           ${String(s.content || '').trim() ? `<button class="btn" data-sop-text="${i}" type="button">Read</button>` : ''}
         </div>
-        <div id="sopText${i}" class="hidden" style="white-space:pre-wrap;font-size:13px;line-height:1.65;margin-top:10px;border-top:1px solid var(--bd);padding-top:10px">${esc(s.content || '')}</div>
+        <div id="sopText${i}" class="hidden sop-md">${sopMarkdown(s.content)}</div>
       </div>`).join('') : '<div class="card empty">No SOPs for your role yet.</div>';
     host.querySelectorAll('[data-sop-text]').forEach(b => b.addEventListener('click', () => $('sopText' + b.dataset.sopText).classList.toggle('hidden')));
     host.querySelectorAll('[data-sop-pdf]').forEach(b => b.addEventListener('click', async () => {
