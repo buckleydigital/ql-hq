@@ -131,13 +131,15 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 td strong{display:block;font-size:13px;margin-bottom:3px;font-weight:500}
 
 /* ── Kanban ─────────────────────────────────────── */
-.kanban{display:grid;grid-template-columns:repeat(7,minmax(220px,1fr));gap:12px;overflow:auto}
+.kanban{display:grid;grid-template-columns:repeat(7,minmax(220px,1fr));gap:12px;overflow:auto;align-items:start}
 .col{background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:340px;transition:background .15s,border-color .15s}
 .col.drag-over{background:color-mix(in srgb,var(--accent) 8%,var(--surface-2));border-color:var(--accent)}
 .colhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .colhead b{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase}
-.cards{display:flex;flex-direction:column;gap:8px;min-height:230px}
-.kcard{padding:12px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);cursor:grab;user-select:none;transition:opacity .15s,transform .1s,box-shadow .15s}
+/* A busy stage scrolls inside its own column (as in Mission Control) instead
+   of stretching the whole board down the page. */
+.cards{display:flex;flex-direction:column;gap:8px;min-height:230px;max-height:calc(100vh - 300px);max-height:calc(100dvh - 300px);overflow-y:auto;overscroll-behavior:contain;padding-right:2px}
+.kcard{flex-shrink:0;padding:12px;border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);cursor:grab;user-select:none;transition:opacity .15s,transform .1s,box-shadow .15s}
 .kcard:active{cursor:grabbing}
 .kcard.dragging{opacity:.4;transform:rotate(1deg) scale(1.02);box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .kcard h3{font-size:13px;font-weight:500;margin-bottom:4px}
