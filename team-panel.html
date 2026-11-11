@@ -270,6 +270,33 @@ body{overflow:hidden}
 .badge.new{background:var(--acc-dim);color:var(--acc-ink);border:1px solid rgba(79,143,255,.13)}
 .badge.due{background:rgba(245,166,35,.07);color:var(--amb);border:1px solid rgba(245,166,35,.2)}
 .badge.paid{background:var(--grn-dim);color:var(--grn);border:1px solid rgba(46,204,138,.18)}
+/* Ad account card */
+.ads-win{display:inline-flex;gap:4px}
+.ads-win .btn{padding:3px 9px;font-size:11.5px}
+.ads-win .btn.on{background:var(--acc-dim);border-color:var(--acc);color:var(--acc-ink)}
+.ads-funnel{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;border:1px solid var(--bd);border-radius:var(--r);background:var(--s2);font-size:13px}
+.ads-funnel a{color:var(--acc-ink);font-weight:600;text-decoration:none}
+.ads-funnel .btn{margin-left:auto}
+.ads-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.ads-tile{border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;background:var(--s2)}
+.ads-tile.warn{border-color:rgba(245,166,35,.45)}
+.ads-l{font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}
+.ads-v{font-family:var(--mono);font-size:19px;color:var(--ink);margin:3px 0 2px}
+.ads-d{font-size:11.5px;color:var(--ink3)}
+.ads-d.up{color:var(--grn)} .ads-d.down{color:var(--red)}
+.ads-ai{margin-top:12px;border:1px solid rgba(79,143,255,.3);background:var(--acc-dim);border-radius:var(--r);padding:12px 14px;font-size:13px;line-height:1.55}
+.ads-ai-h{font-weight:600;color:var(--ink);margin-bottom:6px}
+.ads-ai-tag{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--acc-ink);border:1px solid rgba(79,143,255,.4);border-radius:100px;padding:1px 8px;margin-right:8px;vertical-align:1px}
+.ads-ai ul{margin:0;padding-left:18px;color:var(--ink2)}
+.ads-ai li{margin:3px 0}
+.ads-ai li b{color:var(--ink);font-weight:600}
+.ads-ai-say{margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);color:var(--ink)}
+.ads-ai-say .muted{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.ads-camps{width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px}
+.ads-camps th{text-align:left;font-weight:500;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--bd)}
+.ads-camps td{padding:7px 8px;border-bottom:1px solid var(--bd);color:var(--ink2);font-family:var(--mono)}
+.ads-camps td:first-child{font-family:var(--font);color:var(--ink)}
+@media (max-width:600px){.ads-camps th:nth-child(5),.ads-camps td:nth-child(5){display:none}}
 .badge.unpaid{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,69,96,.18)}
 .badge.sent{background:var(--acc-dim);color:var(--acc);border:1px solid rgba(79,143,255,.15)}
 .badge.test{background:var(--red-dim);color:var(--red);border:1px dashed rgba(255,69,96,.35)}
@@ -1136,6 +1163,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   const capiApi = (body) => fnApi('meta-capi', body);
   // 30-day performance reports: draft, edit, approve & send (performance-reports).
   const reportsApi = (body) => fnApi('performance-reports', body);
+  const adStatsApi = (body) => fnApi('ad-stats', body);
   async function fnApi(fn, body) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { location.href = 'index.html'; throw new Error('no session'); }
@@ -3669,6 +3697,13 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         <div id="plList"></div>
       </div>` : ''}
 
+      ${isManaged ? `<div class="card" id="adsCard">
+        <div class="sec-title" style="margin-top:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Ad account <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· live from Meta, to yesterday</span>
+          <span class="ads-win" style="margin-left:auto">${[7, 14, 30].map(n => `<button class="btn${n === 7 ? ' on' : ''}" data-ads-days="${n}" type="button">${n}d</button>`).join('')}</span></div>
+        <div id="adsFunnel"></div>
+        <div id="adsBody"><div class="muted">Loading ad account…</div></div>
+      </div>` : ''}
+
       ${isManaged ? `<div class="card" id="rptCard">
         <div class="sec-title" style="margin-top:0">Performance reports <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· every 30 days from go-live</span></div>
         <div id="rptBody"><div class="muted">Loading reports…</div></div>
@@ -3703,7 +3738,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       wirePreviewDropzone(companyId);
     }
     loadMcBilling(companyId);
-    if (isManaged) loadReports(companyId);
+    if (isManaged) { loadReports(companyId); loadAdStats(companyId, 7); }
     $('detailBody').querySelectorAll('[data-open-rpt]').forEach(b => b.addEventListener('click', () => {
       const card = $('rptCard'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
       const d = _rptList && _rptList.reports.find(r => r.status === 'draft'); if (d) openReportModal(d.id);
@@ -4364,6 +4399,99 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // to the client from here without that.
   let _rptList = null, _rptFor = null, _rpt = null;
   const rptMoney = (n) => n == null ? '-' : '$' + Number(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ─── Ad account (live) ────────────────────────────────────────────────────
+  // The assigned CSM's view of the client's Meta numbers for the last 7, 14
+  // or 30 full days, against the window before, with an AI read to brief them
+  // before a call. ad-stats pulls it (once a day per window, or on
+  // Refresh) and only for clients the caller may see. The funnel link is the
+  // client's website_url, which is also where campaign-build points the ads.
+  let _ads = null;
+  async function loadAdStats(companyId, days, fresh) {
+    const host = $('adsBody'); if (!host) return;
+    _ads = { companyId, days, data: _ads && _ads.companyId === companyId ? _ads.data : null };
+    document.querySelectorAll('[data-ads-days]').forEach(b => {
+      b.classList.toggle('on', Number(b.dataset.adsDays) === days);
+      b.onclick = () => loadAdStats(companyId, Number(b.dataset.adsDays));
+    });
+    host.innerHTML = `<div class="muted">${fresh ? 'Pulling fresh numbers from Meta and rewriting the summary…' : 'Loading the last ' + days + ' days…'}</div>`;
+    const { ok, data } = await adStatsApi({ action: 'stats', company_id: companyId, days, fresh: !!fresh });
+    if (!$('adsBody') || !_ads || _ads.companyId !== companyId || _ads.days !== days) return;
+    if (!ok) { host.innerHTML = `<div class="muted">${esc(data.error || 'Could not load the ad account.')}</div>`; return; }
+    _ads.data = data;
+    renderAdFunnel();
+    renderAdStats();
+  }
+
+  function renderAdFunnel(editing) {
+    const el = $('adsFunnel'), d = _ads && _ads.data; if (!el || !d) return;
+    const url = d.funnel_url || '';
+    el.innerHTML = editing
+      ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="adsFunnelIn" type="text" value="${esc(url)}" placeholder="https://theirfunnel.com.au" style="flex:1;min-width:220px">
+           <button class="btn btn-p" id="adsFunnelSave" type="button">Save</button><button class="btn" id="adsFunnelCancel" type="button">Cancel</button></div>
+         <div class="muted" style="font-size:12px;margin:-6px 0 12px">Campaign builds send the ads here too.</div>`
+      : `<div class="ads-funnel"><span class="muted">Landing page funnel</span>
+           ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ↗</a>` : '<span class="muted">Not set</span>'}
+           <button class="btn" id="adsFunnelEdit" type="button">${url ? 'Edit' : 'Add link'}</button></div>`;
+    if (editing) {
+      $('adsFunnelSave').addEventListener('click', saveFunnelUrl);
+      $('adsFunnelCancel').addEventListener('click', () => renderAdFunnel(false));
+      $('adsFunnelIn').focus();
+    } else $('adsFunnelEdit').addEventListener('click', () => renderAdFunnel(true));
+  }
+
+  async function saveFunnelUrl() {
+    const btn = $('adsFunnelSave'); btn.disabled = true;
+    const { ok, data } = await adStatsApi({ action: 'set_funnel_url', company_id: _ads.companyId, url: $('adsFunnelIn').value });
+    btn.disabled = false;
+    if (!ok) { alert(data.error || 'Could not save the link.'); return; }
+    _ads.data.funnel_url = data.funnel_url;
+    renderAdFunnel(false);
+  }
+
+  function renderAdStats() {
+    const host = $('adsBody'), d = _ads && _ads.data; if (!host || !d) return;
+    if (!d.metrics) { host.innerHTML = `<div class="muted">${esc(d.error || 'No numbers yet.')}</div>`; return; }
+    const m = d.metrics, p = d.previous;
+    const n0 = (v) => v == null ? '-' : Math.round(v).toLocaleString('en-AU');
+    const pc = (v) => v == null ? '-' : Number(v).toFixed(2) + '%';
+    // Change against the window before; for costs, down is good.
+    const delta = (cur, prev, lowerBetter) => {
+      if (cur == null || prev == null || !prev) return '';
+      const ch = (cur - prev) / prev * 100;
+      if (!isFinite(ch) || Math.abs(ch) < 0.5) return '<span class="ads-d">flat</span>';
+      const good = lowerBetter ? ch < 0 : ch > 0;
+      return `<span class="ads-d ${good ? 'up' : 'down'}">${ch > 0 ? '▲' : '▼'} ${Math.abs(ch).toFixed(0)}%</span>`;
+    };
+    const tile = (label, val, dl, warn) => `<div class="ads-tile${warn ? ' warn' : ''}"><div class="ads-l">${label}</div><div class="ads-v">${val}</div>${dl || ''}</div>`;
+    const tiles = [
+      tile('Leads', n0(m.leads), delta(m.leads, p && p.leads)),
+      tile('Cost per lead', rptMoney(m.cpl), delta(m.cpl, p && p.cpl, true)),
+      tile('Spend', rptMoney(m.spend), delta(m.spend, p && p.spend)),
+      tile('Link CTR', pc(m.link_ctr), delta(m.link_ctr, p && p.link_ctr)),
+      tile('CPM', rptMoney(m.cpm), delta(m.cpm, p && p.cpm, true)),
+      tile('Frequency', m.frequency == null ? '-' : Number(m.frequency).toFixed(2), '', m.frequency > 3),
+      tile('Reach', n0(m.reach), delta(m.reach, p && p.reach)),
+      tile('Landing page views', n0(m.landing_page_views), m.cost_per_lpv != null ? `<span class="ads-d">${rptMoney(m.cost_per_lpv)} each</span>` : ''),
+    ].join('');
+    const camps = (m.campaigns || []).map(c => `<tr><td>${esc(c.name)}</td><td>${n0(c.leads)}</td><td>${rptMoney(c.cpl)}</td><td>${rptMoney(c.spend)}</td><td>${rptMoney(c.cpm)}</td></tr>`).join('');
+    const s = d.summary;
+    const ai = s ? `<div class="ads-ai">
+        <div class="ads-ai-h"><span class="ads-ai-tag">AI summary</span>${esc(s.headline || '')}</div>
+        <ul>${(s.points || []).map(x => `<li><b>${esc(x.label)}:</b> ${esc(x.text)}</li>`).join('')}</ul>
+        ${s.client_line ? `<div class="ads-ai-say"><span class="muted">Say to the client</span>“${esc(s.client_line)}”</div>` : ''}
+      </div>` : '';
+    host.innerHTML = `
+      <div class="muted" style="font-size:12px;margin-bottom:10px">${fmtDate(d.period_start)} to ${fmtDate(d.period_end)}${p ? ' · vs the ' + d.days + ' days before' : ' · no earlier window to compare'}${d.ad_accounts && d.ad_accounts.length ? ' · act_' + esc(d.ad_accounts.join(', act_')) : ''}</div>
+      <div class="ads-grid">${tiles}</div>
+      ${ai}
+      ${camps ? `<table class="ads-camps"><thead><tr><th>Campaign</th><th>Leads</th><th>CPL</th><th>Spend</th><th>CPM</th></tr></thead><tbody>${camps}</tbody></table>` : ''}
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <span class="muted" style="font-size:12px">${d.created_at ? 'Pulled ' + new Date(d.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</span>
+        <button class="btn" id="adsRefresh" type="button" style="margin-left:auto">Refresh</button>
+      </div>`;
+    $('adsRefresh').addEventListener('click', () => loadAdStats(_ads.companyId, _ads.days, true));
+  }
 
   async function loadReports(companyId) {
     const host = $('rptBody'); if (!host) return;
