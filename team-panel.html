@@ -1113,6 +1113,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       <label class="inv-lbl">To<input id="introTo" type="text" disabled></label>
       <label class="inv-lbl">Reply-To<input id="introReplyTo" type="text" disabled></label>
     </div>
+    <label class="inv-lbl" style="display:block;margin-top:10px">CC <span class="muted" id="introCcNote" style="font-weight:400"></span><input id="introCc" type="text" placeholder="The sales rep's email, so the client sees them still in the loop" autocomplete="off"></label>
     <label class="inv-lbl" style="display:block;margin-top:10px">Subject<input id="introSubject" type="text"></label>
     <div class="sec-title">Message</div>
     <textarea id="introBody" style="min-height:320px;line-height:1.6"></textarea>
@@ -5148,6 +5149,10 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     $('introReplyTo').value = data.reply_to || 'your login email';
     $('introSubject').value = data.subject || '';
     $('introBody').value = data.body || '';
+    $('introCc').value = data.cc || '';
+    $('introCcNote').textContent = data.cc
+      ? '(' + (data.rep_name || 'the sales rep') + ', who won the client)'
+      : '(no sales rep found for this client; add one if you like)';
     $('introStatus').textContent = '';
     $('introSendBtn').disabled = false;
     $('introSendBtn').textContent = 'Send email';
@@ -5160,7 +5165,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     if (!subject || !body) { alert('Subject and message are required.'); return; }
     const btn = $('introSendBtn');
     btn.disabled = true; btn.textContent = 'Sending…';
-    const { ok, data } = await teamApi({ action: 'send_intro_email', company_id: _introCompanyId, subject, body });
+    const cc = $('introCc').value.trim();
+    const { ok, data } = await teamApi({ action: 'send_intro_email', company_id: _introCompanyId, subject, body, cc });
     if (!ok) {
       btn.disabled = false; btn.textContent = 'Send email';
       $('introStatus').textContent = data.error || 'Could not send';
