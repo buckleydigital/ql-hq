@@ -3729,10 +3729,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         <div class="sec-title" style="margin-top:0">Notes</div>
         <div id="notesList">${notes}</div>
         <textarea id="noteInput" placeholder="Add an internal note about this client…"></textarea>
-        <div style="margin-top:8px"><button class="btn btn-p" id="addNoteBtn" type="button">Add note</button></div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-p" id="addNoteBtn" type="button">Add note</button>
+          ${_me.is_admin === true ? '<button class="btn" id="handoverBtn" type="button" title="Emails the note you have written (saved as a note too), or the latest note, to the team assigned to this client">Send to CSM</button><span class="muted" id="handoverStatus" style="font-size:12px"></span>' : ''}</div>
       </div>`;
 
     $('addNoteBtn').addEventListener('click', () => addNote(companyId));
+    if ($('handoverBtn')) $('handoverBtn').addEventListener('click', () => sendHandover(companyId));
     $('saveDfyBtn').addEventListener('click', () => saveDfy(companyId));
     if (isManaged) {
       $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
@@ -4932,6 +4934,25 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     ta.value = '';
     // keep the cached count roughly in sync
     const c = _clients.find(x => x.id === companyId); if (c) c.notes = (c.notes || 0) + 1;
+  }
+
+  // "Send to CSM": email a handover to whoever is assigned to this client.
+  // Text in the note box is saved as a note first, then sent; an empty box
+  // sends the latest note. send-handover finds the recipients and logs it.
+  async function sendHandover(companyId) {
+    const btn = $('handoverBtn'), st = $('handoverStatus'), ta = $('noteInput');
+    const typed = ta.value.trim();
+    const what = typed ? 'the note you have written (it will be saved as a note too)' : 'the latest note on this client';
+    if (!confirm('Email ' + what + ' to the team assigned to this client?')) return;
+    btn.disabled = true; st.textContent = 'Sending…';
+    if (typed) {
+      await addNote(companyId);
+      if (ta.value.trim()) { btn.disabled = false; st.textContent = ''; return; } // the note didn't save
+    }
+    const { ok, data } = await fnApi('send-handover', { company_id: companyId, body: typed });
+    btn.disabled = false;
+    if (!ok) { st.textContent = ''; alert(data.error || 'Could not send the handover.'); return; }
+    st.textContent = 'Sent to ' + (data.sent_to || []).map(t => t.name).join(', ') + ' ✓';
   }
 
   // ═══════════════════════════ EMAIL TEMPLATES ═══════════════════════════════
