@@ -1057,6 +1057,26 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     </div>
   </div>
 </div>
+<!-- SEND TO CSM: a custom handover email to whoever is assigned to the client -->
+<div id="hoModal" class="inv-overlay hidden">
+  <div class="inv-modal" style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;font-size:17px">Send to CSM</h2>
+      <button class="btn" id="hoClose" type="button">✕</button>
+    </div>
+    <div class="muted" id="hoTo" style="margin-bottom:12px"></div>
+    <label class="inv-lbl" style="display:block">Subject<input id="hoSubject" type="text" style="display:block;width:100%;margin-top:4px"></label>
+    <label class="inv-lbl" style="display:block;margin-top:10px">Message</label>
+    <textarea id="hoMsg" style="min-height:240px;line-height:1.6" placeholder="Write the handover: where the client is up to, what they need to do next, anything they should know."></textarea>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--ink2)"><input type="checkbox" id="hoSave" checked> Save as a note on this client too</label>
+    <div class="muted" style="font-size:12px;margin-top:6px">Sent from system@quoteleads.com.au. Replies come to you.</div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-p" id="hoSendBtn" type="button">Send</button>
+      <button class="btn" id="hoCancel" type="button">Cancel</button>
+      <span class="muted" id="hoSendStatus" style="font-size:12px"></span>
+    </div>
+  </div>
+</div>
 <div id="mcSendModal" class="inv-overlay hidden">
   <div class="inv-modal" style="max-width:640px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -2999,6 +3019,9 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     $('mcSendCancel').addEventListener('click', () => $('mcSendModal').classList.add('hidden'));
     $('mcSendBtn').addEventListener('click', sendMcInvoice);
     $('rptClose').addEventListener('click', closeReportModal);
+    $('hoClose').addEventListener('click', closeHandover);
+    $('hoCancel').addEventListener('click', closeHandover);
+    $('hoSendBtn').addEventListener('click', sendHandover);
     $('rptCancel').addEventListener('click', closeReportModal);
     $('rptAddBullet').addEventListener('click', () => { readBullets(); _rpt.bullets.push({ title: '', text: '' }); renderBullets(); });
     $('rptSaveBtn').addEventListener('click', () => saveReportSummary());
@@ -3632,6 +3655,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       <div class="kv"><span class="k">${esc(pp.full_name || '(no name)')}${pp.role ? ' · ' + esc(pp.role) : ''}</span>
         <span>${pp.email ? `<a href="mailto:${esc(pp.email)}">${esc(pp.email)}</a>` : ''}${pp.phone ? ' · ' + esc(pp.phone) : ''}</span></div>`).join('') || '<div class="muted">No contacts on file.</div>';
 
+    _hoNotes[companyId] = d.notes || [];
     const notes = (d.notes || []).map(n => `
       <div class="note">${esc(n.body)}<div class="note-meta">${esc(n.author_name || 'Unknown')} · ${fmtDate(n.created_at)}</div></div>`).join('') || '<div class="muted" id="noNotes">No notes yet.</div>';
 
@@ -3730,11 +3754,11 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         <div id="notesList">${notes}</div>
         <textarea id="noteInput" placeholder="Add an internal note about this client…"></textarea>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-p" id="addNoteBtn" type="button">Add note</button>
-          ${_me.is_admin === true ? '<button class="btn" id="handoverBtn" type="button" title="Emails the note you have written (saved as a note too), or the latest note, to the team assigned to this client">Send to CSM</button><span class="muted" id="handoverStatus" style="font-size:12px"></span>' : ''}</div>
+          ${_me.is_admin === true ? '<button class="btn" id="handoverBtn" type="button" title="Write a custom email to the team assigned to this client">Send to CSM</button><span class="muted" id="handoverStatus" style="font-size:12px"></span>' : ''}</div>
       </div>`;
 
     $('addNoteBtn').addEventListener('click', () => addNote(companyId));
-    if ($('handoverBtn')) $('handoverBtn').addEventListener('click', () => sendHandover(companyId));
+    if ($('handoverBtn')) $('handoverBtn').addEventListener('click', () => openHandover(companyId));
     $('saveDfyBtn').addEventListener('click', () => saveDfy(companyId));
     if (isManaged) {
       $('plAddBtn').addEventListener('click', () => addPreviewLink(companyId));
@@ -4936,23 +4960,54 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const c = _clients.find(x => x.id === companyId); if (c) c.notes = (c.notes || 0) + 1;
   }
 
-  // "Send to CSM": email a handover to whoever is assigned to this client.
-  // Text in the note box is saved as a note first, then sent; an empty box
-  // sends the latest note. send-handover finds the recipients and logs it.
-  async function sendHandover(companyId) {
-    const btn = $('handoverBtn'), st = $('handoverStatus'), ta = $('noteInput');
-    const typed = ta.value.trim();
-    const what = typed ? 'the note you have written (it will be saved as a note too)' : 'the latest note on this client';
-    if (!confirm('Email ' + what + ' to the team assigned to this client?')) return;
+  // "Send to CSM": a pop-up to write a custom email to whoever is assigned to
+  // this client. Prefilled with what's in the note box, else the latest note.
+  // send-handover finds the recipients, sends it and logs it.
+  const _hoNotes = {};
+  let _ho = null;
+  function openHandover(companyId) {
+    const c = _clients.find(x => x.id === companyId) || {};
+    const names = (c.va_ids || []).map(id => ((_teamMembers || []).find(m => m.id === id) || {}).name).filter(Boolean);
+    const typed = $('noteInput') ? $('noteInput').value.trim() : '';
+    const latest = (_hoNotes[companyId] || [])[0];
+    _ho = { companyId };
+    $('hoTo').textContent = names.length ? 'To: ' + names.join(', ') : 'Nobody is assigned to this client yet. Assign a CSM first.';
+    $('hoSubject').value = 'Handover: ' + (c.name || 'client');
+    $('hoMsg').value = typed || (latest && latest.body) || '';
+    $('hoSave').checked = true;
+    $('hoSendStatus').textContent = '';
+    $('hoSendBtn').disabled = !names.length;
+    $('hoModal').classList.remove('hidden');
+    $('hoMsg').focus();
+  }
+  function closeHandover() { $('hoModal').classList.add('hidden'); _ho = null; }
+
+  async function sendHandover() {
+    if (!_ho) return;
+    const companyId = _ho.companyId, body = $('hoMsg').value.trim(), subject = $('hoSubject').value.trim();
+    const st = $('hoSendStatus'), btn = $('hoSendBtn');
+    if (!body) { st.textContent = 'Write the message first.'; return; }
     btn.disabled = true; st.textContent = 'Sending…';
-    if (typed) {
-      await addNote(companyId);
-      if (ta.value.trim()) { btn.disabled = false; st.textContent = ''; return; } // the note didn't save
+    if ($('hoSave').checked) {
+      const r = await teamApi({ action: 'add_note', company_id: companyId, body });
+      if (!r.ok) { btn.disabled = false; st.textContent = r.data.error || 'Could not save the note, nothing was sent.'; return; }
+      const n = r.data.note, list = $('notesList');
+      if (list) {
+        const noNotes = $('noNotes'); if (noNotes) noNotes.remove();
+        const div = document.createElement('div');
+        div.className = 'note';
+        div.innerHTML = `${esc(n.body)}<div class="note-meta">${esc(n.author_name || 'You')} · ${fmtDate(n.created_at)}</div>`;
+        list.insertBefore(div, list.firstChild);
+      }
+      (_hoNotes[companyId] = _hoNotes[companyId] || []).unshift(n);
+      if ($('noteInput') && $('noteInput').value.trim() === body) $('noteInput').value = '';
     }
-    const { ok, data } = await fnApi('send-handover', { company_id: companyId, body: typed });
+    const { ok, data } = await fnApi('send-handover', { company_id: companyId, subject, body });
     btn.disabled = false;
-    if (!ok) { st.textContent = ''; alert(data.error || 'Could not send the handover.'); return; }
-    st.textContent = 'Sent to ' + (data.sent_to || []).map(t => t.name).join(', ') + ' ✓';
+    if (!ok) { st.textContent = data.error || 'Could not send it.'; return; }
+    const who = (data.sent_to || []).map(t => t.name).join(', ');
+    closeHandover();
+    if ($('handoverStatus')) $('handoverStatus').textContent = 'Sent to ' + who + ' ✓';
   }
 
   // ═══════════════════════════ EMAIL TEMPLATES ═══════════════════════════════
