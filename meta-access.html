@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src https://*.supabase.co; object-src 'none'; base-uri 'self';">
+<title>Meta access</title>
+<!--
+  Where the links in meta-access-watch's team emails land: link a newly shared
+  ad account to a client, ignore it, or stop a client's reminder emails. It
+  asks first and only acts on the button, so a mail scanner opening the link
+  changes nothing. meta-access-watch checks the link's signature.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--accent:#1f6fff;--bg:#f3f5f9;--surface:#fff;--border:#d8e0ec;--text:#121826;--muted:#667284;--green:#16a34a;--red:#b42318}
+body{font-family:"Poppins",sans-serif;font-size:14px;line-height:1.6;background:var(--bg);color:var(--text);min-height:100vh;padding:40px 16px}
+.wrap{max-width:520px;margin:0 auto}
+.ql{height:26px;margin-bottom:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:0 12px 30px rgba(17,24,39,.08);padding:28px}
+h1{font-size:21px;font-weight:600;margin-bottom:8px;line-height:1.35}
+p{color:var(--muted)}
+button{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:14px;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.ok{color:var(--green);font-weight:500;margin-top:16px}
+.err{color:var(--red);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="ql" src="quoteleads-logo-black-hq.png" alt="QuoteLeads">
+  <div class="card" id="app"></div>
+</div>
+<script>
+  const SUPABASE_URL = 'https://wjadekgptkstfdootuol.supabase.co';
+  const q = new URLSearchParams(location.search);
+  const a = q.get('a') || '', client = q.get('cn') || 'this client', account = q.get('an') || q.get('acc') || 'this ad account';
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const app = document.getElementById('app');
+
+  const ask = {
+    claim: [`Link ${esc(account)} to ${esc(client)}?`, `We'll connect to this ad account for ${esc(client)} and tick their Meta access step. Only do this if you're sure it's theirs.`, `Yes, it's ${esc(client)}'s`],
+    ignore: [`Ignore ${esc(account)}?`, `It won't be linked to a client, and reminder emails to clients waiting on Meta access start again.`, 'Ignore it'],
+    stop_reminders: [`Stop reminder emails to ${esc(client)}?`, `They won't get any more emails asking them to give us Meta access. You can turn them back on in the Team Panel.`, 'Stop the reminders'],
+  }[a];
+
+  if (!ask) {
+    app.innerHTML = '<h1>This link isn\'t complete</h1><p>Open it again from the email.</p>';
+  } else {
+    app.innerHTML = `<h1>${ask[0]}</h1><p>${ask[1]}</p><button id="go">${ask[2]}</button><div id="out"></div>`;
+    const btn = document.getElementById('go'), out = document.getElementById('out');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; btn.textContent = 'Working…';
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-access-watch`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: a, c: q.get('c') || '', acc: q.get('acc') || '', s: q.get('s') || '' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'That didn\'t work. Try the link again.');
+        btn.remove();
+        out.innerHTML = `<p class="ok">${esc(data.message || 'Done.')}</p>`;
+      } catch (e) {
+        btn.disabled = false; btn.textContent = ask[2];
+        out.innerHTML = `<p class="err">${esc(e.message)}</p>`;
+      }
+    });
+  }
+</script>
+</body>
+</html>

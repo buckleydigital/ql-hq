@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co; frame-src https://business.facebook.com https://www.facebook.com; object-src 'none'; base-uri 'self';">
+<title>Your ads</title>
+<!--
+  The client's preview page. Shows the ads the QuoteLeads team sent, each as
+  Meta itself renders it in every placement, and takes one answer per ad:
+  looks good, or what they'd like changed. creative-approval does the work;
+  this page never shows how ads are made and never offers to edit them.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--accent:#1f6fff;--bg:#f3f5f9;--surface:#fff;--surface-2:#f7f9fc;--border:#d8e0ec;--text:#121826;--muted:#667284;--radius:18px;--shadow:0 12px 30px rgba(17,24,39,.08);--green:#16a34a;--amber:#b45309}
+body{font-family:"Poppins",sans-serif;font-size:14px;line-height:1.6;background:radial-gradient(circle at top,rgba(31,111,255,.08),transparent 24%),var(--bg);color:var(--text);min-height:100vh;padding:24px 16px 64px}
+.wrap{max-width:760px;margin:0 auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+.top img.ql{height:26px}
+.biz{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px}
+.biz img{height:36px;max-width:120px;object-fit:contain;background:#fff;border-radius:8px;padding:3px;border:1px solid var(--border)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin-bottom:18px}
+h1{font-size:24px;font-weight:600;margin-bottom:6px;line-height:1.3}
+.lead{color:var(--muted);font-size:14px}
+.note{margin-top:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13.5px}
+.ad h2{font-size:16px;font-weight:600;margin-bottom:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tab{border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.tab.on{border-color:var(--accent);color:var(--accent);background:rgba(31,111,255,.07);font-weight:500}
+.frame{display:flex;justify-content:center;background:var(--surface-2);border-radius:14px;padding:16px 8px;overflow-x:auto}
+.frame iframe{border:0;max-width:100%;background:#fff;border-radius:6px}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.choice button{font:inherit;font-size:14px;font-weight:500;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer;color:var(--text)}
+.choice button.good.on{border-color:var(--green);background:rgba(22,163,74,.08);color:var(--green)}
+.choice button.change.on{border-color:var(--amber);background:rgba(180,83,9,.07);color:var(--amber)}
+textarea{width:100%;font:inherit;font-size:14px;border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px;min-height:90px;resize:vertical;color:var(--text);background:var(--surface)}
+textarea:focus{outline:2px solid rgba(31,111,255,.25);border-color:var(--accent)}
+.submit{display:block;width:100%;margin-top:14px;padding:15px;border:0;border-radius:14px;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.submit:disabled{opacity:.45;cursor:not-allowed}
+.small{font-size:12.5px;color:var(--muted)}
+.err{color:#b42318;font-size:13px;margin-top:10px}
+.center{text-align:center;padding:40px 24px}
+.center .icon{font-size:40px;margin-bottom:10px}
+@media(max-width:520px){.card{padding:18px}h1{font-size:21px}.choice{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <img class="ql" src="quoteleads-logo-black-hq.png" alt="QuoteLeads">
+    <div class="biz" id="biz"></div>
+  </div>
+  <div id="app"><div class="card center"><p class="lead">Loading your ads…</p></div></div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://wjadekgptkstfdootuol.supabase.co';
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const app = document.getElementById('app');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let data = null;
+  const answers = {};   // key -> { decision: 'approve' | 'change', comment }
+  const shownTab = {};  // key -> placement index
+
+  async function api(body) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/creative-approval`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, ...body }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || 'Something went wrong. Please try again.');
+    return out;
+  }
+
+  function message(icon, title, text) {
+    app.innerHTML = `<div class="card center"><div class="icon">${icon}</div><h1>${esc(title)}</h1><p class="lead">${esc(text)}</p></div>`;
+  }
+
+  function renderBiz() {
+    const b = data && data.business;
+    if (!b) return;
+    document.getElementById('biz').innerHTML = `${b.logo ? `<img src="${esc(b.logo)}" alt="">` : ''}<span>${esc(b.name)}</span>`;
+    document.title = `Your ads · ${b.name}`;
+  }
+
+  function render() {
+    renderBiz();
+    if (data.state === 'none') return message('🛠️', 'Your ads are on their way', "Our team is putting your ads together. We'll email you as soon as they're ready to look at.");
+    if (data.state === 'updating') return message('✏️', "We're updating your ads", "Thanks for the feedback. Our team is making your changes now, and we'll email you as soon as the new versions are ready.");
+    if (data.state === 'approved') return message('🎉', 'Your ads are approved', "Thanks! We're getting your campaign ready to go live, and we'll let you know as soon as it's running.");
+    if (data.state === 'unavailable') return message('⏳', 'Your ads will be back shortly', "We couldn't load your previews just now. Please try again in a few minutes.");
+
+    const r = data.round;
+    const intro = r.revised
+      ? `<h1>We've updated your ads</h1><p class="lead">Here are the new versions, exactly as they'll appear on Facebook and Instagram.</p>${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}`
+      : `<h1>Your ads are ready</h1><p class="lead">Here's exactly how each ad will appear on Facebook and Instagram. Have a look, and let us know if you'd like anything changed.</p>`;
+
+    app.innerHTML = `<div class="card">${intro}</div>${data.ads.map(adHtml).join('')}
+      <div class="card">
+        <label class="small" for="general">Anything else you'd like us to know? (optional)</label>
+        <textarea id="general" placeholder="Anything about the ads overall"></textarea>
+        <button class="submit" id="submit" type="button" disabled></button>
+        <div class="err" id="err"></div>
+        <p class="small" style="margin-top:12px">These previews come straight from Facebook and Instagram, so they're exactly what people will see. Nothing goes live until you approve.</p>
+      </div>`;
+    app.querySelectorAll('.ad').forEach(wireCard);
+    const general = document.getElementById('general');
+    general.addEventListener('input', () => { window._general = general.value; });
+    document.getElementById('submit').addEventListener('click', submit);
+    updateSubmit();
+  }
+
+  function adHtml(ad) {
+      const i = shownTab[ad.key] || 0;
+      const p = ad.placements[i];
+      const a = answers[ad.key] || {};
+      const w = p.w || 340, h = p.h || 640;
+      return `<div class="card ad" data-key="${esc(ad.key)}">
+        <h2>Ad ${ad.number}${ad.kind === 'video' ? ' · video' : ''}</h2>
+        <div class="tabs">${ad.placements.map((pl, j) => `<button type="button" class="tab${j === i ? ' on' : ''}" data-tab="${j}">${esc(pl.label)}</button>`).join('')}</div>
+        <div class="frame"><iframe src="${esc(p.url)}" width="${w}" height="${h}" scrolling="no" loading="lazy" title="${esc(p.label)} preview"></iframe></div>
+        <div class="choice">
+          <button type="button" class="good${a.decision === 'approve' ? ' on' : ''}" data-decide="approve">👍 Looks good</button>
+          <button type="button" class="change${a.decision === 'change' ? ' on' : ''}" data-decide="change">✏️ I'd like a change</button>
+        </div>
+        ${a.decision === 'change' ? `<textarea data-comment placeholder="Tell us what you'd like different, and we'll take care of it. For example: a different photo, mention that we're family owned, a bit less salesy.">${esc(a.comment || '')}</textarea>` : ''}
+      </div>`;
+  }
+
+  function updateSubmit() {
+    const btn = document.getElementById('submit');
+    if (!btn) return;
+    const all = data.ads.every(ad => answers[ad.key] && answers[ad.key].decision);
+    const changes = data.ads.filter(ad => answers[ad.key] && answers[ad.key].decision === 'change');
+    const missingNote = changes.some(ad => !(answers[ad.key].comment || '').trim());
+    btn.disabled = !all || missingNote;
+    btn.textContent = !all ? 'Let us know what you think of each ad'
+      : changes.length ? `Send my changes (${changes.length} ad${changes.length === 1 ? '' : 's'})` : 'Approve my ads';
+  }
+
+  // One ad redrawn on its own, so the other previews don't reload. Its preview
+  // only reloads when the placement changes.
+  function redraw(key, newTab) {
+    const card = app.querySelector(`.ad[data-key="${CSS.escape(key)}"]`);
+    const ad = data.ads.find(a => a.key === key);
+    if (!card || !ad) return;
+    const frame = newTab ? null : card.querySelector('.frame');
+    card.outerHTML = adHtml(ad);
+    const fresh = app.querySelector(`.ad[data-key="${CSS.escape(key)}"]`);
+    if (frame) fresh.querySelector('.frame').replaceWith(frame);
+    wireCard(fresh);
+    updateSubmit();
+    return fresh;
+  }
+
+  function wireCard(card) {
+    const key = card.dataset.key;
+    card.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => { shownTab[key] = +t.dataset.tab; redraw(key, true); }));
+    card.querySelectorAll('[data-decide]').forEach(b => b.addEventListener('click', () => {
+      answers[key] = { ...(answers[key] || {}), decision: b.dataset.decide };
+      const fresh = redraw(key, false);
+      if (b.dataset.decide === 'change' && fresh) { const t = fresh.querySelector('textarea'); if (t) t.focus(); }
+    }));
+    const ta = card.querySelector('[data-comment]');
+    if (ta) ta.addEventListener('input', () => { answers[key].comment = ta.value; updateSubmit(); });
+  }
+
+  async function submit() {
+    const btn = document.getElementById('submit');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const out = await api({ action: 'submit', round_id: data.round.id, decisions: answers, general: window._general || '' });
+      data = { business: data.business, state: out.state };
+      scrollTo(0, 0);
+      render();
+    } catch (e) {
+      document.getElementById('err').textContent = e.message;
+      updateSubmit();
+    }
+  }
+
+  (async () => {
+    if (!token) return message('🔒', 'This link is incomplete', 'Please open the link from your email again.');
+    try {
+      data = await api({ action: 'view' });
+      render();
+    } catch (e) {
+      message('🔒', "We couldn't open your ads", e.message);
+    }
+  })();
+</script>
+</body>
+</html>
