@@ -8435,7 +8435,7 @@ async function paygResume(orderId) {
   loadPaygPanel();
 }
 async function paygSetCap(orderId, current) {
-  const v = prompt(`Most leads a week for this area (at least ${BL_TRIAL_MIN}):`, String(current));
+  const v = prompt(`Most leads a week for this area (${BL_TRIAL_MIN} to 50):`, String(current));
   if (v === null) return;
   try { const r = await paygCall({ action: 'set_cap', order_id: orderId, weekly_cap: parseInt(v, 10) }); toast(`Weekly limit set to ${r.weekly_cap}.`); }
   catch (e) { toast(e.message, true); }
