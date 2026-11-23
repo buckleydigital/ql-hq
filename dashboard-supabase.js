@@ -7056,8 +7056,8 @@ const BL_HARD_MAX    = 100;
 const BL_STATE_MAX   = 300;
 // Minimum leads per area per order (first orders and re-orders alike).
 // The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
-const BL_TRIAL_MIN   = 10;
-const BL_REORDER_MIN = 10;
+const BL_TRIAL_MIN   = 25;
+const BL_REORDER_MIN = 25;
 let _blMinQty        = BL_TRIAL_MIN;
 const _pplOrdersCache = new Map();
 
