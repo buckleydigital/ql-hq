@@ -2396,11 +2396,15 @@ function renderDisputeResult(payload) {
   const runBtn = document.getElementById("runDisputeCheckBtn");
 
   const approved = payload.status === "auto_approved";
+  const inReview = payload.status === "pending_manual_review";
   const chk      = payload.auto_check_result || {};
 
   // Banner
   if (banner) {
-    if (approved) {
+    if (inReview) {
+      banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#fff8e1;border:1px solid #ffe082;color:#5d4037";
+      banner.innerHTML = "<strong>Sent for Manual Review</strong> - We couldn't complete the automatic phone check right now, so our team will check this number and get back to you.";
+    } else if (approved) {
       banner.style.cssText = "padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20";
       banner.innerHTML = "<strong>Dispute Approved</strong> - The automated check confirmed this lead does not meet the delivery criteria. It has been logged for review and replacement.";
     } else {
@@ -2415,7 +2419,7 @@ function renderDisputeResult(payload) {
     if (_currentDisputeReason === "invalid_number") {
       if (chk.normalised_phone) lines.push(`Number checked: ${chk.normalised_phone}`);
       if (chk.phone_type)       lines.push(`Type: ${chk.phone_type}`);
-      if (!approved)            lines.push("Veriphone confirmed this number appears reachable.");
+      if (!approved && !inReview) lines.push("Veriphone confirmed this number appears reachable.");
     } else if (_currentDisputeReason === "duplicate") {
       if (chk.normalised_phone) lines.push(`Number checked: ${chk.normalised_phone}`);
       if (chk.duplicate_found && chk.duplicate_leads?.length) {
@@ -7052,8 +7056,8 @@ const BL_HARD_MAX    = 100;
 const BL_STATE_MAX   = 300;
 // Minimum leads per area per order (first orders and re-orders alike).
 // The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
-const BL_TRIAL_MIN   = 25;
-const BL_REORDER_MIN = 25;
+const BL_TRIAL_MIN   = 10;
+const BL_REORDER_MIN = 10;
 let _blMinQty        = BL_TRIAL_MIN;
 const _pplOrdersCache = new Map();
 
