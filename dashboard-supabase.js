@@ -2434,7 +2434,6 @@ function renderDisputeResult(payload) {
   if (manualSection) {
     if (_currentManualAvailable && !approved) {
       manualSection.classList.remove("hidden");
-      renderScrubBar(payload.scrub_usage);
     } else if (_currentManualAvailable && approved) {
       // Auto-approved but still show manual review info as informational only
       manualSection.classList.add("hidden");
@@ -2445,38 +2444,6 @@ function renderDisputeResult(payload) {
 
   // Hide run button once result shown (no re-runs on same dispute)
   if (runBtn) runBtn.classList.add("hidden");
-}
-
-function renderScrubBar(scrub) {
-  const el = document.getElementById("disputeScrubBar");
-  const capWarn = document.getElementById("disputeCapWarning");
-  if (!el || !scrub) return;
-
-  const used    = scrub.scrub_used_pct ?? 0;
-  const cap     = scrub.scrub_cap_pct  ?? 10;
-  const pct     = Math.min(100, (used / cap) * 100);
-  const colour  = pct >= 90 ? "#d32f2f" : pct >= 70 ? "#f57c00" : "#388e3c";
-  const exceeds = scrub.cap_exceeded;
-
-  el.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
-      Scrub cap usage: <strong style="color:${colour}">${used}% of ${cap}%</strong>
-      &nbsp;(${scrub.approved_disputes ?? 0} approved of ${scrub.total_ppl_leads ?? 0} PPL leads)
-    </div>
-    <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden">
-      <div style="width:${pct}%;height:100%;background:${colour};border-radius:4px;transition:width .3s"></div>
-    </div>`;
-
-  if (capWarn) {
-    if (exceeds) {
-      capWarn.classList.remove("hidden");
-      capWarn.textContent = "Your scrub cap has been reached for this order. Manual review cannot be requested until additional PPL leads are delivered or your cap is adjusted.";
-      const sendBtn = document.getElementById("sendManualReviewBtn");
-      if (sendBtn) sendBtn.disabled = true;
-    } else {
-      capWarn.classList.add("hidden");
-    }
-  }
 }
 
 async function sendDisputeManualReview() {
@@ -2498,12 +2465,7 @@ async function sendDisputeManualReview() {
     const payload = await res.json();
 
     if (!res.ok) {
-      if (payload.cap_exceeded) {
-        toast("Scrub cap exceeded - manual review cannot be submitted.", true);
-        renderScrubBar(payload.scrub_usage);
-      } else {
-        toast(payload.error || "Failed to submit manual review.", true);
-      }
+      toast(payload.error || "Failed to submit manual review.", true);
       if (btn) { btn.disabled = false; btn.textContent = "Confirm - Send for Manual Review"; }
       return;
     }
@@ -2689,21 +2651,12 @@ function applyDisputeEligibilityToModal(elig) {
     </div>`;
   }
 
-  // 24h call rule - grey out invalid_number if not eligible
-  if (!elig.call_within_24h) {
-    if (invLabel) invLabel.style.opacity = "0.5";
-    const radio = invLabel?.querySelector('input[type="radio"]');
-    if (radio)  radio.disabled = true;
-    if (invNote) {
-      invNote.classList.remove("hidden");
-      invNote.textContent = "Not available - no call attempt was logged within 24 hours of lead delivery. Log a call first, or choose a different reason.";
-    }
-  } else {
-    if (invLabel) invLabel.style.opacity = "";
-    const radio = invLabel?.querySelector('input[type="radio"]');
-    if (radio)  radio.disabled = false;
-    if (invNote) invNote.classList.add("hidden");
-  }
+  // Invalid number is always available while the window is open - no call
+  // attempt has to be logged first.
+  if (invLabel) invLabel.style.opacity = "";
+  const radio = invLabel?.querySelector('input[type="radio"]');
+  if (radio)  radio.disabled = false;
+  if (invNote) invNote.classList.add("hidden");
 }
 
 // ─── Auto-send Welcome SMS ────────────────────────────────────────────────────
