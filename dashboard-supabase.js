@@ -7054,10 +7054,17 @@ let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per or
 // state up to 300. Each suburb is its own order (create-ppl-checkout).
 const BL_HARD_MAX    = 100;
 const BL_STATE_MAX   = 300;
-// Minimum leads per area per order (first orders and re-orders alike).
-// The checkout enforces the same rule (pplMinQuantity in ppl-niches.ts).
-const BL_TRIAL_MIN   = 25;
-const BL_REORDER_MIN = 25;
+// Pay as you go: the choice is a weekly limit per area, at least 5 (the
+// checkout enforces the same, PPL_WEEKLY_CAP_MIN in ppl-niches.ts). There are
+// no packs or volume discounts.
+const BL_TRIAL_MIN   = 5;
+const BL_REORDER_MIN = 5;
+const BL_WEEKLY_TIERS = [
+  { min_quantity: 5,  discount_percent: 0, label: '5 a week',  is_popular: false },
+  { min_quantity: 10, discount_percent: 0, label: '10 a week', is_popular: true  },
+  { min_quantity: 20, discount_percent: 0, label: '20 a week', is_popular: false },
+  { min_quantity: 50, discount_percent: 0, label: '50 a week', is_popular: false },
+];
 let _blMinQty        = BL_TRIAL_MIN;
 const _pplOrdersCache = new Map();
 
@@ -7102,14 +7109,12 @@ async function loadBuyLeads() {
   _blMinQty = paidBefore ? BL_REORDER_MIN : BL_TRIAL_MIN;
 
   _pplPricing = []; _blCityPrices = {}; _blCitySubPrices = {}; _blSoldOut = {}; _blMax = {};
-  _blDiscountTiers = (tiers || []).filter(t => t.min_quantity >= _blMinQty);
+  _blDiscountTiers = BL_WEEKLY_TIERS;
   _blNiche = null; _blSubNiche = null; _blCity = null; _blPPL = null; _blLocType = 'radius';
   _blStatewide = false; _blCovMode = 'radius';
-  _blQty = _blDiscountTiers[0]?.min_quantity ?? _blMinQty;
-  const minNote = document.getElementById('buyLeadsMinNote');
-  if (minNote) minNote.textContent = `Minimum ${_blMinQty} leads per area.`;
+  _blQty = 10;
   const customMin = document.getElementById('buyLeadsCustomMin');
-  if (customMin) customMin.textContent = `leads (min. ${_blMinQty})`;
+  if (customMin) customMin.textContent = `leads a week (min. ${_blMinQty})`;
   _blDiscount = 0;
 
   // City visible from the start; niche hidden until city chosen
@@ -7387,7 +7392,7 @@ async function buyLeadsOnCityChange() {
   results.forEach(r => {
     if (r.status !== 'fulfilled') return;
     // Same packs as loadBuyLeads: none below this account's minimum.
-    if (r.value.tiers?.length) _blDiscountTiers = r.value.tiers.filter(t => t.min_quantity >= _blMinQty);
+    // Weekly limits, not packs: the choices stay BL_WEEKLY_TIERS.
     if (r.value.soldOut) {
       _blSoldOut[r.value.niche] = true;
     } else if (r.value.price != null) {
@@ -7491,7 +7496,7 @@ function buyLeadsSetLocType(type) {
 
 function buyLeadsUpdateSummary() {
   if (!_blNiche || !_blCity || !_blPPL) return;
-  if (_blQty < 10) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
+  if (_blQty < _blMinQty) { document.getElementById('buyLeadsSummary').style.display = 'none'; return; }
 
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
 
@@ -7511,9 +7516,9 @@ function buyLeadsUpdateSummary() {
   // price. This estimate (every area at the chosen city's price) shows at
   // once; blQuote then swaps in the server's exact per-area prices.
   const areaCount = (_blLocType === 'radius' && !_blStatewide) ? Math.max(1, blValidAreas().length) : 1;
-  const subtotal = _blQty * _blPPL * areaCount;
-  const saving   = subtotal * (_blDiscount / 100);
-  const total    = subtotal - saving;
+  // Pay as you go: today is one lead.
+  const saving   = 0;
+  const total    = _blPPL;
 
   document.getElementById('buyLeadsSumNiche').textContent    = nicheLabel(_blNiche);
   const subNicheRow = document.getElementById('buyLeadsSumSubNicheRow');
@@ -7530,7 +7535,7 @@ function buyLeadsUpdateSummary() {
   document.getElementById('buyLeadsSumCity').textContent     = _blCity;
   document.getElementById('buyLeadsSumCoverage').textContent = coverage;
   document.getElementById('buyLeadsSumQty').textContent      = areaCount > 1
-    ? `${_blQty * areaCount} leads (${_blQty} per suburb)` : `${_blQty} leads`;
+    ? `Up to ${_blQty} a week per suburb` : `Up to ${_blQty} a week`;
   document.getElementById('buyLeadsSumPPL').textContent      = fmt(_blPPL);
   document.getElementById('buyLeadsSumTotal').textContent    = fmt(total);
   const areasEl = document.getElementById('buyLeadsSumAreas');
@@ -7568,6 +7573,7 @@ function blOrderBody() {
     postcode_list: _blLocType === 'postcodes' ? postcodes : null,
     ...(_blLocType === 'radius' && cov.service_areas ? { service_areas: cov.service_areas } : {}),
     quantity:      _blQty,
+    weekly_cap:    _blQty,
   };
 }
 function blQuoteSoon() {
@@ -7596,21 +7602,14 @@ async function blQuote() {
     const prices = [...new Set(q.areas.map(a => a.price_per_lead))];
     document.getElementById('buyLeadsSumPPL').textContent = prices.length === 1 ? fmt(prices[0]) : 'Varies by suburb';
     document.getElementById('buyLeadsSumQty').textContent = q.areas.length > 1
-      ? `${q.total_quantity} leads (${q.areas[0].quantity} per suburb)` : `${q.total_quantity} leads`;
+      ? `Up to ${q.areas[0].quantity} a week per suburb` : `Up to ${q.areas[0].quantity} a week`;
     document.getElementById('buyLeadsSumTotal').textContent = fmt(q.total_ex_gst);
-    const full = q.areas.reduce((n, a) => n + a.price_per_lead * a.quantity, 0);
-    const saving = full - q.total_ex_gst;
     const discRow = document.getElementById('buyLeadsSumDiscountRow');
-    if (discRow) {
-      if (saving > 0.005) {
-        document.getElementById('buyLeadsSumDiscount').textContent = `−${fmt(saving)} (${q.areas[0].discount_percent}% off)`;
-        discRow.style.display = 'flex';
-      } else discRow.style.display = 'none';
-    }
+    if (discRow) discRow.style.display = 'none';
     if (areasEl) {
       areasEl.innerHTML = q.areas.length > 1 ? q.areas.map(a =>
-        `<div style="display:flex;justify-content:space-between;gap:12px"><span>${blEsc(a.label)} · ${a.quantity} × ${fmt(a.price_per_lead)}</span><span style="color:var(--text,var(--ink));font-weight:500;white-space:nowrap">${fmt(a.total_amount)}</span></div>`
-      ).join('') + `<div style="font-size:11px;line-height:1.5;margin-top:4px">Each suburb is its own order with its own leads, priced at its nearest city.</div>` : '';
+        `<div style="display:flex;justify-content:space-between;gap:12px"><span>${blEsc(a.label)}</span><span style="color:var(--text,var(--ink));font-weight:500;white-space:nowrap">${fmt(a.price_per_lead)} a lead</span></div>`
+      ).join('') + `<div style="font-size:11px;line-height:1.5;margin-top:4px">Each suburb has its own weekly limit and is priced at its nearest city. Only your first lead is charged today.</div>` : '';
       areasEl.style.display = q.areas.length > 1 ? '' : 'none';
     }
   } catch {}
@@ -7893,7 +7892,7 @@ async function startPplCheckout() {
   const cap = blActiveMax();
   if (_blQty > cap) { toast(`Up to ${cap} leads per area per order. Please lower the quantity.`, true); return; }
   if (_blQty < _blMinQty) {
-    toast(`The minimum is ${_blMinQty} leads per area.`, true); return;
+    toast(`The weekly limit is at least ${_blMinQty} leads per area.`, true); return;
   }
   if (_blLocType === 'postcodes' && !postcodes) { toast('Please paste your postcode list.', true); return; }
   if (_blLocType === 'radius') {
@@ -7922,7 +7921,7 @@ async function startPplCheckout() {
     window.location.href = data.url;
   } catch (err) {
     toast(err.message || 'Failed to start checkout', true);
-    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Pay for first lead →'; }
   }
 }
 
@@ -7930,7 +7929,11 @@ function renderBuyLeadsOrders(orders) {
   const el = document.getElementById('buyLeadsOrdersTable');
   if (!el) return;
   orders.forEach(o => _pplOrdersCache.set(o.id, o));
-  if (!orders.length) { el.innerHTML = `<div class="notice">No orders yet. Purchase your first lead pack above.</div>`; return; }
+  loadPaygPanel();
+  // Pay-as-you-go areas have their own panel (loadPaygPanel); this table is
+  // for lead packs, and for any checkout not yet paid.
+  orders = orders.filter(o => o.billing_mode !== 'payg' || o.status === 'pending');
+  if (!orders.length) { el.innerHTML = ''; return; }
 
   const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
   const statusColor = s => ({ paid:'#4797FF', active:'#22c55e', fulfilled:'#22c55e', cancelled:'#9a9a9a' }[s] || '#9a9a9a');
@@ -8048,7 +8051,7 @@ async function retryPplOrder(orderId) {
     window.location.href = data.url;
   } catch (err) {
     toast(err.message || 'Failed to start checkout', true);
-    if (btn) { btn.disabled = false; btn.textContent = 'Purchase Leads →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Pay for first lead →'; }
   }
 }
 window.retryPplOrder = retryPplOrder;
@@ -8355,3 +8358,94 @@ async function mdUpload(which, files) {
   }
   renderOnboardingMedia(failed.length ? `<div class="md-prog" style="color:#c53535">${failed.map(esc).join("<br>")}</div>` : "");
 }
+
+// ─── Pay as you go: the buyer's areas, card and controls ──────────────────────
+// Each area's weekly limit, how many leads it has had this week, and Pause /
+// Resume / Change limit, plus the saved card (changed in Stripe's billing
+// portal) and recent charges. All through ppl-billing.
+async function paygCall(body) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ppl-billing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  return data;
+}
+
+async function loadPaygPanel() {
+  const el = document.getElementById('buyLeadsPaygPanel');
+  if (!el) return;
+  let s;
+  try { s = await paygCall({ action: 'status' }); } catch { el.innerHTML = ''; return; }
+  if (!s.orders?.length) { el.innerHTML = ''; return; }
+  const fmt = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v);
+  const failed = s.billing_status === 'payment_failed';
+  const card = s.card ? `${s.card.brand.toUpperCase()} ending ${blEsc(s.card.last4)}` : 'Card on file';
+
+  const rows = s.orders.map(o => {
+    const paused = o.status === 'paused';
+    const why = o.paused_reason === 'payment_failed' ? 'Paused: card payment failed' : 'Paused';
+    const badge = paused
+      ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:#f59e0b22;color:#d97706;text-transform:uppercase">${why}</span>`
+      : `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:#22c55e22;color:#16a34a;text-transform:uppercase">Active</span>`;
+    const full = !paused && o.this_week >= o.weekly_cap;
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${badge}<strong style="font-size:13px">${nicheLabel(o.niche)}${o.sub_niche ? ` › ${subNicheLabel(o.sub_niche)}` : ''} - ${blEsc(o.area_city || o.area || '-')}</strong></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${fmt(o.price_per_lead)} + GST a lead · <strong style="color:var(--text,var(--ink))">${o.this_week} of ${o.weekly_cap}</strong> this week${full ? ' (limit reached, resets Monday)' : ''} · ${o.delivered_count} delivered in total</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn2" type="button" style="font-size:12px;padding:6px 12px" onclick="paygSetCap('${o.id}', ${o.weekly_cap})">Change limit</button>
+          ${paused
+            ? `<button class="btn2" type="button" style="font-size:12px;padding:6px 12px" onclick="paygResume('${o.id}')">Resume</button>`
+            : `<button class="btn" type="button" style="font-size:12px;padding:6px 12px" onclick="paygPause('${o.id}')">Pause</button>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const charges = (s.charges || []).slice(0, 10).map(c => {
+    const label = { paid: fmt(c.amount_inc_gst), credit: 'Free (credit)', over_cap: 'Free (over limit)', pending: 'Charging…', failed: 'Failed' }[c.status] || c.status;
+    return `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${new Date(c.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span><span style="color:${c.status === 'failed' ? '#ef4444' : 'var(--text,var(--ink))'}">${label}</span></div>`;
+  }).join('');
+
+  el.innerHTML = `<div style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div><strong style="font-size:15px">Pay as you go</strong><div style="font-size:12px;color:var(--muted)">${card}${s.lead_credits > 0 ? ` · ${s.lead_credits} free lead${s.lead_credits === 1 ? '' : 's'} to come` : ''}</div></div>
+      <button class="btn2" type="button" style="font-size:12px;padding:6px 12px" onclick="paygCardPortal()">Update card</button>
+    </div>
+    ${failed ? `<div style="padding:12px 14px;border-radius:10px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d;font-size:13px;margin-bottom:10px">Your last card payment failed, so your leads are paused. Update your card, then press Resume: what's owed is charged first.</div>` : ''}
+    ${rows}
+    ${charges ? `<details style="margin-top:6px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Recent charges</summary><div style="margin-top:6px">${charges}</div></details>` : ''}
+  </div>`;
+}
+
+async function paygPause(orderId) {
+  try { await paygCall({ action: 'pause', order_id: orderId }); toast('Paused. No leads or charges until you resume.'); }
+  catch (e) { toast(e.message, true); }
+  loadPaygPanel();
+}
+async function paygResume(orderId) {
+  try { await paygCall({ action: 'resume', order_id: orderId }); toast('Resumed. Leads start again within a few minutes.'); }
+  catch (e) { toast(e.message, true); }
+  loadPaygPanel();
+}
+async function paygSetCap(orderId, current) {
+  const v = prompt(`Most leads a week for this area (at least ${BL_TRIAL_MIN}):`, String(current));
+  if (v === null) return;
+  try { const r = await paygCall({ action: 'set_cap', order_id: orderId, weekly_cap: parseInt(v, 10) }); toast(`Weekly limit set to ${r.weekly_cap}.`); }
+  catch (e) { toast(e.message, true); }
+  loadPaygPanel();
+}
+async function paygCardPortal() {
+  try { const r = await paygCall({ action: 'card_portal' }); window.location.href = r.url; }
+  catch (e) { toast(e.message, true); }
+}
+window.paygPause = paygPause;
+window.paygResume = paygResume;
+window.paygSetCap = paygSetCap;
+window.paygCardPortal = paygCardPortal;
