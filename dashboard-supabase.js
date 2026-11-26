@@ -7188,7 +7188,7 @@ function renderBuyLeadsNiches() {
     }
     const price = _blCityPrices[niche];
     const priceNote = _blCity
-      ? (price ? ` - $${price}/lead` : ' - loading…')
+      ? (price ? ` - $${price}/lead` : ' <span class="bl-skel" aria-label="Loading price"></span>')
       : '';
     const isSelected = niche === _blNiche;
     return `<button type="button" onclick="buyLeadsSelectNiche('${niche}')"
@@ -7225,7 +7225,7 @@ function renderBuyLeadsSubNiches(niche) {
       </button>`;
     }
     const cached    = _blCitySubPrices[niche + ':' + s.id];
-    const priceNote = cached != null ? ` - $${cached}/lead` : (_blCity ? ' - loading…' : '');
+    const priceNote = cached != null ? ` - $${cached}/lead` : (_blCity ? ' <span class="bl-skel" aria-label="Loading price"></span>' : '');
     const isSel     = _blSubNiche === s.id;
     return `<button type="button" onclick="buyLeadsSelectSubNiche('${s.id}')"
       id="subNicheCard-${s.id}"
