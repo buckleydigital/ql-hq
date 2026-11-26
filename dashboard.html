@@ -777,7 +777,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   background-repeat:no-repeat!important;background-position:right 11px center!important;background-size:14px!important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261126f"></script>
+<script defer src="./dashboard-supabase.js?v=20261126g"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -2399,7 +2399,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                     <textarea id="buyLeadsPostcodes" rows="4"
                       placeholder="Paste postcodes here, one per line or comma-separated&#10;e.g. 4000, 4001, 4005, 4006"
                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text,var(--ink));font-family:inherit;font-size:13px;resize:vertical;line-height:1.6"></textarea>
-                    <p style="font-size:12px;color:var(--muted);margin-top:6px">Use the link above to find all postcodes within a radius, then paste them here. A postcode list is one area of up to 100 leads.</p>
+                    <p style="font-size:12px;color:var(--muted);margin-top:6px">Use the link above to find all postcodes within a radius, then paste them here. A postcode list is one area, with a weekly limit of up to 50 leads.</p>
                   </div>
 
                   <div id="locStatewidePanel" style="display:none">
@@ -2416,7 +2416,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                 <!-- Step 5: Quantity -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
                   <label class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Leads a week per area</label>
-                  <p style="font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.5">The most leads you'll get (and pay for) each week in each suburb, at least 5. Up to 100 a week per suburb or postcode list, 300 state wide. Change it or pause any time.</p>
+                  <p style="font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.5">The most leads you'll get (and pay for) each week in each area, from 5 to 50. It's a maximum, not a promise of that many leads. Change it or pause any time.</p>
                   <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
                   <div id="buyLeadsCapNote" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)"></div>
                   <div style="margin-top:12px;display:flex;align-items:center;gap:8px">

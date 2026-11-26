@@ -7079,10 +7079,11 @@ let _blCityPrices    = {};  // niche → price_per_lead for selected city
 let _blCitySubPrices = {};  // 'niche:sub_niche' → price_per_lead for selected city
 let _blSoldOut       = {};  // 'niche' or 'niche:sub_niche' → true when sold out for selected city
 let _blMax           = {};  // 'niche' or 'niche:sub_niche' → max leads per order for selected city (null = unlimited)
-// Leads per area per order: a suburb or a postcode list is up to 100, a whole
-// state up to 300. Each suburb is its own order (create-ppl-checkout).
-const BL_HARD_MAX    = 100;
-const BL_STATE_MAX   = 300;
+// The weekly limit per area is at most 50, for a suburb, a postcode list or a
+// whole state (the checkout enforces the same, PPL_WEEKLY_CAP_MAX in
+// ppl-niches.ts). Some areas or trades have a lower cap (ppl_pricing).
+const BL_HARD_MAX    = 50;
+const BL_STATE_MAX   = 50;
 // Pay as you go: the choice is a weekly limit per area, at least 5 (the
 // checkout enforces the same, PPL_WEEKLY_CAP_MIN in ppl-niches.ts). There are
 // no packs or volume discounts.
@@ -7305,7 +7306,7 @@ function renderBuyLeadsPacks() {
   const note = document.getElementById('buyLeadsCapNote');
   if (note) {
     if (cap < (_blStatewide ? BL_STATE_MAX : BL_HARD_MAX)) {
-      note.textContent = `Up to ${cap} leads per order available for this lead type in this area.`;
+      note.textContent = `Up to ${cap} leads a week per area for this lead type here.`;
       note.style.display = '';
     } else {
       note.style.display = 'none';
