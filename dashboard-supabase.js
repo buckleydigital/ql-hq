@@ -7177,25 +7177,23 @@ const BL_NICHES = ['solar-and-battery', 'battery-retrofit', 'roofing', 'hvac', '
 function renderBuyLeadsNiches() {
   const el = document.getElementById('buyLeadsNicheCards');
   if (!el) return;
+  // Each trade as a card with its 3D icon (the same set as the website).
+  const ico = (niche) => `<span class="bl-trade-ico"><img src="assets/trades/${niche}.png" alt="" width="263" height="263" decoding="async"></span>`;
   el.innerHTML = BL_NICHES.map(niche => {
     const label = nicheLabel(niche);
     // Sold out for this city - render greyed out, non-selectable, no price.
     if (_blSoldOut[niche]) {
-      return `<button type="button" disabled
-        id="nicheCard-${niche}"
-        style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2,var(--bg-lift));color:var(--text,var(--ink));font-size:13px;font-weight:500;cursor:not-allowed;opacity:0.45;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-        ${label} - <span style="color:#f87171">Unavailable</span>
+      return `<button type="button" disabled id="nicheCard-${niche}" class="bl-trade is-out">
+        ${ico(niche)}<span class="bl-trade-txt"><b>${label}</b><span style="color:#f87171">Unavailable</span></span>
       </button>`;
     }
     const price = _blCityPrices[niche];
     const priceNote = _blCity
-      ? (price ? ` - $${price}/lead` : ' <span class="bl-skel" aria-label="Loading price"></span>')
+      ? (price ? `$${price}/lead` : '<span class="bl-skel" aria-label="Loading price" style="margin-left:0"></span>')
       : '';
     const isSelected = niche === _blNiche;
-    return `<button type="button" onclick="buyLeadsSelectNiche('${niche}')"
-      id="nicheCard-${niche}"
-      style="padding:10px 20px;border-radius:10px;border:1px solid ${isSelected ? 'var(--accent,#4797FF)' : 'var(--border)'};background:${isSelected ? 'var(--accent,#4797FF)' : 'var(--surface-2,var(--bg-lift))'};color:${isSelected ? '#fff' : 'var(--text,var(--ink))'};font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;text-align:left;line-height:1.4">
-      ${label}${priceNote}
+    return `<button type="button" onclick="buyLeadsSelectNiche('${niche}')" id="nicheCard-${niche}" class="bl-trade${isSelected ? ' is-on' : ''}" aria-pressed="${isSelected}">
+      ${ico(niche)}<span class="bl-trade-txt"><b>${label}</b>${priceNote ? `<span>${priceNote}</span>` : ''}</span>
     </button>`;
   }).join('');
 }
