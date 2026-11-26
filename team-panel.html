@@ -2331,7 +2331,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // the first one once access and media are in, and each revision after the
   // client's comments. Those arrive here as "ready to finish".
   const ROUND_STATUS = {
-    building: 'Being written automatically', drawing: 'Ready to finish', awaiting_access: 'Finished, waiting on their Meta access', team_review: 'Ready to check and send',
+    building: 'Being written automatically', drawing: 'Ready to finish', awaiting_access: 'Sent by you, waiting on their Meta access', team_review: 'Ready to check and send (not in Meta yet)',
     preparing: 'Sent, waiting on Meta to process a video', sent: 'With the client', approved: 'Approved by the client',
     changes_requested: 'Client asked for changes',
   };
@@ -2346,7 +2346,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     _studio.roundPreviews = null;
     renderRounds();
     const latest = (_studio.rounds.rounds || [])[0];
-    if (latest && ['team_review', 'sent', 'preparing'].includes(latest.status)) loadRoundPreviews(latest.id);
+    // Meta's own previews only once a round is sent (that's when it goes into Meta).
+    if (latest && ['sent', 'preparing'].includes(latest.status)) loadRoundPreviews(latest.id);
   }
 
   async function loadRoundPreviews(roundId) {
@@ -2385,7 +2386,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           ${['drawing', 'awaiting_access', 'team_review'].includes(latest.status) ? '<button class="btn" id="rdDiscard" type="button">Discard round</button>' : ''}
           ${rs.approval_url ? `<button class="btn btn-sm" id="rdLink" type="button">Copy client link</button>` : ''}
         </div>
-        ${!rs.meta_ready && ['drawing', 'awaiting_access'].includes(latest.status) ? `<div class="st-iss"><span class="sev chk">No Meta account</span>Their ad account and Facebook Page aren't connected yet (the access step). ${latest.status === 'drawing' ? 'You can still finish the pack: it' : 'The pack'} goes into their ad account automatically once access is in, then comes back here to check and send.</div>` : ''}
+        ${latest.status === 'team_review' ? `<div class="st-iss"><span class="sev chk">Not in Meta yet</span>Check, edit, regenerate or discard freely. Nothing goes into their ad account until you press <b>Send to client</b>${rs.meta_ready ? '' : ': their ad account and Page aren\'t connected yet, so a sent round waits and goes out as soon as access is in'}.</div>` : ''}
+        ${latest.status === 'awaiting_access' ? `<div class="st-iss"><span class="sev chk">Waiting on Meta access</span>You've sent this round. As soon as their ad account and Page are connected, the ads go into their ad account and the client gets the email.</div>` : ''}
         ${roundPreviewsHtml(latest)}
       </div>`;
     }
@@ -2408,7 +2410,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // images aren't in an ad account to preview). Meta's exact previews replace
   // it once they are.
   function mockPreviewsHtml(round, note) {
-    const ads = (round.ads || []).filter(a => a.feed_url || a.story_url);
+    const ads = (round.ads || []).filter(a => a.feed_url || a.story_url || a.video_url);
+    const editable = round.status === 'team_review';
     if (!ads.length) return '';
     const name = (_studio.business && _studio.business.name) || 'Their business';
     const logo = studioLogo();
@@ -2418,22 +2421,30 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         const story = _studio.pvTab['m:' + a.key] === 1 && a.story_url;
         return `<div class="st-pv" data-pvm="${esc(a.key)}">
           <div class="st-h" style="margin:0 0 6px">${esc(a.key)}</div>
-          <div class="st-pv-tabs"><button type="button" class="st-chip${story ? '' : ' on'}" data-pvm-tab="0">Feed</button>${a.story_url ? `<button type="button" class="st-chip${story ? ' on' : ''}" data-pvm-tab="1">Stories</button>` : ''}</div>
+          ${a.kind === 'video' ? '' : `<div class="st-pv-tabs"><button type="button" class="st-chip${story ? '' : ' on'}" data-pvm-tab="0">Feed</button>${a.story_url ? `<button type="button" class="st-chip${story ? ' on' : ''}" data-pvm-tab="1">Stories</button>` : ''}</div>`}
           ${story
             ? `<div class="mk-story"><img src="${esc(a.story_url)}" alt=""><div class="mk-story-top">${logo ? `<img src="${esc(logo.url)}" alt="">` : ''}<b>${esc(name)}</b><span>Sponsored</span></div></div>`
             : `<div class="mk-feed">
                 <div class="mk-feed-h">${logo ? `<img src="${esc(logo.url)}" alt="">` : `<span class="mk-av">${esc(name.slice(0, 1))}</span>`}<div><b>${esc(name)}</b><span>Sponsored</span></div></div>
                 ${a.message ? `<p class="mk-feed-t">${esc(a.message)}</p>` : ''}
-                <img class="mk-feed-img" src="${esc(a.feed_url)}" alt="">
+                ${a.kind === 'video' ? `<video class="mk-feed-img" src="${esc(a.video_url || '')}" controls muted playsinline preload="metadata"></video>` : `<img class="mk-feed-img" src="${esc(a.feed_url)}" alt="">`}
                 <div class="mk-feed-f"><div><b>${esc(a.headline || '')}</b>${a.description ? `<span>${esc(a.description)}</span>` : ''}</div><em>${esc((a.cta || 'Get quote').replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase()))}</em></div>
               </div>`}
+          ${editable ? `<div class="st-pv-edit">
+            <label>Primary text<textarea rows="3" data-pvm-f="message">${esc(a.message || '')}</textarea></label>
+            <label>Headline<input type="text" maxlength="40" data-pvm-f="headline" value="${esc(a.headline || '')}"></label>
+            <label>Description<input type="text" maxlength="200" data-pvm-f="description" value="${esc(a.description || '')}"></label>
+            <button class="btn btn-sm" type="button" data-pvm-save>Save changes</button>
+          </div>` : ''}
         </div>`;
       }).join('')}</div>`;
   }
 
   function roundPreviewsHtml(round) {
-    if (['drawing', 'awaiting_access'].includes(round.status)) {
-      return mockPreviewsHtml(round, 'How the ads should look, from the drawn images and copy. Meta\'s exact previews show here once their ad account and Page are connected.');
+    if (['drawing', 'awaiting_access', 'team_review'].includes(round.status)) {
+      return mockPreviewsHtml(round, round.status === 'team_review'
+        ? 'How the ads will look, from the drawn images and copy. Edit the words below each one. Meta\'s own previews appear after you send.'
+        : 'How the ads will look, from the drawn images and copy. Meta\'s own previews appear once it\'s sent and in their ad account.');
     }
     if (!['team_review', 'sent', 'preparing'].includes(round.status)) return '';
     const pv = _studio.roundPreviews;
@@ -2467,11 +2478,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const btn = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
     btn('rdFinish', () => finishRound(latest));
     btn('rdSend', async () => {
-      if (!confirm(`Send round ${latest.round} to ${_studio.business.name}? They'll get an email with a link to these previews.`)) return;
+      if (!confirm(`Send round ${latest.round} to ${_studio.business.name}? The ads go into their ad account and they get an email with a link to the previews.`)) return;
       $('rdSend').disabled = true;
       const { ok, data } = await roundsApi({ action: 'send', company_id: cid, round_id: latest.id });
       if (!ok) { alert(data.error || 'Could not send it.'); $('rdSend').disabled = false; return; }
       if (data.status === 'preparing') alert("Meta is still processing a video. The round will go to the client on its own as soon as it's ready.");
+      if (data.status === 'awaiting_access') alert("Their ad account and Page aren't connected yet. The round will go into their ad account and out to them as soon as access is in.");
       loadRounds();
       loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
     });
@@ -2487,6 +2499,14 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     });
     document.querySelectorAll('#stRounds [data-pvm]').forEach(card => {
       card.querySelectorAll('[data-pvm-tab]').forEach(t => t.addEventListener('click', () => { _studio.pvTab['m:' + card.dataset.pvm] = +t.dataset.pvmTab; renderRounds(); }));
+      const msave = card.querySelector('[data-pvm-save]');
+      if (msave) msave.addEventListener('click', async () => {
+        msave.disabled = true; msave.textContent = 'Saving…';
+        const f = (k) => card.querySelector(`[data-pvm-f="${k}"]`).value;
+        const { ok, data } = await roundsApi({ action: 'edit_ad', company_id: cid, round_id: latest.id, ad_key: card.dataset.pvm, message: f('message'), headline: f('headline'), description: f('description') });
+        if (!ok) { alert(data.error || 'Could not save it.'); msave.disabled = false; msave.textContent = 'Save changes'; return; }
+        loadRounds();
+      });
     });
     document.querySelectorAll('#stRounds [data-pv]').forEach(card => {
       const key = card.dataset.pv;
@@ -2532,11 +2552,10 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           if (!r.ok) throw new Error(r.data.error || 'saving an image failed');
         }
       }
-      studioStatus(_studio.rounds && _studio.rounds.meta_ready ? "Adding them to the client's ad account…" : 'Saving the pack…');
+      studioStatus('Saving the pack…');
       const r = await roundsApi({ action: 'finish', company_id: cid, round_id: round.id });
       if (!r.ok) throw new Error(r.data.error || 'could not finish the round');
       studioStatus('');
-      if (r.data.status === 'awaiting_access') alert("Pack saved. No Meta ad account is connected yet, so it will go into their ad account automatically once the access step is done.");
       await loadRounds();
       loadFulfilment(cid).then(() => { const fh = $('fulfilHost'); if (fh) { fh.innerHTML = fulfilSectionHtml(); wireFulfilment(cid); } });
     } catch (e) {
