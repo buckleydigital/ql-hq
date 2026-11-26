@@ -660,6 +660,30 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ppl-only{display:none !important}
 body.plan-ppl .ppl-only{display:revert !important}
 body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
+/* Managed (done-for-you) only: hidden for pay-per-lead accounts. */
+body.plan-ppl .managed-only{display:none !important}
+/* Pay-per-lead billing */
+.pb-card{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 18px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
+.pb-chip{width:52px;height:36px;border-radius:7px;background:linear-gradient(135deg,#1f6fe5,#4797ff);display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;flex-shrink:0}
+.pb-card b{display:block;font-size:15px}
+.pb-card span{font-size:12px;color:var(--muted)}
+.pb-card .pb-act{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.pb-alert{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;margin-bottom:12px}
+.pb-alert.bad{background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d}
+.pb-alert.warn{background:#fff7e6;border:1px solid #f5d38a;color:#7a4b00}
+.pb-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px}
+.pb-kpis div{padding:14px 16px}
+.pb-kpis div+div{border-left:1px solid var(--border)}
+.pb-kpis span{display:block;font-size:12px;color:var(--muted)}
+.pb-kpis b{display:block;font-size:20px;margin-top:2px;white-space:nowrap}
+.pb-table{width:100%;border-collapse:collapse;font-size:13px}
+.pb-table th{text-align:left;font-weight:500;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.pb-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.pb-table td.r,.pb-table th.r{text-align:right}
+.pb-st{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.pb-st.ok{background:#22c55e22;color:#16a34a}.pb-st.free{background:#4797ff22;color:#1f6fe5}.pb-st.bad{background:#ef444422;color:#dc2626}.pb-st.ref{background:#f59e0b22;color:#d97706}
+.pb-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:14px}
+@media(max-width:760px){.pb-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pb-kpis div:nth-child(3){border-left:0}.pb-kpis div:nth-child(n+3){border-top:1px solid var(--border)}.pb-card .pb-act{margin-left:0;width:100%}}
 
 /* ═══ 2026 THEME ═══
    The same modern skin as Mission Control and the Team Panel: brand blue
@@ -837,7 +861,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         <span class="icon" data-icon="calendar"></span>
         <span class="nav-text">Appointments</span>
       </button>
-      <button class="nav-item" data-page="files" type="button">
+      <button class="nav-item managed-only" data-page="files" type="button">
         <span class="icon" data-icon="folder"></span>
         <span class="nav-text">Files</span>
       </button>
@@ -850,7 +874,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           <span class="icon" data-icon="spark"></span>
           <span class="nav-text">AI Agent</span>
         </button>
-        <button class="nav-item" data-page="bulk-sms" type="button">
+        <button class="nav-item managed-only" data-page="bulk-sms" type="button">
           <span class="icon" data-icon="mail"></span>
           <span class="nav-text">Broadcasts</span>
         </button>
@@ -882,11 +906,11 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           <span class="icon" data-icon="team"></span>
           <span class="nav-text">Team</span>
         </button>
-        <button class="nav-item" data-page="reviews" type="button">
+        <button class="nav-item managed-only" data-page="reviews" type="button">
           <span class="icon" data-icon="star"></span>
           <span class="nav-text">Reviews</span>
         </button>
-        <button class="nav-item" data-page="onboarding" type="button">
+        <button class="nav-item managed-only" data-page="onboarding" type="button">
           <span class="icon" data-icon="check"></span>
           <span class="nav-text">Onboarding</span>
         </button>
@@ -932,7 +956,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         <section class="panel" id="onboardingChecklist" style="border:1px solid var(--accent,#1f6fff);display:none">
           <div class="panel-h">
             <div>
-              <h2>Get started - 3 steps to your first booked job</h2>
+              <h2><span class="managed-only">Get started - 3 steps to your first booked job</span><span class="ppl-only">Get started - 3 steps to your first lead</span></h2>
               <p id="onboardingProgress" style="font-size:13px;color:var(--muted)">0 of 2 complete</p>
             </div>
             <button type="button" onclick="document.getElementById('onboardingChecklist').style.display='none';localStorage.setItem('onboarding_dismissed','1')"
@@ -940,11 +964,19 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           </div>
           <div class="panel-b">
             <div class="stack" style="gap:10px">
+              <div id="oc_step3" class="check-row ppl-only" style="cursor:pointer" onclick="navigateTo('buy-leads')">
+                <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
+                <div>
+                  <strong style="font-size:13px">Choose your leads</strong>
+                  <span class="muted" style="display:block;font-size:12px">Pick your trade, service area and weekly limit, and add your card</span>
+                </div>
+                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Buy leads →</span>
+              </div>
               <div id="oc_step1" class="check-row" style="cursor:pointer" onclick="navigateTo('ai-settings')">
                 <span id="oc_step1_icon" style="font-size:18px;flex-shrink:0">○</span>
                 <div>
-                  <strong style="font-size:13px">Configure your AI agent</strong>
-                  <span class="muted" style="display:block;font-size:12px">Set your agent name and enable the SMS bot</span>
+                  <strong style="font-size:13px"><span class="managed-only">Configure your AI agent</span><span class="ppl-only">Switch on instant replies</span></strong>
+                  <span class="muted" style="display:block;font-size:12px"><span class="managed-only">Set your agent name and enable the SMS bot</span><span class="ppl-only">Name your AI texting assistant so every new lead gets a text in seconds</span></span>
                 </div>
                 <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Go →</span>
               </div>
@@ -952,16 +984,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                 <span id="oc_step2_icon" style="font-size:18px;flex-shrink:0">○</span>
                 <div>
                   <strong style="font-size:13px">Receive your first lead</strong>
-                  <span class="muted" style="display:block;font-size:12px">Leads are delivered automatically from your campaigns and inbound SMS</span>
+                  <span class="muted" style="display:block;font-size:12px"><span class="managed-only">Leads are delivered automatically from your campaigns and inbound SMS</span><span class="ppl-only">Usually within 24-48 hours. Call it within 5 minutes for the best chance of winning the job</span></span>
                 </div>
-              </div>
-              <div id="oc_step3" class="check-row ppl-only" style="cursor:pointer" onclick="navigateTo('buy-leads')">
-                <span id="oc_step3_icon" style="font-size:18px;flex-shrink:0">○</span>
-                <div>
-                  <strong style="font-size:13px">Buy your first lead pack</strong>
-                  <span class="muted" style="display:block;font-size:12px">Purchase a lead pack to start receiving exclusive leads in your area</span>
-                </div>
-                <span style="margin-left:auto;font-size:12px;color:var(--accent,#1f6fff)">Buy leads →</span>
               </div>
             </div>
           </div>
@@ -977,7 +1001,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
             <button class="quick-tile ppl-only" type="button" onclick="navigateTo('buy-leads')">
               <span class="icon" data-icon="spark"></span><span>Buy Leads</span>
             </button>
-            <button class="quick-tile" type="button" onclick="navigateTo('bulk-sms')">
+            <button class="quick-tile managed-only" type="button" onclick="navigateTo('bulk-sms')">
               <span class="icon" data-icon="mail"></span><span>Send Campaign</span>
             </button>
           </div>
@@ -1636,7 +1660,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           </div>
         </section>
         <!-- Meta Conversions API -->
-        <section class="panel" id="metaSalesTrackingPanel" style="margin-top:24px">
+        <section class="panel managed-only" id="metaSalesTrackingPanel" style="margin-top:24px">
           <div class="panel-h"><div><h2>Meta Sales Tracking</h2><p>When a lead books an appointment, is sent a quote and is marked as won, we tell Meta, so your Facebook and Instagram ads learn which people turn into paying jobs. Only the customer's name, email, phone and postcode are sent, hashed so Meta can match them but not read them.</p></div></div>
           <div class="panel-b">
             <p class="muted" style="margin:0 0 12px">Shared your Pixel with QuoteLeads (the last step of <a href="#" onclick="navigateTo('onboarding');setTimeout(()=>document.getElementById('obPixelStep')?.scrollIntoView({behavior:'smooth'}),150);return false">Meta access</a>)? We set this up for you, there's nothing to fill in here.</p>
@@ -2000,7 +2024,24 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       <div id="page-billing" class="page hidden">
         <div class="stack">
 
-          <section class="panel">
+          <!-- Pay-per-lead billing: card, spend and every transaction -->
+          <section class="panel ppl-only">
+            <div class="panel-h"><div>
+              <h2>Payment method</h2>
+              <p style="font-size:13px;color:var(--muted)">Each lead is charged to this card as it's delivered, up to your weekly limit.</p>
+            </div></div>
+            <div class="panel-b" id="pplCardBody"><div class="muted" style="font-size:13px">Loading…</div></div>
+          </section>
+
+          <section class="panel ppl-only">
+            <div class="panel-h"><div>
+              <h2>Transactions</h2>
+              <p style="font-size:13px;color:var(--muted)">Every payment and refund on your account, with receipts. Prices include GST.</p>
+            </div></div>
+            <div class="panel-b" id="pplTxBody"><div class="muted" style="font-size:13px">Loading…</div></div>
+          </section>
+
+          <section class="panel managed-only">
             <div class="panel-h"><div>
               <h2>Campaign management</h2>
               <p style="font-size:13px;color:var(--muted)">Your first 30 days of management are included with the build. After that it is month to month.</p>
@@ -2025,7 +2066,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
             </div>
           </section>
 
-          <section class="panel" id="reportsPanel" style="display:none">
+          <section class="panel managed-only" id="reportsPanel" style="display:none">
             <div class="panel-h"><div>
               <h2>Performance reports</h2>
               <p style="font-size:13px;color:var(--muted)">Your campaign results for each 30-day period, as emailed to you.</p>

@@ -1072,6 +1072,15 @@ async function showApp() {
         }
       }
     }
+    // Back from Stripe after adding or changing the pay-per-lead card.
+    if (urlParams.get('ppl_card') === 'done' && urlParams.get('session_id')) {
+      try {
+        const r = await paygCall({ action: 'card_setup_complete', session_id: urlParams.get('session_id') });
+        toast(r.card ? `Card saved: ${r.card.brand.toUpperCase()} ending ${r.card.last4}.` : 'Card saved.');
+      } catch (e) { toast(e.message, true); }
+    } else if (urlParams.get('ppl_card') === 'cancelled') {
+      toast('No changes made to your card.');
+    }
     if (urlParams.get('ppl_cancelled') === 'true') {
       toast('Order cancelled - no charge was made.');
       history.replaceState({}, '', window.location.pathname);
@@ -1201,8 +1210,12 @@ async function showPixelNotice(company) {
   }
 }
 
+// Pages a pay-per-lead account doesn't get (managed, done-for-you only).
+const MANAGED_ONLY_PAGES = ["files", "bulk-sms", "reviews", "onboarding"];
+
 function navigateTo(page) {
   if (page === "buy-leads" && !isPplAccount()) page = "dashboard";
+  if (isPplAccount() && MANAGED_ONLY_PAGES.includes(page)) page = "dashboard";
   currentPageId = page;
   document.querySelectorAll("[data-page]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.page === page)
@@ -1223,7 +1236,8 @@ function navigateTo(page) {
   filesPage = 0;
   salesPage = 0;
 
-  const [title, sub] = PAGE_META[page] || [page, ""];
+  let [title, sub] = PAGE_META[page] || [page, ""];
+  if (page === "billing" && isPplAccount()) sub = "Your card, payments and receipts.";
   const pageTitle = document.getElementById("pageTitle");
   const pageSubtitle = document.getElementById("pageSubtitle");
   if (pageTitle) pageTitle.textContent = title;
@@ -1636,11 +1650,20 @@ async function loadActiveOrdersDash() {
   if (!orders?.length) { panel.style.display = "none"; return; }
 
   panel.style.display = "";
-  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(v);
+  const fmt = v => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Number(v) || 0);
+  // Pay-as-you-go areas have a weekly limit, not a fixed pack size: show this
+  // week's leads against the limit (ppl-billing counts the week).
+  let weekById = {};
+  if (orders.some(o => o.billing_mode === "payg")) {
+    try { const st = await paygCall({ action: "status" }); (st.orders || []).forEach(x => { weekById[x.id] = x.this_week; }); } catch (_e) { /* falls back to totals */ }
+  }
   const statusColor = s => s === "active" ? "#22c55e" : "#4797FF";
 
   body.innerHTML = orders.map(o => {
-    const pct    = o.quantity > 0 ? Math.min(100, Math.round((o.delivered_count / o.quantity) * 100)) : 0;
+    const payg   = o.billing_mode === "payg";
+    const done   = payg ? (weekById[o.id] ?? 0) : o.delivered_count;
+    const limit  = payg ? (o.weekly_cap ?? o.quantity) : o.quantity;
+    const pct    = limit > 0 ? Math.min(100, Math.round((done / limit) * 100)) : 0;
     const bar    = pct >= 100 ? "#22c55e" : pct >= 60 ? "#4797FF" : "#f59e0b";
     const city   = o.area_city || o.area || "-";
     const badge  = `<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor(o.status)}22;color:${statusColor(o.status)};text-transform:uppercase;letter-spacing:.5px">${o.status}</span>`;
@@ -1653,7 +1676,9 @@ async function loadActiveOrdersDash() {
         <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden;margin-bottom:6px">
           <div style="width:${pct}%;height:100%;background:${bar};border-radius:4px;transition:width .3s"></div>
         </div>
-        <div style="font-size:12px;color:var(--muted)">${o.delivered_count} / ${o.quantity} leads delivered · ${fmt(o.total_amount)}</div>
+        <div style="font-size:12px;color:var(--muted)">${payg
+          ? `${done} of ${limit} this week · ${fmt(o.price_per_lead)} + GST a lead · ${o.delivered_count} delivered in total`
+          : `${o.delivered_count} / ${o.quantity} leads delivered · ${fmt(o.total_amount)}`}</div>
       </div>
     </div>`;
   }).join("");
@@ -4597,6 +4622,7 @@ function fmtDate(value) {
 }
 
 async function loadBilling() {
+  if (isPplAccount()) return loadPplBilling();
   const pill    = document.getElementById("mgmtPill");
   const body    = document.getElementById("mgmtBody");
   const primary = document.getElementById("mgmtPrimaryBtn");
@@ -8416,7 +8442,7 @@ async function loadPaygPanel() {
   el.innerHTML = `<div style="margin-bottom:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
       <div><strong style="font-size:15px">Pay as you go</strong><div style="font-size:12px;color:var(--muted)">${card}${s.lead_credits > 0 ? ` · ${s.lead_credits} free lead${s.lead_credits === 1 ? '' : 's'} to come` : ''}</div></div>
-      <button class="btn2" type="button" style="font-size:12px;padding:6px 12px" onclick="paygCardPortal()">Update card</button>
+      <button class="btn2" type="button" style="font-size:12px;padding:6px 12px" onclick="pplCardSetup(this)">${s.card ? 'Change card' : 'Add card'}</button>
     </div>
     ${failed ? `<div style="padding:12px 14px;border-radius:10px;background:#fdecea;border:1px solid #f5c6cb;color:#7f1d1d;font-size:13px;margin-bottom:10px">Your last card payment failed, so your leads are paused. Update your card, then press Resume: what's owed is charged first.</div>` : ''}
     ${rows}
@@ -8449,3 +8475,113 @@ window.paygPause = paygPause;
 window.paygResume = paygResume;
 window.paygSetCap = paygSetCap;
 window.paygCardPortal = paygCardPortal;
+
+// ─── Pay-per-lead Billing page ───────────────────────────────────────────────
+// Card on file (add, change, remove), spend at a glance, and every transaction
+// with its Stripe receipt. All through ppl-billing.
+let pplTxNext = null;
+let pplTxRows = [];
+
+const pbMoney = (v) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(v) || 0);
+const pbDate = (d) => new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+async function loadPplBilling() {
+  const cardEl = document.getElementById('pplCardBody');
+  const txEl = document.getElementById('pplTxBody');
+  if (!cardEl || !txEl) return;
+  pplTxNext = null; pplTxRows = [];
+  let s;
+  try { s = await paygCall({ action: 'status' }); }
+  catch (e) { cardEl.innerHTML = `<div class="muted" style="font-size:13px">${blEsc(e.message)}</div>`; txEl.innerHTML = ''; return; }
+
+  const failed = s.billing_status === 'payment_failed';
+  const noCardPaused = (s.orders || []).some((o) => o.paused_reason === 'no_card');
+  const alert = failed
+    ? `<div class="pb-alert bad">Your last card payment failed, so your leads are paused. Change your card, then press Resume on Buy Leads: what's owed is charged first.</div>`
+    : (!s.card && (s.orders || []).length)
+      ? `<div class="pb-alert warn">There's no card on your account${noCardPaused ? ', so your leads are paused' : ''}. Add a card to keep receiving leads.</div>`
+      : '';
+  const exp = s.card?.exp_month ? ` · expires ${String(s.card.exp_month).padStart(2, '0')}/${String(s.card.exp_year).slice(-2)}` : '';
+  cardEl.innerHTML = alert + (s.card
+    ? `<div class="pb-card">
+        <div class="pb-chip">${blEsc(s.card.brand)}</div>
+        <div><b>${blEsc(s.card.brand.charAt(0).toUpperCase() + s.card.brand.slice(1))} ending ${blEsc(s.card.last4)}</b><span>Default card${exp}</span></div>
+        <div class="pb-act">
+          <button class="btn2" type="button" onclick="pplCardSetup(this)">Change card</button>
+          <button class="btn" type="button" onclick="pplRemoveCard(this)">Remove</button>
+        </div>
+      </div>`
+    : `<div class="pb-card">
+        <div class="pb-chip" style="background:var(--border);color:var(--muted)">-</div>
+        <div><b>No card on file</b><span>Add a card to receive and pay for leads.</span></div>
+        <div class="pb-act"><button class="btn2" type="button" onclick="pplCardSetup(this)">Add card</button></div>
+      </div>`)
+    + (s.lead_credits > 0 ? `<p class="muted" style="font-size:12px;margin-top:10px">${s.lead_credits} free lead${s.lead_credits === 1 ? '' : 's'} still to come before your card is charged again.</p>` : '');
+
+  txEl.innerHTML = '<div class="muted" style="font-size:13px">Loading…</div>';
+  await loadPplTransactions(false);
+}
+
+async function loadPplTransactions(more) {
+  const txEl = document.getElementById('pplTxBody');
+  if (!txEl) return;
+  let r;
+  try { r = await paygCall({ action: 'transactions', ...(more && pplTxNext ? { starting_after: pplTxNext } : {}) }); }
+  catch (e) { txEl.innerHTML = `<div class="muted" style="font-size:13px">${blEsc(e.message)}</div>`; return; }
+  if (!more) pplTxRows = [...(r.free || [])];
+  pplTxRows.push(...(r.transactions || []));
+  pplTxNext = r.has_more ? r.next : null;
+  pplTxRows.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const paid = pplTxRows.filter((t) => t.status === 'succeeded' || t.status === 'partly_refunded');
+  const net = (t) => (Number(t.amount) || 0) - (Number(t.refunded) || 0);
+  const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const monthStart = new Date(); monthStart.setHours(0, 0, 0, 0); monthStart.setDate(1);
+  const sum = (from) => paid.filter((t) => !from || new Date(t.date) >= from).reduce((a, t) => a + net(t), 0);
+  const leadsPaid = pplTxRows.filter((t) => ['succeeded', 'partly_refunded', 'credit', 'over_cap'].includes(t.status)).length;
+
+  const st = (t) => ({
+    succeeded: '<span class="pb-st ok">Paid</span>', refunded: '<span class="pb-st ref">Refunded</span>',
+    partly_refunded: '<span class="pb-st ref">Part refunded</span>', failed: '<span class="pb-st bad">Failed</span>',
+    pending: '<span class="pb-st bad">Owed</span>', credit: '<span class="pb-st free">Free</span>', over_cap: '<span class="pb-st free">Free</span>',
+  })[t.status] || `<span class="pb-st">${blEsc(t.status)}</span>`;
+
+  const rows = pplTxRows.map((t) => `<tr>
+      <td style="white-space:nowrap">${pbDate(t.date)}</td>
+      <td>${blEsc(String(t.description || '').replace(/^QuoteLeads:\s*/, '').replace(/\s*\(inc GST\)$/, ''))}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${t.card ? `${blEsc(t.card.brand.toUpperCase())} ${blEsc(t.card.last4)}` : '-'}</td>
+      <td>${st(t)}</td>
+      <td class="r" style="white-space:nowrap">${Number(t.amount) ? pbMoney(t.amount) : '$0.00'}${Number(t.refunded) ? `<div style="font-size:11px;color:#d97706">-${pbMoney(t.refunded)}</div>` : ''}</td>
+      <td class="r">${t.receipt_url ? `<a href="${blEsc(t.receipt_url)}" target="_blank" rel="noopener" style="color:var(--accent,#1f6fff);font-size:12px">Receipt</a>` : ''}</td>
+    </tr>`).join('');
+
+  txEl.innerHTML = `<div class="pb-kpis">
+      <div><span>This week</span><b>${pbMoney(sum(weekStart))}</b></div>
+      <div><span>This month</span><b>${pbMoney(sum(monthStart))}</b></div>
+      <div><span>Total paid</span><b>${pbMoney(sum(null))}</b></div>
+      <div><span>Leads received</span><b>${leadsPaid}</b></div>
+    </div>
+    ${pplTxRows.length ? `<div class="pb-wrap"><table class="pb-table">
+      <thead><tr><th>Date</th><th>Description</th><th>Card</th><th>Status</th><th class="r">Amount</th><th class="r"></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : '<div class="notice">No transactions yet. Your first one appears when you buy leads.</div>'}
+    ${pplTxNext ? '<div style="margin-top:12px"><button class="btn" type="button" onclick="loadPplTransactions(true)">Load more</button></div>' : ''}`;
+}
+
+async function pplCardSetup(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+  try { const r = await paygCall({ action: 'card_setup' }); window.location.href = r.url; }
+  catch (e) { toast(e.message, true); if (btn) { btn.disabled = false; btn.textContent = 'Try again'; } }
+}
+
+function pplRemoveCard() {
+  confirmAction('Remove this card? Your leads pause until you add a new one.', async () => {
+    try {
+      const r = await paygCall({ action: 'remove_card' });
+      toast(r.paused ? `Card removed. ${r.paused} area${r.paused === 1 ? '' : 's'} paused.` : 'Card removed.');
+    } catch (e) { toast(e.message, true); }
+    loadPplBilling();
+  }, { okLabel: 'Remove card', title: 'Remove card?' });
+}
+window.loadPplTransactions = loadPplTransactions;
+window.pplCardSetup = pplCardSetup;
+window.pplRemoveCard = pplRemoveCard;
