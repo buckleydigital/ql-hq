@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src https://business.facebook.com https://www.facebook.com; object-src 'none'; base-uri 'self';">
 <title>Team Panel · QuoteLeads</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/product-logo.png">
@@ -667,6 +667,26 @@ body{background:
 /* Section titles: quiet sentence-case headings instead of shouting labels. */
 .sec-title{font-size:15px;font-weight:700;color:var(--ink);margin:28px 0 14px}
 .sec-title::after{display:none}
+/* Collapsible client sections: closed by default, one click to open. */
+details.sect{background:var(--glass);border:1px solid var(--bd);border-radius:var(--r2);box-shadow:var(--glass-shadow);margin-bottom:12px}
+details.sect>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:16px 22px;font-size:15px;font-weight:700;color:var(--ink);user-select:none}
+details.sect>summary::-webkit-details-marker{display:none}
+details.sect>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--ink3);border-bottom:2px solid var(--ink3);transform:rotate(45deg);transition:transform .2s}
+details.sect[open]>summary::after{transform:rotate(-135deg)}
+details.sect>summary::after{flex-shrink:0}
+@media(max-width:600px){details.sect>summary{padding:14px 16px}details.sect>summary .muted{display:none}details.sect>.sect-body{padding:0 16px 16px}}
+details.sect>summary:hover{color:var(--acc,#4797FF)}
+details.sect>summary .muted{font-weight:500;font-size:12.5px}
+details.sect>summary .sect-n{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,166,35,.16);color:#f5a623}
+details.sect>.sect-body{padding:0 22px 20px}
+details.sect>.sect-body>.card{background:transparent;border:0;box-shadow:none;padding:0;margin-bottom:12px}
+details.sect>.sect-body>.sec-title:first-child{margin-top:4px}
+.list-tabs{display:flex;gap:6px;margin:0 0 12px}
+.list-tabs .btn.on{border-color:var(--acc,#4797FF);color:var(--acc,#4797FF)}
+.rp-row{display:grid;grid-template-columns:minmax(160px,1.4fr) 1fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd);font-size:13px}
+.rp-row:last-child{border-bottom:0}
+.rp-row.head{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);font-weight:600;padding-top:0}
+@media(max-width:760px){.rp-row{grid-template-columns:1fr 1fr}.rp-row.head{display:none}}
 .sec-title .muted{font-weight:500;font-size:13px}
 
 /* Buttons: pills, gradient for the main action. */
@@ -821,6 +841,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           <button class="navbtn" id="navFulfil" type="button">
             <span class="ni"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>Onboarding
           </button>
+          <button class="navbtn" id="navReports" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg></span>Reports
+          </button>
+          <button class="navbtn hidden" id="navStock" type="button">
+            <span class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>Stock library
+          </button>
           <button class="navbtn hidden" id="navSignups" type="button">
             <span class="ni"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></span>Signups<span id="signupBadge" class="nav-badge hidden">0</span>
           </button>
@@ -873,6 +899,23 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   <div id="detailView" class="hidden">
     <button class="btn" id="backBtn" type="button" style="margin-bottom:14px">← All clients</button>
     <div id="detailBody"></div>
+  </div>
+
+  <!-- REPORTS: every managed client's 30-day report, in one place -->
+  <div id="reportsView" class="hidden">
+    <p class="muted" style="margin-top:0">30-day performance reports. They draft themselves the morning after each period ends, for clients that are Active in Mission Control with a connected Meta ad account. Open a client to check and send.</p>
+    <div class="card" id="reportsList"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- STOCK LIBRARY: photos and videos every client can use -->
+  <div id="stockView" class="hidden">
+    <p class="muted" style="margin-top:0">Photos and videos for clients without their own. Upload here and tag each one with its trades; the creative studio offers them to every client in that trade.</p>
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <label class="muted" style="font-size:12.5px">Tag new uploads as <select id="stockTrade"></select></label>
+      </div>
+      <div id="stockPageBody" class="muted" style="font-size:12px">Loading…</div>
+    </div>
   </div>
 
   <!-- SOPs: from Mission Control, filtered to the reader's role -->
@@ -1429,24 +1472,19 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       <div class="prog"><i style="width:${pct}%"></i></div>
       ${sum.blocked_count ? `<div class="kv"><span class="k">Blocked</span><span style="color:var(--red)">${sum.blocked_count} step${sum.blocked_count !== 1 ? 's' : ''}</span></div>` : ''}`;
     const log = (_fulfil.log || []).slice(0, 25);
-    return `
-      <div class="sec-title">Onboarding checklist</div>
-      <div class="card">
+    return sect('onboarding', `Onboarding checklist <span class="muted">· ${settled} of ${total} steps${sum.blocked_count ? ' · ' + sum.blocked_count + ' blocked' : ''}</span>`, `
         ${nextCard}
         ${head}
-        ${stagesHtml || '<div class="muted">No steps defined.</div>'}
-      </div>
+        ${stagesHtml || '<div class="muted">No steps defined.</div>'}`) + `
       ${mayRun('ad_copy') ? adCopyHtml() : ''}
-      ${mayRun('creatives') ? `<div class="sec-title">Activity</div>
-      <div class="card">
+      ${mayRun('creatives') ? sect('activity', 'Activity', `
         ${log.length
           ? log.map(l => `<div class="logrow">
               <span class="lwhen">${esc(relTime(l.created_at))}</span>
               <span class="lwho">${esc(l.actor_name || '—')}</span>
               <span>${esc(describeLog(l))}</span>
             </div>`).join('')
-          : '<div class="muted">Nothing logged yet.</div>'}
-      </div>` : ''}`;
+          : '<div class="muted">Nothing logged yet.</div>'}`) : ''}`;
   }
 
   // The generated copy, shown where it was generated. Read-only here on purpose:
@@ -1457,16 +1495,14 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const c = _adCopy;
     if (!c || !Array.isArray(c.headlines) || !c.headlines.length) return '';
     const list = (arr) => (arr || []).map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--bd)">${esc(x)}</div>`).join('');
-    return `
-      <div class="sec-title">Ad copy${c.generated_at ? ` <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· generated ${esc(relTime(c.generated_at))}${c.generated_by ? ' by ' + esc(c.generated_by) : ''}</span>` : ''}</div>
-      <div class="card">
+    return sect('ad-copy', `Ad copy${c.generated_at ? ` <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· generated ${esc(relTime(c.generated_at))}${c.generated_by ? ' by ' + esc(c.generated_by) : ''}</span>` : ''}`, `
         ${c.angle ? `<div class="kv"><span class="k">Angle</span><span>${esc(c.angle)}</span></div>` : ''}
         ${c.call_to_action ? `<div class="kv"><span class="k">CTA</span><span>${esc(c.call_to_action)}</span></div>` : ''}
         <div class="sec-title" style="margin-top:12px">Headlines</div>${list(c.headlines)}
         <div class="sec-title">Primary text</div>${list(c.primary_texts)}
         <div class="sec-title">Descriptions</div>${list(c.descriptions)}
         ${c.notes_for_team ? `<div class="sec-title">Notes for the team</div><div class="muted" style="font-size:12.5px">${esc(c.notes_for_team)}</div>` : ''}
-      </div>`;
+      `);
   }
 
   // Turn a log row into a sentence. Kept on the client because the log stores
@@ -1675,9 +1711,9 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   async function loadStudio(companyId) {
     const host = $('studioHost');
     if (!host) return;
-    host.innerHTML = '<div class="sec-title">Creative studio</div><div class="card muted">Loading…</div>';
+    host.innerHTML = sect('studio', 'Creative studio <span class="muted">· loading…</span>', '');
     const { ok, data } = await aiApi({ action: 'creative_state', company_id: companyId });
-    if (!ok) { host.innerHTML = `<div class="sec-title">Creative studio</div><div class="card empty">${esc(data.error || 'Could not load the creative studio.')}</div>`; return; }
+    if (!ok) { host.innerHTML = sect('studio', 'Creative studio', `<div class="empty">${esc(data.error || 'Could not load the creative studio.')}</div>`); return; }
     const prevSizes = _studio && _studio.companyId === companyId ? _studio.sizes : null;
     _studio = {
       companyId, ...data,
@@ -1706,9 +1742,9 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const g = (copy && copy.google) || {};
     const lenTag = (t, max) => `<span class="st-len${String(t || '').length > max ? ' over' : ''}">${String(t || '').length}/${max}</span>`;
 
-    host.innerHTML = `
-      <div class="sec-title">Creative studio</div>
-      <div class="card st">
+    const roundsSect = sect('previews', `Ads &amp; previews <span class="muted">· what Meta will show, and the client's approval rounds</span>`, '<div id="stRounds"></div><div id="stCampaign"></div>');
+    host.innerHTML = roundsSect + sect('studio', `Creative studio <span class="muted">· logo, photos, copy and images</span>`, `
+      <div class="st">
         <div class="st-row">
           <div class="st-block">
             <div class="st-h">Logo</div>
@@ -1807,8 +1843,6 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
         ${policyHtml(st.ad_policy_check)}
 
-        <div id="stRounds"></div>
-        <div id="stCampaign"></div>
 
         ${st.results.length ? `<div class="st-h" style="margin-top:16px">Made just now <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">· also added to the preview links</span></div>
           <div class="st-results">${st.results.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" download><img src="${esc(r.url)}" alt=""><span>${r.w}×${r.h}</span></a>`).join('')}</div>` : ''}
@@ -1817,7 +1851,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           <summary>Stock library <span class="muted">(every client, by trade)</span></summary>
           <div id="stStockBody" class="muted" style="font-size:12px;margin-top:8px">Loading…</div>
         </details>` : ''}
-      </div>`;
+      </div>`);
     wireStudio();
     wireLook();
     renderRounds();
@@ -1840,28 +1874,32 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   function studioLookHtml() {
     const st = _studio, sty = studioStyle();
     const own = !!st.creative_style, draft = st.style_draft && Object.keys(st.style_draft).length;
+    const lookSelect = ([k, l, opts]) => `<div class="st-look-f"><span>${l}</span><select data-look="${k}">${opts.map(([v, t]) =>
+      `<option value="${v}"${sty[k] === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`;
     const colourPick = (key, label, auto) => `<div class="st-look-f"><span>${label}</span>
       <span class="st-colour"><input type="color" data-look-col="${key}" value="${esc(sty[key] || auto)}">
       <button class="btn btn-sm" type="button" data-look-auto="${key}"${sty[key] ? '' : ' disabled'}>${sty[key] ? 'Back to auto' : 'Auto'}</button></span></div>`;
     return `<details class="st-look" id="stLook"${st.look_open ? ' open' : ''}>
-      <summary>Look <span class="muted">${draft ? '(changed, not saved)' : own ? '(this client\'s own)' : '(house style)'}</span></summary>
-      <div class="muted" style="font-size:11.5px;margin:6px 0 10px">Their logo, photos, brand colour and font always go in. This sets how the images are laid out. The preview updates as you change it, and the next images you make use it.</div>
+      <summary>Image layout <span class="muted">${draft ? '(changed, not saved)' : own ? '(custom for this client)' : '(using the default for all clients)'}</span></summary>
+      <div class="muted" style="font-size:12px;margin:6px 0 10px;line-height:1.55">How the ad images are laid out. Their logo, photos, brand colour and font always go in. Change a setting and the preview redraws; the next images you make use it.<br><b>Save for this client</b> keeps it for them only. <b>Make this the default</b> applies it to every client that hasn't got their own.</div>
       <div class="st-look-grid">
         <div>
           <div class="st-look-f"><span>Layouts to use</span><span class="st-look-chips">${LOOK_LAYOUTS.map(([k, l]) =>
             `<label class="st-chip${sty.layouts.includes(k) ? ' on' : ''}" style="flex-direction:row"><input type="checkbox" data-look-layout="${k}"${sty.layouts.includes(k) ? ' checked' : ''}>${l}</label>`).join('')}</span></div>
-          ${LOOK_SELECTS.map(([k, l, opts]) => `<div class="st-look-f"><span>${l}</span><select data-look="${k}">${opts.map(([v, t]) =>
-            `<option value="${v}"${sty[k] === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`).join('')}
+          ${LOOK_SELECTS.slice(0, 2).map(lookSelect).join('')}
+          <details class="st-look-more"${st.look_more_open ? ' open' : ''}><summary class="muted" style="cursor:pointer;font-size:12.5px;margin:6px 0">More options</summary>
+          ${LOOK_SELECTS.slice(2).map(lookSelect).join('')}
           ${colourPick('button_color', 'Button colour', st.brand_color || '#1063d6')}
           ${colourPick('text_color', 'Headline colour', '#ffffff')}
           <label class="st-look-f" style="cursor:pointer"><span>Colour bar along the edge</span><input type="checkbox" data-look-bar${sty.brand_bar ? ' checked' : ''}></label>
+          </details>
         </div>
         <div><div class="st-look-pv" id="stLookPv"><span class="muted" style="font-size:12px">Drawing the preview…</span></div></div>
       </div>
       <div class="st-actions" style="margin-top:10px">
         <button class="btn btn-sm btn-p" id="stLookSave" type="button">Save for this client</button>
-        <button class="btn btn-sm" id="stLookHouse" type="button" title="Every client without their own look">Make this the house style</button>
-        ${own ? '<button class="btn btn-sm" id="stLookClear" type="button">Use the house style for this client</button>' : ''}
+        <button class="btn btn-sm" id="stLookHouse" type="button" title="Every client without their own layout">Make this the default</button>
+        ${own ? '<button class="btn btn-sm" id="stLookClear" type="button">Go back to the default</button>' : ''}
         ${draft ? '<button class="btn btn-sm" id="stLookUndo" type="button">Undo changes</button>' : ''}
       </div>
     </details>`;
@@ -1902,6 +1940,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const st = _studio, cid = st.companyId, d = $('stLook');
     if (!d) return;
     d.addEventListener('toggle', () => { st.look_open = d.open; if (d.open) lookPreviewSoon(); });
+    const more = d.querySelector('.st-look-more');
+    if (more) more.addEventListener('toggle', (e) => { e.stopPropagation(); st.look_more_open = more.open; });
     const set = (k, v) => { st.style_draft = { ...(st.style_draft || {}), [k]: v }; };
     const changed = (rerender) => { if (rerender) { renderStudio(); } else { const s = d.querySelector('summary .muted'); if (s) s.textContent = '(changed, not saved)'; lookPreviewSoon(); } };
     d.querySelectorAll('[data-look]').forEach(el => el.addEventListener('change', () => { set(el.dataset.look, el.value); changed(); }));
@@ -2672,18 +2712,23 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // The library every client shares. Files go straight to storage on a signed
   // URL, like a client's own uploads.
   async function renderStock() {
-    const body = $('stStockBody');
+    const onPage = !$('stockView').classList.contains('hidden');
+    const body = onPage ? $('stockPageBody') : $('stStockBody');
     if (!body) return;
     if (!_stock.items) {
       const { ok, data } = await aiApi({ action: 'stock_list' });
       if (!ok) { body.textContent = data.error || 'Could not load the stock library.'; return; }
       Object.assign(_stock, { items: data.items, trades: data.trades, ready: data.media_ready });
     }
-    const st = _studio;
-    const inLib = new Set((st.assets || []).map(a => a.stock_asset_id).filter(Boolean));
+    const st = onPage ? null : _studio;
+    const inLib = new Set(((st && st.assets) || []).map(a => a.stock_asset_id).filter(Boolean));
+    if (onPage) {
+      const sel = $('stockTrade');
+      if (sel && !sel.options.length) sel.innerHTML = _stock.trades.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    }
     body.innerHTML = `${_stock.ready
-        ? `<label class="btn btn-sm">+ Upload stock<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple id="stStockUp" hidden></label>
-           <span>New uploads are tagged <b>${esc((st.trades || []).join(', '))}</b>. Change the tags on each below.</span>`
+        ? `<label class="btn btn-sm${onPage ? ' btn-p' : ''}">+ Upload stock<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple id="${onPage ? 'stockPageUp' : 'stStockUp'}" hidden></label>
+           <span>${onPage ? 'Drop in photos or videos.' : `New uploads are tagged <b>${esc((st.trades || []).join(', '))}</b>.`} Change the tags on each below.</span>`
         : 'Media storage (Cloudflare R2) isn\'t set up yet, so stock can\'t be uploaded.'}
       <div id="stStockMsg" style="margin-top:6px"></div>
       <div class="st-stock-grid">${_stock.items.map(it => `<div class="st-si${it.active ? '' : ' off'}">
@@ -2692,12 +2737,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           : `<img src="${esc(it.url)}" alt="" loading="lazy">`}</div>
         <div class="tr">${_stock.trades.map(t => `<label class="${it.trades.includes(t) ? 'on' : ''}"><input type="checkbox" data-sk-tr="${esc(it.id)}" value="${esc(t)}"${it.trades.includes(t) ? ' checked' : ''}>${esc(t)}</label>`).join('')}</div>
         <div class="act">
-          <button class="btn btn-sm" type="button" data-sk-use="${esc(it.id)}"${inLib.has(it.id) || !it.active ? ' disabled' : ''}>${inLib.has(it.id) ? 'In their library' : 'Use for this client'}</button>
+          ${st ? `<button class="btn btn-sm" type="button" data-sk-use="${esc(it.id)}"${inLib.has(it.id) || !it.active ? ' disabled' : ''}>${inLib.has(it.id) ? 'In their library' : 'Use for this client'}</button>` : ''}
           <button class="btn btn-sm" type="button" data-sk-act="${esc(it.id)}">${it.active ? 'Retire' : 'Restore'}</button>
           <button class="btn btn-sm" type="button" data-sk-del="${esc(it.id)}" title="Delete for every client">×</button>
         </div></div>`).join('') || '<div class="muted">No stock yet.</div>'}</div>`;
 
-    const up = $('stStockUp');
+    const up = $(onPage ? 'stockPageUp' : 'stStockUp');
     if (up) up.addEventListener('change', () => { const f = [...up.files]; up.value = ''; uploadStock(f); });
     body.querySelectorAll('[data-sk-tr]').forEach(cb => cb.addEventListener('change', async () => {
       const it = _stock.items.find(x => x.id === cb.dataset.skTr);
@@ -2724,8 +2769,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       const { ok, data } = await aiApi({ action: 'stock_delete', id: b.dataset.skDel });
       if (!ok) return alert(data.error || 'Could not delete it.');
       _stock.items = _stock.items.filter(x => x.id !== b.dataset.skDel);
-      st.assets = st.assets.filter(a => a.stock_asset_id !== b.dataset.skDel);
-      renderStudio();
+      if (st) { st.assets = st.assets.filter(a => a.stock_asset_id !== b.dataset.skDel); renderStudio(); }
+      else renderStock();
     }));
   }
 
@@ -2757,7 +2802,10 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
   async function uploadStock(files) {
     const msg = () => $('stStockMsg');
-    const trades = (_studio.trades || []).length ? _studio.trades : ['other'];
+    const onPage = !$('stockView').classList.contains('hidden');
+    const trades = onPage
+      ? [($('stockTrade') && $('stockTrade').value) || 'other']
+      : ((_studio && (_studio.trades || []).length) ? _studio.trades : ['other']);
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const show = (p) => { if (msg()) msg().textContent = `Uploading ${i + 1} of ${files.length}: ${f.name} (${Math.round(p * 100)}%)`; };
@@ -3198,6 +3246,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     $('navTpl').classList.toggle('active', which === 'tpl');
     $('navSops').classList.toggle('active', which === 'sops');
     $('navTexts').classList.toggle('active', which === 'texts');
+    $('navReports').classList.toggle('active', which === 'reports');
+    $('navStock').classList.toggle('active', which === 'stock');
     $('navCalls').classList.toggle('active', which === 'calls');
   }
 
@@ -3212,6 +3262,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     $('callTestView').classList.add('hidden');
     $('textsView').classList.add('hidden');
     $('callsView').classList.add('hidden');
+    $('reportsView').classList.add('hidden');
+    $('stockView').classList.add('hidden');
   }
 
   function avGridHtml(selected, readOnly) {
@@ -3303,6 +3355,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     $('navAvail').addEventListener('click', showAvail);
     $('navTpl').addEventListener('click', showTemplates);
     $('navSops').addEventListener('click', showSops);
+    $('navReports').addEventListener('click', showReportsPage);
+    $('navStock').addEventListener('click', showStockPage);
     $('saveAvailBtn').addEventListener('click', saveAvailability);
     $('vaNewTplBtn').addEventListener('click', function () { openVaTpl(null); });
     $('vaCancelTplBtn').addEventListener('click', function () { $('vaTplEditor').classList.add('hidden'); });
@@ -3513,6 +3567,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       }
     }
     $('navClients').textContent = _me.unrestricted ? 'All Clients' : 'My Clients';
+    $('navStock').classList.toggle('hidden', !(_realAdmin || _me.is_ops));
   }
 
   // So the badge shows a queue before anyone thinks to click the tab.
@@ -3776,6 +3831,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const again = $('startAgain'); if (again) again.onclick = (e) => { e.preventDefault(); _startForced = true; showList(); window.scrollTo(0, 0); };
   }
 
+  let _listTab = 'active';
   function showList() {
     hideAllViews();
     $('listView').classList.remove('hidden');
@@ -3789,9 +3845,15 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       return;
     }
 
-    // Task summary banner across all clients.
+    // Churned in Mission Control: kept out of the way, behind a toggle.
+    const isChurned = (c) => c.mc_stage === 'churned';
+    const live = _clients.filter(c => !isChurned(c)), gone = _clients.filter(isChurned);
+    if (_listTab === 'churned' && !gone.length) _listTab = 'active';
+    const shown = _listTab === 'churned' ? gone : live;
+
+    // Task summary banner across active clients only.
     let allTasks = [];
-    _clients.forEach(c => computeTasks(c).forEach(t => allTasks.push({ c, t })));
+    live.forEach(c => computeTasks(c).forEach(t => allTasks.push({ c, t })));
     $('taskBanner').innerHTML = startCardHtml() + (!_billingReady ? '' : allTasks.length
       ? `<div class="card" style="border-color:rgba(245,166,35,.28)">
            <div class="sec-title" style="margin-top:0">Your tasks (${allTasks.length})</div>
@@ -3801,10 +3863,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       : `<div class="card"><div class="sec-title" style="margin-top:0">Your tasks</div><div class="muted" style="font-size:12.5px">${isClientFacing() ? 'Nothing due right now. Check the texts bell, and open any client in onboarding to see their next step.' : 'Nothing due right now. Check the Ad account card on your live clients.'}</div></div>`);
     wireStartCard();
 
-    $('listSub').textContent = _me.unrestricted
-      ? `${_clients.length} client${_clients.length !== 1 ? 's' : ''} across the whole book.`
-      : `${_clients.length} client${_clients.length !== 1 ? 's' : ''} assigned to you.`;
-    el.innerHTML = _clients.map(c => {
+    $('listSub').innerHTML = `<div class="list-tabs">
+        <button class="btn btn-sm${_listTab === 'active' ? ' on' : ''}" data-list-tab="active" type="button">Active (${live.length})</button>
+        ${gone.length ? `<button class="btn btn-sm${_listTab === 'churned' ? ' on' : ''}" data-list-tab="churned" type="button">Churned (${gone.length})</button>` : ''}
+      </div>`;
+    $('listSub').querySelectorAll('[data-list-tab]').forEach(b => b.addEventListener('click', () => { _listTab = b.dataset.listTab; showList(); }));
+    el.innerHTML = (shown.length ? '' : '<div class="empty" style="padding:14px 0">No clients here.</div>') + shown.map(c => {
       const isPpl = c.plan === 'ppl' || c.plan === 'ppl_managed';
       const d = c.delivery || {};
       const leadStat = isPpl
@@ -3816,7 +3880,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       return `
       <div class="card client-row" data-id="${esc(c.id)}">
         <div>
-          <div class="client-name">${esc(c.name || '(no name)')} ${testBadge(c)} ${planBadge(c.plan)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${invSt}</div>
+          <div class="client-name">${esc(c.name || '(no name)')} ${testBadge(c)} ${planBadge(c.plan)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${c.mc_stage === 'paused' ? '<span class="badge">Paused</span>' : ''} ${invSt}</div>
           <div class="stat-row">
             <span>${leadStat}</span>
             ${isPpl ? `<span><b>${c.activeOrders || 0}</b> active order${c.activeOrders === 1 ? '' : 's'}</span>` : ''}
@@ -3880,6 +3944,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   // from the client list, so the nav stays on Fulfilment and Back returns to
   // the board instead of dumping the user in a list they were not looking at.
   async function openClient(companyId, fromBoard) {
+    if (_sectFor !== companyId) { _openSects = new Set(); _sectFor = companyId; }
     $('detailBody').innerHTML = '<div class="card empty">Loading…</div>';
     hideAllViews();
     $('detailView').classList.remove('hidden');
@@ -3902,6 +3967,59 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       links: (links.ok && links.data.links) || [],
     };
     renderDetail(companyId, base.data, extra);
+  }
+
+
+  // ── Collapsible sections on the client page ──
+  // Every section starts closed so the page is a list of headings, not a wall.
+  // What's open is remembered while you stay on the same client, so a section
+  // that re-draws itself (the studio, the checklist) doesn't snap shut.
+  let _openSects = new Set(), _sectFor = null;
+  const sectKey = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  function sect(key, title, body) {
+    return `<details class="sect" data-sect="${esc(key)}"${_openSects.has(key) ? ' open' : ''}><summary>${title}</summary><div class="sect-body">${body}</div></details>`;
+  }
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (!(d instanceof HTMLElement) || !d.matches('details.sect')) return;
+    if (d.open) _openSects.add(d.dataset.sect); else _openSects.delete(d.dataset.sect);
+  }, true);
+  // Turns each card in the client page into a closed section, titled by its
+  // first heading. The client's name card stays as it is.
+  function collapseCards(root) {
+    [...root.children].forEach((card, i) => {
+      if (!card.classList || !card.classList.contains('card')) return;
+      // The name card keeps just the name; contact, billing and people fold away.
+      if (card.querySelector(':scope > .client-name')) {
+        const rest = [...card.children].filter(el => !el.classList.contains('client-name'));
+        if (!rest.length) return;
+        const d = document.createElement('details');
+        d.className = 'sect'; d.dataset.sect = 'contact'; if (_openSects.has('contact')) d.open = true;
+        d.innerHTML = '<summary>Contact, billing &amp; people</summary><div class="sect-body"></div>';
+        rest.forEach(el => d.lastChild.appendChild(el));
+        const first = d.lastChild.querySelector('.sec-title'); if (first) first.style.marginTop = '4px';
+        card.style.padding = '18px 22px'; card.style.marginBottom = '12px';
+        card.after(d);
+        return;
+      }
+      const head = card.querySelector(':scope > .sec-title');
+      if (!head) return;
+      const key = sectKey(head.childNodes[0] ? head.childNodes[0].textContent : head.textContent) || 'sect-' + i;
+      const d = document.createElement('details');
+      d.className = 'sect'; d.dataset.sect = key; if (card.id) d.id = card.id; card.removeAttribute('id');
+      if (_openSects.has(key)) d.open = true;
+      const sum = document.createElement('summary');
+      sum.innerHTML = head.innerHTML;
+      // Buttons in a heading (e.g. 7d / 14d / 30d) work without folding the section.
+      sum.addEventListener('click', (e) => { if (e.target.closest('button,select,input,a')) e.preventDefault(); });
+      const n = card.querySelectorAll(':scope > .task').length;
+      if (n) sum.insertAdjacentHTML('beforeend', ` <span class="sect-n">${n}</span>`);
+      head.remove();
+      const body = document.createElement('div'); body.className = 'sect-body';
+      while (card.firstChild) body.appendChild(card.firstChild);
+      d.appendChild(sum); d.appendChild(body);
+      card.replaceWith(d);
+    });
   }
 
   // Manual Billing (the default): Mission Control drafts an invoice 7 days
@@ -4248,6 +4366,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
     _detailLinks = extra.links;
     renderPreviewLinksVa(companyId);
+    collapseCards($('detailBody'));
   }
 
   // ─── Outbound calling ──────────────────────────────────────────────────────
@@ -5506,6 +5625,57 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       html += `<p>${inline(para.join(' '))}</p>`;
     }
     return html;
+  }
+
+
+  // ── Stock library page ──
+  async function showStockPage() {
+    hideAllViews();
+    $('stockView').classList.remove('hidden');
+    setNav('stock');
+    window.scrollTo(0, 0);
+    _stock.items = null;
+    $('stockPageBody').textContent = 'Loading…';
+    renderStock();
+  }
+
+  // ── Reports page ──
+  async function showReportsPage() {
+    hideAllViews();
+    $('reportsView').classList.remove('hidden');
+    setNav('reports');
+    window.scrollTo(0, 0);
+    const host = $('reportsList');
+    host.innerHTML = '<div class="empty">Loading…</div>';
+    const { ok, data } = await reportsApi({ action: 'overview' });
+    if (!ok) { host.innerHTML = `<div class="empty">${esc(data.error || 'Could not load reports.')}</div>`; return; }
+    const rows = (data.clients || []).filter(c => c.active !== false);
+    const off = (data.clients || []).filter(c => c.active === false);
+    const d = (x) => x ? new Date(x + (x.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '-';
+    const status = (c) => {
+      if (!c.ads_live_date) return '<span class="muted">Not live yet</span>';
+      if (!c.meta_connected) return '<span style="color:var(--red)">No Meta ad account: can\'t draft</span>';
+      const l = c.latest;
+      if (l && l.status === 'draft') return '<span style="color:#f5a623;font-weight:600">Draft waiting to send</span>';
+      if (l && l.status === 'sent') return `<span style="color:var(--grn)">Sent ${esc(d(String(l.sent_at || '').slice(0, 10)))}</span>`;
+      return '<span class="muted">First one not due yet</span>';
+    };
+    const row = (c) => `<div class="rp-row">
+        <div><b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge">Not active in MC</span>' : ''}</div>
+        <div>${c.latest ? `${esc(d(c.latest.period_start))} to ${esc(d(c.latest.period_end))}` : '<span class="muted">None yet</span>'}</div>
+        <div>${status(c)}</div>
+        <div>${c.next_period_end ? esc(d(c.next_period_end)) + ' <span class="muted">(drafts next morning)</span>' : '-'}</div>
+        <button class="btn btn-sm" data-rp-open="${esc(c.id)}" type="button">Open</button>
+      </div>`;
+    host.innerHTML = `${data.mc_reachable === false ? '<div class="st-iss" style="margin-bottom:10px"><span class="sev chk">Mission Control</span>Couldn\'t reach Mission Control to check who is Active.</div>' : ''}
+      <div class="rp-row head"><div>Client</div><div>Latest report</div><div>Status</div><div>Next period ends</div><div></div></div>
+      ${rows.map(row).join('') || '<div class="empty" style="padding:12px 0">No active managed clients.</div>'}
+      ${off.length ? `<details style="margin-top:12px"><summary class="muted" style="cursor:pointer;font-size:12.5px">Not active in Mission Control (${off.length}): no reports are drafted</summary>${off.map(row).join('')}</details>` : ''}`;
+    host.querySelectorAll('[data-rp-open]').forEach(b => b.addEventListener('click', () => {
+      _openSects.add('performance-reports');
+      _sectFor = b.dataset.rpOpen;
+      openClient(b.dataset.rpOpen);
+    }));
   }
 
   async function showSops() {
