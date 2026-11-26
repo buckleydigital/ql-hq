@@ -2381,6 +2381,14 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     wireRounds(latest);
   }
 
+  // Meta's reported frame height leaves out the bottom of a feed ad (headline
+  // and button bar under a 4:5 image, plus long primary text), so feed
+  // placements get extra room; the frame also scrolls if it's still short.
+  function pvHeight(p) {
+    const h = p.h || 640;
+    return /story|reel/i.test(p.label || '') ? Math.max(h, 640) : Math.max(h + 260, 820);
+  }
+
   function roundPreviewsHtml(round) {
     if (!['team_review', 'sent', 'preparing'].includes(round.status)) return '';
     const pv = _studio.roundPreviews;
@@ -2395,7 +2403,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       return `<div class="st-pv" data-pv="${esc(a.key)}">
         <div class="st-h" style="margin:0 0 6px">${esc(a.key)}${a.kind === 'video' ? ' · video' : ''}</div>
         ${a.placements.length ? `<div class="st-pv-tabs">${a.placements.map((pl, j) => `<button type="button" class="st-chip${j === i ? ' on' : ''}" data-pv-tab="${j}">${esc(pl.label)}</button>`).join('')}</div>
-          <iframe src="${esc(p.url)}" width="${p.w || 340}" height="${p.h || 640}" scrolling="no" loading="lazy"></iframe>` : `<div class="muted" style="font-size:12px">${esc(a.pending || 'No preview')}</div>`}
+          <iframe src="${esc(p.url)}" width="${p.w || 340}" height="${pvHeight(p)}" scrolling="auto" loading="lazy" style="max-width:100%"></iframe>
+          <div style="margin-top:4px"><a href="${esc(p.url)}" target="_blank" rel="noopener" class="muted" style="font-size:12px">Open full preview ↗</a></div>` : `<div class="muted" style="font-size:12px">${esc(a.pending || 'No preview')}</div>`}
         ${editable ? `<div class="st-pv-edit">
           <label>Primary text<textarea rows="3" data-pv-f="message">${esc(ad.message || '')}</textarea></label>
           <label>Headline<input type="text" maxlength="40" data-pv-f="headline" value="${esc(ad.headline || '')}"></label>
