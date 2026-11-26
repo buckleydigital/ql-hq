@@ -7687,14 +7687,11 @@ async function blInitMap() {
   const el = document.getElementById('blMap');
   if (!el || !window.L) return;
   if (_blMap) { _blMap.remove(); _blMap = null; }
-  const dark = document.documentElement.dataset.theme === 'dark';
-  const base = dark ? 'Canvas/World_Dark_Gray' : 'Canvas/World_Light_Gray';
   _blMap = L.map(el, { scrollWheelZoom: false });
   _blMap.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
-  L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${base}_Base/MapServer/tile/{z}/{y}/{x}`,
-    { maxZoom: 16, attribution: '&copy; Esri, OpenStreetMap contributors' }).addTo(_blMap);
-  L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${base}_Reference/MapServer/tile/{z}/{y}/{x}`,
-    { maxZoom: 16 }).addTo(_blMap);
+  // Full-colour street map (roads, parks, water and labels in one layer).
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 16, attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap contributors' }).addTo(_blMap);
   _blMap.fitBounds(BL_AU);
   _blShapes = [];
   // The location step is hidden until a trade is picked; re-measure when it appears.
