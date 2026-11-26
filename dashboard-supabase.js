@@ -1129,13 +1129,13 @@ const PAGE_META = {
   "integrations":     ["Integrations",      "API keys, webhooks, and external connections."],
   "reviews":          ["Reviews",           "Manage Google review requests for closed deals."],
   "billing":          ["Billing",           "Your management plan and payment details."],
-  "buy-leads":        ["Buy Leads",          "Purchase exclusive lead packs for your industry and area."],
+  "buy-leads":        ["Buy Leads",          "Choose your trade, area and weekly limit. Pay for each lead as it arrives."],
 };
 
 // Lead pack orders can be paused with platform_settings.ppl_orders_paused in
 // ql-hq, the one switch the website, this page and the checkout all read.
 let PPL_ORDERS_PAUSED = false;
-const PPL_PAUSED_MSG = 'Lead pack orders are paused right now. Your existing orders and leads are not affected.';
+const PPL_PAUSED_MSG = 'New orders are paused right now. Your existing orders and leads are not affected.';
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/get-ppl-pricing?status=1`);
@@ -8003,7 +8003,7 @@ function renderBuyLeadsOrders(orders) {
   // Active / fulfilled / cancelled orders - table
   if (active.length) {
     html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">
-      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Niche</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Trade</th>
       <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">City</th>
       <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Coverage</th>
       <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--muted)">Delivered</th>

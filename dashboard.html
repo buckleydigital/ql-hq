@@ -660,6 +660,9 @@ tbody tr:hover{background:var(--side-hover);transition:background .1s}
 .ppl-only{display:none !important}
 body.plan-ppl .ppl-only{display:revert !important}
 body.plan-ppl .quick-tile.ppl-only,body.plan-ppl .check-row.ppl-only,body.plan-ppl .nav-item.ppl-only{display:flex !important}
+/* Buy Leads steps: numbered in order of the ones showing. */
+.bl-steps{counter-reset:blstep}
+.bl-step::before{counter-increment:blstep;content:counter(blstep) ". "}
 /* Managed (done-for-you) only: hidden for pay-per-lead accounts. */
 body.plan-ppl .managed-only{display:none !important}
 /* Pay-per-lead billing */
@@ -770,7 +773,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   background-repeat:no-repeat!important;background-position:right 11px center!important;background-size:14px!important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261126a"></script>
+<script defer src="./dashboard-supabase.js?v=20261126b"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -1055,7 +1058,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           <div class="panel-h">
             <div>
               <h2>Active Lead Orders</h2>
-              <p>Lead packs currently being delivered to your account.</p>
+              <p>Your areas currently receiving leads.</p>
             </div>
             <div class="actions">
               <button class="btn ppl-only" type="button" onclick="navigateTo('buy-leads')">View all orders →</button>
@@ -1801,7 +1804,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                 <textarea id="serviceAreaInput" placeholder="e.g. 2000, 2010, 2486" style="width:320px;height:64px;resize:vertical" maxlength="100000"></textarea>
                 <button type="button" id="addServiceAreaBtn" class="btn" style="font-size:12px">Add Postcodes</button>
               </div>
-              <p id="serviceAreaAutoNote" class="muted" style="font-size:11px;margin-bottom:10px;display:none">These postcodes were automatically set from your last lead pack order.</p>
+              <p id="serviceAreaAutoNote" class="muted" style="font-size:11px;margin-bottom:10px;display:none">These postcodes were automatically set from your last order.</p>
               <p class="muted" style="font-size:11px;margin-bottom:12px">Paste postcodes, one per line or comma-separated. Duplicates are ignored.</p>
               <div class="actions"><button id="saveServiceAreasBtn" class="btn2" type="button">Save &amp; Re-lock Service Areas</button></div>
             </div>
@@ -2303,11 +2306,11 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
               <div><h2>Get Leads</h2><p>Exclusive leads delivered in real-time to your pipeline. <span id="buyLeadsMinNote">Pay as you go: pay for your first lead today, then each lead as it arrives, up to your weekly limit.</span></p></div>
             </div>
             <div class="panel-b">
-              <div class="stack" style="max-width:580px;gap:24px">
+              <div class="stack bl-steps" style="max-width:580px;gap:24px">
 
                 <!-- Step 1: City -->
                 <div class="field" id="buyLeadsCityField">
-                  <label for="buyLeadsCity" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">1. LOCATION</label>
+                  <label for="buyLeadsCity" class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Location</label>
                   <select id="buyLeadsCity" style="margin-top:8px">
                     <option value="">Select a city or state…</option>
                     <optgroup label="Queensland">
@@ -2348,19 +2351,19 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
                 <!-- Step 2: Niche -->
                 <div class="field" id="buyLeadsNicheField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">2. Select Trade</label>
+                  <label class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Trade</label>
                   <div id="buyLeadsNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
                 </div>
 
                 <!-- Step 3: Sub-Niche (conditional - HVAC only) -->
                 <div class="field" id="buyLeadsSubNicheField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">3. Refine Lead Type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
+                  <label class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Lead type <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
                   <div id="buyLeadsSubNicheCards" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
                 </div>
 
                 <!-- Step 4: Location type -->
                 <div id="buyLeadsLocationField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">4. Define Coverage Area</label>
+                  <label class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Coverage area</label>
                   <div id="buyLeadsLocToggle" style="display:flex;gap:8px;margin-top:8px;margin-bottom:16px">
                     <button id="locTypeRadius" type="button" onclick="buyLeadsSetLocType('radius')"
                       style="padding:8px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">
@@ -2408,7 +2411,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
                 <!-- Step 5: Quantity -->
                 <div class="field" id="buyLeadsQtyField" style="display:none">
-                  <label style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">5. Leads a week per area</label>
+                  <label class="bl-step" style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Leads a week per area</label>
                   <p style="font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.5">The most leads you'll get (and pay for) each week in each suburb, at least 5. Up to 100 a week per suburb or postcode list, 300 state wide. Change it or pause any time.</p>
                   <div id="buyLeadsPackGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px"></div>
                   <div id="buyLeadsCapNote" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)"></div>
@@ -2424,7 +2427,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                 <div id="buyLeadsSummary" style="display:none;background:var(--surface-2,var(--bg-lift));border:1px solid var(--border);border-radius:10px;padding:18px">
                   <p style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Order Summary</p>
                   <div style="font-size:13px;color:var(--muted);line-height:2.1">
-                    <div style="display:flex;justify-content:space-between"><span>Niche</span><span id="buyLeadsSumNiche" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
+                    <div style="display:flex;justify-content:space-between"><span>Trade</span><span id="buyLeadsSumNiche" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
                     <div id="buyLeadsSumSubNicheRow" style="display:none;justify-content:space-between"><span>Lead Type</span><span id="buyLeadsSumSubNiche" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between"><span id="buyLeadsSumCityLbl">City</span><span id="buyLeadsSumCity" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between"><span>Coverage</span><span id="buyLeadsSumCoverage" style="color:var(--text,var(--ink));font-weight:500">-</span></div>
@@ -2434,7 +2437,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                     <div id="buyLeadsSumDiscountRow" style="display:none;justify-content:space-between"><span>Volume discount</span><span id="buyLeadsSumDiscount" style="color:#22c55e;font-weight:500">-</span></div>
                     <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:15px;font-weight:600;color:var(--text,var(--ink))"><span>Due today (1 lead, ex GST)</span><span id="buyLeadsSumTotal">-</span></div>
                   </div>
-                  <p id="buyLeadsPausedNote" style="display:none;margin:16px 0 0;padding:12px 14px;border-radius:10px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);font-size:13px;line-height:1.5">Lead pack orders are paused right now. Your existing orders and leads are not affected.</p>
+                  <p id="buyLeadsPausedNote" style="display:none;margin:16px 0 0;padding:12px 14px;border-radius:10px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);font-size:13px;line-height:1.5">New orders are paused right now. Your existing orders and leads are not affected.</p>
                   <button id="buyLeadsCheckoutBtn" class="btn2" type="button" style="width:100%;margin-top:16px">Pay for first lead →</button>
                   <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">
                     Your card is saved and charged for each lead as it is delivered, up to your weekly limit per area. Pause or change your limit any time. By continuing you agree to the
@@ -2447,7 +2450,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           </section>
 
           <section class="panel">
-            <div class="panel-h"><div><h2>Order History</h2><p>Your lead pack purchases and delivery status.</p></div></div>
+            <div class="panel-h"><div><h2>Your areas &amp; orders</h2><p>Weekly limits, pause and resume, and every order you've placed.</p></div></div>
             <div class="panel-b">
               <div id="buyLeadsPaygPanel"></div>
               <div id="buyLeadsOrdersTable"><div class="notice">Loading orders…</div></div>
