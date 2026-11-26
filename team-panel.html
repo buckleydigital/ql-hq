@@ -681,7 +681,17 @@ details.sect>summary .sect-n{font-size:11.5px;font-weight:700;padding:2px 8px;bo
 details.sect>.sect-body{padding:0 22px 20px}
 details.sect>.sect-body>.card{background:transparent;border:0;box-shadow:none;padding:0;margin-bottom:12px}
 details.sect>.sect-body>.sec-title:first-child{margin-top:4px}
-.list-tabs{display:flex;gap:6px;margin:0 0 12px}
+.list-tabs{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+.list-tabs .lt-n{opacity:.6;font-weight:500;margin-left:2px}
+#clientList .client-row.cr{padding:12px 18px;gap:14px}
+.cr-main{flex:1;min-width:0}
+.cr-name{font-size:14.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cr-name .badge{font-size:10.5px;padding:2px 8px}
+.cr-sub{font-size:12px;color:var(--ink3);margin-top:3px}
+.cr-sub b{color:var(--ink2);font-weight:600}
+.cr-va{display:flex;align-items:center;gap:4px;flex:none}
+#clientList .cr-va select{min-width:140px;padding:5px 30px 5px 12px;font-size:12px}
+@media(max-width:600px){#clientList .client-row.cr{flex-wrap:wrap}.cr-va{order:3;width:100%}#clientList .cr-va select{width:100%}.client-row.cr .goarrow{display:none}}
 .list-tabs .btn.on{border-color:var(--acc,#4797FF);color:var(--acc,#4797FF)}
 .rp-row{display:grid;grid-template-columns:minmax(160px,1.4fr) 1fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd);font-size:13px}
 .rp-row:last-child{border-bottom:0}
@@ -3831,7 +3841,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const again = $('startAgain'); if (again) again.onclick = (e) => { e.preventDefault(); _startForced = true; showList(); window.scrollTo(0, 0); };
   }
 
-  let _listTab = 'active';
+  let _listTab = 'managed', _tasksOpen = false;
   function showList() {
     hideAllViews();
     $('listView').classList.remove('hidden');
@@ -3845,28 +3855,35 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       return;
     }
 
-    // Churned in Mission Control: kept out of the way, behind a toggle.
+    // One list per kind of client; churned (in Mission Control) kept aside.
     const isChurned = (c) => c.mc_stage === 'churned';
-    const live = _clients.filter(c => !isChurned(c)), gone = _clients.filter(isChurned);
-    if (_listTab === 'churned' && !gone.length) _listTab = 'active';
-    const shown = _listTab === 'churned' ? gone : live;
+    const kindOf = (c) => isChurned(c) ? 'churned'
+      : c.client_kind === 'website' ? 'website'
+      : (c.plan === 'ppl' || c.plan === 'ppl_managed') ? 'ppl'
+      : c.plan === 'managed' ? 'managed' : 'other';
+    const live = _clients.filter(c => !isChurned(c));
+    const TABS = [['managed', 'Managed'], ['ppl', 'Pay per lead'], ['website', 'Website'], ['other', 'Other'], ['churned', 'Churned']]
+      .map(([k, l]) => ({ k, l, list: _clients.filter(c => kindOf(c) === k) }))
+      .filter(t => t.list.length || t.k === 'managed');
+    if (!TABS.some(t => t.k === _listTab)) _listTab = 'managed';
+    // Real clients first, test accounts at the bottom.
+    const shown = TABS.find(t => t.k === _listTab).list.slice().sort((a, b) => (a.is_test === true) - (b.is_test === true));
 
     // Task summary banner across active clients only.
     let allTasks = [];
-    live.forEach(c => computeTasks(c).forEach(t => allTasks.push({ c, t })));
+    live.filter(c => !c.is_test).forEach(c => computeTasks(c).forEach(t => allTasks.push({ c, t })));
     $('taskBanner').innerHTML = startCardHtml() + (!_billingReady ? '' : allTasks.length
-      ? `<div class="card" style="border-color:rgba(245,166,35,.28)">
-           <div class="sec-title" style="margin-top:0">Your tasks (${allTasks.length})</div>
-           <div class="muted" style="font-size:11.5px;margin:-4px 0 8px">Work down this list every day. Click a task to open the client.</div>
+      ? `<details class="sect" id="tasksSect" style="border-color:rgba(245,166,35,.28)"${_tasksOpen ? ' open' : ''}>
+           <summary>Your tasks <span class="sect-n">${allTasks.length}</span> <span class="muted">· work down this list every day</span></summary><div class="sect-body">
            ${allTasks.map(({ c, t }) => `<div class="task" data-goto="${esc(c.id)}" style="cursor:pointer"><span class="ic">${t.ic}</span><div class="tbody">${esc(t.label)}${t.why ? `<span class="twhy">${esc(t.why)}</span>` : ''}</div>${NO_DONE.includes(t.key) ? '' : `<button class="btn btn-xs task-done" type="button" data-done-co="${esc(c.id)}" data-done-key="${esc(t.inst)}" title="${esc(TASK_DONE_TITLE[t.key] || 'Handled another way: clear this task')}">Done</button>`}<span class="goarrow">→</span></div>`).join('')}
-         </div>`
+         </div></details>`
       : `<div class="card"><div class="sec-title" style="margin-top:0">Your tasks</div><div class="muted" style="font-size:12.5px">${isClientFacing() ? 'Nothing due right now. Check the texts bell, and open any client in onboarding to see their next step.' : 'Nothing due right now. Check the Ad account card on your live clients.'}</div></div>`);
     wireStartCard();
+    const ts = $('tasksSect');
+    if (ts) ts.addEventListener('toggle', () => { _tasksOpen = ts.open; });
 
-    $('listSub').innerHTML = `<div class="list-tabs">
-        <button class="btn btn-sm${_listTab === 'active' ? ' on' : ''}" data-list-tab="active" type="button">Active (${live.length})</button>
-        ${gone.length ? `<button class="btn btn-sm${_listTab === 'churned' ? ' on' : ''}" data-list-tab="churned" type="button">Churned (${gone.length})</button>` : ''}
-      </div>`;
+    $('listSub').innerHTML = `<div class="list-tabs">${TABS.map(t =>
+        `<button class="btn btn-sm${_listTab === t.k ? ' on' : ''}" data-list-tab="${t.k}" type="button">${t.l} <span class="lt-n">${t.list.length}</span></button>`).join('')}</div>`;
     $('listSub').querySelectorAll('[data-list-tab]').forEach(b => b.addEventListener('click', () => { _listTab = b.dataset.listTab; showList(); }));
     el.innerHTML = (shown.length ? '' : '<div class="empty" style="padding:14px 0">No clients here.</div>') + shown.map(c => {
       const isPpl = c.plan === 'ppl' || c.plan === 'ppl_managed';
@@ -3877,18 +3894,14 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       const tCount = _billingReady ? computeTasks(c).length : 0;
       const invSt = c.invoice_status && c.invoice_status !== 'none'
         ? `<span class="badge ${c.invoice_status}">${esc(c.invoice_status)}</span>` : '';
+      const due = c.mc_stage === 'paused' ? '<span class="badge">Paused</span>' : '';
       return `
-      <div class="card client-row" data-id="${esc(c.id)}">
-        <div>
-          <div class="client-name">${esc(c.name || '(no name)')} ${testBadge(c)} ${planBadge(c.plan)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${c.mc_stage === 'paused' ? '<span class="badge">Paused</span>' : ''} ${invSt}</div>
-          <div class="stat-row">
-            <span>${leadStat}</span>
-            ${isPpl ? `<span><b>${c.activeOrders || 0}</b> active order${c.activeOrders === 1 ? '' : 's'}</span>` : ''}
-            <span><b>${c.notes || 0}</b> note${c.notes === 1 ? '' : 's'}</span>
-            ${tCount ? `<span class="chip warn">${tCount} task${tCount === 1 ? '' : 's'}</span>` : ''}
-            ${c.email ? `<span class="muted">${esc(c.email)}</span>` : ''}
-          </div>
+      <div class="card client-row cr" data-id="${esc(c.id)}">
+        <div class="cr-main">
+          <div class="cr-name">${esc(c.name || '(no name)')} ${testBadge(c)} ${isNew48(c) ? '<span class="badge new">New</span>' : ''} ${due} ${invSt}</div>
+          <div class="cr-sub">${leadStat}${isPpl && c.activeOrders ? ` · ${c.activeOrders} active order${c.activeOrders === 1 ? '' : 's'}` : ''}</div>
         </div>
+        ${tCount ? `<span class="chip warn">${tCount} task${tCount === 1 ? '' : 's'}</span>` : ''}
         ${_teamMembers ? vaPickerHtml(c) : ''}
         <span class="goarrow">→</span>
       </div>`;
@@ -3910,8 +3923,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   function vaPickerHtml(c) {
     const ids = c.va_ids || [];
     const opts = _teamMembers.map(m => `<option value="${esc(m.id)}"${ids[0] === m.id ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
-    return `<label data-va-pick style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--ink3);margin-left:auto;margin-right:10px">Assigned to
-      <select data-va-pick="${esc(c.id)}" style="min-width:150px"><option value="">Unassigned</option>${opts}</select>
+    return `<label data-va-pick class="cr-va" title="Assigned to">
+      <select data-va-pick="${esc(c.id)}" aria-label="Assigned to"><option value="">Unassigned</option>${opts}</select>
       ${ids.length > 1 ? `<span class="muted">+${ids.length - 1} more</span>` : ''}</label>`;
   }
   // One VA per client from here: the new one is assigned (and emailed by
@@ -4226,7 +4239,12 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
 
     $('detailBody').innerHTML = `
       <div class="card">
-        <div class="client-name" style="font-size:18px">${esc(c.name || '(no name)')} ${testBadge(cache)} ${planBadge(c.plan)} ${isNew48(cache) ? '<span class="badge new">New</span>' : ''}</div>
+        <div class="client-name" style="font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name || '(no name)')} ${testBadge(cache)} ${cache.client_kind === 'website' ? '<span class="badge">Website</span>' : planBadge(c.plan)} ${isNew48(cache) ? '<span class="badge new">New</span>' : ''}
+          ${(_realAdmin || _me.is_ops) ? `<label class="muted" style="margin-left:auto;font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px">Client type
+            <select id="clientKindSel" style="font-size:12px;padding:5px 28px 5px 10px">
+              <option value="auto"${cache.client_kind === 'website' ? '' : ' selected'}>${c.plan === 'managed' ? 'Managed' : (c.plan === 'ppl' || c.plan === 'ppl_managed') ? 'Pay per lead' : 'From their plan'}</option>
+              <option value="website"${cache.client_kind === 'website' ? ' selected' : ''}>Website</option>
+            </select></label>` : ''}</div>
         <div class="sec-title">Contact</div>
         <div class="kv"><span class="k">Company email</span><span>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '-'}</span></div>
         <div class="kv"><span class="k">Company phone</span><span>${esc(c.phone || '-')}</span></div>
@@ -4335,6 +4353,15 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       const card = $('rptCard'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
       const d = _rptList && _rptList.reports.find(r => r.status === 'draft'); if (d) openReportModal(d.id);
     }));
+    const kindSel = $('clientKindSel');
+    if (kindSel) kindSel.addEventListener('change', async () => {
+      kindSel.disabled = true;
+      const { ok, data } = await teamApi({ action: 'set_client_kind', company_id: companyId, client_kind: kindSel.value });
+      kindSel.disabled = false;
+      if (!ok) { alert(data.error || 'Could not change the client type.'); return; }
+      cache.client_kind = data.client_kind || null;
+      _listTab = cache.client_kind === 'website' ? 'website' : c.plan === 'managed' ? 'managed' : 'ppl';
+    });
     const billSel = $('billModeSel');
     if (billSel) billSel.addEventListener('change', () => setBillingMode(companyId, billSel.value, billSel));
     wireFulfilment(companyId);
