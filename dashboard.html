@@ -790,7 +790,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   background-repeat:no-repeat!important;background-position:right 11px center!important;background-size:14px!important}
 </style>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="./dashboard-supabase.js?v=20261126i"></script>
+<script defer src="./dashboard-supabase.js?v=20261126sms"></script>
 <base target="_blank">
 <base target="_blank">
 </head>
@@ -1573,7 +1573,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
             <div class="panel-h">
               <div>
                 <h2>SMS Credits</h2>
-                <p>500 free credits every 30 days, topped back up to 500 (unused free credits don't roll over). Each SMS (inbound or outbound) uses 1 credit. Purchased credits never expire and are used after your free ones.</p>
+                <p><span class="smsFreeN">500</span> free credits every 30 days, topped back up to <span class="smsFreeN">500</span> (unused free credits don't roll over). Each SMS (inbound or outbound) uses 1 credit. Purchased credits never expire and are used after your free ones.</p>
                 <p id="smsCreditsResetLabel" style="font-size:12px;color:var(--muted);margin-top:4px"></p>
               </div>
               <div id="smsCreditsBalance" style="font-size:22px;font-weight:700;color:var(--text)">-</div>
@@ -1584,20 +1584,20 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
                 <div style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
                   <div style="font-size:18px;font-weight:700;margin-bottom:2px">100</div>
                   <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
-                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$10 AUD</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$15 AUD</div>
                   <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('100')">Buy</button>
                 </div>
                 <div style="flex:1;min-width:140px;border:2px solid var(--accent,#4797FF);border-radius:10px;padding:16px;text-align:center;position:relative">
                   <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent,#4797FF);color:#fff;font-size:10px;font-weight:700;padding:2px 10px;border-radius:10px">POPULAR</div>
                   <div style="font-size:18px;font-weight:700;margin-bottom:2px">500</div>
                   <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
-                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$45 AUD</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$60 AUD</div>
                   <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('500')">Buy</button>
                 </div>
                 <div style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
                   <div style="font-size:18px;font-weight:700;margin-bottom:2px">1,000</div>
                   <div style="font-size:11px;color:var(--muted);margin-bottom:12px">credits</div>
-                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$80 AUD</div>
+                  <div style="font-size:13px;font-weight:600;margin-bottom:10px">$100 AUD</div>
                   <button class="btn2" style="width:100%;font-size:12px;padding:8px" onclick="buySmsCredits('1000')">Buy</button>
                 </div>
               </div>

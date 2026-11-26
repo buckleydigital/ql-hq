@@ -4538,10 +4538,12 @@ async function loadAiSettings() {
     // Load SMS credits balance
     const { data: credits } = await sb
       .from("sms_credits")
-      .select("balance, next_reset_at")
+      .select("balance, next_reset_at, monthly_free_sms")
       .eq("company_id", currentCompanyId)
       .maybeSingle();
     const b = credits?.balance ?? 0;
+    const freeN = credits?.monthly_free_sms ?? 500;
+    document.querySelectorAll(".smsFreeN").forEach(el => { el.textContent = freeN; });
 
     const balanceEl = document.getElementById("smsCreditsBalance");
     if (balanceEl) {
@@ -4553,7 +4555,7 @@ async function loadAiSettings() {
     if (resetLabel && credits?.next_reset_at) {
       const resetDate = new Date(credits.next_reset_at);
       const formatted = resetDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
-      resetLabel.textContent = `Next 500 free credits: ${formatted}`;
+      resetLabel.textContent = `Free credits top back up to ${freeN}: ${formatted}`;
     }
 
     _updateSmsCreditsUi(b);
