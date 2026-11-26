@@ -500,6 +500,20 @@ select{cursor:pointer}
 .st-pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;margin-top:12px}
 .st-pv{border:1px solid var(--bd);border-radius:var(--r);padding:10px;background:var(--s1,#fff)}
 .st-pv iframe{border:0;max-width:100%;background:#fff;display:block;margin:0 auto}
+.mk-feed{max-width:400px;margin:0 auto;background:#fff;color:#1c1e21;border-radius:10px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+.mk-feed-h{display:flex;gap:8px;align-items:center;padding:10px 12px}
+.mk-feed-h img,.mk-av{width:36px;height:36px;border-radius:50%;object-fit:contain;background:#f0f2f5;display:grid;place-items:center;font-weight:700;color:#1c1e21}
+.mk-feed-h b{display:block;font-size:14px}.mk-feed-h span{font-size:12px;color:#65676b}
+.mk-feed-t{margin:0;padding:0 12px 10px;font-size:14px;line-height:1.4;white-space:pre-wrap}
+.mk-feed-img{display:block;width:100%;height:auto}
+.mk-feed-f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#f0f2f5}
+.mk-feed-f b{display:block;font-size:14px}.mk-feed-f span{display:block;font-size:12px;color:#65676b}
+.mk-feed-f em{font-style:normal;font-size:13px;font-weight:600;background:#e4e6eb;padding:8px 12px;border-radius:6px;white-space:nowrap}
+.mk-story{position:relative;max-width:280px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000}
+.mk-story>img{display:block;width:100%;height:auto}
+.mk-story-top{position:absolute;top:10px;left:10px;right:10px;display:flex;align-items:center;gap:6px;color:#fff;font-size:12px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.mk-story-top img{width:26px;height:26px;border-radius:50%;background:#fff;object-fit:contain}
+.mk-story-top span{opacity:.8}
 .st-pv-tabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
 .st-pv-tabs .st-chip{flex-direction:row;padding:4px 8px}
 .st-camp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;font-size:12.5px}
@@ -2389,11 +2403,43 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     return /story|reel/i.test(p.label || '') ? Math.max(h, 640) : Math.max(h + 260, 820);
   }
 
+  // Our own mock-up of each ad from the drawn images and the copy, for when
+  // Meta can't preview them yet (no ad account or Page connected, so the
+  // images aren't in an ad account to preview). Meta's exact previews replace
+  // it once they are.
+  function mockPreviewsHtml(round, note) {
+    const ads = (round.ads || []).filter(a => a.feed_url || a.story_url);
+    if (!ads.length) return '';
+    const name = (_studio.business && _studio.business.name) || 'Their business';
+    const logo = studioLogo();
+    _studio.pvTab = _studio.pvTab || {};
+    return `<div class="st-iss" style="margin-top:10px"><span class="sev chk">Mock-up</span>${esc(note)}</div>
+      <div class="st-pv-grid">${ads.map(a => {
+        const story = _studio.pvTab['m:' + a.key] === 1 && a.story_url;
+        return `<div class="st-pv" data-pvm="${esc(a.key)}">
+          <div class="st-h" style="margin:0 0 6px">${esc(a.key)}</div>
+          <div class="st-pv-tabs"><button type="button" class="st-chip${story ? '' : ' on'}" data-pvm-tab="0">Feed</button>${a.story_url ? `<button type="button" class="st-chip${story ? ' on' : ''}" data-pvm-tab="1">Stories</button>` : ''}</div>
+          ${story
+            ? `<div class="mk-story"><img src="${esc(a.story_url)}" alt=""><div class="mk-story-top">${logo ? `<img src="${esc(logo.url)}" alt="">` : ''}<b>${esc(name)}</b><span>Sponsored</span></div></div>`
+            : `<div class="mk-feed">
+                <div class="mk-feed-h">${logo ? `<img src="${esc(logo.url)}" alt="">` : `<span class="mk-av">${esc(name.slice(0, 1))}</span>`}<div><b>${esc(name)}</b><span>Sponsored</span></div></div>
+                ${a.message ? `<p class="mk-feed-t">${esc(a.message)}</p>` : ''}
+                <img class="mk-feed-img" src="${esc(a.feed_url)}" alt="">
+                <div class="mk-feed-f"><div><b>${esc(a.headline || '')}</b>${a.description ? `<span>${esc(a.description)}</span>` : ''}</div><em>${esc((a.cta || 'Get quote').replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase()))}</em></div>
+              </div>`}
+        </div>`;
+      }).join('')}</div>`;
+  }
+
   function roundPreviewsHtml(round) {
+    if (['drawing', 'awaiting_access'].includes(round.status)) {
+      return mockPreviewsHtml(round, 'How the ads should look, from the drawn images and copy. Meta\'s exact previews show here once their ad account and Page are connected.');
+    }
     if (!['team_review', 'sent', 'preparing'].includes(round.status)) return '';
     const pv = _studio.roundPreviews;
     if (!pv || pv.roundId !== round.id) return '<div class="muted" style="font-size:12px;margin-top:10px">Loading Meta\'s previews…</div>';
-    if (pv.error) return `<div class="st-iss"><span class="sev fix">Previews</span>${esc(pv.error)}</div>`;
+    if (pv.error) return `<div class="st-iss"><span class="sev fix">Previews</span>${esc(pv.error)}</div>` +
+      mockPreviewsHtml(round, 'Meta\'s previews couldn\'t load, so here\'s our own mock-up from the drawn images and copy.');
     const editable = round.status === 'team_review';
     _studio.pvTab = _studio.pvTab || {};
     return `<div class="st-pv-grid">${pv.ads.map(a => {
@@ -2438,6 +2484,9 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     btn('rdLink', async () => {
       try { await navigator.clipboard.writeText(_studio.rounds.approval_url); alert('Link copied. It opens their latest ads.'); }
       catch { prompt('Their link:', _studio.rounds.approval_url); }
+    });
+    document.querySelectorAll('#stRounds [data-pvm]').forEach(card => {
+      card.querySelectorAll('[data-pvm-tab]').forEach(t => t.addEventListener('click', () => { _studio.pvTab['m:' + card.dataset.pvm] = +t.dataset.pvmTab; renderRounds(); }));
     });
     document.querySelectorAll('#stRounds [data-pv]').forEach(card => {
       const key = card.dataset.pv;
