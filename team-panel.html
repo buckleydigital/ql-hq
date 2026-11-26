@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src https://business.facebook.com https://www.facebook.com; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src https://business.facebook.com https://www.facebook.com; object-src 'none'; base-uri 'self';">
 <title>Team Panel · QuoteLeads</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/product-logo.png">
@@ -500,6 +500,16 @@ select{cursor:pointer}
 .st-pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;margin-top:12px}
 .st-pv{border:1px solid var(--bd);border-radius:var(--r);padding:10px;background:var(--s1,#fff)}
 .st-pv iframe{border:0;max-width:100%;background:#fff;display:block;margin:0 auto}
+.mn-ad{border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.mn-imgs{display:grid;grid-template-columns:150px 110px 1fr;gap:12px;align-items:start}
+.mn-drop{display:grid;place-items:center;aspect-ratio:4/5;border:1px dashed var(--bd2,rgba(255,255,255,.2));border-radius:10px;cursor:pointer;overflow:hidden;text-align:center;font-size:12px;color:var(--ink3)}
+.mn-drop.mn-story{aspect-ratio:9/16}
+.mn-drop img{width:100%;height:100%;object-fit:cover}
+.mn-drop small{opacity:.7}
+.mn-copy{display:flex;flex-direction:column;gap:8px}
+.mn-copy label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink3)}
+.mn-copy textarea,.mn-copy input{width:100%}
+@media(max-width:700px){.mn-imgs{grid-template-columns:1fr 1fr}.mn-copy{grid-column:1/-1}}
 .mk-feed{max-width:400px;margin:0 auto;background:#fff;color:#1c1e21;border-radius:10px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
 .mk-feed-h{display:flex;gap:8px;align-items:center;padding:10px 12px}
 .mk-feed-h img,.mk-av{width:36px;height:36px;border-radius:50%;object-fit:contain;background:#f0f2f5;display:grid;place-items:center;font-weight:700;color:#1c1e21}
@@ -1766,7 +1776,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     const g = (copy && copy.google) || {};
     const lenTag = (t, max) => `<span class="st-len${String(t || '').length > max ? ' over' : ''}">${String(t || '').length}/${max}</span>`;
 
-    const roundsSect = sect('previews', `Ads &amp; previews <span class="muted">· what Meta will show, and the client's approval rounds</span>`, '<div id="stRounds"></div><div id="stCampaign"></div>');
+    const roundsSect = sect('previews', `Ads &amp; previews <span class="muted">· what Meta will show, and the client's approval rounds</span>`, '<div id="stRounds"></div><div id="stManual"></div><div id="stCampaign"></div>');
     host.innerHTML = roundsSect + sect('studio', `Creative studio <span class="muted">· logo, photos, copy and images</span>`, `
       <div class="st">
         <div class="st-row">
@@ -1879,6 +1889,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     wireStudio();
     wireLook();
     renderRounds();
+    renderManual();
     renderCampaign();
     if (st.can_manage_stock && _stock.open) renderStock();
   }
@@ -2381,7 +2392,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
         ${changes.needs_person ? `<div class="st-iss"><span class="sev chk">Needs you</span>${esc(changes.needs_person)}</div>` : ''}
         ${fb.ads ? `<div style="margin-top:8px;font-size:12.5px">${Object.entries(fb.ads).map(([k, v]) => `<div>${v.decision === 'approve' ? '👍' : '✏️'} <b>${esc(k)}</b>${v.comment ? `: ${esc(v.comment)}` : ''}</div>`).join('')}${fb.general ? `<div>💬 ${esc(fb.general)}</div>` : ''}</div>` : ''}
         <div class="st-actions" style="margin-top:10px">
-          ${latest.status === 'drawing' ? '<button class="btn btn-p" id="rdFinish" type="button">Finish pack</button>' : ''}
+          ${latest.status === 'drawing' && !(latest.changes || {}).manual ? '<button class="btn btn-p" id="rdFinish" type="button">Finish pack</button>' : ''}
+          ${latest.status === 'drawing' && (latest.changes || {}).manual ? '<span class="muted" style="font-size:12px">Upload didn\'t finish: discard it and upload again below.</span>' : ''}
           ${latest.status === 'team_review' ? '<button class="btn btn-p" id="rdSend" type="button">Send to client</button>' : ''}
           ${['drawing', 'awaiting_access', 'team_review'].includes(latest.status) ? '<button class="btn" id="rdDiscard" type="button">Discard round</button>' : ''}
           ${rs.approval_url ? `<button class="btn btn-sm" id="rdLink" type="button">Copy client link</button>` : ''}
@@ -2395,6 +2407,7 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
     host.innerHTML = `<div class="st-h" style="margin-top:16px">Preview rounds</div>${body}
       ${older.length ? `<div class="muted" style="font-size:12px;margin-top:10px">${older.map(r => `Round ${r.round}: ${esc(ROUND_STATUS[r.status] || r.status)}${r.decided_at ? ` (${esc(date(r.decided_at))})` : ''}`).join(' · ')}</div>` : ''}`;
     wireRounds(latest);
+    renderManual();
   }
 
   // Meta's reported frame height leaves out the bottom of a feed ad (headline
@@ -2438,6 +2451,115 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
           </div>` : ''}
         </div>`;
       }).join('')}</div>`;
+  }
+
+
+  // ── Upload your own ads ──
+  // Ads made outside the panel (Canva and so on): an image (and optionally a
+  // Stories size) plus the copy, per ad. They become a normal round: checked
+  // here on the mock-ups, nothing in Meta until Send.
+  const MANUAL_MAX = 6;
+  function manualState() {
+    if (!_studio.manual) _studio.manual = { open: false, ads: [{ message: '', headline: '', description: '', feed: null, story: null }] };
+    return _studio.manual;
+  }
+  function renderManual() {
+    const host = $('stManual');
+    if (!host || !_studio) return;
+    const m = manualState();
+    const open = (_studio.rounds && (_studio.rounds.rounds || [])[0]) || null;
+    const replaces = open && ['drawing', 'team_review', 'awaiting_access'].includes(open.status);
+    host.innerHTML = `<details class="st-prompt" id="stManualBox"${m.open ? ' open' : ''} style="margin-top:16px">
+      <summary>Upload your own ads <span class="muted">(made outside the panel)</span></summary>
+      <div class="muted" style="font-size:12px;margin:6px 0 10px;line-height:1.55">Upload each ad's image and type its copy. They become a new round you check here on the mock-ups; nothing goes into Meta until you press Send. Feed image 1080×1350 (4:5) or 1080×1080 works best; a Stories image (1080×1920) is optional.${replaces ? ' <b>This replaces the round being worked on now.</b>' : ''}</div>
+      ${m.ads.map((a, i) => `<div class="mn-ad" data-mn="${i}">
+        <div class="st-h" style="margin:0 0 8px;display:flex;align-items:center;gap:8px">Ad ${i + 1}${m.ads.length > 1 ? `<button type="button" class="btn btn-sm" data-mn-del="${i}" style="margin-left:auto">Remove</button>` : ''}</div>
+        <div class="mn-imgs">
+          <label class="mn-drop">${a.feed ? `<img src="${a.feed.preview}" alt="">` : '<span>+ Feed image<br><small>required</small></span>'}<input type="file" accept="image/png,image/jpeg,image/webp" data-mn-img="feed" hidden></label>
+          <label class="mn-drop mn-story">${a.story ? `<img src="${a.story.preview}" alt="">` : '<span>+ Stories image<br><small>optional</small></span>'}<input type="file" accept="image/png,image/jpeg,image/webp" data-mn-img="story" hidden></label>
+          <div class="mn-copy">
+            <label>Primary text<textarea rows="4" maxlength="600" data-mn-f="message" placeholder="The text above the image">${esc(a.message)}</textarea></label>
+            <label>Headline<input type="text" maxlength="40" data-mn-f="headline" value="${esc(a.headline)}" placeholder="Under the image, up to 40 characters"></label>
+            <label>Description <span class="muted">(optional)</span><input type="text" maxlength="200" data-mn-f="description" value="${esc(a.description)}"></label>
+          </div>
+        </div>
+      </div>`).join('')}
+      <div class="st-actions" style="margin-top:10px">
+        ${m.ads.length < MANUAL_MAX ? '<button class="btn btn-sm" id="mnAdd" type="button">+ Add another ad</button>' : ''}
+        <button class="btn btn-p btn-sm" id="mnGo" type="button">Create round from these</button>
+        <span class="muted" id="mnStatus" style="font-size:12px"></span>
+      </div>
+    </details>`;
+    const box = $('stManualBox');
+    box.addEventListener('toggle', () => { m.open = box.open; });
+    host.querySelectorAll('[data-mn]').forEach(row => {
+      const i = +row.dataset.mn, a = m.ads[i];
+      row.querySelectorAll('[data-mn-f]').forEach(el => el.addEventListener('input', () => { a[el.dataset.mnF] = el.value; }));
+      row.querySelectorAll('[data-mn-img]').forEach(inp => inp.addEventListener('change', async () => {
+        const f = inp.files[0]; inp.value = '';
+        if (!f) return;
+        if (f.size > 15 * 1024 * 1024) { alert('That image is over 15 MB.'); return; }
+        a[inp.dataset.mnImg] = { file: f, preview: URL.createObjectURL(f) };
+        renderManual();
+      }));
+      const del = row.querySelector('[data-mn-del]');
+      if (del) del.addEventListener('click', () => { m.ads.splice(i, 1); renderManual(); });
+    });
+    if ($('mnAdd')) $('mnAdd').addEventListener('click', () => { m.ads.push({ message: '', headline: '', description: '', feed: null, story: null }); renderManual(); });
+    $('mnGo').addEventListener('click', createManualRound);
+  }
+
+  // Any image to a JPEG data URL at its own size, under the 10 MB upload limit.
+  async function toJpeg(file) {
+    const bmp = await createImageBitmap(file);
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0);
+    for (const q of [0.92, 0.85, 0.75, 0.6]) {
+      const url = c.toDataURL('image/jpeg', q);
+      if (url.length * 0.75 < 9.5 * 1024 * 1024) return url;
+    }
+    throw new Error(`${file.name} is too large even compressed`);
+  }
+
+  async function createManualRound() {
+    const m = manualState(), cid = _studio.companyId;
+    const bad = m.ads.map((a, i) => (!a.feed || !a.message.trim() || !a.headline.trim()) ? i + 1 : 0).filter(Boolean);
+    if (bad.length) { alert(`Ad ${bad.join(', ')} needs a feed image, primary text and a headline.`); return; }
+    const open = (_studio.rounds && (_studio.rounds.rounds || [])[0]) || null;
+    if (open && ['drawing', 'team_review', 'awaiting_access'].includes(open.status) &&
+        !confirm(`This replaces round ${open.round}, which is still being worked on. Carry on?`)) return;
+    const btn = $('mnGo'), st = (t) => { const el = $('mnStatus'); if (el) el.textContent = t; };
+    btn.disabled = true;
+    try {
+      st('Creating the round…');
+      const r = await roundsApi({ action: 'manual', company_id: cid, ads: m.ads.map(a => ({ message: a.message, headline: a.headline, description: a.description })) });
+      if (!r.ok) throw new Error(r.data.error || 'could not create the round');
+      const round = r.data.round;
+      for (let i = 0; i < m.ads.length; i++) {
+        for (const shape of ['feed', 'story']) {
+          const img = m.ads[i][shape];
+          if (!img) continue;
+          st(`Uploading ad ${i + 1} (${shape === 'feed' ? 'feed' : 'Stories'})…`);
+          const up = await roundsApi({ action: 'attach', company_id: cid, round_id: round.id, ad_key: round.ads[i].key, shape, data: await toJpeg(img.file) });
+          if (!up.ok) throw new Error(up.data.error || 'an image upload failed');
+        }
+      }
+      st('Finishing…');
+      const fin = await roundsApi({ action: 'finish', company_id: cid, round_id: round.id });
+      if (!fin.ok) throw new Error(fin.data.error || 'could not finish the round');
+      _studio.manual = null;
+      st('');
+      await loadRounds();
+      renderManual();
+    } catch (e) {
+      st('');
+      alert(`Uploading the ads failed: ${e.message || e}`);
+      btn.disabled = false;
+      loadRounds();
+    }
   }
 
   function roundPreviewsHtml(round) {
