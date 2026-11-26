@@ -923,6 +923,33 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       </div>
     </div>
 
+    <!-- First-lead refunds (Pay Per Lead Terms, Section 3) -->
+    <div class="card" style="margin-bottom:20px" id="flrCard">
+      <div class="panel-h">
+        <div>
+          <h2>First-Lead Refunds</h2>
+          <p id="flrCountLabel">Pay-as-you-go checkouts with no Lead in their first 7 days. Flags only: refund in Stripe, then mark it here.</p>
+        </div>
+        <div class="filter-bar">
+          <select id="flrStatusFilter" class="filter-select">
+            <option value="">All</option>
+            <option value="due" selected>Refund due</option>
+            <option value="in_window">In first 7 days</option>
+            <option value="not_due">Not due</option>
+            <option value="refunded">Refunded</option>
+            <option value="dismissed">Dismissed</option>
+          </select>
+          <button class="btn btn-sm" id="flrScanBtn" type="button">Run check now</button>
+          <button class="btn btn-sm" id="flrRefreshBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div id="flrLoading" class="notice">Loading…</div>
+        <div id="flrList" class="hidden" style="overflow-x:auto"></div>
+        <div id="flrEmpty" class="notice hidden">Nothing here.</div>
+      </div>
+    </div>
+
     <!-- Lead Disputes panel -->
     <div class="card" style="margin-bottom:20px">
       <div class="panel-h">
@@ -2646,6 +2673,85 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
   document.getElementById('disputeStatusFilter').addEventListener('change', applyDisputeFilter);
   document.getElementById('refreshDisputesBtn').addEventListener('click', loadDisputes);
 
+
+  // ── First-lead refunds (ppl-first-lead-refunds) ───────────────────────────
+  // Checkouts whose first 7 days passed with no Lead and no exclusion are
+  // "Refund due". Nothing is refunded from here: refund in Stripe, then mark.
+  var flrItems = [];
+  var FLR_LABEL = { due: 'Refund due', in_window: 'In first 7 days', not_due: 'Not due', refunded: 'Refunded', dismissed: 'Dismissed' };
+  var FLR_CLASS = { due: 'badge-rejected', in_window: 'badge-pending', not_due: 'badge-auto', refunded: 'badge-approved', dismissed: 'badge-auto' };
+  function flrDate(d) { return d ? new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '-'; }
+
+  function renderFlr() {
+    var f = document.getElementById('flrStatusFilter').value;
+    var rows = flrItems.filter(function (r) { return !f || r.status === f; });
+    var due = flrItems.filter(function (r) { return r.status === 'due'; }).length;
+    var lbl = document.getElementById('flrCountLabel');
+    if (lbl) lbl.textContent = (due ? due + ' refund' + (due === 1 ? '' : 's') + ' due. ' : 'No refunds due. ') + flrItems.length + ' checkout' + (flrItems.length === 1 ? '' : 's') + ' in the last 60 days. Flags only: refund in Stripe, then mark it here.';
+    document.getElementById('flrLoading').classList.add('hidden');
+    var list = document.getElementById('flrList');
+    if (!rows.length) { list.classList.add('hidden'); document.getElementById('flrEmpty').classList.remove('hidden'); return; }
+    document.getElementById('flrEmpty').classList.add('hidden');
+    var td = 'padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;font-size:13px';
+    list.innerHTML = '<table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>' +
+      ['Company', 'Areas', 'Paid', '7 days end', 'Amount', 'Status', 'Why', ''].map(function (h) { return '<th style="' + td + ';text-align:left;color:var(--muted);font-weight:500">' + h + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows.map(function (r) {
+        var why = (r.reasons && r.reasons.length) ? r.reasons.map(escapeHtml).join('<br>') : (r.status === 'in_window' ? 'No Lead yet' : (r.status === 'due' ? 'No Lead and no exclusion' : '-'));
+        if (r.note) why += '<br><em style="color:var(--muted)">Note: ' + escapeHtml(r.note) + '</em>';
+        var stripe = r.stripe_payment_intent_id ? '<a href="https://dashboard.stripe.com/payments/' + encodeURIComponent(r.stripe_payment_intent_id) + '" target="_blank" rel="noopener">Stripe</a>' : '';
+        var acts = (r.status === 'due' || r.status === 'not_due')
+          ? '<button class="btn btn-sm" type="button" data-flr-mark="refunded" data-sid="' + escapeHtml(r.stripe_session_id) + '">Mark refunded</button> ' +
+            '<button class="btn btn-sm" type="button" data-flr-mark="dismissed" data-sid="' + escapeHtml(r.stripe_session_id) + '">Dismiss</button>'
+          : (r.handled_at ? '<span style="color:var(--muted);font-size:12px">' + flrDate(r.handled_at) + '</span>' : '');
+        return '<tr>' +
+          '<td style="' + td + '"><strong>' + escapeHtml(r.company_name || r.company_id) + '</strong></td>' +
+          '<td style="' + td + '">' + escapeHtml(r.areas || '-') + '</td>' +
+          '<td style="' + td + ';white-space:nowrap">' + flrDate(r.paid_at) + '</td>' +
+          '<td style="' + td + ';white-space:nowrap">' + flrDate(r.window_ends_at) + '</td>' +
+          '<td style="' + td + ';white-space:nowrap">' + (r.amount_paid != null ? '$' + Number(r.amount_paid).toFixed(2) : '-') + '<br>' + stripe + '</td>' +
+          '<td style="' + td + '"><span class="badge-status ' + (FLR_CLASS[r.status] || '') + '">' + escapeHtml(FLR_LABEL[r.status] || r.status) + '</span>' +
+            (r.notified_at ? '<div style="color:var(--muted);font-size:11px;margin-top:4px">Emailed ' + flrDate(r.notified_at) + '</div>' : '') + '</td>' +
+          '<td style="' + td + '">' + why + '</td>' +
+          '<td style="' + td + ';white-space:nowrap">' + acts + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+    list.classList.remove('hidden');
+  }
+
+  async function loadFirstLeadRefunds() {
+    document.getElementById('flrLoading').classList.remove('hidden');
+    document.getElementById('flrLoading').textContent = 'Loading…';
+    try {
+      var r = await callEdge({ action: 'list' }, 'ppl-first-lead-refunds');
+      flrItems = r.items || [];
+      renderFlr();
+    } catch (err) {
+      document.getElementById('flrLoading').textContent = 'Failed to load: ' + err.message;
+    }
+  }
+
+  document.getElementById('flrStatusFilter').addEventListener('change', renderFlr);
+  document.getElementById('flrRefreshBtn').addEventListener('click', loadFirstLeadRefunds);
+  document.getElementById('flrScanBtn').addEventListener('click', async function () {
+    var b = this; b.disabled = true; b.textContent = 'Checking…';
+    try { var r = await callEdge({ action: 'scan' }, 'ppl-first-lead-refunds'); toast('Check done: ' + (r.results || []).length + ' checkout(s) recorded.'); await loadFirstLeadRefunds(); }
+    catch (err) { toast(err.message, true); }
+    b.disabled = false; b.textContent = 'Run check now';
+  });
+  document.getElementById('flrList').addEventListener('click', async function (e) {
+    var btn = e.target.closest('[data-flr-mark]');
+    if (!btn) return;
+    var status = btn.getAttribute('data-flr-mark');
+    var note = prompt(status === 'refunded' ? 'Refunded in Stripe? Add a note (optional):' : 'Why not refund it? (optional note)', '');
+    if (note === null) return;
+    btn.disabled = true;
+    try {
+      await callEdge({ action: 'mark', stripe_session_id: btn.getAttribute('data-sid'), status: status, note: note }, 'ppl-first-lead-refunds');
+      toast(status === 'refunded' ? 'Marked as refunded.' : 'Dismissed.');
+      await loadFirstLeadRefunds();
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
+  });
+
   // ── Lead Notifications (all accounts) ─────────────────────────────────────
   function leadNotifyStatusClass(st) {
     if (st === 'sent') return 'badge-approved';
@@ -3354,7 +3460,8 @@ select:not([multiple]):not([size]){-webkit-appearance:none;appearance:none;paddi
       toast('Failed to load users: ' + err.message, true);
     }
 
-    // 6. Load disputes panel
+    // 6. Load disputes panel (and first-lead refunds)
+    loadFirstLeadRefunds();
     await loadDisputes();
     loadLeadNotifications();
     loadClientPixels();
