@@ -7053,8 +7053,10 @@ async function skipReviewRequest(requestId) {
 // =============================================================================
 function nicheLabel(niche) {
   if (niche === 'solar_and_battery' || niche === 'solar-and-battery' || niche === 'solar_battery') return 'Solar + Battery';
-  if (niche === 'battery_retrofit' || niche === 'battery-retrofit') return 'Battery Retrofit';
-  if (niche === 'hvac') return 'HVAC (Split & Ducted)';
+  if (niche === 'battery_retrofit' || niche === 'battery-retrofit') return 'Batteries';
+  if (niche === 'hvac') return 'HVAC';
+  if (niche === 'kitchen_renovation' || niche === 'kitchen-renovation') return 'Kitchens';
+  if (niche === 'bathroom_renovation' || niche === 'bathroom-renovation') return 'Bathrooms';
   if (niche === 'renovation') return 'Renovations';
   return (niche || '').split(/[_-]/).map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
@@ -7169,7 +7171,7 @@ async function loadBuyLeads() {
   blReset();
 }
 
-const BL_NICHES = ['solar-and-battery', 'hvac', 'battery-retrofit', 'roofing', 'renovation'];
+const BL_NICHES = ['solar-and-battery', 'battery-retrofit', 'roofing', 'hvac', 'kitchen-renovation', 'bathroom-renovation'];
 
 function renderBuyLeadsNiches() {
   const el = document.getElementById('buyLeadsNicheCards');
